@@ -8,6 +8,7 @@ export default defineConfig({
     './src/server/db/schema/connectorHealth.ts',
     './src/server/db/schema/narrations.ts',
     './src/server/db/schema/digests.ts',
+    './src/server/db/schema/llmUsage.ts',
   ],
   out: './src/server/db/migrations',
   dialect: 'postgresql',
