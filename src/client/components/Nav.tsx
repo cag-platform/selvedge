@@ -19,6 +19,9 @@ export function Nav() {
           <NavLink to="/tray" className={linkClass}>
             Unsorted
           </NavLink>
+          <NavLink to="/admin" className={linkClass}>
+            Admin
+          </NavLink>
         </div>
         <div className="flex items-center gap-3">
           <OrganizationSwitcher />
