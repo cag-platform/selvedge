@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runAllFixtures } from './harness.js';
 import { MockComposerClient } from './mockLlm.js';
 import { AnthropicLlmClient } from '../src/server/llm/anthropic.js';
+import { GOLDEN_FIXTURE_MAP, gradeStyle, readGoldenMeta, readGoldenReferenceBrief } from './styleGrade.js';
 
 /**
  * `npm run evals` — the CI entrypoint (Phase 2 deliverable 7). Gated
@@ -35,8 +36,34 @@ async function main() {
     console.log('\nstyle similarity: BLOCKED — golden set missing (docs/golden-set/README.md). Mechanical gates scored above.');
   } else {
     console.log(
-      `\nstyle similarity: ${goldens.length}/5 golden brief(s) present${missing.length ? ` (awaiting: ${missing.join(', ')})` : ''} — model-graded report ${hasKey ? 'enabled' : 'requires ANTHROPIC_API_KEY'} (reported, never gated).`,
+      `\nstyle similarity vs goldens (${goldens.length}/5 present${missing.length ? `; awaiting: ${missing.join(', ')}` : ''}) — reported, never gated:`,
     );
+    for (const file of Object.keys(GOLDEN_FIXTURE_MAP)) {
+      if (!goldens.includes(file)) continue;
+      const meta = readGoldenMeta(file)!;
+      const fixtureName = GOLDEN_FIXTURE_MAP[file];
+      const label = `${file.padEnd(24)} register=${meta.register.padEnd(17)} budget<=${String(meta.budget ?? '?').padEnd(4)}`;
+      if (fixtureName === null) {
+        console.log(`  ${label} SKIPPED — first-day orientation mode not implemented in the composer yet`);
+        continue;
+      }
+      const score = scores.find((s) => s.fixture === fixtureName);
+      if (!score) {
+        console.log(`  ${label} no matching fixture ran`);
+        continue;
+      }
+      if (!hasKey) {
+        console.log(`  ${label} vs fixture ${fixtureName} — grading requires ANTHROPIC_API_KEY`);
+        continue;
+      }
+      const golden = readGoldenReferenceBrief(file);
+      const grade = golden ? await gradeStyle(llm, golden, score.brief) : null;
+      console.log(
+        grade
+          ? `  ${label} vs ${fixtureName}: similarity ${grade.similarity}/10, register ${grade.registerMatch} — ${grade.notes}`
+          : `  ${label} grading call failed`,
+      );
+    }
   }
 
   const failures = scores.filter((s) => s.gatedFailures.length > 0);

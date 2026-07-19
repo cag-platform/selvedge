@@ -43,6 +43,8 @@ export type FixtureScore = {
   sectionOrderOk: boolean; // reported
   voice: string;
   gatedFailures: string[];
+  /** The composed brief itself — the style grader compares this against the goldens. */
+  brief: string;
 };
 
 function words(text: string): number {
@@ -169,6 +171,7 @@ export async function runFixture(fixture: EvalFixture, llm: LlmClient): Promise<
       sectionOrderOk,
       voice: digest.voice,
       gatedFailures,
+      brief,
     };
   } finally {
     await close();

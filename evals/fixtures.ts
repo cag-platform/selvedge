@@ -3,9 +3,8 @@ import type { ContextPack, StakesTier, DetailLevel } from '../src/shared/types/p
 /**
  * ~15 synthetic day fixtures (Phase 2 deliverable 7). Each describes one
  * org-day: the packs, yesterday's events, and what the composed brief is
- * gated on. The five golden-brief slots (Greg's hand-written references)
- * live in evals/goldens/ — see the README there; style similarity against
- * them is reported, not gated.
+ * gated on. The five golden briefs (Greg's hand-written references) live in
+ * docs/golden-set/; style similarity against them is reported, not gated.
  */
 
 export type FixtureEvent = {
@@ -29,6 +28,7 @@ export type EvalFixture = {
     capability_gap?: string;
     degraded_trust?: boolean;
     has_deployed_before?: boolean;
+    known_flaky?: string;
   }>;
   events: FixtureEvent[];
   /** Open threads carried in from "yesterday's digest". */
@@ -62,7 +62,10 @@ export function fixturePack(spec: EvalFixture['packs'][number]): ContextPack {
         ? { capability_gaps: [{ gap: 'gap', summary: spec.capability_gap }] }
         : {}),
     },
-    baselines: { deploy_cadence: 'weekly' },
+    baselines: {
+      deploy_cadence: 'weekly',
+      ...(spec.known_flaky ? { known_flaky: [{ pattern: spec.known_flaky, note: 'flaky, usually passes on retry' }] } : {}),
+    },
     state: spec.has_deployed_before === false ? {} : { serving_now: { deployed_at: '2026-07-01T00:00:00Z', healthy: true } },
     trust: spec.degraded_trust
       ? { sources: { github: { status: 'stale_suspected', note: 'repo quiet while deploys continue' } }, overall_confidence: 'partial' }
@@ -89,7 +92,61 @@ const yoke = {
   capability_gap: 'day 12 of visitors being unable to buy',
 };
 
+const sb = {
+  project_id: 'sb-master',
+  name: 'Smith Bespoke',
+  tier: 'live_critical' as StakesTier,
+  touches_money: true,
+  resource_id: 'acme/sb-master',
+  downtime_translation: 'clients cannot reach the storefront or their closets',
+};
+const cag = {
+  project_id: 'cag-web',
+  name: 'CAG site',
+  tier: 'live_small' as StakesTier,
+  resource_id: 'acme/cag-web',
+  downtime_translation: 'the public site is dark and overnight leads may be lost',
+};
+
 export const FIXTURES: EvalFixture[] = [
+  // --- Golden-aligned fixtures: approximate each golden's frozen inputs
+  // with the Phase 1 event vocabulary where that's possible. mixed-day and
+  // degraded-trust-day goldens describe events (first real transactions, a
+  // stuck GPU scan) that no current connector can produce — their style
+  // grading runs against the nearest synthetic fixture instead, and
+  // first-day's orientation brief is a composer mode that doesn't exist
+  // yet (flagged in the runner).
+  {
+    name: 'golden-quiet-day',
+    description: "Golden quiet-day's frozen shape: 8 healthy projects, YOKE gap drumbeat, nothing else.",
+    packs: [
+      loom,
+      mirror,
+      toile,
+      yoke,
+      sb,
+      cag,
+      { project_id: 'sild', name: 'SILD', tier: 'live_critical', touches_money: true, resource_id: 'acme/sild' },
+      { project_id: 'chalk', name: 'Chalk', tier: 'live_small', resource_id: 'acme/chalk' },
+    ],
+    events: [],
+    expect: { quietDay: true },
+  },
+  {
+    name: 'golden-storm-day',
+    description: "Golden storm-day's frozen shape: one shared outage takes three apps down, all recover, flaky noise dropped.",
+    packs: [loom, sb, cag, { ...toile, known_flaky: 'nightly' }],
+    events: [
+      { event_type: 'runtime.health_failing', resource_id: 'acme/loom', hour: 2 },
+      { event_type: 'runtime.health_failing', resource_id: 'acme/sb-master', hour: 2 },
+      { event_type: 'runtime.health_failing', resource_id: 'acme/cag-web', hour: 2 },
+      { event_type: 'runtime.recovered', resource_id: 'acme/loom', hour: 4 },
+      { event_type: 'runtime.recovered', resource_id: 'acme/sb-master', hour: 4 },
+      { event_type: 'runtime.recovered', resource_id: 'acme/cag-web', hour: 4 },
+      { event_type: 'build.failed', resource_id: 'acme/toile', hour: 3, raw: { workflow_run: { name: 'nightly build' } } },
+    ],
+    expect: {},
+  },
   {
     name: 'quiet-day',
     description: 'Nothing happened; the brief still sends and stays small.',
