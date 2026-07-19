@@ -7,6 +7,7 @@ import { orderAttention, orderMoved, type NarrationWithPack } from './order.js';
 import { buildSections, renderDigestText, type OpenThread } from './render.js';
 import { capabilityGapStandingLines, quietLine, unsortedTrayLine, weeklyRetrospective } from './standing.js';
 import { localDateString, yesterdayBoundsUtc } from './timezone.js';
+import { composeBriefLlm, type ComposeLlmDeps } from './composeLlm.js';
 
 export type ComposedDigest = {
   id: string;
@@ -14,13 +15,23 @@ export type ComposedDigest = {
   headline: string;
   renderedText: string;
   openThreads: OpenThread[];
+  /** How renderedText was produced: mechanical (no voice), composed (Stage 2), fallback (voice failed; mechanical sent). */
+  voice: 'mechanical' | 'composed' | 'fallback';
 };
 
 /**
- * Layer 5 (deterministic edition, deliverable 7). Idempotent: composing
- * twice for the same org+local-day returns the already-stored digest.
+ * Layer 5. Phase 1's deterministic edition remains the skeleton: gathering,
+ * ordering, selection, and continuity are code. With llmDeps present, the
+ * selected-and-annotated fragments go through the Stage 2 composition call
+ * (composeLlm.ts) and its validator; any failure falls back to the
+ * mechanical rendering — the brief always sends. Idempotent per org+local-day.
  */
-export async function composeDigestForOrg(db: Db, orgId: string, now: Date = new Date()): Promise<ComposedDigest> {
+export async function composeDigestForOrg(
+  db: Db,
+  orgId: string,
+  now: Date = new Date(),
+  llmDeps?: ComposeLlmDeps,
+): Promise<ComposedDigest> {
   const [orgRow] = await db.select({ timezone: orgs.timezone }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
   const timezone = orgRow?.timezone ?? 'UTC';
 
@@ -53,7 +64,35 @@ export async function composeDigestForOrg(db: Db, orgId: string, now: Date = new
 
   const previousOpenThreads: OpenThread[] = previousDigest ? (previousDigest.openThreads as OpenThread[]) : [];
   const sections = buildSections(attention, moved, standing, quiet, previousOpenThreads);
-  const renderedText = renderDigestText(sections);
+  const mechanicalText = renderDigestText(sections);
+
+  // Stage 2: the model composes, code decided what it sees. Failure of any
+  // kind (call, validator twice) falls back to the mechanical rendering.
+  let renderedText = mechanicalText;
+  let voice: 'mechanical' | 'composed' | 'fallback' = 'mechanical';
+  if (llmDeps) {
+    const packMeta = packs.map((p) => ({
+      project_id: p.identity.project_id,
+      name: p.identity.name,
+      tier: p.stakes.tier,
+      detail_level: p.voice.detail_level,
+      language: p.voice.language ?? 'en',
+    }));
+    const composed = await composeBriefLlm(llmDeps, orgId, sections, previousOpenThreads, packMeta);
+    if (composed.ok) {
+      renderedText = composed.brief;
+      voice = 'composed';
+    } else {
+      voice = 'fallback';
+      // The alert channel for a double validator failure / model outage:
+      // loud in logs, visible as voice='fallback' on the digest row and the
+      // Today page's reduced-voice note (acceptance gate 6).
+      console.error(
+        `digest compose fallback for org ${orgId} (${todayStr}): ${composed.reason}` +
+          ('violations' in composed && composed.violations ? ` — ${composed.violations.join('; ')}` : ''),
+      );
+    }
+  }
 
   const newOpenThreads: OpenThread[] = sections.attention.map((a) => ({
     project_id: a.projectId,
@@ -76,9 +115,11 @@ export async function composeDigestForOrg(db: Db, orgId: string, now: Date = new
     },
     openThreads: newOpenThreads,
     renderedText,
+    voice,
+    mechanicalText,
   });
 
-  return { id, digestDate: todayStr, headline: sections.headline, renderedText, openThreads: newOpenThreads };
+  return { id, digestDate: todayStr, headline: sections.headline, renderedText, openThreads: newOpenThreads, voice };
 }
 
 async function getExistingDigest(db: Db, orgId: string, digestDate: string): Promise<ComposedDigest | null> {
@@ -88,5 +129,12 @@ async function getExistingDigest(db: Db, orgId: string, digestDate: string): Pro
     .where(and(eq(digests.orgId, orgId), eq(digests.digestDate, digestDate)))
     .limit(1);
   if (!row) return null;
-  return { id: row.id, digestDate: row.digestDate, headline: row.headline, renderedText: row.renderedText, openThreads: row.openThreads as OpenThread[] };
+  return {
+    id: row.id,
+    digestDate: row.digestDate,
+    headline: row.headline,
+    renderedText: row.renderedText,
+    openThreads: row.openThreads as OpenThread[],
+    voice: (row.voice ?? 'mechanical') as 'mechanical' | 'composed' | 'fallback',
+  };
 }

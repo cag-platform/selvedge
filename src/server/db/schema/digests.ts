@@ -16,6 +16,10 @@ export const digests = pgTable(
     sections: jsonb('sections').notNull(), // { attention: [], moved: [], standing: [], quiet: [], today: [] }
     openThreads: jsonb('open_threads').notNull(), // [{ project_id, summary, narration_id }]
     renderedText: text('rendered_text').notNull(), // the note, assembled — what the Today page shows
+    // Phase 2: how renderedText was produced, and the mechanical rendering
+    // kept alongside for the before/after admin view (acceptance gate 2).
+    voice: text('voice').notNull().default('mechanical'), // mechanical | composed | fallback
+    mechanicalText: text('mechanical_text'), // always populated in Phase 2; null on pre-Phase-2 rows
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex('digests_org_date_idx').on(table.orgId, table.digestDate)],

@@ -1,6 +1,7 @@
 import type { Db } from '../db/client.js';
 import { orgs } from '../db/schema/index.js';
 import { composeDigestForOrg } from './compose.js';
+import type { ComposeLlmDeps } from './composeLlm.js';
 import { localDateString } from './timezone.js';
 
 /**
@@ -10,14 +11,14 @@ import { localDateString } from './timezone.js';
  * repeatedly through the hour, since only the first call in a given day
  * actually writes a row.
  */
-export async function runDigestSchedule(db: Db, now: Date = new Date()): Promise<string[]> {
+export async function runDigestSchedule(db: Db, now: Date = new Date(), llmDeps?: ComposeLlmDeps): Promise<string[]> {
   const allOrgs = await db.select({ orgId: orgs.orgId, timezone: orgs.timezone }).from(orgs);
   const composedFor: string[] = [];
 
   for (const org of allOrgs) {
     const hour = localHour(now, org.timezone);
     if (hour === 7) {
-      await composeDigestForOrg(db, org.orgId, now);
+      await composeDigestForOrg(db, org.orgId, now, llmDeps);
       composedFor.push(org.orgId);
     }
   }

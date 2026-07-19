@@ -8,6 +8,7 @@ type Digest = {
   digestDate: string;
   headline: string;
   renderedText: string;
+  voice?: 'mechanical' | 'composed' | 'fallback';
   sections: {
     attention: SectionItem[];
     moved: SectionItem[];
@@ -128,6 +129,12 @@ export function Today() {
 
   return (
     <div className="space-y-6">
+      {digest.voice === 'fallback' && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Running with reduced voice today — the narration model wasn't reachable, so this brief was assembled
+          mechanically. All facts are unaffected.
+        </p>
+      )}
       {/* The digest renders as a note, not a table — a deliberate, load-bearing layout choice. */}
       <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <p className="text-lg font-medium text-slate-900">{digest.headline}</p>
