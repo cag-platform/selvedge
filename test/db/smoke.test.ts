@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { createTestDb } from './helpers/testDb.js';
-import { events, orgs } from '../src/server/db/schema/index.js';
-import { ensureCurrentPartitions } from '../src/server/db/partitions.js';
+import { createTestDb } from '../helpers/testDb.js';
+import { events, orgs } from '../../src/server/db/schema/index.js';
+import { ensureCurrentPartitions } from '../../src/server/db/partitions.js';
 
 describe('db smoke test', () => {
   it('applies migrations (incl. partitioned events table) and round-trips a row', async () => {
