@@ -19,6 +19,8 @@ export interface NarrationLibraryPort {
     pack: ContextPack,
   ): Promise<{ output: NarrationOutput; source: 'glossary' | 'library'; fingerprint: string } | null>;
   writeCandidate(orgId: string, event: NarratableEvent, pack: ContextPack, output: NarrationOutput): Promise<void>;
+  /** The fingerprint this event would file under — persisted in narrations.meta so feedback taps can retire the entry. */
+  fingerprint(event: NarratableEvent, pack: ContextPack): string;
 }
 
 export type NarrationDeps = {
@@ -31,8 +33,8 @@ export type DispatchResult = {
   output: NarrationOutput;
   /** The narration path actually taken this call. */
   path: 'TEMPLATE' | 'LIB' | 'LLM' | 'LLM+VERDICT';
-  /** Diagnostics persisted into narrations.meta — feeds lib_hit_rate and fallback metrics. */
-  meta: { lib_hit?: boolean; fallback_reason?: string; confidence?: string };
+  /** Diagnostics persisted into narrations.meta — feeds lib_hit_rate, fallback metrics, and feedback-tap retirement. */
+  meta: { lib_hit?: boolean; fallback_reason?: string; confidence?: string; fingerprint?: string };
 };
 
 /**
@@ -75,11 +77,12 @@ export async function narrateDispatch(
   }
 
   const requireVerdict = intended === 'LLM+VERDICT';
+  const fingerprint = intended === 'LIB' && deps.library ? deps.library.fingerprint(event, pack) : undefined;
 
   if (intended === 'LIB' && deps.library) {
     const hit = await deps.library.lookup(event.org_id ?? '', event, pack);
     if (hit) {
-      return { output: hit.output, path: 'LIB', meta: { lib_hit: true } };
+      return { output: hit.output, path: 'LIB', meta: { lib_hit: true, fingerprint: hit.fingerprint } };
     }
   }
 
@@ -89,7 +92,11 @@ export async function narrateDispatch(
   if (!result.ok) {
     const output = templateOutput();
     if (!output) return null;
-    return { output, path: 'TEMPLATE', meta: { fallback_reason: result.reason, ...(intended === 'LIB' ? { lib_hit: false } : {}) } };
+    return {
+      output,
+      path: 'TEMPLATE',
+      meta: { fallback_reason: result.reason, ...(intended === 'LIB' ? { lib_hit: false } : {}) },
+    };
   }
 
   // Every successful LLM fragment on a LIB row seeds a library candidate.
@@ -100,6 +107,10 @@ export async function narrateDispatch(
   return {
     output: result.output,
     path: intended,
-    meta: { confidence: result.confidence, ...(intended === 'LIB' ? { lib_hit: false } : {}) },
+    meta: {
+      confidence: result.confidence,
+      ...(intended === 'LIB' ? { lib_hit: false } : {}),
+      ...(fingerprint ? { fingerprint } : {}),
+    },
   };
 }

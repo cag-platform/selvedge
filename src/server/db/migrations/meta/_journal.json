@@ -15,6 +15,13 @@
       "when": 1784495687535,
       "tag": "0001_cynical_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784496323686,
+      "tag": "0002_complete_ultimatum",
+      "breakpoints": true
     }
   ]
 }

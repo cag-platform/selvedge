@@ -9,6 +9,7 @@ export default defineConfig({
     './src/server/db/schema/narrations.ts',
     './src/server/db/schema/digests.ts',
     './src/server/db/schema/llmUsage.ts',
+    './src/server/db/schema/narrationLibrary.ts',
   ],
   out: './src/server/db/migrations',
   dialect: 'postgresql',

@@ -152,6 +152,7 @@ describe('narrateDispatch', () => {
     const library: NarrationLibraryPort = {
       lookup: async () => ({ output: hit, source: 'library', fingerprint: 'fp' }),
       writeCandidate: async () => {},
+      fingerprint: () => 'fp',
     };
     const fake = new FakeLlmClient();
     const result = await narrateDispatch(testEvent('build.succeeded'), pack, decision, { llm: fake, db, library });
@@ -173,6 +174,7 @@ describe('narrateDispatch', () => {
       writeCandidate: async (_org, _event, _pack, output) => {
         written.push(output);
       },
+      fingerprint: () => 'fp',
     };
     const fake = new FakeLlmClient((req) => ({
       ok: true,

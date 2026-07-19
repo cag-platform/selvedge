@@ -19,6 +19,8 @@ export type NarratableEvent = {
   event_type: string;
   occurred_at: string;
   severity_hint: SeverityHint;
+  /** Error-class raw material (check/workflow name) for library fingerprinting; extracted by resolution, normalized before hashing. */
+  signature?: string;
 };
 
 export type NarrationOutput = {

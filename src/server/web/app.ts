@@ -8,6 +8,7 @@ import { ingestEvent } from '../resolution/ingest.js';
 import { llmEnabled } from '../llm/config.js';
 import { AnthropicLlmClient } from '../llm/anthropic.js';
 import type { NarrationDeps } from '../narration/dispatch.js';
+import { DbNarrationLibrary } from '../narration/library.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
@@ -22,7 +23,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
   const narrationDeps: NarrationDeps | undefined = llmEnabled()
-    ? { llm: new AnthropicLlmClient(), db }
+    ? { llm: new AnthropicLlmClient(), db, library: new DbNarrationLibrary(db) }
     : undefined;
 
   // Mounted before any JSON body parser and before Clerk: GitHub calls this

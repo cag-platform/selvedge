@@ -15,8 +15,19 @@ export function matchesKnownFlaky(raw: unknown, pack: ContextPack): boolean {
   const patterns = pack.baselines?.known_flaky ?? [];
   if (patterns.length === 0) return false;
 
-  const workflowName = (raw as { workflow_run?: { name?: string } })?.workflow_run?.name;
+  const workflowName = extractSignature(raw);
   if (!workflowName) return false;
 
   return patterns.some((p) => workflowName.toLowerCase().includes(p.pattern.toLowerCase()));
+}
+
+/**
+ * Same narrow raw exception, second consumer (Phase 2): the graduation
+ * library's error-class fingerprint needs the failing check/workflow name,
+ * which only exists in the payload. Extracted here — alongside knownFlaky,
+ * inside resolution — and passed to narration as event.signature, so the
+ * narration layer itself still never touches raw.
+ */
+export function extractSignature(raw: unknown): string | undefined {
+  return (raw as { workflow_run?: { name?: string } })?.workflow_run?.name ?? undefined;
 }

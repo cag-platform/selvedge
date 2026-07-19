@@ -11,6 +11,7 @@ import { currentLocalTime, pairedOutagePushed, recentPushWorthyCount } from './r
 import { route } from '../routing/route.js';
 import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
+import { extractSignature } from './knownFlaky.js';
 
 export type IngestResult = {
   eventId: string;
@@ -70,7 +71,14 @@ async function routeNarrateAndPersist(
   // the Phase 1 template on any model failure; with no deps it IS the
   // Phase 1 template path.
   const dispatched = await narrateDispatch(
-    { id, org_id: orgId, event_type: event.event_type, occurred_at: event.occurred_at, severity_hint: event.severity_hint },
+    {
+      id,
+      org_id: orgId,
+      event_type: event.event_type,
+      occurred_at: event.occurred_at,
+      severity_hint: event.severity_hint,
+      ...(extractSignature(event.raw) ? { signature: extractSignature(event.raw) } : {}),
+    },
     pack,
     decision,
     narrationDeps,
