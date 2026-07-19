@@ -8,6 +8,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/server/routing/**/*.ts'],
+      exclude: ['src/server/routing/types.ts'],
       thresholds: {
         'src/server/routing/**/*.ts': {
           lines: 100,

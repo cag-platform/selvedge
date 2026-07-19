@@ -1,0 +1,491 @@
+{
+  "$comment": "Transcribed from docs/routing-table.md v1. This file IS the router's data — Greg edits this directly, no deploy required for new rows. Each row's `tiers` maps stakes.tier -> {path, delivery, quiet_hours_override}. `path` values here are the doc's INTENDED path (pre-Phase-1-collapse); the routing engine (src/server/routing/route.ts) collapses LIB/LLM/LLM+VERDICT to TEMPLATE at runtime and reports both `path` (actual) and `intended_path` (this value) per the Phase 1 brief. `v1_scope: true` marks rows the doc's own \"What v1 actually implements\" section (Groups A, B, C1-C5, E, G1-G3) covers; `v1_scope: false` rows are transcribed for completeness/review but the engine will not be exercised against them in Phase 1 because no connector will ever produce their event_type (App Store, error-rate, correctness-critical, and no-CI/no-tests detection all require infrastructure Phase 1 explicitly does not build). See the PR description for the full list of flagged gaps.",
+  "tiers": ["sandbox", "personal", "live_small", "live_critical"],
+  "rows": [
+    {
+      "id": "A1",
+      "group": "A",
+      "event_type": "code.commit_pushed_non_default",
+      "label": "commit pushed to non-default branch",
+      "notes": "Raw commits are noise; they roll up into A4/A5 summaries",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "SILENT", "delivery": "NONE" },
+        "live_small": { "path": "SILENT", "delivery": "NONE" },
+        "live_critical": { "path": "SILENT", "delivery": "NONE" }
+      }
+    },
+    {
+      "id": "A2",
+      "group": "A",
+      "event_type": "code.commits_landed_default",
+      "label": "commits land on default branch (direct or merge)",
+      "notes": "Digest line summarizes the day's merged work per project, not per commit",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LIB", "delivery": "DIGEST" },
+        "live_critical": { "path": "LIB", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "A3",
+      "group": "A",
+      "event_type": "code.pr_opened",
+      "label": "PR opened",
+      "notes": "New work started: <plain gist> — gist generated once (LLM), cached on the in_progress item",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "A4",
+      "group": "A",
+      "event_type": "code.large_merge",
+      "label": "large merge / phase-milestone-sized change (delta above baseline norm)",
+      "notes": "The mid-build progress narration — how mid-project apps get storyline, not just status",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "LIB", "delivery": "DIGEST" },
+        "personal": { "path": "LIB", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "A5",
+      "group": "A",
+      "event_type": "code.branch_stalled",
+      "label": "branch/PR crosses stall threshold (default 14d quiet)",
+      "notes": "Gentle, max once per item per 2 weeks: \"still want this?\" Feeds Ideas surface",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "A6",
+      "group": "A",
+      "event_type": "code.dormant_activity",
+      "label": "activity on a dormant project (any push/PR)",
+      "notes": "Dormancy inverts novelty: the activity itself is the news",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LIB", "delivery": "DIGEST" },
+        "live_critical": { "path": "LIB", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "B1",
+      "group": "B",
+      "event_type": "build.started",
+      "label": "build started",
+      "notes": "Unless it becomes B4/B6, nobody cares",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "SILENT", "delivery": "NONE" },
+        "live_small": { "path": "SILENT", "delivery": "NONE" },
+        "live_critical": { "path": "SILENT", "delivery": "NONE" }
+      }
+    },
+    {
+      "id": "B2",
+      "group": "B",
+      "event_type": "build.succeeded",
+      "label": "build succeeded, deploy succeeded",
+      "notes": "\"Your update went live cleanly.\" Dormant modifier (A6) upgrades wording, not channel",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LIB", "delivery": "DIGEST" },
+        "live_critical": { "path": "LIB", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "B3",
+      "group": "B",
+      "event_type": "build.slow",
+      "label": "build running > 2x typical_build_seconds",
+      "notes": "Slow-build watch only matters when someone's waiting on prod",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "SILENT", "delivery": "NONE" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "B4",
+      "group": "B",
+      "event_type": "build.failed",
+      "label": "build failed (never reached deploy)",
+      "notes": "LC verdict is usually \"nothing users see changed\" — that's the sentence that kills the panic",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LIB", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "B5",
+      "group": "B",
+      "event_type": "build.failed_known_flaky",
+      "label": "build failed matching known_flaky pattern",
+      "notes": "\"The flaky check failed again — usually passes on retry.\" Never pushes",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "SILENT", "delivery": "NONE" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "B6",
+      "group": "B",
+      "event_type": "deploy.failed_previous_serving",
+      "label": "deploy failed, previous version still serving",
+      "notes": "The signature moment: \"Your update couldn't go live. The previous version is still running — users are fine.\"",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "LIB", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM+VERDICT", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "B7",
+      "group": "B",
+      "event_type": "deploy.failed_nothing_serving",
+      "label": "deploy failed, nothing serving (first deploy or replaced-then-died)",
+      "notes": "The only build-class event that can break quiet hours, and only at LC",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "LIB", "delivery": "DIGEST" },
+        "personal": { "path": "LLM", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM+VERDICT", "delivery": "PUSH" },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true }
+      }
+    },
+    {
+      "id": "B8",
+      "group": "B",
+      "event_type": null,
+      "label": "deploy on a no-CI/no-test project (pack stack_summary flag)",
+      "notes": "Modifier row: escalates B2/B6 one path level. NOT mechanically applied in Phase 1 — the pack schema has no structured field for \"no CI/no tests\" (worked example CAG infers it from free-text stack_summary), and parsing free text deterministically without an LLM is out of scope. Flagged as a gap in the PR description; a candidate fix is a topology.ci_coverage enum in a future schema revision.",
+      "v1_scope": false,
+      "reserved_reason": "no structured schema field to key off without an LLM",
+      "tiers": {}
+    },
+    {
+      "id": "C1",
+      "group": "C",
+      "event_type": "runtime.health_failing",
+      "label": "health check failing / service down",
+      "notes": "Uses downtime_translation verbatim",
+      "v1_scope": true,
+      "reserved_reason": "requires a host connector; Phase 1 ships GitHub only",
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true }
+      }
+    },
+    {
+      "id": "C2",
+      "group": "C",
+      "event_type": "runtime.recovered",
+      "label": "service recovered",
+      "notes": "Recovery pushes iff the outage pushed. Closes the loop — never leave a red push unanswered. Engine expects context.pairedOutagePushed for this row.",
+      "v1_scope": true,
+      "reserved_reason": "requires a host connector; Phase 1 ships GitHub only",
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "C3",
+      "group": "C",
+      "event_type": "runtime.recovered_hidden_dependency",
+      "label": "recovered, but pack notes a hidden dependency (e.g. Postgres-as-queue)",
+      "notes": "Addendum to C2's narration, not a standalone push",
+      "v1_scope": true,
+      "reserved_reason": "requires a host connector; Phase 1 ships GitHub only",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "LLM", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "C4",
+      "group": "C",
+      "event_type": "data.migration_failed",
+      "label": "DB migration failed",
+      "notes": "Data events skew critical: schema half-applied is scarier than a bad deploy",
+      "v1_scope": true,
+      "reserved_reason": "requires a DB connector; Phase 1 ships GitHub only",
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "LIB", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true }
+      }
+    },
+    {
+      "id": "C5",
+      "group": "C",
+      "event_type": "data.resource_warning",
+      "label": "DB resource warnings (storage, connections, compute limits)",
+      "notes": "Predictive, not reactive",
+      "v1_scope": true,
+      "reserved_reason": "requires a DB connector; Phase 1 ships GitHub only",
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "LIB", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "C6",
+      "group": "C",
+      "event_type": "data.integrity_signal",
+      "label": "data-integrity signal on a correctness-critical project (pack flags \"wrong > down\")",
+      "notes": "SZD's rule: wrong measurements outrank downtime. Pack-driven override, not tier-driven",
+      "v1_scope": false,
+      "reserved_reason": "waits on a pack field flagging correctness-critical projects, per the routing doc's own v1 scope note",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH", "quiet_hours_override": true }
+      }
+    },
+    {
+      "id": "C7",
+      "group": "C",
+      "event_type": "runtime.error_rate_spike",
+      "label": "error-rate spike above baseline (when error connector exists)",
+      "notes": "v1 ships without an error connector; row reserved",
+      "v1_scope": false,
+      "reserved_reason": "waits on an error-rate connector, per the routing doc's own v1 scope note",
+      "tiers": {
+        "sandbox": { "path": "SILENT", "delivery": "NONE" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "D1",
+      "group": "D",
+      "event_type": "store.review_status_changed",
+      "label": "review status changed (in review / approved / rejected)",
+      "notes": "Approval and rejection both push",
+      "v1_scope": false,
+      "reserved_reason": "Group D waits on the App Store Connect / Play connector phase (explicit Phase 1 non-goal)",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "D2",
+      "group": "D",
+      "event_type": "store.new_version_live",
+      "label": "new version live in store",
+      "notes": "",
+      "v1_scope": false,
+      "reserved_reason": "Group D waits on the App Store Connect / Play connector phase (explicit Phase 1 non-goal)",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "D3",
+      "group": "D",
+      "event_type": "store.crash_rate_worsening",
+      "label": "crash-rate trend worsening",
+      "notes": "",
+      "v1_scope": false,
+      "reserved_reason": "Group D waits on the App Store Connect / Play connector phase (explicit Phase 1 non-goal)",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "LLM", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM+VERDICT", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "D4",
+      "group": "D",
+      "event_type": "store.beta_feedback",
+      "label": "beta feedback / TestFlight events (SILD's current mode)",
+      "notes": "Beta-phase apps: store narration is about testers, not the public",
+      "v1_scope": false,
+      "reserved_reason": "Group D waits on the App Store Connect / Play connector phase (explicit Phase 1 non-goal)",
+      "tiers": {
+        "sandbox": null,
+        "personal": null,
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "E1",
+      "group": "E",
+      "event_type": "connector.auth_failed",
+      "label": "connector auth failed / disconnected",
+      "notes": "The one event class that always pushes regardless of tier: a silently blind dashboard is worse than no dashboard. (Still subject to the push_threshold=never cap — \"a never project can't push, period\" per the brief.)",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "personal": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "live_small": { "path": "TEMPLATE", "delivery": "PUSH" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "PUSH" }
+      }
+    },
+    {
+      "id": "E2",
+      "group": "E",
+      "event_type": "connector.stale_suspected",
+      "label": "source goes stale_suspected (quiet while sibling source changes)",
+      "notes": "\"Your repo looks out of date with what's live — I'm narrating from the host side for now\"",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "E4",
+      "group": "E",
+      "event_type": "connector.unsorted_accumulating",
+      "label": "unmappable events accumulating in the unsorted tray",
+      "notes": "Weekly at most: \"3 events I couldn't match to a project — 30 seconds to sort?\" (cadence throttling enforced by the resolution layer, not the router)",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "F1",
+      "group": "F",
+      "event_type": null,
+      "label": "project X down and Y.consumes includes X",
+      "notes": "Y inherits an addendum at Y's own tier/delivery. Riders on the X narration or Y's digest, never a separate push.",
+      "v1_scope": false,
+      "reserved_reason": "Cross-project (serves/consumes) routing is out of the routing doc's own v1 scope; not a per-event decision a single-event pure function can make. Deferred to Phase 2/3 alongside LLM narration.",
+      "tiers": {}
+    },
+    {
+      "id": "F2",
+      "group": "F",
+      "event_type": null,
+      "label": "X's in_progress item is named in Y.capability_gaps or blockers",
+      "notes": "The cross-dot sentence",
+      "v1_scope": false,
+      "reserved_reason": "Cross-project routing deferred; see F1.",
+      "tiers": {}
+    },
+    {
+      "id": "F3",
+      "group": "F",
+      "event_type": null,
+      "label": "internal-tool X (personal tier) down, X.serves nonempty",
+      "notes": "Toile's rule: framed by consequence",
+      "v1_scope": false,
+      "reserved_reason": "Cross-project routing deferred; see F1.",
+      "tiers": {}
+    },
+    {
+      "id": "G1",
+      "group": "G",
+      "event_type": null,
+      "standing": true,
+      "label": "capability_gaps present on a live project",
+      "notes": "The YOKE drumbeat. Phase 1 renders this as a plain standing line on every digest where it applies — cadence decay (daily -> every 3 days -> weekly) is explicitly out of scope for Phase 1 (brief non-goals: \"no capability-gap drumbeat rendering\").",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "LIB", "delivery": "DIGEST" },
+        "personal": { "path": "LIB", "delivery": "DIGEST" },
+        "live_small": { "path": "LIB", "delivery": "DIGEST" },
+        "live_critical": { "path": "LIB", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "G2",
+      "group": "G",
+      "event_type": null,
+      "standing": true,
+      "label": "project quiet N days but tier >= live_small and healthy",
+      "notes": "\"Smith's site: quiet and healthy, as usual.\" One reassurance line, not silence.",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_small": { "path": "TEMPLATE", "delivery": "DIGEST" },
+        "live_critical": { "path": "TEMPLATE", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "G3",
+      "group": "G",
+      "event_type": null,
+      "standing": true,
+      "label": "weekly retrospective (Sunday digest)",
+      "notes": "\"This week you shipped X, moved Y forward, and Z stayed stalled.\" Phase 1 composes this mechanically from the week's stored narrations (counts, not prose) — the memory-product framing is a Phase 2 LLM upgrade.",
+      "v1_scope": true,
+      "tiers": {
+        "sandbox": { "path": "LLM", "delivery": "DIGEST" },
+        "personal": { "path": "LLM", "delivery": "DIGEST" },
+        "live_small": { "path": "LLM", "delivery": "DIGEST" },
+        "live_critical": { "path": "LLM", "delivery": "DIGEST" }
+      }
+    },
+    {
+      "id": "G4",
+      "group": "G",
+      "event_type": null,
+      "standing": true,
+      "label": "mid-build storyline for doc-informed packs",
+      "notes": "Progress against the hard pieces the pack knows about, in layman's terms",
+      "v1_scope": false,
+      "reserved_reason": "G4 waits on doc-ingested packs, per the routing doc's own v1 scope note",
+      "tiers": {}
+    }
+  ]
+}
