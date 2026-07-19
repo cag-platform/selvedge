@@ -10,6 +10,7 @@ import { updatePackState } from './updatePackState.js';
 import { currentLocalTime, pairedOutagePushed, recentPushWorthyCount } from './routingContext.js';
 import { route } from '../routing/route.js';
 import { narrate } from '../narration/narrate.js';
+import { classifyRow } from '../narration/classify.js';
 
 export type IngestResult = {
   eventId: string;
@@ -73,6 +74,7 @@ async function routeNarrateAndPersist(db: Db, orgId: string, projectId: string, 
       path: decision.path,
       intendedPath: decision.intended_path,
       delivery: decision.delivery,
+      kind: classifyRow(decision.row_id),
       fragment: output.fragment,
       technicalDetail: output.technicalDetail ?? null,
       verdict: output.verdict ?? null,
