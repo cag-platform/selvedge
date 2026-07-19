@@ -53,11 +53,25 @@ export function applyMachinePatch(pack: ContextPack, patch: MachinePatch): Conte
     }
   }
 
+  // last_event_at_by_source is keyed by connector — every connector writes
+  // its own key, so it merges per-key rather than getting replaced wholesale
+  // (a Neon connector's timestamp must survive a GitHub connector's patch).
+  const state = patch.state
+    ? {
+        ...pack.state,
+        ...patch.state,
+        last_event_at_by_source:
+          pack.state?.last_event_at_by_source || patch.state.last_event_at_by_source
+            ? { ...pack.state?.last_event_at_by_source, ...patch.state.last_event_at_by_source }
+            : undefined,
+      }
+    : pack.state;
+
   return {
     ...pack,
     topology,
     baselines: patch.baselines ? { ...pack.baselines, ...patch.baselines } : pack.baselines,
-    state: patch.state ? { ...pack.state, ...patch.state } : pack.state,
+    state,
     trust: patch.trust ? { ...pack.trust, ...patch.trust } : pack.trust,
   };
 }

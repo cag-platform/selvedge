@@ -37,6 +37,15 @@ describe('packs/ownership', () => {
     expect(next.baselines?.deploy_cadence).toBe('daily');
   });
 
+  it('machine patch merges last_event_at_by_source per-connector key, not wholesale', () => {
+    const pack = makeTestPack({ state: { last_event_at_by_source: { neon: '2026-01-01T00:00:00Z' } } });
+    const next = applyMachinePatch(pack, { state: { last_event_at_by_source: { github: '2026-07-19T00:00:00Z' } } });
+    expect(next.state?.last_event_at_by_source).toEqual({
+      neon: '2026-01-01T00:00:00Z',
+      github: '2026-07-19T00:00:00Z',
+    });
+  });
+
   it('machine patch merges state/trust shallowly', () => {
     const pack = makeTestPack();
     const next = applyMachinePatch(pack, {

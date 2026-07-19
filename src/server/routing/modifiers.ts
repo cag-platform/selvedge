@@ -85,8 +85,8 @@ export function applyStormCollapse(decision: WorkingDecision, context: RoutingCo
 
 /** Local "HH:MM" -> minutes since midnight. */
 function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
+  const parts = hhmm.split(':');
+  return Number(parts[0]) * 60 + Number(parts[1]);
 }
 
 function withinQuietHours(currentLocalTime: string, start: string, end: string): boolean {
