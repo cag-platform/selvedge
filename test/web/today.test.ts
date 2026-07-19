@@ -1,0 +1,82 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import { createTestDb, type TestDb } from '../helpers/testDb.js';
+import { orgs } from '../../src/server/db/schema/index.js';
+import { createPack } from '../../src/server/packs/store.js';
+import { ingestEvent } from '../../src/server/resolution/ingest.js';
+import { composeDigestForOrg } from '../../src/server/digest/compose.js';
+import { createTodayRouter } from '../../src/server/web/routes/today.js';
+import { appWithOrg } from './helpers.js';
+import { makeTestPack } from '../fixtures/testPack.js';
+
+describe('web/routes/today', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId, timezone: 'UTC' });
+  });
+  afterEach(async () => close());
+
+  it('returns null digest when none has been composed yet', async () => {
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    expect(res.status).toBe(200);
+    expect(res.body.digest).toBeNull();
+    expect(res.body.post_digest_events).toEqual([]);
+  });
+
+  it('returns today\'s digest, with every attention item traceable to a stored event id', async () => {
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      stakes: { tier: 'live_critical', has_external_users: true, touches_money: true },
+      topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+    });
+    await createPack(db, orgId, pack);
+    await ingestEvent(db, {
+      org_id: orgId,
+      source: 'github',
+      source_account_id: 'acme/loom',
+      event_type: 'build.failed',
+      occurred_at: '2026-07-18T10:00:00Z',
+      severity_hint: 'error',
+      raw: {},
+      dedupe_key: 'd1',
+    });
+    await composeDigestForOrg(db, orgId, new Date('2026-07-19T12:00:00Z'));
+
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    expect(res.body.digest.digestDate).toBe('2026-07-19');
+    const attentionItem = res.body.digest.sections.attention[0];
+    expect(attentionItem.narration_id).toBeTruthy();
+  });
+
+  it('includes narrations created after the digest as post_digest_events', async () => {
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+    });
+    await createPack(db, orgId, pack);
+    await composeDigestForOrg(db, orgId, new Date('2026-07-19T08:00:00Z'));
+
+    await ingestEvent(db, {
+      org_id: orgId,
+      source: 'github',
+      source_account_id: 'acme/loom',
+      event_type: 'code.pr_opened',
+      occurred_at: '2026-07-19T09:00:00Z',
+      severity_hint: 'info',
+      raw: {},
+      dedupe_key: 'd2',
+    });
+
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    expect(res.body.post_digest_events).toHaveLength(1);
+  });
+});

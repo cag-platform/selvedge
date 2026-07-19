@@ -1,0 +1,54 @@
+import path from 'node:path';
+import express from 'express';
+import { clerkMiddleware } from '@clerk/express';
+import type { Db } from '../db/client.js';
+import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
+import { createGithubInstallRouter } from '../connectors/github/install.js';
+import { ingestEvent } from '../resolution/ingest.js';
+import { ensureOrg } from './middleware/ensureOrg.js';
+import { createPacksRouter } from './routes/packs.js';
+import { createProjectsRouter } from './routes/projects.js';
+import { createTrayRouter } from './routes/tray.js';
+import { createTodayRouter } from './routes/today.js';
+
+export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
+  const app = express();
+
+  app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
+
+  // Mounted before any JSON body parser and before Clerk: GitHub calls this
+  // directly (no session), and HMAC verification needs the exact raw bytes.
+  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    app.use(
+      createGithubWebhookRouter({
+        db,
+        webhookSecret,
+        ingest: async (event) => {
+          await ingestEvent(db, event);
+        },
+      }),
+    );
+  }
+
+  app.use(clerkMiddleware());
+  app.use(express.json());
+
+  // Self-guarded (checks getAuth() internally) — mounted ahead of the
+  // blanket /api org guard below so its callback route, which GitHub
+  // redirects the browser to, isn't forced through the same check.
+  app.use(createGithubInstallRouter({ db }));
+
+  app.use('/api', ensureOrg(db));
+  app.use(createPacksRouter(db));
+  app.use(createProjectsRouter(db));
+  app.use(createTrayRouter(db));
+  app.use(createTodayRouter(db));
+
+  app.use(express.static(clientDir));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(clientDir, 'index.html'));
+  });
+
+  return app;
+}
