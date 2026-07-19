@@ -38,18 +38,18 @@ describe('narrate', () => {
     expect(output?.fragment).toBeTruthy();
   });
 
-  it('B4 always carries verdict users_not_affected — a build that never deployed cannot change production', () => {
+  it('B4 always carries verdict users_fine — a build that never deployed cannot change production', () => {
     const pack = makeTestPack({ stakes: { tier: 'live_critical', has_external_users: true, touches_money: false } });
     const decision = route({ event_type: 'build.failed' }, pack);
     const output = narrate(testEvent('build.failed'), pack, decision);
-    expect(output?.verdict).toBe('users_not_affected');
+    expect(output?.verdict).toBe('users_fine');
   });
 
-  it('B6 carries verdict users_not_affected (previous version still serving, by the row\'s own definition)', () => {
+  it('B6 carries verdict users_fine (previous version still serving, by the row\'s own definition)', () => {
     const pack = makeTestPack({ stakes: { tier: 'sandbox', has_external_users: false, touches_money: false } });
     const decision = route({ event_type: 'deploy.failed_previous_serving' }, pack);
     const output = narrate(testEvent('deploy.failed_previous_serving'), pack, decision);
-    expect(output?.verdict).toBe('users_not_affected');
+    expect(output?.verdict).toBe('users_fine');
   });
 
   it('B7 carries verdict users_affected (nothing serving, by the row\'s own definition)', () => {

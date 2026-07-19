@@ -11,8 +11,8 @@ import type { NarrationOutput } from './types.js';
 
 export function connectorAuthFailedNarration(connectorLabel: string): NarrationOutput {
   return {
-    fragment: `I've lost access to ${connectorLabel} — I can't see what's happening there until this is fixed. Reconnect it when you get a chance.`,
-    verdict: 'cant_tell_yet',
+    fragment: `I've lost access to ${connectorLabel} — I can't tell yet what's happening there, and won't until it's reconnected. Reconnect it when you get a chance.`,
+    verdict: 'cannot_tell',
   };
 }
 

@@ -9,7 +9,7 @@ import { refineEventType } from './refineEventType.js';
 import { updatePackState } from './updatePackState.js';
 import { currentLocalTime, pairedOutagePushed, recentPushWorthyCount } from './routingContext.js';
 import { route } from '../routing/route.js';
-import { narrate } from '../narration/narrate.js';
+import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 
 export type IngestResult = {
@@ -42,7 +42,15 @@ async function insertEvent(db: Db, id: string, receivedAt: Date, projectId: stri
   return rows.length > 0;
 }
 
-async function routeNarrateAndPersist(db: Db, orgId: string, projectId: string, pack: ContextPack, id: string, event: NewSiltaEvent) {
+async function routeNarrateAndPersist(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  pack: ContextPack,
+  id: string,
+  event: NewSiltaEvent,
+  narrationDeps?: NarrationDeps,
+) {
   const now = new Date();
   const context: Parameters<typeof route>[2] = {
     now,
@@ -57,13 +65,18 @@ async function routeNarrateAndPersist(db: Db, orgId: string, projectId: string, 
 
   await updatePackState(db, orgId, projectId, event.source, event.event_type, event.occurred_at);
 
-  const output = narrate(
-    { id, event_type: event.event_type, occurred_at: event.occurred_at, severity_hint: event.severity_hint },
+  // Phase 2: the narration boundary. narrateDispatch honors intended_path
+  // (TEMPLATE/LIB/LLM/LLM+VERDICT) when deps are provided and falls back to
+  // the Phase 1 template on any model failure; with no deps it IS the
+  // Phase 1 template path.
+  const dispatched = await narrateDispatch(
+    { id, org_id: orgId, event_type: event.event_type, occurred_at: event.occurred_at, severity_hint: event.severity_hint },
     pack,
     decision,
+    narrationDeps,
   );
 
-  if (decision.delivery !== 'NONE' && output) {
+  if (decision.delivery !== 'NONE' && dispatched) {
     await db.insert(narrations).values({
       id: ulid(),
       orgId,
@@ -71,14 +84,14 @@ async function routeNarrateAndPersist(db: Db, orgId: string, projectId: string, 
       eventId: id,
       eventType: event.event_type,
       occurredAt: new Date(event.occurred_at),
-      path: decision.path,
+      path: dispatched.path,
       intendedPath: decision.intended_path,
       delivery: decision.delivery,
       kind: classifyRow(decision.row_id),
-      fragment: output.fragment,
-      technicalDetail: output.technicalDetail ?? null,
-      verdict: output.verdict ?? null,
-      meta: { modifiers: decision.modifiers, row_id: decision.row_id },
+      fragment: dispatched.output.fragment,
+      technicalDetail: dispatched.output.technicalDetail ?? null,
+      verdict: dispatched.output.verdict ?? null,
+      meta: { modifiers: decision.modifiers, row_id: decision.row_id, ...dispatched.meta },
     });
   }
 
@@ -90,7 +103,7 @@ async function routeNarrateAndPersist(db: Db, orgId: string, projectId: string, 
  * topology, stores the (deduped) event, and — if resolved — rolls it
  * through refinement, pack state, routing, and narration.
  */
-export async function ingestEvent(db: Db, event: NewSiltaEvent): Promise<IngestResult> {
+export async function ingestEvent(db: Db, event: NewSiltaEvent, narrationDeps?: NarrationDeps): Promise<IngestResult> {
   const id = ulid();
   const receivedAt = new Date();
   const projectId = await resolveProjectId(db, event.org_id, event.source, event.source_account_id);
@@ -114,7 +127,7 @@ export async function ingestEvent(db: Db, event: NewSiltaEvent): Promise<IngestR
   const refinedType = refineEventType(event.event_type, event.raw, pack);
   const refinedEvent: NewSiltaEvent = { ...event, event_type: refinedType };
 
-  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, refinedEvent);
+  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, refinedEvent, narrationDeps);
 
   return { eventId: id, duplicate: false, projectId, routeRowId: decision.row_id, delivery: decision.delivery };
 }
@@ -125,7 +138,12 @@ export async function ingestEvent(db: Db, event: NewSiltaEvent): Promise<IngestR
  * resolution and event_type refinement, both of which only make sense for
  * connector-sourced events.
  */
-export async function ingestResolvedEvent(db: Db, projectId: string, event: NewSiltaEvent): Promise<IngestResult> {
+export async function ingestResolvedEvent(
+  db: Db,
+  projectId: string,
+  event: NewSiltaEvent,
+  narrationDeps?: NarrationDeps,
+): Promise<IngestResult> {
   const id = ulid();
   const receivedAt = new Date();
 
@@ -139,6 +157,6 @@ export async function ingestResolvedEvent(db: Db, projectId: string, event: NewS
     return { eventId: id, duplicate: false, projectId, routeRowId: null, delivery: null };
   }
 
-  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, event);
+  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, event, narrationDeps);
   return { eventId: id, duplicate: false, projectId, routeRowId: decision.row_id, delivery: decision.delivery };
 }

@@ -174,7 +174,7 @@ describe('replay fixture: a scripted day', () => {
     const b6 = byRow('B6');
     expect(b6).toHaveLength(1);
     expect(b6[0]?.delivery).toBe('PUSH');
-    expect(b6[0]?.verdict).toBe('users_not_affected');
+    expect(b6[0]?.verdict).toBe('users_fine');
 
     // --- sild: a second, fresh project — isolates the storm-of-6 push count from loom's B6 push above. ---
     await createPack(

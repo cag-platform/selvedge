@@ -1,6 +1,12 @@
 import type { SeverityHint } from '../../shared/types/event.js';
 
-export type Verdict = 'users_affected' | 'users_not_affected' | 'cant_tell_yet';
+/**
+ * Phase 2 canonical enum (brief, deliverable 3): users_affected |
+ * users_fine | cannot_tell. cannot_tell must be accompanied by what's
+ * being checked — enforced for LLM fragments by the response schema and
+ * for templates by review. Guessed calm is the one unforgivable output.
+ */
+export type Verdict = 'users_affected' | 'users_fine' | 'cannot_tell';
 
 /**
  * The structured, non-`raw` slice of a stored event that templates may
@@ -9,6 +15,7 @@ export type Verdict = 'users_affected' | 'users_not_affected' | 'cant_tell_yet';
  */
 export type NarratableEvent = {
   id: string;
+  org_id?: string; // required by the Phase 2 LLM path (metering, library); optional for pure template rendering
   event_type: string;
   occurred_at: string;
   severity_hint: SeverityHint;

@@ -4,10 +4,10 @@ import { capabilityGapLine, quietProjectLine, weeklyRetrospectiveLine } from '..
 import { makeTestPack } from '../fixtures/testPack.js';
 
 describe('narration/orgLevel', () => {
-  it('connectorAuthFailedNarration names the connector and carries cant_tell_yet', () => {
+  it('connectorAuthFailedNarration names the connector and carries cannot_tell', () => {
     const output = connectorAuthFailedNarration('GitHub');
     expect(output.fragment).toContain('GitHub');
-    expect(output.verdict).toBe('cant_tell_yet');
+    expect(output.verdict).toBe('cannot_tell');
   });
 
   it('unsortedTrayNarration pluralizes correctly', () => {

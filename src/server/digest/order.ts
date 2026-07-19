@@ -4,7 +4,7 @@ import type { GatheredNarration } from './gather.js';
 export type NarrationWithPack = GatheredNarration & { pack: ContextPack | null };
 
 const TIER_RANK: Record<StakesTier, number> = { live_critical: 0, live_small: 1, personal: 2, sandbox: 3 };
-const VERDICT_RANK: Record<string, number> = { users_affected: 0, cant_tell_yet: 1, users_not_affected: 2 };
+const VERDICT_RANK: Record<string, number> = { users_affected: 0, cannot_tell: 1, users_fine: 2 };
 
 /** digest-composer §3: stakes tier desc -> users-affected verdicts first -> money-touching first -> oldest first (age is urgency). */
 export function orderAttention(items: NarrationWithPack[]): NarrationWithPack[] {

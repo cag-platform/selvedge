@@ -5,6 +5,9 @@ import type { Db } from '../db/client.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
 import { createGithubInstallRouter } from '../connectors/github/install.js';
 import { ingestEvent } from '../resolution/ingest.js';
+import { llmEnabled } from '../llm/config.js';
+import { AnthropicLlmClient } from '../llm/anthropic.js';
+import type { NarrationDeps } from '../narration/dispatch.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
@@ -16,6 +19,12 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
 
+  // Phase 2 voice: present only when an API key is configured; without it
+  // ingestion runs the Phase 1 template path unchanged.
+  const narrationDeps: NarrationDeps | undefined = llmEnabled()
+    ? { llm: new AnthropicLlmClient(), db }
+    : undefined;
+
   // Mounted before any JSON body parser and before Clerk: GitHub calls this
   // directly (no session), and HMAC verification needs the exact raw bytes.
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
@@ -25,7 +34,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
         db,
         webhookSecret,
         ingest: async (event) => {
-          await ingestEvent(db, event);
+          await ingestEvent(db, event, narrationDeps);
         },
       }),
     );
