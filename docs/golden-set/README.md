@@ -1,12 +1,13 @@
-# Golden set — BLOCKED, awaiting Greg's five hand-written briefs
+# Golden set — Greg's hand-written reference briefs
 
 The Phase 2 brief makes this directory a **hard prerequisite**: five
 hand-written golden briefs, the measuring stick for the eval harness's
 style-similarity report. They are deliberately not machine-written —
 generating them here would make the harness grade the model's output
-against the model's own taste.
+against the model's own taste. This is the /docs/golden-set/ location the
+Phase 2 brief specifies; the eval runner reads it directly.
 
-Commit them as (filenames matter — the runner picks them up by name):
+The five files (filenames matter — the runner picks them up by name):
 
 - `quiet-day.md`
 - `storm-day.md`

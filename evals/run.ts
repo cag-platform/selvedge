@@ -27,12 +27,16 @@ async function main() {
     );
   }
 
-  const goldensDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'goldens');
+  const goldensDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../docs/golden-set');
   const goldens = existsSync(goldensDir) ? readdirSync(goldensDir).filter((f) => f.endsWith('.md') && f !== 'README.md') : [];
+  const EXPECTED_GOLDENS = ['quiet-day.md', 'storm-day.md', 'mixed-day.md', 'degraded-trust-day.md', 'first-day.md'];
+  const missing = EXPECTED_GOLDENS.filter((f) => !goldens.includes(f));
   if (goldens.length === 0) {
-    console.log('\nstyle similarity: BLOCKED — golden set missing (evals/goldens/README.md). Mechanical gates scored above.');
+    console.log('\nstyle similarity: BLOCKED — golden set missing (docs/golden-set/README.md). Mechanical gates scored above.');
   } else {
-    console.log(`\nstyle similarity: ${goldens.length} golden brief(s) present — model-graded report ${hasKey ? 'enabled' : 'requires ANTHROPIC_API_KEY'} (reported, never gated).`);
+    console.log(
+      `\nstyle similarity: ${goldens.length}/5 golden brief(s) present${missing.length ? ` (awaiting: ${missing.join(', ')})` : ''} — model-graded report ${hasKey ? 'enabled' : 'requires ANTHROPIC_API_KEY'} (reported, never gated).`,
+    );
   }
 
   const failures = scores.filter((s) => s.gatedFailures.length > 0);
