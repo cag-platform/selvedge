@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { listPacks } from '../../packs/store.js';
 import { healthLine } from '../../packs/healthLine.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -11,18 +12,21 @@ function orgIdOf(req: Request): string {
 export function createProjectsRouter(db: Db) {
   const router = Router();
 
-  router.get('/api/projects', async (req, res) => {
-    const packs = await listPacks(db, orgIdOf(req));
-    res.json(
-      packs.map((pack) => ({
-        project_id: pack.identity.project_id,
-        name: pack.identity.name,
-        tier: pack.stakes.tier,
-        health_line: healthLine(pack),
-        links: pack.identity.links ?? {},
-      })),
-    );
-  });
+  router.get(
+    '/api/projects',
+    asyncHandler(async (req, res) => {
+      const packs = await listPacks(db, orgIdOf(req));
+      res.json(
+        packs.map((pack) => ({
+          project_id: pack.identity.project_id,
+          name: pack.identity.name,
+          tier: pack.stakes.tier,
+          health_line: healthLine(pack),
+          links: pack.identity.links ?? {},
+        })),
+      );
+    }),
+  );
 
   return router;
 }

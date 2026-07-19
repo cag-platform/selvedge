@@ -5,6 +5,7 @@ import { orgs } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { ingestEvent } from '../../src/server/resolution/ingest.js';
 import { composeDigestForOrg } from '../../src/server/digest/compose.js';
+import { recordConnectorAuthFailed } from '../../src/server/resolution/connectorEvents.js';
 import { createTodayRouter } from '../../src/server/web/routes/today.js';
 import { appWithOrg } from './helpers.js';
 import { makeTestPack } from '../fixtures/testPack.js';
@@ -54,6 +55,16 @@ describe('web/routes/today', () => {
     expect(res.body.digest.digestDate).toBe('2026-07-19');
     const attentionItem = res.body.digest.sections.attention[0];
     expect(attentionItem.narration_id).toBeTruthy();
+  });
+
+  it('surfaces an org-level narration (e.g. connector auth_failed) even before any digest exists', async () => {
+    await recordConnectorAuthFailed(db, orgId, 'GitHub', 'github', '999', new Date());
+
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    expect(res.body.digest).toBeNull();
+    expect(res.body.post_digest_events).toHaveLength(1);
+    expect(res.body.post_digest_events[0].fragment).toContain('GitHub');
   });
 
   it('includes narrations created after the digest as post_digest_events', async () => {

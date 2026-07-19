@@ -1,5 +1,5 @@
 import path from 'node:path';
-import express from 'express';
+import express, { type ErrorRequestHandler } from 'express';
 import { clerkMiddleware } from '@clerk/express';
 import type { Db } from '../db/client.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
@@ -49,6 +49,15 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDir, 'index.html'));
   });
+
+  // Final safety net: asyncHandler() forwards unexpected route errors here
+  // via next(err) instead of leaving the client hanging (Express 4 doesn't
+  // auto-forward a rejected promise the way Express 5 does).
+  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+    console.error(err);
+    res.status(500).json({ error: 'internal error' });
+  };
+  app.use(onError);
 
   return app;
 }
