@@ -5,7 +5,8 @@ import { connectorHealth } from '../../db/schema/index.js';
 import type { NewSiltaEvent } from '../../../shared/types/event.js';
 import { verifyGithubSignature } from './hmac.js';
 import { normalizeCreateOrDelete, normalizePullRequest, normalizePush, normalizeWorkflowRun } from './normalizer.js';
-import { markAuthFailed, markFresh } from './health.js';
+import { getHealth, markAuthFailed, markFresh } from './health.js';
+import { recordConnectorAuthFailed } from '../../resolution/connectorEvents.js';
 import type { CreateOrDeletePayload, PullRequestPayload, PushPayload, WorkflowRunPayload } from './payloadTypes.js';
 
 export type Ingest = (event: NewSiltaEvent) => Promise<void>;
@@ -46,7 +47,15 @@ export function createGithubWebhookRouter(deps: { db: Db; webhookSecret: string;
         const installationId = unverified?.installation?.id ? String(unverified.installation.id) : null;
         if (installationId) {
           const orgId = await findOrgForInstallation(deps.db, installationId);
-          if (orgId) await markAuthFailed(deps.db, orgId, installationId);
+          if (orgId) {
+            const priorHealth = await getHealth(deps.db, orgId, installationId);
+            await markAuthFailed(deps.db, orgId, installationId);
+            // Only narrate on the transition into auth_failed — otherwise a
+            // secret that stays broken spams a new item on every retry.
+            if (priorHealth?.status !== 'auth_failed') {
+              await recordConnectorAuthFailed(deps.db, orgId, 'GitHub', 'github', installationId);
+            }
+          }
         }
       } catch {
         // Not parseable JSON either — nothing more we can do.
