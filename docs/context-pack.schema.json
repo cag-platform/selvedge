@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yourapp.dev/schemas/context-pack/v1",
+  "title": "Project Context Pack",
+  "description": "The living per-project context object that rides along with every event before narration. Sections 1, 2, and 7 are human-owned (set in onboarding interview, rarely change). Sections 3-6 are machine-owned (auto-discovered and continuously updated by events). The narrator reads the whole pack; the router reads mostly section 2.",
+  "type": "object",
+  "required": [
+    "pack_version",
+    "identity",
+    "stakes",
+    "topology",
+    "voice"
+  ],
+  "properties": {
+    "pack_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version for forward migration."
+    },
+    "identity": {
+      "type": "object",
+      "description": "HUMAN-OWNED. The narrator quotes this language back to the user.",
+      "required": [
+        "project_id",
+        "name",
+        "owner_description"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "Stable internal ID (slug)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name, exactly as the owner says it."
+        },
+        "owner_description": {
+          "type": "string",
+          "description": "One sentence in the owner's own words. E.g. 'Loom is where my retailers place orders.' The narrator's vocabulary source."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Who uses it, in the owner's words. E.g. 'my 12 retail partners', 'just me', 'paying customers in the App Store'."
+        },
+        "links": {
+          "type": "object",
+          "properties": {
+            "live_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "repo_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "host_dashboard_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "store_listing_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    },
+    "stakes": {
+      "type": "object",
+      "description": "HUMAN-OWNED. The single most important section — this IS the router's input. Derived from three plain questions: Does anyone besides you use this? Roughly how many? Does it touch money?",
+      "required": [
+        "tier",
+        "has_external_users",
+        "touches_money"
+      ],
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": [
+            "sandbox",
+            "personal",
+            "live_small",
+            "live_critical"
+          ],
+          "description": "sandbox: experiments, break freely. personal: only the owner depends on it. live_small: external users exist but small blast radius. live_critical: real users/revenue depend on uptime."
+        },
+        "has_external_users": {
+          "type": "boolean"
+        },
+        "user_scale": {
+          "type": "string",
+          "enum": [
+            "none",
+            "handful",
+            "dozens",
+            "hundreds",
+            "thousands_plus"
+          ],
+          "description": "Owner's rough estimate. Precision is not the point; blast radius is."
+        },
+        "touches_money": {
+          "type": "boolean",
+          "description": "Payments, invoicing, orders, payroll — anything where an error has financial consequences."
+        },
+        "business_role": {
+          "type": "string",
+          "enum": [
+            "revenue_product",
+            "internal_operations",
+            "internal_tooling",
+            "marketing_surface",
+            "experiment"
+          ],
+          "description": "What breaks in the owner's LIFE if this breaks. Drives the users-affected verdict's framing."
+        },
+        "downtime_translation": {
+          "type": "string",
+          "description": "Owner-stated consequence of an outage, used verbatim in high-stakes narration. E.g. 'my retailers can't submit orders'."
+        }
+      }
+    },
+    "topology": {
+      "type": "object",
+      "description": "MACHINE-OWNED (human-confirmed once). Maps connector-level resources onto this project so events resolve to the right card. The hardest real-world mapping in the product lives here.",
+      "required": [
+        "sources"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "description": "Every connected resource that belongs to this project.",
+          "items": {
+            "type": "object",
+            "required": [
+              "connector",
+              "resource_id",
+              "role"
+            ],
+            "properties": {
+              "connector": {
+                "type": "string",
+                "enum": [
+                  "github",
+                  "railway",
+                  "vercel",
+                  "neon",
+                  "supabase",
+                  "app_store_connect",
+                  "play_console",
+                  "replit",
+                  "custom"
+                ],
+                "description": "Extend this enum as connectors ship; never free-text."
+              },
+              "resource_id": {
+                "type": "string",
+                "description": "Connector-native ID: repo full name, service ID, DB project ID, bundle ID..."
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "source_of_truth",
+                  "code_mirror",
+                  "production_host",
+                  "preview_host",
+                  "database",
+                  "storage",
+                  "store_listing",
+                  "auxiliary"
+                ],
+                "description": "source_of_truth vs code_mirror is the SILD lesson: which code source is actually current."
+              },
+              "environment": {
+                "type": "string",
+                "enum": [
+                  "production",
+                  "staging",
+                  "preview",
+                  "development"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "serves": {
+          "type": "array",
+          "description": "Other project_ids that depend on this one (e.g. an internal platform managing sibling apps, a shared DB). Lets the narrator say 'this may affect X too.'",
+          "items": {
+            "type": "string"
+          }
+        },
+        "consumes": {
+          "type": "array",
+          "description": "Other project_ids this one depends on (webhooks in, APIs called, services awaited). The inverse edge of serves — added when real multi-app stacks proved dependency narration needs both directions ('X's outage may lag sync into this app'; pre-launch: 'this feature is waiting on X').",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stack_summary": {
+          "type": "string",
+          "description": "One line of tech context fed to the LLM, not shown raw to the user. E.g. 'Node/Express on Railway, Neon Postgres, Clerk auth.'"
+        },
+        "capability_gaps": {
+          "type": "array",
+          "description": "For live-but-incomplete projects: features the live product is missing, in plain English. Powers standing gap narration ('day N of a store that can't take orders') rather than event narration. Cleared by the owner or by connector evidence (e.g. first real Stripe charge).",
+          "items": {
+            "type": "object",
+            "required": [
+              "gap",
+              "summary"
+            ],
+            "properties": {
+              "gap": {
+                "type": "string",
+                "description": "Short slug: checkout, scan, notifications..."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Plain-English statement of what's missing and what it blocks."
+              },
+              "blocking": {
+                "type": "string",
+                "description": "What this gap blocks: revenue, fulfillment, core feature fidelity..."
+              }
+            }
+          }
+        }
+      }
+    },
+    "baselines": {
+      "type": "object",
+      "description": "MACHINE-OWNED. What 'normal' looks like — the source of the two most valuable sentences: 'this is unusual' and 'this happens sometimes, it's fine.' Seeded from history, continuously updated (rolling 30d).",
+      "properties": {
+        "deploy_cadence": {
+          "type": "string",
+          "enum": [
+            "multiple_daily",
+            "daily",
+            "weekly",
+            "monthly",
+            "dormant"
+          ],
+          "description": "dormant = no deploys in 30d. A deploy to a dormant project is itself news."
+        },
+        "typical_build_seconds": {
+          "type": "integer"
+        },
+        "build_failure_rate_30d": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "known_flaky": {
+          "type": "array",
+          "description": "Checks/steps that fail intermittently without meaning anything. Narrator downgrades these.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Check name or error-class fingerprint."
+              },
+              "note": {
+                "type": "string",
+                "description": "Plain-English gloss, e.g. 'this test is flaky, usually passes on retry.'"
+              },
+              "graduated": {
+                "type": "boolean",
+                "description": "True once confirmed by human feedback or 3+ self-resolving occurrences."
+              }
+            }
+          }
+        },
+        "active_hours_utc": {
+          "type": "object",
+          "description": "When the owner usually works on this. Activity far outside it (a 3am deploy) is worth a gentle mention.",
+          "properties": {
+            "start": {
+              "type": "integer"
+            },
+            "end": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "description": "MACHINE-OWNED. Live snapshot, updated by every resolved event. What makes narration situational: 'the previous version is still running' is only sayable from here.",
+      "properties": {
+        "serving_now": {
+          "type": "object",
+          "properties": {
+            "version_ref": {
+              "type": "string",
+              "description": "Commit SHA / deploy ID currently in production."
+            },
+            "deployed_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "healthy": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "null = cannot determine. The narrator must say so, not guess."
+            }
+          }
+        },
+        "last_successful_deploy": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "in_progress": {
+          "type": "array",
+          "description": "Open branches / PRs / running builds. Feeds the 'in progress' bucket.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Plain-English gist, generated once and cached."
+              },
+              "opened_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "last_activity_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "stalled": {
+          "type": "array",
+          "description": "in_progress items quiet past the stall threshold (default 14d). Feeds the Ideas surface's resurfacing nudge.",
+          "items": {
+            "$ref": "#/properties/state/properties/in_progress/items"
+          }
+        },
+        "last_event_at_by_source": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": "Keyed by connector name. Freshness raw material for the trust ledger."
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "description": "MACHINE-OWNED. The SILD lesson encoded: per-source honesty about whether we can believe what we're seeing. The narrator reads this BEFORE speaking.",
+      "properties": {
+        "sources": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "fresh",
+                  "quiet",
+                  "stale_suspected",
+                  "disconnected",
+                  "auth_failed"
+                ],
+                "description": "stale_suspected: this source is quiet while a related source keeps changing (repo silent, deploys continuing). Narrate WITH the caveat, never confidently from a dead spine."
+              },
+              "last_verified_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "overall_confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "partial",
+            "low"
+          ],
+          "description": "Worst-relevant-source wins. At 'partial' or 'low', the narrator must disclose uncertainty in plain English."
+        }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "description": "HUMAN-OWNED. How this project speaks to its owner. Per-project because people want live_critical loud and sandbox silent.",
+      "required": [
+        "detail_level"
+      ],
+      "properties": {
+        "detail_level": {
+          "type": "string",
+          "enum": [
+            "plain_only",
+            "plain_expandable",
+            "technical_forward"
+          ],
+          "description": "The onboarding preference: 'just tell me what's happening' / 'explain it, let me see details' / 'I know my way around'."
+        },
+        "language": {
+          "type": "string",
+          "default": "en",
+          "description": "BCP-47. The i18n lever."
+        },
+        "notify": {
+          "type": "object",
+          "properties": {
+            "push_threshold": {
+              "type": "string",
+              "enum": [
+                "never",
+                "critical_only",
+                "failures",
+                "everything"
+              ],
+              "description": "What earns an immediate push vs. folding into the morning digest."
+            },
+            "quiet_hours_local": {
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "glossary_overrides": {
+          "type": "array",
+          "description": "Per-project term preferences graduated from feedback — the flywheel's local layer. Global library lives outside the pack.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "term": {
+                "type": "string",
+                "description": "Raw/technical term or error-class fingerprint."
+              },
+              "preferred_phrasing": {
+                "type": "string"
+              },
+              "graduated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
