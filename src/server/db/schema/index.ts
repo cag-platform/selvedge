@@ -6,3 +6,4 @@ export * from './narrations.js';
 export * from './digests.js';
 export * from './llmUsage.js';
 export * from './narrationLibrary.js';
+export * from './feedback.js';

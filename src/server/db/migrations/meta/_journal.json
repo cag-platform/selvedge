@@ -22,6 +22,13 @@
       "when": 1784496323686,
       "tag": "0002_complete_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784496504175,
+      "tag": "0003_typical_landau",
+      "breakpoints": true
     }
   ]
 }

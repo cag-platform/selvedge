@@ -48,6 +48,60 @@ function ExpandableDetail({ eventId, technicalDetail }: { eventId: string; techn
   );
 }
 
+/**
+ * The two quiet feedback actions every narrated item carries (Phase 2
+ * deliverable 5). Deliberately no thumbs-up — absence of complaint is the
+ * positive signal.
+ */
+function FeedbackTaps({ narrationId }: { narrationId: string }) {
+  const [state, setState] = useState<'idle' | 'noting' | 'sent'>('idle');
+  const [note, setNote] = useState('');
+
+  async function send(kind: 'didnt_help' | 'explain_differently', noteText?: string) {
+    try {
+      await api.post('/api/feedback', { narration_id: narrationId, kind, ...(noteText ? { note: noteText } : {}) });
+    } finally {
+      setState('sent');
+    }
+  }
+
+  if (state === 'sent') return <span className="text-xs text-slate-300">noted</span>;
+
+  if (state === 'noting') {
+    return (
+      <form
+        className="mt-1 flex items-center gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void send('explain_differently', note);
+        }}
+      >
+        <input
+          autoFocus
+          className="w-56 rounded border border-slate-200 px-1.5 py-0.5 text-xs"
+          placeholder="how should this have been said?"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button type="submit" className="text-xs text-slate-400 hover:text-slate-600">
+          send
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <span className="flex gap-3 text-xs text-slate-300">
+      <button className="hover:text-slate-500" onClick={() => void send('didnt_help')}>
+        didn't help
+      </button>
+      <button className="hover:text-slate-500" onClick={() => setState('noting')}>
+        explain differently
+      </button>
+    </span>
+  );
+}
+
 export function Today() {
   const [data, setData] = useState<TodayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +140,7 @@ export function Today() {
                 <div key={item.narration_id} className="border-l-2 border-amber-400 pl-3">
                   <p className="text-slate-800">{item.fragment}</p>
                   <ExpandableDetail eventId={narration?.eventId ?? item.narration_id} technicalDetail={narration?.technicalDetail ?? null} />
+                  <FeedbackTaps narrationId={item.narration_id} />
                 </div>
               );
             })}
@@ -97,9 +152,10 @@ export function Today() {
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-400">What moved</p>
             <div className="mt-2 space-y-2">
               {digest.sections.moved.map((item) => (
-                <p key={item.narration_id} className="text-slate-700">
-                  {item.fragment}
-                </p>
+                <div key={item.narration_id}>
+                  <p className="text-slate-700">{item.fragment}</p>
+                  <FeedbackTaps narrationId={item.narration_id} />
+                </div>
               ))}
             </div>
           </section>
@@ -128,6 +184,7 @@ export function Today() {
               <div key={n.id} className="rounded-lg border border-slate-200 bg-white p-4">
                 <p className="text-slate-800">{n.fragment}</p>
                 <ExpandableDetail eventId={n.eventId} technicalDetail={n.technicalDetail} />
+                <FeedbackTaps narrationId={n.id} />
               </div>
             ))}
           </div>

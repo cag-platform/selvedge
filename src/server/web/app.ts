@@ -14,6 +14,7 @@ import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
 import { createTrayRouter } from './routes/tray.js';
 import { createTodayRouter } from './routes/today.js';
+import { createFeedbackRouter } from './routes/feedback.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -54,6 +55,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db));
   app.use(createTodayRouter(db));
+  app.use(createFeedbackRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {
