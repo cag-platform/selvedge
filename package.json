@@ -13,7 +13,7 @@
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "build": "npm run build:client && npm run build:server",
-    "start": "node dist-server/server/index.js",
+    "start": "node dist-server/server/db/migrate.js && node dist-server/server/index.js",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",

@@ -38,13 +38,28 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     );
   }
 
-  app.use(clerkMiddleware());
+  // Clerk keys are deploy-time configuration; a fresh service must still
+  // boot (healthz green, webhooks accepted) before they exist, so an
+  // unconfigured deploy degrades to a clear 503 on /api instead of a
+  // process crash loop.
+  const clerkConfigured = Boolean(process.env.CLERK_SECRET_KEY && process.env.CLERK_PUBLISHABLE_KEY);
+  if (clerkConfigured) {
+    app.use(clerkMiddleware());
+  }
   app.use(express.json());
+
+  if (!clerkConfigured) {
+    console.error('CLERK_SECRET_KEY / CLERK_PUBLISHABLE_KEY not set — API disabled until auth is configured');
+    app.use('/api', (_req, res) => res.status(503).json({ error: 'auth not configured' }));
+    app.use('/github', (_req, res) => res.status(503).json({ error: 'auth not configured' }));
+  }
 
   // Self-guarded (checks getAuth() internally) — mounted ahead of the
   // blanket /api org guard below so its callback route, which GitHub
   // redirects the browser to, isn't forced through the same check.
-  app.use(createGithubInstallRouter({ db }));
+  if (clerkConfigured) {
+    app.use(createGithubInstallRouter({ db }));
+  }
 
   app.use('/api', ensureOrg(db));
   app.use(createPacksRouter(db));
