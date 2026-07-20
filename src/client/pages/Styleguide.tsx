@@ -4,6 +4,8 @@
  * see here, the component is wrong, not this page.
  */
 
+import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
+
 const COLORS: Array<{ token: string; varName: string; note: string }> = [
   { token: 'paper', varName: '--paper', note: 'the daylight ground' },
   { token: 'ink', varName: '--ink', note: 'primary text' },
@@ -85,6 +87,28 @@ export function Styleguide() {
               <p className="text-meta text-ink-dim">shape-distinct: "can't see" must never read as "fine"</p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">The selvedge edge</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(
+            [
+              { status: 'healthy', label: 'healthy', copy: 'quiet good — users are fine' },
+              { status: 'working', label: 'working', copy: 'in motion — something is happening' },
+              { status: 'needs', label: 'needs you', copy: 'the only place thread appears; the only glow' },
+              { status: 'unknown', label: 'unknown', copy: "cannot_tell — dashed, never mistakable for fine" },
+            ] as const
+          ).map((s) => (
+            <div key={s.status} className="relative rounded-card border border-hairline bg-panel p-4 pl-5">
+              <SelvedgeEdge status={s.status} />
+              <p className="flex items-center gap-2 text-body font-medium text-ink">
+                <StatusDot status={s.status} /> {s.label}
+              </p>
+              <p className="mt-1 text-meta text-ink-dim">{s.copy}</p>
+            </div>
+          ))}
         </div>
       </section>
 
