@@ -7,6 +7,7 @@ import { createGithubInstallRouter } from '../connectors/github/install.js';
 import { ingestEvent } from '../resolution/ingest.js';
 import { backfillRepoForOrg } from '../connectors/github/backfill.js';
 import { buildAskDeps, buildComposeDeps, buildNarrationDeps } from '../llm/factory.js';
+import { buildPushSender } from '../push/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
@@ -28,6 +29,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
   const narrationDeps = buildNarrationDeps(db);
+  // Push: present only when APNs is configured; without it, PUSH-routed
+  // narrations are stored (and fold into the digest) but nothing is sent.
+  const pushSender = buildPushSender();
 
   // Mounted before any JSON body parser and before Clerk: GitHub calls this
   // directly (no session), and HMAC verification needs the exact raw bytes.
@@ -38,7 +42,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
         db,
         webhookSecret,
         ingest: async (event) => {
-          await ingestEvent(db, event, narrationDeps);
+          await ingestEvent(db, event, narrationDeps, pushSender);
         },
       }),
     );

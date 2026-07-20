@@ -13,6 +13,9 @@ import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 import { extractSignature } from './knownFlaky.js';
 import { recordFalseAllClearIfContradicted } from '../trust/tripwire.js';
+import type { PushSender } from '../push/types.js';
+import { sendToOrgDevices } from '../push/send.js';
+import { criticalNotification } from '../push/notifications.js';
 
 export type IngestResult = {
   eventId: string;
@@ -52,6 +55,7 @@ async function routeNarrateAndPersist(
   id: string,
   event: NewSiltaEvent,
   narrationDeps?: NarrationDeps,
+  pushSender?: PushSender,
 ) {
   const now = new Date();
   const context: Parameters<typeof route>[2] = {
@@ -118,6 +122,15 @@ async function routeNarrateAndPersist(
         occurredAt: new Date(event.occurred_at),
       });
     }
+
+    // Immediate critical push: routing already decided this is PUSH-worthy
+    // (with push_threshold + quiet-hours applied), and the fragment is
+    // verdict-first. Deliver it to the owner's devices now.
+    if (decision.delivery === 'PUSH' && pushSender && dispatched.output.fragment) {
+      await sendToOrgDevices(db, orgId, pushSender, criticalNotification(dispatched.output.fragment, projectId)).catch((err) =>
+        console.error(`critical push failed for org ${orgId}:`, err),
+      );
+    }
   }
 
   return decision;
@@ -128,7 +141,12 @@ async function routeNarrateAndPersist(
  * topology, stores the (deduped) event, and — if resolved — rolls it
  * through refinement, pack state, routing, and narration.
  */
-export async function ingestEvent(db: Db, event: NewSiltaEvent, narrationDeps?: NarrationDeps): Promise<IngestResult> {
+export async function ingestEvent(
+  db: Db,
+  event: NewSiltaEvent,
+  narrationDeps?: NarrationDeps,
+  pushSender?: PushSender,
+): Promise<IngestResult> {
   const id = ulid();
   const receivedAt = new Date();
   const projectId = await resolveProjectId(db, event.org_id, event.source, event.source_account_id);
@@ -152,7 +170,7 @@ export async function ingestEvent(db: Db, event: NewSiltaEvent, narrationDeps?: 
   const refinedType = refineEventType(event.event_type, event.raw, pack);
   const refinedEvent: NewSiltaEvent = { ...event, event_type: refinedType };
 
-  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, refinedEvent, narrationDeps);
+  const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, refinedEvent, narrationDeps, pushSender);
 
   return { eventId: id, duplicate: false, projectId, routeRowId: decision.row_id, delivery: decision.delivery };
 }

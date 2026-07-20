@@ -1,8 +1,12 @@
+import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { orgs } from '../db/schema/index.js';
+import { digests, orgs } from '../db/schema/index.js';
 import { composeDigestForOrg } from './compose.js';
 import type { ComposeLlmDeps } from './composeLlm.js';
 import { localDateString } from './timezone.js';
+import type { PushSender } from '../push/types.js';
+import { sendToOrgDevices } from '../push/send.js';
+import { morningBriefNotification } from '../push/notifications.js';
 
 /**
  * Runs on a periodic tick (jobs/cron.ts, every 15 min). composeDigestForOrg
@@ -11,15 +15,36 @@ import { localDateString } from './timezone.js';
  * repeatedly through the hour, since only the first call in a given day
  * actually writes a row.
  */
-export async function runDigestSchedule(db: Db, now: Date = new Date(), llmDeps?: ComposeLlmDeps): Promise<string[]> {
+export async function runDigestSchedule(
+  db: Db,
+  now: Date = new Date(),
+  llmDeps?: ComposeLlmDeps,
+  pushSender?: PushSender,
+): Promise<string[]> {
   const allOrgs = await db.select({ orgId: orgs.orgId, timezone: orgs.timezone }).from(orgs);
   const composedFor: string[] = [];
 
   for (const org of allOrgs) {
     const hour = localHour(now, org.timezone);
-    if (hour === 7) {
-      await composeDigestForOrg(db, org.orgId, now, llmDeps);
-      composedFor.push(org.orgId);
+    if (hour !== 7) continue;
+
+    // The morning brief pushes exactly once per org per day: only when this
+    // tick is the one that actually composes it (compose is idempotent, but
+    // the send must not be — check existence before composing).
+    const todayStr = localDateString(now, org.timezone);
+    const [existing] = await db
+      .select({ id: digests.id })
+      .from(digests)
+      .where(and(eq(digests.orgId, org.orgId), eq(digests.digestDate, todayStr)))
+      .limit(1);
+
+    const digest = await composeDigestForOrg(db, org.orgId, now, llmDeps);
+    composedFor.push(org.orgId);
+
+    if (!existing && pushSender) {
+      await sendToOrgDevices(db, org.orgId, pushSender, morningBriefNotification(digest)).catch((err) =>
+        console.error(`morning push failed for org ${org.orgId}:`, err),
+      );
     }
   }
   return composedFor;
