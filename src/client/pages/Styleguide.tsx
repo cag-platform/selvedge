@@ -6,6 +6,7 @@
 
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
+import { ProjectRail } from '../components/ProjectRail.js';
 
 const COLORS: Array<{ token: string; varName: string; note: string }> = [
   { token: 'paper', varName: '--paper', note: 'the daylight ground' },
@@ -207,6 +208,18 @@ export function Styleguide() {
           Verdict → edge is fixed vocabulary: users_fine → healthy, users_affected → thread, cannot_tell → dashed. The
           pane's own edge carries the day's top priority (here: a cannot_tell outranks a users_fine).
         </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">The project rail — read the edges</h2>
+        <ProjectRail
+          projects={[
+            { project_id: 'loom', name: 'Loom', tier: 'live_critical', health_line: 'Healthy.', edge: 'healthy' },
+            { project_id: 'mirror', name: 'Mirror', tier: 'live_small', health_line: 'Two branches in motion.', edge: 'working' },
+            { project_id: 'chalk', name: 'Chalk', tier: 'live_critical', health_line: 'Looks down right now.', edge: 'needs' },
+            { project_id: 'sild', name: 'SILD', tier: 'live_small', health_line: "I can't fully verify this project's health right now.", edge: 'unknown' },
+          ]}
+        />
       </section>
 
       <section>

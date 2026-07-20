@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
+import { Brief, BriefEyebrow, BriefClose, BriefItem, Headline, Reveal } from '../components/Brief.js';
+import { StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
+import { ProjectRail, type ProjectCardData } from '../components/ProjectRail.js';
+import { verdictToStatus, type Verdict } from '../lib/verdict.js';
 
-type SectionItem = { project_id: string | null; fragment: string; narration_id: string };
+type SectionItem = {
+  project_id: string | null;
+  fragment: string;
+  narration_id: string;
+  verdict?: Verdict | null;
+  technical_detail?: string | null;
+  event_id?: string | null;
+};
 
 type Digest = {
   id: string;
@@ -32,21 +43,14 @@ type Narration = {
 
 type TodayResponse = { digest: Digest | null; post_digest_events: Narration[] };
 
-function ExpandableDetail({ eventId, technicalDetail }: { eventId: string; technicalDetail: string | null }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mt-1 text-sm">
-      <button className="text-slate-400 hover:text-slate-600" onClick={() => setOpen((o) => !o)}>
-        {open ? 'hide details' : 'details'}
-      </button>
-      {open && (
-        <div className="mt-1 rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-500">
-          {technicalDetail ?? 'no additional detail'}
-          <div className="mt-1 text-slate-400">event id: {eventId}</div>
-        </div>
-      )}
-    </div>
-  );
+/** The pane's own edge carries the day's top priority. */
+function briefStatus(digest: Digest): EdgeStatus {
+  const verdicts = digest.sections.attention.map((a) => a.verdict).filter((v): v is Verdict => Boolean(v));
+  if (verdicts.includes('users_affected')) return 'needs';
+  if (digest.sections.attention.length > 0 && verdicts.includes('cannot_tell')) return 'unknown';
+  if (digest.sections.attention.length > 0) return 'needs';
+  if (digest.sections.moved.length > 0) return 'working';
+  return 'healthy';
 }
 
 /**
@@ -66,12 +70,12 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
     }
   }
 
-  if (state === 'sent') return <span className="text-xs text-slate-300">noted</span>;
+  if (state === 'sent') return <span className="text-meta text-ink-faint">noted</span>;
 
   if (state === 'noting') {
     return (
       <form
-        className="mt-1 flex items-center gap-1"
+        className="mt-1 flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           void send('explain_differently', note);
@@ -79,12 +83,12 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
       >
         <input
           autoFocus
-          className="w-56 rounded border border-slate-200 px-1.5 py-0.5 text-xs"
+          className="w-60 rounded-inset border border-hairline bg-panel px-2 py-1 text-meta text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
           placeholder="how should this have been said?"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
-        <button type="submit" className="text-xs text-slate-400 hover:text-slate-600">
+        <button type="submit" className="text-meta text-ink-faint hover:text-ink-dim">
           send
         </button>
       </form>
@@ -92,27 +96,43 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
   }
 
   return (
-    <span className="flex gap-3 text-xs text-slate-300">
-      <button className="hover:text-slate-500" onClick={() => void send('didnt_help')}>
+    <span className="flex gap-3 text-meta text-ink-faint">
+      <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
         didn't help
       </button>
-      <button className="hover:text-slate-500" onClick={() => setState('noting')}>
+      <button className="hover:text-ink-dim" onClick={() => setState('noting')}>
         explain differently
       </button>
     </span>
   );
 }
 
+function AttentionAnchor({ item }: { item: SectionItem }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-meta text-ink-dim">
+      <StatusDot status={item.verdict ? verdictToStatus(item.verdict) : 'needs'} />
+      {(item.technical_detail || item.event_id) && (
+        <Reveal>
+          {item.technical_detail ?? 'no additional detail'}
+          {item.event_id && <div className="mt-1 text-ink-faint">event id: {item.event_id}</div>}
+        </Reveal>
+      )}
+      <FeedbackTaps narrationId={item.narration_id} />
+    </div>
+  );
+}
+
 export function Today() {
   const [data, setData] = useState<TodayResponse | null>(null);
+  const [projects, setProjects] = useState<ProjectCardData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
 
   const load = () =>
-    api
-      .get<TodayResponse>('/api/today')
-      .then(setData)
-      .catch((e) => setError(e.message));
+    Promise.all([
+      api.get<TodayResponse>('/api/today').then(setData),
+      api.get<ProjectCardData[]>('/api/projects').then(setProjects),
+    ]).catch((e: Error) => setError(e.message));
 
   useEffect(() => {
     void load();
@@ -131,102 +151,121 @@ export function Today() {
     }
   };
 
-  if (error) return <p className="text-red-600">{error}</p>;
-  if (!data) return <p className="text-slate-400">Loading…</p>;
+  if (error) return <p className="text-body text-thread">{error}</p>;
+  if (!data) return <p className="text-body text-ink-faint">Loading…</p>;
 
   const { digest, post_digest_events } = data;
+  const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   if (!digest) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6">
-        <p className="text-slate-600">No digest yet today — the first one composes at your local 7:00am.</p>
-        <button
-          onClick={() => void composeNow()}
-          disabled={composing}
-          className="mt-4 rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
-          {composing ? 'Composing…' : "Compose today's brief now"}
-        </button>
+      <div className="animate-settle space-y-8">
+        <Brief status="healthy">
+          <div>
+            <BriefEyebrow>Morning brief · {dateLine}</BriefEyebrow>
+            <Headline>Nothing composed yet today.</Headline>
+          </div>
+          <BriefItem kind="standing">The brief writes itself at your local 7:00am — or now, if you'd like.</BriefItem>
+          <button
+            onClick={() => void composeNow()}
+            disabled={composing}
+            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+          >
+            {composing ? 'Composing…' : "Compose today's brief now"}
+          </button>
+        </Brief>
+        <ProjectRail projects={projects} />
       </div>
     );
   }
 
+  const composed = digest.voice === 'composed';
+
   return (
-    <div className="space-y-6">
+    <div className="animate-settle space-y-8">
       {digest.voice === 'fallback' && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Running with reduced voice today — the narration model wasn't reachable, so this brief was assembled
-          mechanically. All facts are unaffected.
+        <p className="rounded-card border border-hairline bg-panel-soft px-4 py-2 text-body text-ink-dim">
+          Running with reduced voice today — this brief was assembled mechanically. All facts are unaffected.
         </p>
       )}
-      {/* The digest renders as a note, not a table — a deliberate, load-bearing layout choice. */}
-      <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        {digest.voice === 'composed' ? (
-          // The composed brief is one written note — show it verbatim; the
-          // mechanical sections below only carry the per-item taps/details.
-          <div className="whitespace-pre-line leading-relaxed text-slate-800">{digest.renderedText}</div>
+
+      <Brief status={briefStatus(digest)}>
+        <div>
+          <BriefEyebrow>Morning brief · {dateLine}</BriefEyebrow>
+          {!composed && <Headline>{digest.headline}</Headline>}
+        </div>
+
+        {composed ? (
+          <>
+            {/* The composed brief is one written note — verbatim. */}
+            <div className="whitespace-pre-line text-body-lg leading-relaxed text-ink">{digest.renderedText}</div>
+            {digest.sections.attention.length > 0 && (
+              <div className="space-y-2 border-t border-hairline pt-3">
+                {digest.sections.attention.map((item) => (
+                  <AttentionAnchor key={item.narration_id} item={item} />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
-          <p className="text-lg font-medium text-slate-900">{digest.headline}</p>
-        )}
-
-        {digest.sections.attention.length > 0 && (
-          <section className="mt-5 space-y-4">
-            {digest.sections.attention.map((item) => {
-              const narration = post_digest_events.find((n) => n.id === item.narration_id);
-              return (
-                <div key={item.narration_id} className="border-l-2 border-amber-400 pl-3">
-                  <p className="text-slate-800">{item.fragment}</p>
-                  <ExpandableDetail eventId={narration?.eventId ?? item.narration_id} technicalDetail={narration?.technicalDetail ?? null} />
-                  <FeedbackTaps narrationId={item.narration_id} />
-                </div>
-              );
-            })}
-          </section>
-        )}
-
-        {digest.sections.moved.length > 0 && (
-          <section className="mt-5">
-            <p className="text-sm font-semibold uppercase tracking-wide text-slate-400">What moved</p>
-            <div className="mt-2 space-y-2">
-              {digest.sections.moved.map((item) => (
-                <div key={item.narration_id}>
-                  <p className="text-slate-700">{item.fragment}</p>
-                  <FeedbackTaps narrationId={item.narration_id} />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {digest.sections.standing.length > 0 && (
-          <section className="mt-5 space-y-1">
-            {digest.sections.standing.map((line, i) => (
-              <p key={i} className="text-slate-600">
-                {line}
-              </p>
+          <>
+            {digest.sections.attention.map((item) => (
+              <BriefItem
+                key={item.narration_id}
+                kind="attention"
+                verdict={item.verdict ?? undefined}
+                reveal={
+                  (item.technical_detail || item.event_id) && (
+                    <Reveal>
+                      {item.technical_detail ?? 'no additional detail'}
+                      {item.event_id && <div className="mt-1 text-ink-faint">event id: {item.event_id}</div>}
+                    </Reveal>
+                  )
+                }
+                actions={<FeedbackTaps narrationId={item.narration_id} />}
+              >
+                {item.fragment}
+              </BriefItem>
             ))}
-          </section>
+            {digest.sections.moved.map((item) => (
+              <BriefItem key={item.narration_id} kind="moved" actions={<FeedbackTaps narrationId={item.narration_id} />}>
+                {item.fragment}
+              </BriefItem>
+            ))}
+            {digest.sections.standing.map((line, i) => (
+              <BriefItem key={i} kind="standing">
+                {line}
+              </BriefItem>
+            ))}
+            {digest.sections.quiet && <BriefClose>{digest.sections.quiet}</BriefClose>}
+            {digest.sections.today && <BriefItem kind="standing">{digest.sections.today}</BriefItem>}
+          </>
         )}
-
-        {digest.sections.quiet && <p className="mt-5 text-slate-500">{digest.sections.quiet}</p>}
-
-        {digest.sections.today && <p className="mt-5 italic text-slate-700">{digest.sections.today}</p>}
-      </article>
+      </Brief>
 
       {post_digest_events.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed').length > 0 && (
-        <div>
-          <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Since this digest</p>
+        <section>
+          <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-faint">Since this brief</p>
           <div className="space-y-3">
             {post_digest_events.map((n) => (
-              <div key={n.id} className="rounded-lg border border-slate-200 bg-white p-4">
-                <p className="text-slate-800">{n.fragment}</p>
-                <ExpandableDetail eventId={n.eventId} technicalDetail={n.technicalDetail} />
-                <FeedbackTaps narrationId={n.id} />
+              <div key={n.id} className="relative rounded-card border border-hairline bg-panel p-4 pl-5">
+                <p className="text-body text-ink">{n.fragment}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  {n.technicalDetail && (
+                    <Reveal>
+                      {n.technicalDetail}
+                      <div className="mt-1 text-ink-faint">event id: {n.eventId}</div>
+                    </Reveal>
+                  )}
+                  <FeedbackTaps narrationId={n.id} />
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
+
+      <ProjectRail projects={projects} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { listPacks } from '../../packs/store.js';
-import { healthLine } from '../../packs/healthLine.js';
+import { edgeStatus, healthLine } from '../../packs/healthLine.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -22,6 +22,7 @@ export function createProjectsRouter(db: Db) {
           name: pack.identity.name,
           tier: pack.stakes.tier,
           health_line: healthLine(pack),
+          edge: edgeStatus(pack),
           links: pack.identity.links ?? {},
         })),
       );

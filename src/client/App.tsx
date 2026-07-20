@@ -31,17 +31,17 @@ function AutoTimezone() {
   return null;
 }
 
-export default function App() {
+function AuthedApp() {
   return (
     <>
       <SignedOut>
-        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex min-h-screen items-center justify-center">
           <SignIn />
         </div>
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen">
           <Nav />
           <main className="mx-auto max-w-3xl px-4 py-8">
             <Routes>
@@ -50,11 +50,28 @@ export default function App() {
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               <Route path="/tray" element={<Tray />} />
               <Route path="/admin" element={<Admin />} />
-              <Route path="/styleguide" element={<Styleguide />} />
             </Routes>
           </main>
         </div>
       </SignedIn>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      {/* Tokens only, no data — public by design so the design contract is
+          viewable (and screenshot-testable) without a session. */}
+      <Route
+        path="/styleguide"
+        element={
+          <main className="mx-auto max-w-3xl px-4 py-8">
+            <Styleguide />
+          </main>
+        }
+      />
+      <Route path="*" element={<AuthedApp />} />
+    </Routes>
   );
 }

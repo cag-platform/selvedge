@@ -1,5 +1,19 @@
 import type { ContextPack } from '../../shared/types/pack.js';
 
+/**
+ * The edge vocabulary for a project card ("The Look"). Same derivation
+ * order as healthLine() so the seam and the sentence never disagree:
+ * down → needs; can't-verify / no signal → unknown (dashed);
+ * work in flight → working; else healthy.
+ */
+export function edgeStatus(pack: ContextPack): 'healthy' | 'working' | 'needs' | 'unknown' {
+  if (pack.state?.serving_now?.healthy === false) return 'needs';
+  if (pack.trust?.overall_confidence === 'low' || pack.trust?.overall_confidence === 'partial') return 'unknown';
+  if (pack.state?.serving_now?.healthy == null) return 'unknown';
+  if ((pack.state?.in_progress ?? []).length > 0) return 'working';
+  return 'healthy';
+}
+
 /** The Projects list "plain health line" per pack card (deliverable 8). */
 export function healthLine(pack: ContextPack): string {
   if (pack.trust?.overall_confidence === 'low') return "I can't verify this project's health right now.";

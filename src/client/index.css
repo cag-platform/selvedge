@@ -15,3 +15,19 @@
     font-size: var(--text-body);
   }
 }
+
+/* One gentle arrival, then stillness. Duration token collapses to 0ms
+   under prefers-reduced-motion, so this obeys automatically. */
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-settle {
+  animation: settle var(--settle-duration) var(--settle-ease) both;
+}

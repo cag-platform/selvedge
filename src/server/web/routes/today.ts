@@ -50,7 +50,32 @@ export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
         .from(narrations)
         .where(and(eq(narrations.orgId, orgId), digest ? gt(narrations.createdAt, since) : gte(narrations.createdAt, since)));
 
-      res.json({ digest: digest ?? null, post_digest_events: postDigestEvents });
+      // Enrich attention items with their narration's verdict + technical
+      // line so the client can draw the edge (verdict -> status is fixed
+      // vocabulary) and offer the mono register without a second request.
+      let enriched = digest ?? null;
+      if (digest) {
+        const sections = digest.sections as { attention?: Array<{ narration_id: string }> };
+        const ids = (sections.attention ?? []).map((a) => a.narration_id);
+        if (ids.length > 0) {
+          const rows = (await db.select().from(narrations).where(eq(narrations.orgId, orgId))).filter((n) => ids.includes(n.id));
+          const byId = new Map(rows.map((n) => [n.id, n]));
+          enriched = {
+            ...digest,
+            sections: {
+              ...(digest.sections as Record<string, unknown>),
+              attention: (sections.attention ?? []).map((a) => ({
+                ...a,
+                verdict: byId.get(a.narration_id)?.verdict ?? null,
+                technical_detail: byId.get(a.narration_id)?.technicalDetail ?? null,
+                event_id: byId.get(a.narration_id)?.eventId ?? null,
+              })),
+            },
+          };
+        }
+      }
+
+      res.json({ digest: enriched, post_digest_events: postDigestEvents });
     }),
   );
 
