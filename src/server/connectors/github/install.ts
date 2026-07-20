@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getAuth } from '@clerk/express';
 import type { Db } from '../../db/client.js';
+import { asyncHandler } from '../../web/middleware/asyncHandler.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
 import { markInstalled } from './health.js';
 import { backfillInstallation } from './backfill.js';
@@ -33,30 +34,33 @@ export function createGithubInstallRouter(deps: { db: Db }) {
     res.redirect(url);
   });
 
-  router.get('/api/connectors/github/callback', async (req, res) => {
-    const installationId = req.query.installation_id ? String(req.query.installation_id) : null;
-    const orgId = req.query.state ? String(req.query.state) : null;
+  router.get(
+    '/api/connectors/github/callback',
+    asyncHandler(async (req, res) => {
+      const installationId = req.query.installation_id ? String(req.query.installation_id) : null;
+      const orgId = req.query.state ? String(req.query.state) : null;
 
-    if (!installationId || !orgId) {
-      res.status(400).json({ error: 'missing installation_id or state' });
-      return;
-    }
+      if (!installationId || !orgId) {
+        res.status(400).json({ error: 'missing installation_id or state' });
+        return;
+      }
 
-    const config = loadGithubAppConfig();
-    const octokit = getInstallationOctokit(config, installationId);
-    const { data: installation } = await octokit.rest.apps.getInstallation({ installation_id: Number(installationId) });
-    const accountLogin = (installation.account as { login?: string } | null)?.login ?? 'unknown';
+      const config = loadGithubAppConfig();
+      const octokit = getInstallationOctokit(config, installationId);
+      const { data: installation } = await octokit.rest.apps.getInstallation({ installation_id: Number(installationId) });
+      const accountLogin = (installation.account as { login?: string } | null)?.login ?? 'unknown';
 
-    await markInstalled(deps.db, orgId, installationId, accountLogin);
+      await markInstalled(deps.db, orgId, installationId, accountLogin);
 
-    // Fire-and-forget: don't make the user wait on the redirect for 30 days
-    // of history across every repo in the installation.
-    void backfillInstallation(deps.db, octokit, orgId).catch((err) => {
-      console.error(`backfill failed for org ${orgId} installation ${installationId}:`, err);
-    });
+      // Fire-and-forget: don't make the user wait on the redirect for 30 days
+      // of history across every repo in the installation.
+      void backfillInstallation(deps.db, octokit, orgId).catch((err) => {
+        console.error(`backfill failed for org ${orgId} installation ${installationId}:`, err);
+      });
 
-    res.redirect('/?github_connected=1');
-  });
+      res.redirect('/?github_connected=1');
+    }),
+  );
 
   return router;
 }
