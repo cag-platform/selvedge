@@ -7,6 +7,7 @@
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
 import { ProjectRail } from '../components/ProjectRail.js';
+import { SelvedgeLockup, SelvedgeMark } from '../components/Logo.js';
 
 const COLORS: Array<{ token: string; varName: string; note: string }> = [
   { token: 'paper', varName: '--paper', note: 'the daylight ground' },
@@ -64,6 +65,23 @@ export function Styleguide() {
           nothing else is allowed in.
         </p>
       </header>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">The mark</h2>
+        <div className="flex flex-wrap items-center gap-8 rounded-pane border border-hairline bg-panel p-6">
+          <SelvedgeMark tone="ink" className="h-16 w-16" />
+          <SelvedgeLockup tone="ink" className="h-10 w-auto" />
+          <div className="flex items-center gap-6 rounded-card p-4" style={{ background: '#1A1F36' }}>
+            <SelvedgeMark tone="chalk" className="h-12 w-12" />
+            <SelvedgeLockup tone="chalk" className="h-8 w-auto" />
+          </div>
+        </div>
+        <p className="mt-2 max-w-xl text-meta text-ink-dim">
+          Woven warp threads crossed by the weft — with one selvedge-red thread (the <span className="font-mono text-tech">--thread</span>{' '}
+          token), the same rationed red that means "needs you" everywhere in the app. The wordmark's <span className="text-thread">l</span> is
+          that thread.
+        </p>
+      </section>
 
       <section>
         <h2 className="mb-3 text-headline font-display">Ground &amp; ink</h2>
