@@ -72,6 +72,20 @@
   }
 }
 
+/* Performance budget (Prompt 6): at most TWO simultaneous backdrop-filter
+   layers per screen — the nav bar and the brief pane. Cards, panes, and
+   rows use solid --panel directly (they sit on flat paper; blur buys
+   nothing there). Never nest one blurred element inside another. */
+
+/* Low-power / user-preference fallback: solid fills, no blur. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-fill: var(--panel);
+    --glass-fill-soft: var(--panel-soft);
+    --glass-blur: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --settle-duration: 0ms;

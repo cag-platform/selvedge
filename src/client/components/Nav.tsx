@@ -19,18 +19,20 @@ export function Nav() {
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1">
           <span className="mr-3 text-headline font-display font-medium text-ink">Selvedge</span>
-          <NavLink to="/" end className={linkClass}>
-            Today
-          </NavLink>
-          <NavLink to="/projects" className={linkClass}>
-            Projects
-          </NavLink>
-          <NavLink to="/tray" className={linkClass}>
-            Unsorted
-          </NavLink>
-          <NavLink to="/admin" className={linkClass}>
-            Admin
-          </NavLink>
+          <nav aria-label="Primary" className="flex items-center gap-1">
+            <NavLink to="/" end className={linkClass}>
+              Today
+            </NavLink>
+            <NavLink to="/projects" className={linkClass}>
+              Projects
+            </NavLink>
+            <NavLink to="/tray" className={linkClass}>
+              Unsorted
+            </NavLink>
+            <NavLink to="/admin" className={linkClass}>
+              Admin
+            </NavLink>
+          </nav>
         </div>
         <div className="flex items-center gap-3">
           <OrganizationSwitcher />

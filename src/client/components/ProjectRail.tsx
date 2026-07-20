@@ -26,12 +26,8 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
   return (
     <Link
       to={`/projects/${project.project_id}/edit`}
-      className="relative block rounded-card border border-hairline p-4 pl-5 transition-shadow duration-settle ease-settle hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass"
-      style={{
-        background: 'var(--glass-fill)',
-        backdropFilter: 'var(--glass-blur)',
-        WebkitBackdropFilter: 'var(--glass-blur)',
-      }}
+      // Solid --panel by budget: only nav + brief may blur (tokens.css).
+      className="relative block rounded-card border border-hairline bg-panel p-4 pl-5 transition-shadow duration-settle ease-settle hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass"
     >
       <SelvedgeEdge status={project.edge} />
       <div className="flex items-baseline justify-between gap-2">
