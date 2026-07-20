@@ -17,6 +17,33 @@ export function slugifyProjectId(name: string): string {
 }
 
 /**
+ * A draft pack auto-created for a repo the installation can see but no
+ * pack maps yet. Deliberately conservative: personal tier (calm by
+ * default — the owner raises stakes in the editor, the product never
+ * guesses users onto a project), and an owner_description that says
+ * plainly it's a draft so the editor invites refinement.
+ */
+export function scaffoldPackFromRepo(repoFullName: string, takenProjectIds: ReadonlySet<string>): ContextPack {
+  const repoName = repoFullName.split('/')[1] ?? repoFullName;
+  let projectId = slugifyProjectId(repoName);
+  if (!projectId || takenProjectIds.has(projectId)) {
+    projectId = slugifyProjectId(repoFullName.replace('/', '-'));
+  }
+  let suffix = 2;
+  const base = projectId;
+  while (takenProjectIds.has(projectId)) projectId = `${base}-${suffix++}`;
+  return {
+    ...scaffoldPack({ name: repoName, repo: repoFullName, tier: 'personal' }),
+    identity: {
+      project_id: projectId,
+      name: repoName,
+      owner_description: `Auto-created from ${repoFullName} — edit this to teach Selvedge what it is and who uses it.`,
+      links: { repo_url: `https://github.com/${repoFullName}` },
+    },
+  };
+}
+
+/**
  * A minimal valid pack from the New Project form. Everything here is a
  * starting point Greg refines in the pack editor; the backfill and live
  * events refine the machine-owned sections on their own.

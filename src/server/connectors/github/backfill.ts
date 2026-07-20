@@ -2,7 +2,8 @@ import type { Octokit } from 'octokit';
 import type { Db } from '../../db/client.js';
 import type { DeployCadence, InProgressItem } from '../../../shared/types/pack.js';
 import { resolveProjectId } from '../../resolution/resolveProject.js';
-import { updateMachineSections } from '../../packs/store.js';
+import { createPack, listPacks, updateMachineSections } from '../../packs/store.js';
+import { scaffoldPackFromRepo } from '../../packs/scaffold.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
 import { listInstallations } from './health.js';
 
@@ -83,10 +84,24 @@ export async function backfillRepoForOrg(db: Db, orgId: string, repoFullName: st
   await backfillRepo(db, octokit, orgId, repoFullName);
 }
 
-/** Runs backfillRepo for every repo the installation can see. Fired once on install. */
+/**
+ * Fired on install and on every installation re-configure. Every visible,
+ * non-archived repo that no pack maps yet gets a draft pack auto-created
+ * (personal tier, marked as a draft for the owner to refine) — connecting
+ * an account should populate Projects on its own, not hand the owner a
+ * data-entry job. Then each repo backfills 30 days of history.
+ */
 export async function backfillInstallation(db: Db, octokit: Octokit, orgId: string): Promise<void> {
   const repos = await octokit.paginate(octokit.rest.apps.listReposAccessibleToInstallation, { per_page: 100 });
-  for (const repo of repos as Array<{ full_name: string }>) {
+  const taken = new Set((await listPacks(db, orgId)).map((p) => p.identity.project_id));
+  for (const repo of repos as Array<{ full_name: string; archived?: boolean }>) {
+    if (repo.archived) continue;
+    const projectId = await resolveProjectId(db, orgId, 'github', repo.full_name);
+    if (!projectId) {
+      const draft = scaffoldPackFromRepo(repo.full_name, taken);
+      await createPack(db, orgId, draft);
+      taken.add(draft.identity.project_id);
+    }
     await backfillRepo(db, octokit, orgId, repo.full_name);
   }
 }
