@@ -1,0 +1,79 @@
+/**
+ * SELVEDGE DESIGN TOKENS — the single source of truth ("The Look", Prompt 1).
+ *
+ * Design thesis: Selvedge sells calm. "Cloth and light" — chalk-paper
+ * daylight ground, frosted panels, and one signature element: the selvedge
+ * edge. Color is rationed: --thread (selvedge-red) appears ONLY for what
+ * needs the user. Everything below derives from the approved Today
+ * prototype; no component may introduce a color/radius/type not here.
+ */
+
+:root {
+  /* ---- COLOR ---- */
+  --paper: #e9edf1; /* the daylight ground */
+  --ink: #28303a;
+  --ink-dim: #586573;
+  --ink-faint: #8b96a2;
+  --panel: #fbfcfd;
+  --panel-soft: #f4f7fa;
+  --hairline: rgba(40, 48, 58, 0.11);
+
+  /* STATUS — rationed by rule, not preference:
+     thread = needs-you ONLY. brass = working/attention-adjacent.
+     healthy = quiet good. cannot_tell renders ink-faint + DASHED (shape-
+     distinct from healthy: "I can't see this" must never read as "fine"). */
+  --thread: #d2442e;
+  --brass: #b07e22;
+  --healthy: #4f926f;
+
+  /* ---- TYPE ----
+     Register shifts TYPEFACE on drill-down (body -> mono) — load-bearing:
+     the technical register is visually a different material. */
+  --font-display: 'Fraunces Variable', 'Fraunces', georgia, serif;
+  --font-body: 'Inter Tight Variable', 'Inter Tight', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Scale (px): 11 / 12 / 12.5 / 14 / 14.5 / 15.5 / 20 / 22 */
+  --text-label: 11px; /* eyebrows, uppercase labels */
+  --text-meta: 12px; /* timestamps, captions */
+  --text-tech: 12.5px; /* mono technical register */
+  --text-body: 14px; /* default body */
+  --text-body-lg: 14.5px; /* brief body */
+  --text-lede: 15.5px; /* brief attention sentences */
+  --text-headline: 20px; /* section headlines */
+  --text-display: 22px; /* the brief headline (Fraunces) */
+
+  /* ---- RADIUS ---- */
+  --radius-pane: 20px; /* the brief, large panes */
+  --radius-card: 13px; /* project cards, chips */
+  --radius-inset: 9px; /* reveals, inputs, small insets */
+
+  /* ---- MOTION ----
+     --settle: one gentle arrival, then stillness. Nothing loops. */
+  --settle-duration: 560ms;
+  --settle-ease: cubic-bezier(0.23, 0.9, 0.32, 1);
+  --settle: var(--settle-duration) var(--settle-ease);
+
+  /* ---- GLASS (progressive enhancement) ----
+     Solid --panel by default; translucency exists only inside @supports.
+     Readability must NEVER depend on blur. */
+  --glass-fill: var(--panel);
+  --glass-fill-soft: var(--panel-soft);
+  --glass-blur: none;
+  /* top-left specular: the "light" in cloth-and-light */
+  --specular: radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 55%);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  :root {
+    --glass-fill: rgba(251, 252, 253, 0.6);
+    --glass-fill-soft: rgba(244, 247, 250, 0.55);
+    --glass-blur: blur(14px) saturate(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --settle-duration: 0ms;
+  }
+}

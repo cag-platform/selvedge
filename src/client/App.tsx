@@ -7,6 +7,7 @@ import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
 import { PackEditor } from './pages/PackEditor.js';
 import { Admin } from './pages/Admin.js';
+import { Styleguide } from './pages/Styleguide.js';
 import { api } from './lib/api.js';
 
 /**
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               <Route path="/tray" element={<Tray />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/styleguide" element={<Styleguide />} />
             </Routes>
           </main>
         </div>

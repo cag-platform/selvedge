@@ -1,0 +1,163 @@
+/**
+ * /styleguide — every Selvedge design token, rendered (Prompt 1 acceptance).
+ * This page is the living contract: if a component uses a value you cannot
+ * see here, the component is wrong, not this page.
+ */
+
+const COLORS: Array<{ token: string; varName: string; note: string }> = [
+  { token: 'paper', varName: '--paper', note: 'the daylight ground' },
+  { token: 'ink', varName: '--ink', note: 'primary text' },
+  { token: 'ink-dim', varName: '--ink-dim', note: 'secondary text' },
+  { token: 'ink-faint', varName: '--ink-faint', note: 'tertiary; also the cannot_tell edge (dashed)' },
+  { token: 'panel', varName: '--panel', note: 'pane fill (solid glass fallback)' },
+  { token: 'panel-soft', varName: '--panel-soft', note: 'inset pane fill' },
+  { token: 'hairline', varName: '--hairline', note: 'borders, dividers' },
+];
+
+const STATUS: Array<{ token: string; varName: string; note: string }> = [
+  { token: 'thread', varName: '--thread', note: 'RATIONED — needs-you only. Never decorative.' },
+  { token: 'brass', varName: '--brass', note: 'working / in-motion; also focus rings' },
+  { token: 'healthy', varName: '--healthy', note: 'quiet good (users_fine)' },
+];
+
+const TYPE_SCALE: Array<{ name: string; varName: string; px: string; sample: string; className: string }> = [
+  { name: 'label', varName: '--text-label', px: '11', sample: 'YOUR STACK · READ THE EDGES', className: 'text-label font-body uppercase tracking-widest text-ink-faint' },
+  { name: 'meta', varName: '--text-meta', px: '12', sample: 'composed this morning at 7:02', className: 'text-meta font-body text-ink-dim' },
+  { name: 'tech', varName: '--text-tech', px: '12.5', sample: 'workflow_run failed · exit 1 · deploy.yml#L34', className: 'text-tech font-mono text-ink-dim' },
+  { name: 'body', varName: '--text-body', px: '14', sample: 'Everything else ran quietly and stayed up.', className: 'text-body font-body text-ink' },
+  { name: 'body-lg', varName: '--text-body-lg', px: '14.5', sample: 'Mirror shipped an update in the late morning.', className: 'text-body-lg font-body text-ink' },
+  { name: 'lede', varName: '--text-lede', px: '15.5', sample: 'Users are fine — the previous version is still serving.', className: 'text-lede font-body font-medium text-ink' },
+  { name: 'headline', varName: '--text-headline', px: '20', sample: 'What moved', className: 'text-headline font-display text-ink' },
+  { name: 'display', varName: '--text-display', px: '22', sample: 'A quiet day, kept.', className: 'text-display font-display font-medium text-ink' },
+];
+
+function Swatch({ varName, token, note }: { varName: string; token: string; note: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="h-12 w-12 shrink-0 rounded-inset border border-hairline"
+        style={{ background: `var(${varName})` }}
+      />
+      <div>
+        <p className="font-mono text-tech text-ink">
+          {token} <span className="text-ink-faint">{varName}</span>
+        </p>
+        <p className="text-meta text-ink-dim">{note}</p>
+      </div>
+    </div>
+  );
+}
+
+export function Styleguide() {
+  return (
+    <div className="space-y-10 pb-16">
+      <header>
+        <p className="text-label font-body uppercase tracking-widest text-ink-faint">Selvedge · design tokens</p>
+        <h1 className="mt-1 text-display font-display font-medium">Cloth and light</h1>
+        <p className="mt-2 max-w-xl text-body text-ink-dim">
+          Chalk-paper daylight, frosted panels, one signature seam. Color is rationed: selvedge-red appears only for
+          what needs you. Every value on this page lives in <span className="font-mono text-tech">tokens.css</span> —
+          nothing else is allowed in.
+        </p>
+      </header>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Ground &amp; ink</h2>
+        <div className="grid grid-cols-1 gap-3 rounded-pane border border-hairline bg-panel p-5 sm:grid-cols-2">
+          {COLORS.map((c) => (
+            <Swatch key={c.token} {...c} />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Status — rationed</h2>
+        <div className="grid grid-cols-1 gap-3 rounded-pane border border-hairline bg-panel p-5 sm:grid-cols-2">
+          {STATUS.map((c) => (
+            <Swatch key={c.token} {...c} />
+          ))}
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 shrink-0 rounded-inset border-2 border-dashed" style={{ borderColor: 'var(--ink-faint)' }} />
+            <div>
+              <p className="font-mono text-tech text-ink">
+                cannot_tell <span className="text-ink-faint">--ink-faint + dashed</span>
+              </p>
+              <p className="text-meta text-ink-dim">shape-distinct: "can't see" must never read as "fine"</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Type — three registers</h2>
+        <div className="space-y-4 rounded-pane border border-hairline bg-panel p-5">
+          {TYPE_SCALE.map((t) => (
+            <div key={t.name} className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <span className="w-24 shrink-0 font-mono text-tech text-ink-faint">
+                {t.name} · {t.px}
+              </span>
+              <span className={t.className}>{t.sample}</span>
+            </div>
+          ))}
+          <p className="border-t border-hairline pt-3 text-meta text-ink-dim">
+            Load-bearing rule: drill-down <em>shifts typeface</em>, body → mono. The technical register is a different
+            material, not a smaller font.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Radius</h2>
+        <div className="flex flex-wrap gap-5 rounded-pane border border-hairline bg-panel p-5">
+          {[
+            { name: 'pane', varName: '--radius-pane', px: 20 },
+            { name: 'card', varName: '--radius-card', px: 13 },
+            { name: 'inset', varName: '--radius-inset', px: 9 },
+          ].map((r) => (
+            <div key={r.name} className="text-center">
+              <div
+                className="h-20 w-28 border border-hairline bg-panel-soft"
+                style={{ borderRadius: `var(${r.varName})` }}
+              />
+              <p className="mt-2 font-mono text-tech text-ink-dim">
+                {r.name} · {r.px}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Glass — progressive enhancement</h2>
+        <div
+          className="relative overflow-hidden rounded-pane border border-hairline p-5"
+          style={{ background: 'linear-gradient(120deg, var(--paper), var(--panel-soft) 45%, #dfe6ec)' }}
+        >
+          <div
+            className="rounded-card border border-hairline p-4"
+            style={{ background: 'var(--glass-fill)', backdropFilter: 'var(--glass-blur)', WebkitBackdropFilter: 'var(--glass-blur)' }}
+          >
+            <p className="text-body-lg text-ink">
+              Frosted pane. Solid <span className="font-mono text-tech">--panel</span> by default; translucency exists
+              only inside <span className="font-mono text-tech">@supports (backdrop-filter)</span>. Readability never
+              depends on blur.
+            </p>
+          </div>
+          <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--specular)' }} />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Motion — settle</h2>
+        <div className="rounded-pane border border-hairline bg-panel p-5">
+          <p className="text-body text-ink-dim">
+            One gentle arrival, then stillness: <span className="font-mono text-tech">--settle</span> ={' '}
+            <span className="font-mono text-tech">560ms cubic-bezier(.23,.9,.32,1)</span>. Nothing loops. Under{' '}
+            <span className="font-mono text-tech">prefers-reduced-motion</span> the duration token collapses to 0ms —
+            every animation obeys automatically because none may use any other duration.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
