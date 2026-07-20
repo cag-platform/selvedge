@@ -2,14 +2,23 @@ import { NavLink } from 'react-router-dom';
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-1.5 rounded-md text-sm font-medium ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`;
+  `rounded-inset px-3 py-1.5 text-body font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass ${
+    isActive ? 'bg-ink text-panel' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'
+  }`;
 
 export function Nav() {
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header
+      className="border-b border-hairline"
+      style={{
+        background: 'var(--glass-fill)',
+        backdropFilter: 'var(--glass-blur)',
+        WebkitBackdropFilter: 'var(--glass-blur)',
+      }}
+    >
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1">
-          <span className="mr-3 text-lg font-semibold text-slate-900">Selvedge</span>
+          <span className="mr-3 text-headline font-display font-medium text-ink">Selvedge</span>
           <NavLink to="/" end className={linkClass}>
             Today
           </NavLink>

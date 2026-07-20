@@ -48,33 +48,33 @@ function TimezoneSettings() {
 
   return (
     <section>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Daily brief timezone</h2>
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm text-slate-600">
-          The brief composes at 7:00am in <span className="font-medium text-slate-900">{org.timezone}</span>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">Daily brief timezone</h2>
+      <div className="rounded-card border border-hairline bg-panel p-4">
+        <p className="text-sm text-ink-dim">
+          The brief composes at 7:00am in <span className="font-medium text-ink">{org.timezone}</span>
           {org.timezone_source === 'auto' && ' (detected from your browser)'}
           {org.timezone_source === 'default' && ' (default — sign-in auto-detects this)'}.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
-            className="w-64 rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+            className="w-64 rounded-inset border border-hairline px-2 py-1.5 text-sm text-ink"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="America/New_York"
           />
           <button
             onClick={() => void save(value)}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+            className="rounded-inset bg-ink px-3 py-1.5 text-sm font-medium text-panel transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
           >
             Save
           </button>
           {browserTz && browserTz !== org.timezone && (
-            <button onClick={() => void save(browserTz)} className="text-sm text-indigo-600 hover:underline">
+            <button onClick={() => void save(browserTz)} className="text-sm text-brass hover:underline">
               Use my timezone ({browserTz})
             </button>
           )}
         </div>
-        {status && <p className="mt-2 text-sm text-slate-500">{status}</p>}
+        {status && <p className="mt-2 text-sm text-ink-dim">{status}</p>}
       </div>
     </section>
   );
@@ -89,18 +89,18 @@ export function Admin() {
     api.get<DigestPair[]>('/api/admin/digests').then(setPairs);
   }, []);
 
-  if (!metrics || !pairs) return <p className="text-slate-400">Loading…</p>;
+  if (!metrics || !pairs) return <p className="text-ink-faint">Loading…</p>;
 
   return (
     <div className="space-y-8">
       <TimezoneSettings />
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
           Cost per day (budget line ${metrics.budget_usd_per_day.toFixed(2)}/day)
         </h2>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-card border border-hairline bg-panel">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+            <thead className="bg-panel-soft text-left text-ink-dim">
               <tr>
                 <th className="px-3 py-2">Day</th>
                 <th className="px-3 py-2">Cost</th>
@@ -111,15 +111,15 @@ export function Admin() {
             <tbody>
               {metrics.cost_by_day.length === 0 && (
                 <tr>
-                  <td className="px-3 py-2 text-slate-400" colSpan={4}>
+                  <td className="px-3 py-2 text-ink-faint" colSpan={4}>
                     No model calls yet.
                   </td>
                 </tr>
               )}
               {metrics.cost_by_day.map((r) => (
-                <tr key={r.day} className={r.over_budget ? 'bg-amber-50' : ''}>
+                <tr key={r.day} className={r.over_budget ? 'bg-panel-soft' : ''}>
                   <td className="px-3 py-2">{r.day}</td>
-                  <td className={`px-3 py-2 ${r.over_budget ? 'font-medium text-amber-700' : ''}`}>
+                  <td className={`px-3 py-2 ${r.over_budget ? 'font-medium text-brass' : ''}`}>
                     ${r.cost_usd.toFixed(4)}
                     {r.over_budget ? ' (over budget)' : ''}
                   </td>
@@ -133,10 +133,10 @@ export function Admin() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Library hit rate</h2>
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">Library hit rate</h2>
+        <div className="overflow-hidden rounded-card border border-hairline bg-panel">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+            <thead className="bg-panel-soft text-left text-ink-dim">
               <tr>
                 <th className="px-3 py-2">Day</th>
                 <th className="px-3 py-2">LIB-routed</th>
@@ -147,7 +147,7 @@ export function Admin() {
             <tbody>
               {metrics.lib_hit_rate_by_day.length === 0 && (
                 <tr>
-                  <td className="px-3 py-2 text-slate-400" colSpan={4}>
+                  <td className="px-3 py-2 text-ink-faint" colSpan={4}>
                     No LIB-routed narrations yet.
                   </td>
                 </tr>
@@ -163,33 +163,33 @@ export function Admin() {
             </tbody>
           </table>
         </div>
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-ink-faint">
           Template fallbacks so far: {metrics.template_fallbacks_total} · fragments flagged for review:{' '}
           {metrics.fragments_needing_review}
         </p>
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
           Before / after (mechanical vs composed)
         </h2>
         <div className="space-y-4">
-          {pairs.length === 0 && <p className="text-sm text-slate-400">No digests yet.</p>}
+          {pairs.length === 0 && <p className="text-sm text-ink-faint">No digests yet.</p>}
           {pairs.map((p) => (
-            <div key={p.digest_date} className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="mb-2 text-sm font-medium text-slate-700">
-                {p.digest_date} <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{p.voice}</span>
+            <div key={p.digest_date} className="rounded-card border border-hairline bg-panel p-4">
+              <p className="mb-2 text-sm font-medium text-ink">
+                {p.digest_date} <span className="ml-2 rounded bg-panel-soft px-1.5 py-0.5 text-xs text-ink-dim">{p.voice}</span>
               </p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Phase 1 · mechanical</p>
-                  <pre className="whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-600">
+                  <p className="mb-1 text-xs font-semibold uppercase text-ink-faint">Phase 1 · mechanical</p>
+                  <pre className="whitespace-pre-wrap rounded bg-panel-soft p-3 text-sm text-ink-dim">
                     {p.mechanical_text ?? '—'}
                   </pre>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs font-semibold uppercase text-slate-400">Phase 2 · composed</p>
-                  <pre className="whitespace-pre-wrap rounded bg-slate-50 p-3 text-sm text-slate-800">
+                  <p className="mb-1 text-xs font-semibold uppercase text-ink-faint">Phase 2 · composed</p>
+                  <pre className="whitespace-pre-wrap rounded bg-panel-soft p-3 text-sm text-ink">
                     {p.composed_text ?? (p.voice === 'fallback' ? '(fell back to mechanical this day)' : '—')}
                   </pre>
                 </div>

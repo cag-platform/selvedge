@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
+import { SelvedgeEdge } from '../components/SelvedgeEdge.js';
+import { Pane, btnPrimary, inputCls, eyebrowCls } from '../components/ui.js';
 
 type TrayItem = { id: string; source: string; source_account_id: string; event_type: string; occurred_at: string };
 type ProjectOption = { project_id: string; name: string };
 
+/**
+ * The unsorted tray — calm, not an error ("The Look", Prompt 5). These are
+ * things Selvedge noticed but can't place yet: the dashed unknown edge,
+ * plain words, one tap to teach it. It never asks twice.
+ */
 export function Tray() {
   const [items, setItems] = useState<TrayItem[] | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -25,8 +32,17 @@ export function Tray() {
     refresh();
   }
 
-  if (!items) return <p className="text-slate-400">Loading…</p>;
-  if (items.length === 0) return <p className="text-slate-500">Nothing unsorted — every event has a home.</p>;
+  if (!items) return <p className="text-body text-ink-faint">Loading…</p>;
+  if (items.length === 0) {
+    return (
+      <Pane className="p-6">
+        <p className="text-body-lg text-ink">Nothing unsorted — every event has a home.</p>
+        <p className="mt-1 text-body text-ink-dim">
+          When something arrives that I can't place, it waits here quietly. Telling me once is enough.
+        </p>
+      </Pane>
+    );
+  }
 
   // One row per (source, source_account_id) rather than per event — a
   // single tap assigns everything from that source at once.
@@ -37,41 +53,45 @@ export function Tray() {
   }
 
   return (
-    <div className="space-y-3">
-      {[...bySource.entries()].map(([key, group]) => {
-        const first = group[0]!;
-        return (
-          <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4">
-            <div>
-              <p className="font-medium text-slate-800">{first.source_account_id}</p>
-              <p className="text-sm text-slate-500">
-                {group.length} event{group.length === 1 ? '' : 's'} from {first.source}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                className="rounded border border-slate-300 px-2 py-1 text-sm"
-                value={choice[first.id] ?? ''}
-                onChange={(e) => setChoice((c) => ({ ...c, [first.id]: e.target.value }))}
-              >
-                <option value="">Assign to…</option>
-                {projects.map((p) => (
-                  <option key={p.project_id} value={p.project_id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="rounded bg-slate-900 px-3 py-1 text-sm text-white disabled:opacity-40"
-                disabled={!choice[first.id]}
-                onClick={() => assign(first)}
-              >
-                Assign
-              </button>
-            </div>
-          </div>
-        );
-      })}
+    <div className="animate-settle space-y-4">
+      <p className={eyebrowCls}>Unsorted · tell me once where these belong</p>
+      <div className="space-y-3">
+        {[...bySource.entries()].map(([key, group]) => {
+          const first = group[0]!;
+          return (
+            <Pane key={key} className="flex flex-wrap items-center justify-between gap-3 pl-5">
+              <SelvedgeEdge status="unknown" />
+              <div>
+                <p className="text-body font-medium text-ink">{first.source_account_id}</p>
+                <p className="text-meta text-ink-dim">
+                  {group.length} thing{group.length === 1 ? '' : 's'} I noticed but can't place yet
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="sr-only" htmlFor={`assign-${first.id}`}>
+                  Which project does {first.source_account_id} belong to?
+                </label>
+                <select
+                  id={`assign-${first.id}`}
+                  className={`${inputCls} mt-0 w-48`}
+                  value={choice[first.id] ?? ''}
+                  onChange={(e) => setChoice((c) => ({ ...c, [first.id]: e.target.value }))}
+                >
+                  <option value="">This belongs to…</option>
+                  {projects.map((p) => (
+                    <option key={p.project_id} value={p.project_id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button className={btnPrimary} disabled={!choice[first.id]} onClick={() => assign(first)}>
+                  That's settled
+                </button>
+              </div>
+            </Pane>
+          );
+        })}
+      </div>
     </div>
   );
 }
