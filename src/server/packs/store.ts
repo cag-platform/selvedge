@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { packs } from '../db/schema/index.js';
+import { packs, events, narrations } from '../db/schema/index.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { assertValidPack } from './validate.js';
 import { applyHumanPatch, applyMachinePatch, type HumanPatch, type MachinePatch } from './ownership.js';
@@ -30,6 +30,29 @@ async function requirePack(db: Db, orgId: string, projectId: string): Promise<Co
   const existing = await getPack(db, orgId, projectId);
   if (!existing) throw new Error(`No pack for org "${orgId}" project "${projectId}"`);
   return existing;
+}
+
+/**
+ * Deletes a project outright: the pack and everything scoped to it — its
+ * narrations (the project's Today-page cards) and its events (the raw log
+ * that fed them). Done in one transaction so a project never half-exists.
+ * Org-level data (digests, connector_health) is untouched. Returns false if
+ * there was no such pack (the route maps that to a 404).
+ */
+export async function deletePack(db: Db, orgId: string, projectId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ projectId: packs.projectId })
+      .from(packs)
+      .where(and(eq(packs.orgId, orgId), eq(packs.projectId, projectId)))
+      .limit(1);
+    if (!existing) return false;
+
+    await tx.delete(narrations).where(and(eq(narrations.orgId, orgId), eq(narrations.projectId, projectId)));
+    await tx.delete(events).where(and(eq(events.orgId, orgId), eq(events.projectId, projectId)));
+    await tx.delete(packs).where(and(eq(packs.orgId, orgId), eq(packs.projectId, projectId)));
+    return true;
+  });
 }
 
 /** Identity/stakes/voice/topology(minus sources' machine role)/capability_gaps — user-authenticated only. */

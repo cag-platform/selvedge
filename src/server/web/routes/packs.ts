@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { createPack, getPack, listPacks, updateHumanSections } from '../../packs/store.js';
+import { createPack, deletePack, getPack, listPacks, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
 import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -106,6 +106,21 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
         }
         throw err;
       }
+    }),
+  );
+
+  // Delete a project outright — the pack and everything scoped to it. A
+  // deliberate, user-initiated action (there's no undo), so it's a plain
+  // DELETE with a 404 when the project isn't there.
+  router.delete(
+    '/api/packs/:projectId',
+    asyncHandler(async (req, res) => {
+      const deleted = await deletePack(db, orgIdOf(req), req.params.projectId!);
+      if (!deleted) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      res.json({ ok: true });
     }),
   );
 

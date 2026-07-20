@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import type { ContextPack, StakesTier, UserScale, DetailLevel, PushThreshold } from '../../shared/types/pack.js';
-import { Pane, btnGhost, btnPrimary, inputCls, labelCls } from '../components/ui.js';
+import { Pane, btnDanger, btnGhost, btnPrimary, inputCls, labelCls } from '../components/ui.js';
 
 /**
  * The pack editor ("The Look", Prompt 5): identity in the owner's own
@@ -16,6 +16,8 @@ export function PackEditor() {
   const [pack, setPack] = useState<ContextPack | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (projectId) api.get<ContextPack>(`/api/packs/${projectId}`).then(setPack);
@@ -34,6 +36,18 @@ export function PackEditor() {
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function del() {
+    setDeleting(true);
+    setError(null);
+    try {
+      await api.del(`/api/packs/${projectId}`);
+      navigate('/projects');
+    } catch (e) {
+      setError((e as Error).message);
+      setDeleting(false);
     }
   }
 
@@ -179,6 +193,29 @@ export function PackEditor() {
           Cancel
         </button>
       </div>
+
+      <section className="space-y-3 border-t border-hairline pt-6">
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Delete</h2>
+        {!confirmingDelete ? (
+          <button className="text-body text-thread hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass" onClick={() => setConfirmingDelete(true)}>
+            Delete this project
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-body text-ink">
+              Delete {pack.identity.name} for good? This removes the project and everything I've tracked for it. There's no undo.
+            </p>
+            <div className="flex gap-2">
+              <button className={btnDanger} disabled={deleting} onClick={del}>
+                {deleting ? 'Deleting…' : 'Yes, delete it'}
+              </button>
+              <button className={btnGhost} onClick={() => setConfirmingDelete(false)}>
+                Keep it
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </Pane>
   );
 }

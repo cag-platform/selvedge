@@ -14,6 +14,12 @@ export const btnPrimary =
 export const btnGhost =
   'rounded-inset px-4 py-1.5 text-body text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass';
 
+// Destructive action. thread is the app's rationed color; a real, irreversible
+// delete (the one place a project can be removed) is exactly the kind of
+// "this needs you" moment it's reserved for.
+export const btnDanger =
+  'rounded-inset border border-thread px-4 py-1.5 text-body text-thread transition-[background-color,color] duration-settle ease-settle hover:bg-thread hover:text-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass disabled:opacity-50';
+
 export const labelCls = 'block text-body text-ink-dim';
 
 export const eyebrowCls = 'text-label font-body uppercase tracking-widest text-ink-faint';
