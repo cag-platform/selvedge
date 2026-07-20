@@ -1,0 +1,32 @@
+# Eval harness — blocks merge, not advisory (Phase 2 deliverable 7).
+# Runs on every PR touching prompts, narration, or composition. Gated
+# fields fail the job; there is no override flag by design. With the
+# ANTHROPIC_API_KEY secret configured the fixtures run through the real
+# models; without it the deterministic mock still enforces every
+# mechanical gate.
+name: evals
+on:
+  pull_request:
+    paths:
+      - 'config/prompts/**'
+      - 'config/routing-table.json'
+      - 'src/server/narration/**'
+      - 'src/server/digest/**'
+      - 'src/server/llm/**'
+      - 'evals/**'
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NARRATE_MODEL: ${{ vars.NARRATE_MODEL }}
+          COMPOSE_MODEL: ${{ vars.COMPOSE_MODEL }}

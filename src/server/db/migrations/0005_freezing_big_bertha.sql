@@ -1,0 +1,1 @@
+ALTER TABLE "orgs" ADD COLUMN "timezone_source" text DEFAULT 'default' NOT NULL;

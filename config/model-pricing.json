@@ -1,0 +1,10 @@
+{
+  "$comment": "USD per million tokens, from platform.claude.com pricing (cached 2026-06; sonnet-5 figures are the standard sticker, not the intro discount). The margin math in llm_usage uses this table — keep it current when Anthropic reprices or when NARRATE_MODEL/COMPOSE_MODEL change. Unknown models fall back to the most expensive row so cost is never silently undercounted.",
+  "models": {
+    "claude-fable-5": { "input_per_mtok": 10.0, "output_per_mtok": 50.0 },
+    "claude-opus-4-8": { "input_per_mtok": 5.0, "output_per_mtok": 25.0 },
+    "claude-sonnet-5": { "input_per_mtok": 3.0, "output_per_mtok": 15.0 },
+    "claude-haiku-4-5": { "input_per_mtok": 1.0, "output_per_mtok": 5.0 }
+  },
+  "fallback": { "input_per_mtok": 10.0, "output_per_mtok": 50.0 }
+}
