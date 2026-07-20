@@ -5,6 +5,7 @@
  */
 
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
+import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
 
 const COLORS: Array<{ token: string; varName: string; note: string }> = [
   { token: 'paper', varName: '--paper', note: 'the daylight ground' },
@@ -169,6 +170,43 @@ export function Styleguide() {
           </div>
           <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--specular)' }} />
         </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">The brief — Day-2 golden, rendered</h2>
+        <Brief status="unknown">
+          <div>
+            <BriefEyebrow>Morning brief · mixed day</BriefEyebrow>
+            <Headline>Two things need you this morning.</Headline>
+          </div>
+          <BriefItem
+            kind="attention"
+            verdict="users_fine"
+            reveal={
+              <Reveal>
+                chalk · first 5 live transactions · verdict users_fine (sales) · secondary cannot_tell (chalk→loom
+                sync)
+              </Reveal>
+            }
+          >
+            Chalk ran its first five real transactions — the sales themselves went through fine. What I can't confirm
+            is whether the transaction data made it back to Loom; check that connection before more sales stack up.
+          </BriefItem>
+          <BriefItem
+            kind="attention"
+            verdict="cannot_tell"
+            reveal={<Reveal>sild · post-ship check coverage suspect · verdict cannot_tell · next: verify knowledge packs</Reveal>}
+          >
+            And SILD: the checks you built around the new features don't look like they're working right. Have Claude
+            verify the knowledge packs are behaving — and a live test with a real counterparty would confirm SILD is
+            actually reading their position correctly.
+          </BriefItem>
+          <BriefClose>Everything else is quiet.</BriefClose>
+        </Brief>
+        <p className="mt-2 text-meta text-ink-dim">
+          Verdict → edge is fixed vocabulary: users_fine → healthy, users_affected → thread, cannot_tell → dashed. The
+          pane's own edge carries the day's top priority (here: a cannot_tell outranks a users_fine).
+        </p>
       </section>
 
       <section>
