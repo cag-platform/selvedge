@@ -20,6 +20,8 @@ import { createDevicesRouter } from './routes/devices.js';
 import { createConnectorsHealthRouter } from './routes/connectorsHealth.js';
 import { createAskRouter } from './routes/ask.js';
 import { createTrustRouter } from './routes/trust.js';
+import { createMemoryRouter } from './routes/memory.js';
+import { createPortabilityRouter } from './routes/portability.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -83,6 +85,8 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createConnectorsHealthRouter(db));
   app.use(createAskRouter(db, buildAskDeps(db)));
   app.use(createTrustRouter(db));
+  app.use(createMemoryRouter(db));
+  app.use(createPortabilityRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {
