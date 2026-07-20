@@ -18,6 +18,7 @@ import { createOrgRouter } from './routes/org.js';
 import { createDevicesRouter } from './routes/devices.js';
 import { createConnectorsHealthRouter } from './routes/connectorsHealth.js';
 import { createAskRouter } from './routes/ask.js';
+import { createTrustRouter } from './routes/trust.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -77,6 +78,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createDevicesRouter(db));
   app.use(createConnectorsHealthRouter(db));
   app.use(createAskRouter(db, buildAskDeps(db)));
+  app.use(createTrustRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

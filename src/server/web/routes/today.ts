@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
-import { and, eq, gt, gte } from 'drizzle-orm';
+import { and, eq, gt, gte, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
-import { digests, narrations, orgs } from '../../db/schema/index.js';
+import { digests, narrations, orgs, trustIncidents } from '../../db/schema/index.js';
 import { localDateString, yesterdayBoundsUtc } from '../../digest/timezone.js';
 import { composeDigestForOrg } from '../../digest/compose.js';
 import type { ComposeLlmDeps } from '../../digest/composeLlm.js';
@@ -67,6 +67,9 @@ export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
               attention: (sections.attention ?? []).map((a) => ({
                 ...a,
                 verdict: byId.get(a.narration_id)?.verdict ?? null,
+                // How sure the narrator was (Ironclad 2), plus the source event
+                // as the "why I said this" anchor.
+                confidence: byId.get(a.narration_id)?.confidence ?? null,
                 technical_detail: byId.get(a.narration_id)?.technicalDetail ?? null,
                 event_id: byId.get(a.narration_id)?.eventId ?? null,
               })),
@@ -75,7 +78,25 @@ export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
         }
       }
 
-      res.json({ digest: enriched, post_digest_events: postDigestEvents });
+      // Own the miss out loud (Ironclad 2): any false-all-clear we haven't yet
+      // surfaced becomes a correction on today's brief, then is marked shown.
+      const openIncidents = await db
+        .select()
+        .from(trustIncidents)
+        .where(and(eq(trustIncidents.orgId, orgId), eq(trustIncidents.acknowledged, false)));
+      const corrections = openIncidents.map((i) => ({
+        id: i.id,
+        project_id: i.projectId,
+        line: i.detail ?? "Earlier I said this was fine — it wasn't.",
+      }));
+      if (openIncidents.length > 0) {
+        await db
+          .update(trustIncidents)
+          .set({ acknowledged: true })
+          .where(inArray(trustIncidents.id, openIncidents.map((i) => i.id)));
+      }
+
+      res.json({ digest: enriched, post_digest_events: postDigestEvents, corrections });
     }),
   );
 

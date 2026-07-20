@@ -12,6 +12,7 @@ import { route } from '../routing/route.js';
 import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 import { extractSignature } from './knownFlaky.js';
+import { recordFalseAllClearIfContradicted } from '../trust/tripwire.js';
 
 export type IngestResult = {
   eventId: string;
@@ -85,8 +86,9 @@ async function routeNarrateAndPersist(
   );
 
   if (decision.delivery !== 'NONE' && dispatched) {
+    const narrationId = ulid();
     await db.insert(narrations).values({
-      id: ulid(),
+      id: narrationId,
       orgId,
       projectId,
       eventId: id,
@@ -99,8 +101,23 @@ async function routeNarrateAndPersist(
       fragment: dispatched.output.fragment,
       technicalDetail: dispatched.output.technicalDetail ?? null,
       verdict: dispatched.output.verdict ?? null,
+      confidence: dispatched.meta.confidence ?? null,
       meta: { modifiers: decision.modifiers, row_id: decision.row_id, ...dispatched.meta },
     });
+
+    // The unforgivable-error tripwire (Ironclad 2): if this narration is a
+    // real negative signal (users_affected, or a health-failing event),
+    // check whether we recently told this project's owner everything was fine
+    // — and if so, log the miss so a correction brief can own it out loud.
+    if (projectId) {
+      await recordFalseAllClearIfContradicted(db, orgId, projectId, {
+        narrationId,
+        eventId: id,
+        eventType: event.event_type,
+        verdict: dispatched.output.verdict ?? null,
+        occurredAt: new Date(event.occurred_at),
+      });
+    }
   }
 
   return decision;
