@@ -3,7 +3,7 @@ import { getAuth } from '@clerk/express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../../web/middleware/asyncHandler.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
-import { markInstalled } from './health.js';
+import { listInstallations, markInstalled } from './health.js';
 import { backfillInstallation } from './backfill.js';
 
 /**
@@ -33,6 +33,26 @@ export function createGithubInstallRouter(deps: { db: Db }) {
     const url = `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(orgId)}`;
     res.redirect(url);
   });
+
+  // Repos the org's installation can see — feeds the New Project repo picker.
+  router.get(
+    '/api/connectors/github/repos',
+    asyncHandler(async (req, res) => {
+      const orgId = getAuth(req).orgId;
+      if (!orgId) {
+        res.status(401).json({ error: 'no active organization' });
+        return;
+      }
+      const [installation] = await listInstallations(deps.db, orgId);
+      if (!installation) {
+        res.json([]);
+        return;
+      }
+      const octokit = getInstallationOctokit(loadGithubAppConfig(), installation.sourceAccountId);
+      const repos = await octokit.paginate(octokit.rest.apps.listReposAccessibleToInstallation, { per_page: 100 });
+      res.json((repos as Array<{ full_name: string }>).map((r) => ({ full_name: r.full_name })));
+    }),
+  );
 
   router.get(
     '/api/connectors/github/callback',

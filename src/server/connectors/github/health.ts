@@ -41,6 +41,17 @@ export function markAuthFailed(db: Db, orgId: string, installationId: string) {
   return upsert(db, orgId, installationId, 'auth_failed');
 }
 
+/** The org's GitHub installations (usually one) — newest first, auth_failed excluded. */
+export async function listInstallations(db: Db, orgId: string) {
+  const rows = await db
+    .select()
+    .from(connectorHealth)
+    .where(and(eq(connectorHealth.orgId, orgId), eq(connectorHealth.connector, 'github')));
+  return rows
+    .filter((r) => r.status !== 'auth_failed')
+    .sort((a, b) => b.installedAt.getTime() - a.installedAt.getTime());
+}
+
 export async function getHealth(db: Db, orgId: string, installationId: string) {
   const [row] = await db
     .select()

@@ -1,15 +1,71 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { getPack, listPacks, updateHumanSections } from '../../packs/store.js';
+import { createPack, getPack, listPacks, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
+import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
 }
 
-export function createPacksRouter(db: Db) {
+const TIERS = new Set(['sandbox', 'personal', 'live_small', 'live_critical']);
+
+export type PacksRouterDeps = {
+  /** Fire-and-forget history seed for a newly mapped repo; injected so tests don't need GitHub credentials. */
+  backfill?: (orgId: string, repo: string) => Promise<void>;
+};
+
+export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
   const router = Router();
+
+  router.post(
+    '/api/packs',
+    asyncHandler(async (req, res) => {
+      const body = req.body as Partial<NewProjectInput>;
+      if (!body.name?.trim() || !body.repo?.trim() || !TIERS.has(body.tier ?? '')) {
+        res.status(400).json({ error: 'name, repo, and a valid tier are required' });
+        return;
+      }
+      if (!/^[^/\s]+\/[^/\s]+$/.test(body.repo.trim())) {
+        res.status(400).json({ error: 'repo must be a GitHub full name like "owner/repo"' });
+        return;
+      }
+      const orgId = orgIdOf(req);
+      const projectId = slugifyProjectId(body.name);
+      if (!projectId) {
+        res.status(400).json({ error: 'name must contain at least one letter or number' });
+        return;
+      }
+      if (await getPack(db, orgId, projectId)) {
+        res.status(409).json({ error: `a project with id "${projectId}" already exists` });
+        return;
+      }
+      const pack = scaffoldPack({
+        name: body.name.trim(),
+        repo: body.repo.trim(),
+        tier: body.tier!,
+        touches_money: body.touches_money,
+        downtime_translation: body.downtime_translation?.trim() || undefined,
+      });
+      try {
+        await createPack(db, orgId, pack);
+      } catch (err) {
+        if (err instanceof PackValidationError) {
+          res.status(422).json({ error: err.message, details: err.errors });
+          return;
+        }
+        throw err;
+      }
+      // Seed 30 days of history for the newly mapped repo in the background.
+      if (deps.backfill) {
+        void deps.backfill(orgId, pack.topology.sources[0]!.resource_id).catch((err) => {
+          console.error(`backfill after pack create failed for ${orgId}/${projectId}:`, err);
+        });
+      }
+      res.status(201).json(pack);
+    }),
+  );
 
   router.get(
     '/api/packs',

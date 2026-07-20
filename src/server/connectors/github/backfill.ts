@@ -3,6 +3,8 @@ import type { Db } from '../../db/client.js';
 import type { DeployCadence, InProgressItem } from '../../../shared/types/pack.js';
 import { resolveProjectId } from '../../resolution/resolveProject.js';
 import { updateMachineSections } from '../../packs/store.js';
+import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
+import { listInstallations } from './health.js';
 
 const BACKFILL_WINDOW_DAYS = 30;
 
@@ -67,6 +69,18 @@ export async function backfillRepo(db: Db, octokit: Octokit, orgId: string, repo
       last_event_at_by_source: { github: new Date().toISOString() },
     },
   });
+}
+
+/**
+ * Backfill one repo using whatever installation the org has — fired when a
+ * pack is created after install (the install-time backfill skipped every
+ * repo that had no pack yet). No-op without an installation or credentials.
+ */
+export async function backfillRepoForOrg(db: Db, orgId: string, repoFullName: string): Promise<void> {
+  const [installation] = await listInstallations(db, orgId);
+  if (!installation) return;
+  const octokit = getInstallationOctokit(loadGithubAppConfig(), installation.sourceAccountId);
+  await backfillRepo(db, octokit, orgId, repoFullName);
 }
 
 /** Runs backfillRepo for every repo the installation can see. Fired once on install. */

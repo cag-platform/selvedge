@@ -5,6 +5,7 @@ import type { Db } from '../db/client.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
 import { createGithubInstallRouter } from '../connectors/github/install.js';
 import { ingestEvent } from '../resolution/ingest.js';
+import { backfillRepoForOrg } from '../connectors/github/backfill.js';
 import { buildNarrationDeps } from '../llm/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
@@ -62,7 +63,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   }
 
   app.use('/api', ensureOrg(db));
-  app.use(createPacksRouter(db));
+  app.use(createPacksRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db));
   app.use(createTodayRouter(db));
