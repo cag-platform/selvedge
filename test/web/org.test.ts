@@ -1,0 +1,52 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import request from 'supertest';
+import { createTestDb, type TestDb } from '../helpers/testDb.js';
+import { orgs } from '../../src/server/db/schema/index.js';
+import { createOrgRouter } from '../../src/server/web/routes/org.js';
+import { appWithOrg } from './helpers.js';
+
+/**
+ * Timezone drives "local 7:00am" for the brief. Auto-detect (browser)
+ * only fills the default; an explicit user choice wins over any later
+ * auto-detect from another device.
+ */
+describe('web/routes/org', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => close());
+
+  it('starts at the UTC default and accepts a browser auto-detect', async () => {
+    const app = appWithOrg(orgId, createOrgRouter(db));
+    expect((await request(app).get('/api/org')).body).toEqual({ timezone: 'UTC', timezone_source: 'default' });
+
+    const res = await request(app).patch('/api/org/timezone').send({ timezone: 'America/New_York', source: 'auto' });
+    expect(res.body).toEqual({ timezone: 'America/New_York', timezone_source: 'auto' });
+  });
+
+  it('auto-detect never overrides an explicit user choice', async () => {
+    const app = appWithOrg(orgId, createOrgRouter(db));
+    await request(app).patch('/api/org/timezone').send({ timezone: 'Europe/Helsinki', source: 'user' });
+
+    const auto = await request(app).patch('/api/org/timezone').send({ timezone: 'America/Chicago', source: 'auto' });
+    expect(auto.body.timezone).toBe('Europe/Helsinki');
+    expect(auto.body.unchanged).toBe(true);
+
+    // A user choice can still change it.
+    const user = await request(app).patch('/api/org/timezone').send({ timezone: 'America/Chicago', source: 'user' });
+    expect(user.body.timezone).toBe('America/Chicago');
+  });
+
+  it('rejects invalid timezones and sources', async () => {
+    const app = appWithOrg(orgId, createOrgRouter(db));
+    expect((await request(app).patch('/api/org/timezone').send({ timezone: 'Not/AZone', source: 'user' })).status).toBe(400);
+    expect((await request(app).patch('/api/org/timezone').send({ timezone: 'UTC', source: 'wat' })).status).toBe(400);
+  });
+});

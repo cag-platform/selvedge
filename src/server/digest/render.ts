@@ -18,7 +18,7 @@ const ATTENTION_STORM_THRESHOLD = 3;
 const MOVED_DISPLAY_CAP = 5;
 
 function projectLabel(item: NarrationWithPack): string {
-  return item.pack ? item.pack.identity.name : 'Silta';
+  return item.pack ? item.pack.identity.name : 'Selvedge';
 }
 
 function headlineFor(attention: NarrationWithPack[], moved: NarrationWithPack[], standing: string[], storm: boolean): string {

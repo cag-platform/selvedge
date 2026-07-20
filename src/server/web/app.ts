@@ -14,6 +14,7 @@ import { createTrayRouter } from './routes/tray.js';
 import { createTodayRouter } from './routes/today.js';
 import { createFeedbackRouter } from './routes/feedback.js';
 import { createAdminRouter } from './routes/admin.js';
+import { createOrgRouter } from './routes/org.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -69,6 +70,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createTodayRouter(db, buildComposeDeps(db)));
   app.use(createFeedbackRouter(db));
   app.use(createAdminRouter(db));
+  app.use(createOrgRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

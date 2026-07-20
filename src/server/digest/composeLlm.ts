@@ -61,13 +61,13 @@ export async function composeBriefLlm(
 ): Promise<ComposedResult> {
   const fragments = [
     ...sections.attention.map((n) => ({
-      project: n.pack?.identity.name ?? 'Silta',
+      project: n.pack?.identity.name ?? 'Selvedge',
       kind: 'attention' as const,
       fragment: n.fragment ?? '',
       ...(n.verdict ? { verdict: n.verdict } : {}),
     })),
     ...sections.moved.map((n) => ({
-      project: n.pack?.identity.name ?? 'Silta',
+      project: n.pack?.identity.name ?? 'Selvedge',
       kind: 'moved' as const,
       fragment: n.fragment ?? '',
       ...(n.verdict ? { verdict: n.verdict } : {}),

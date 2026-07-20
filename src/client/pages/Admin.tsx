@@ -16,6 +16,70 @@ type DigestPair = {
   mechanical_text: string | null;
 };
 
+function TimezoneSettings() {
+  const [org, setOrg] = useState<{ timezone: string; timezone_source: string } | null>(null);
+  const [value, setValue] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<{ timezone: string; timezone_source: string }>('/api/org').then((o) => {
+      setOrg(o);
+      setValue(o.timezone);
+    });
+  }, []);
+
+  if (!org) return null;
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const save = async (tz: string) => {
+    setStatus(null);
+    try {
+      const updated = await api.patch<{ timezone: string; timezone_source: string }>('/api/org/timezone', {
+        timezone: tz,
+        source: 'user',
+      });
+      setOrg(updated);
+      setValue(updated.timezone);
+      setStatus(`Saved — the daily brief now composes at 7:00am ${updated.timezone}.`);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : 'save failed');
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Daily brief timezone</h2>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm text-slate-600">
+          The brief composes at 7:00am in <span className="font-medium text-slate-900">{org.timezone}</span>
+          {org.timezone_source === 'auto' && ' (detected from your browser)'}
+          {org.timezone_source === 'default' && ' (default — sign-in auto-detects this)'}.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            className="w-64 rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="America/New_York"
+          />
+          <button
+            onClick={() => void save(value)}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            Save
+          </button>
+          {browserTz && browserTz !== org.timezone && (
+            <button onClick={() => void save(browserTz)} className="text-sm text-indigo-600 hover:underline">
+              Use my timezone ({browserTz})
+            </button>
+          )}
+        </div>
+        {status && <p className="mt-2 text-sm text-slate-500">{status}</p>}
+      </div>
+    </section>
+  );
+}
+
 export function Admin() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [pairs, setPairs] = useState<DigestPair[] | null>(null);
@@ -29,6 +93,7 @@ export function Admin() {
 
   return (
     <div className="space-y-8">
+      <TimezoneSettings />
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
           Cost per day (budget line ${metrics.budget_usd_per_day.toFixed(2)}/day)

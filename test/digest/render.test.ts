@@ -95,8 +95,8 @@ describe('digest/render', () => {
     expect(renderDigestText(sections)).toContain('Mirror was quiet and healthy.');
   });
 
-  it('labels an org-level (no pack) attention item as Silta', () => {
+  it('labels an org-level (no pack) attention item as Selvedge', () => {
     const sections = buildSections([item({ pack: null, projectId: null })], [], [], '', []);
-    expect(renderDigestText(sections)).toContain('Silta:');
+    expect(renderDigestText(sections)).toContain('Selvedge:');
   });
 });

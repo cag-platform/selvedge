@@ -9,7 +9,7 @@ export function Nav() {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1">
-          <span className="mr-3 text-lg font-semibold text-slate-900">Silta</span>
+          <span className="mr-3 text-lg font-semibold text-slate-900">Selvedge</span>
           <NavLink to="/" end className={linkClass}>
             Today
           </NavLink>
