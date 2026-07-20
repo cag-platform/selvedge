@@ -3,6 +3,8 @@ import { and, eq, gt, gte } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { digests, narrations, orgs } from '../../db/schema/index.js';
 import { localDateString, yesterdayBoundsUtc } from '../../digest/timezone.js';
+import { composeDigestForOrg } from '../../digest/compose.js';
+import type { ComposeLlmDeps } from '../../digest/composeLlm.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -10,8 +12,18 @@ function orgIdOf(req: Request): string {
 }
 
 /** Today page (deliverable 8): today's digest + any narration since it was composed. */
-export function createTodayRouter(db: Db) {
+export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
   const router = Router();
+
+  // On-demand composition — same idempotent path the 7:00 cron takes, so
+  // pressing it twice (or the cron firing later) never double-writes a day.
+  router.post(
+    '/api/today/compose',
+    asyncHandler(async (req, res) => {
+      const digest = await composeDigestForOrg(db, orgIdOf(req), new Date(), llmDeps);
+      res.json({ digest });
+    }),
+  );
 
   router.get(
     '/api/today',

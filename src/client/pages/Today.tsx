@@ -106,13 +106,30 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
 export function Today() {
   const [data, setData] = useState<TodayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
 
-  useEffect(() => {
+  const load = () =>
     api
       .get<TodayResponse>('/api/today')
       .then(setData)
       .catch((e) => setError(e.message));
+
+  useEffect(() => {
+    void load();
   }, []);
+
+  const composeNow = async () => {
+    setComposing(true);
+    setError(null);
+    try {
+      await api.post('/api/today/compose', {});
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'compose failed');
+    } finally {
+      setComposing(false);
+    }
+  };
 
   if (error) return <p className="text-red-600">{error}</p>;
   if (!data) return <p className="text-slate-400">Loading…</p>;
@@ -123,6 +140,13 @@ export function Today() {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6">
         <p className="text-slate-600">No digest yet today — the first one composes at your local 7:00am.</p>
+        <button
+          onClick={() => void composeNow()}
+          disabled={composing}
+          className="mt-4 rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        >
+          {composing ? 'Composing…' : "Compose today's brief now"}
+        </button>
       </div>
     );
   }
@@ -137,7 +161,13 @@ export function Today() {
       )}
       {/* The digest renders as a note, not a table — a deliberate, load-bearing layout choice. */}
       <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-lg font-medium text-slate-900">{digest.headline}</p>
+        {digest.voice === 'composed' ? (
+          // The composed brief is one written note — show it verbatim; the
+          // mechanical sections below only carry the per-item taps/details.
+          <div className="whitespace-pre-line leading-relaxed text-slate-800">{digest.renderedText}</div>
+        ) : (
+          <p className="text-lg font-medium text-slate-900">{digest.headline}</p>
+        )}
 
         {digest.sections.attention.length > 0 && (
           <section className="mt-5 space-y-4">
