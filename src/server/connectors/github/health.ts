@@ -41,6 +41,16 @@ export function markAuthFailed(db: Db, orgId: string, installationId: string) {
   return upsert(db, orgId, installationId, 'auth_failed');
 }
 
+/** Reverse lookup: which org registered this installation? (Re-configure redirects carry no state.) */
+export async function orgForInstallation(db: Db, installationId: string): Promise<string | null> {
+  const [row] = await db
+    .select()
+    .from(connectorHealth)
+    .where(and(eq(connectorHealth.connector, 'github'), eq(connectorHealth.sourceAccountId, installationId)))
+    .limit(1);
+  return row?.orgId ?? null;
+}
+
 /** The org's GitHub installations (usually one) — newest first, auth_failed excluded. */
 export async function listInstallations(db: Db, orgId: string) {
   const rows = await db

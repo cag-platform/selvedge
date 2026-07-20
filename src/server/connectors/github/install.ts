@@ -3,7 +3,7 @@ import { getAuth } from '@clerk/express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../../web/middleware/asyncHandler.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
-import { listInstallations, markInstalled } from './health.js';
+import { listInstallations, markInstalled, orgForInstallation } from './health.js';
 import { backfillInstallation } from './backfill.js';
 
 /**
@@ -58,10 +58,28 @@ export function createGithubInstallRouter(deps: { db: Db }) {
     '/api/connectors/github/callback',
     asyncHandler(async (req, res) => {
       const installationId = req.query.installation_id ? String(req.query.installation_id) : null;
-      const orgId = req.query.state ? String(req.query.state) : null;
+      if (!installationId) {
+        res.status(400).json({ error: 'missing installation_id' });
+        return;
+      }
 
-      if (!installationId || !orgId) {
-        res.status(400).json({ error: 'missing installation_id or state' });
+      // `state` only exists when the flow started from our install link.
+      // GitHub's own "Save"/re-configure redirect carries none, so fall
+      // back to the signed-in session, then to whichever org registered
+      // this installation the first time around.
+      let orgId = req.query.state ? String(req.query.state) : null;
+      if (!orgId) {
+        try {
+          orgId = getAuth(req).orgId ?? null;
+        } catch {
+          orgId = null;
+        }
+      }
+      if (!orgId) orgId = await orgForInstallation(deps.db, installationId);
+      if (!orgId) {
+        res.status(400).json({
+          error: 'could not determine which organization this installation belongs to — start from /api/connectors/github/install while signed in',
+        });
         return;
       }
 
