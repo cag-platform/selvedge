@@ -3,6 +3,7 @@ import type { Db } from '../db/client.js';
 import { digests } from '../db/schema/index.js';
 import { listPacks } from '../packs/store.js';
 import { edgeStatus, healthLine } from '../packs/healthLine.js';
+import type { ContextPack } from '../../shared/types/pack.js';
 import type { LlmClient } from '../llm/types.js';
 import { composeModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
@@ -10,6 +11,29 @@ import { recordUsage } from '../llm/metering.js';
 export type AskDeps = { llm: LlmClient; db: Db };
 
 export type AskResult = { ok: true; answer: string } | { ok: false; reason: string };
+
+// Context bounds: the model input must not scale unboundedly with the size of
+// a stack. A big org (many packs, long descriptions, the whole latest brief)
+// would otherwise blow the token budget on a single Ask. We show the most
+// important projects, truncate free text, and say plainly what we left out.
+const MAX_PROJECTS = 40;
+const MAX_FIELD_CHARS = 240;
+const MAX_NOTE_CHARS = 4000;
+const TIER_RANK: Record<string, number> = { live_critical: 3, live_small: 2, personal: 1, sandbox: 0 };
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
+}
+
+/** Most-recent event timestamp across a pack's sources, for recency ranking. */
+function recencyKey(pack: ContextPack): number {
+  let max = 0;
+  for (const iso of Object.values(pack.state?.last_event_at_by_source ?? {})) {
+    const ms = Date.parse(iso);
+    if (!Number.isNaN(ms) && ms > max) max = ms;
+  }
+  return max;
+}
 
 const ASK_SCHEMA = {
   type: 'object',
@@ -44,15 +68,29 @@ Rules:
  * any other model call.
  */
 export async function answerQuestion(deps: AskDeps, orgId: string, question: string): Promise<AskResult> {
-  const packs = await listPacks(deps.db, orgId);
-  const projects = packs.map((p) => ({
+  const allPacks = await listPacks(deps.db, orgId);
+  // Highest-stakes first, then most-recently-active, then name for stability.
+  const ranked = [...allPacks].sort(
+    (a, b) =>
+      (TIER_RANK[b.stakes.tier] ?? 0) - (TIER_RANK[a.stakes.tier] ?? 0) ||
+      recencyKey(b) - recencyKey(a) ||
+      a.identity.name.localeCompare(b.identity.name),
+  );
+  const shown = ranked.slice(0, MAX_PROJECTS);
+  const omitted = ranked.length - shown.length;
+
+  const projects = shown.map((p) => ({
     name: p.identity.name,
     tier: p.stakes.tier,
-    what_it_is: p.identity.owner_description,
+    what_it_is: truncate(p.identity.owner_description, MAX_FIELD_CHARS),
     status: edgeStatus(p),
     plain_status: healthLine(p),
-    ...(p.topology.capability_gaps?.length ? { gaps: p.topology.capability_gaps.map((g) => g.summary) } : {}),
-    ...(p.state?.stalled?.length ? { stalled: p.state.stalled.map((s) => s.summary ?? s.ref) } : {}),
+    ...(p.topology.capability_gaps?.length
+      ? { gaps: p.topology.capability_gaps.slice(0, 5).map((g) => truncate(g.summary, MAX_FIELD_CHARS)) }
+      : {}),
+    ...(p.state?.stalled?.length
+      ? { stalled: p.state.stalled.slice(0, 5).map((s) => truncate(s.summary ?? s.ref, MAX_FIELD_CHARS)) }
+      : {}),
   }));
 
   const [latest] = await deps.db
@@ -64,8 +102,9 @@ export async function answerQuestion(deps: AskDeps, orgId: string, question: str
 
   const context = {
     projects,
+    ...(omitted > 0 ? { projects_not_shown: `${omitted} lower-stakes project${omitted === 1 ? '' : 's'} omitted to stay concise` } : {}),
     todays_brief: latest
-      ? { date: latest.digestDate, headline: latest.headline, note: latest.renderedText }
+      ? { date: latest.digestDate, headline: latest.headline, note: truncate(latest.renderedText, MAX_NOTE_CHARS) }
       : null,
   };
 
