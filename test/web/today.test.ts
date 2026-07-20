@@ -9,6 +9,7 @@ import { recordConnectorAuthFailed } from '../../src/server/resolution/connector
 import { createTodayRouter } from '../../src/server/web/routes/today.js';
 import { appWithOrg } from './helpers.js';
 import { makeTestPack } from '../fixtures/testPack.js';
+import { localDateString } from '../../src/server/digest/timezone.js';
 
 describe('web/routes/today', () => {
   let db: TestDb;
@@ -37,22 +38,25 @@ describe('web/routes/today', () => {
       stakes: { tier: 'live_critical', has_external_users: true, touches_money: true },
       topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
     });
+    // The route reads the real clock, so the fixture must too: an event
+    // 24h ago always lands in "yesterday", composed "today".
+    const now = new Date();
     await createPack(db, orgId, pack);
     await ingestEvent(db, {
       org_id: orgId,
       source: 'github',
       source_account_id: 'acme/loom',
       event_type: 'build.failed',
-      occurred_at: '2026-07-18T10:00:00Z',
+      occurred_at: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
       severity_hint: 'error',
       raw: {},
       dedupe_key: 'd1',
     });
-    await composeDigestForOrg(db, orgId, new Date('2026-07-19T12:00:00Z'));
+    await composeDigestForOrg(db, orgId, now);
 
     const app = appWithOrg(orgId, createTodayRouter(db));
     const res = await request(app).get('/api/today');
-    expect(res.body.digest.digestDate).toBe('2026-07-19');
+    expect(res.body.digest.digestDate).toBe(localDateString(now, 'UTC'));
     const attentionItem = res.body.digest.sections.attention[0];
     expect(attentionItem.narration_id).toBeTruthy();
   });
@@ -73,14 +77,15 @@ describe('web/routes/today', () => {
       topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
     });
     await createPack(db, orgId, pack);
-    await composeDigestForOrg(db, orgId, new Date('2026-07-19T08:00:00Z'));
+    const now = new Date();
+    await composeDigestForOrg(db, orgId, now);
 
     await ingestEvent(db, {
       org_id: orgId,
       source: 'github',
       source_account_id: 'acme/loom',
       event_type: 'code.pr_opened',
-      occurred_at: '2026-07-19T09:00:00Z',
+      occurred_at: now.toISOString(),
       severity_hint: 'info',
       raw: {},
       dedupe_key: 'd2',

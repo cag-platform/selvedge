@@ -11,6 +11,7 @@ import { createProjectsRouter } from '../../src/server/web/routes/projects.js';
 import { createTrayRouter } from '../../src/server/web/routes/tray.js';
 import { createTodayRouter } from '../../src/server/web/routes/today.js';
 import { makeTestPack } from '../fixtures/testPack.js';
+import { localDateString } from '../../src/server/digest/timezone.js';
 
 /**
  * Acceptance gate 7: "a second Clerk org sees none of the first org's
@@ -58,12 +59,15 @@ describe('multi-tenancy: org isolation across every API surface', () => {
         topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
       }),
     );
+    // Clock-relative: /api/today reads the real clock, so the digest must
+    // be composed for the real "today" (24h ago always falls in yesterday).
+    const now = new Date();
     await ingestEvent(db, {
       org_id: orgA,
       source: 'github',
       source_account_id: 'acme/loom',
       event_type: 'build.failed',
-      occurred_at: '2026-07-18T10:00:00Z',
+      occurred_at: new Date(now.getTime() - 24 * 3600 * 1000).toISOString(),
       severity_hint: 'error',
       raw: {},
       dedupe_key: 'orgA-1',
@@ -73,12 +77,12 @@ describe('multi-tenancy: org isolation across every API surface', () => {
       source: 'github',
       source_account_id: 'acme/unmapped',
       event_type: 'code.pr_opened',
-      occurred_at: '2026-07-19T10:00:00Z',
+      occurred_at: now.toISOString(),
       severity_hint: 'info',
       raw: {},
       dedupe_key: 'orgA-2',
     });
-    await composeDigestForOrg(db, orgA, new Date('2026-07-19T12:00:00Z'));
+    await composeDigestForOrg(db, orgA, now);
   });
 
   afterEach(async () => close());
@@ -130,7 +134,7 @@ describe('multi-tenancy: org isolation across every API surface', () => {
     expect((await asOrgA('/api/packs')).body).toHaveLength(1);
     expect((await asOrgA('/api/projects')).body).toHaveLength(1);
     expect((await asOrgA('/api/tray')).body).toHaveLength(1);
-    expect((await asOrgA('/api/today')).body.digest?.digestDate).toBe('2026-07-19');
+    expect((await asOrgA('/api/today')).body.digest?.digestDate).toBe(localDateString(new Date(), 'UTC'));
   });
 
   it('an unrecognized org id never falls back to another org\'s data', async () => {
