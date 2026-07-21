@@ -57,6 +57,13 @@
       "when": 1784521423571,
       "tag": "0007_visible_trust",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784521523571,
+      "tag": "0008_hidden_projects",
+      "breakpoints": true
     }
   ]
 }

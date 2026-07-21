@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { listPacks } from '../../packs/store.js';
+import { listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, healthLine } from '../../packs/healthLine.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -15,7 +15,10 @@ export function createProjectsRouter(db: Db) {
   router.get(
     '/api/projects',
     asyncHandler(async (req, res) => {
-      const packs = await listPacks(db, orgIdOf(req));
+      const orgId = orgIdOf(req);
+      // Archived (permanently deleted) projects are excluded by default; muted
+      // ones are included but flagged so the client can collapse them.
+      const [packs, muted] = await Promise.all([listPacks(db, orgId), mutedProjectIds(db, orgId)]);
       res.json(
         packs.map((pack) => ({
           project_id: pack.identity.project_id,
@@ -24,6 +27,7 @@ export function createProjectsRouter(db: Db) {
           health_line: healthLine(pack),
           edge: edgeStatus(pack),
           links: pack.identity.links ?? {},
+          muted: muted.has(pack.identity.project_id),
         })),
       );
     }),
