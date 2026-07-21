@@ -18,9 +18,20 @@ export function PackEditor() {
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [muting, setMuting] = useState(false);
 
   useEffect(() => {
     if (projectId) api.get<ContextPack>(`/api/packs/${projectId}`).then(setPack);
+  }, [projectId]);
+
+  // The muted flag lives on the project row (not in the pack JSON), so read it
+  // from the projects listing.
+  useEffect(() => {
+    api
+      .get<Array<{ project_id: string; muted?: boolean }>>('/api/projects')
+      .then((list) => setMuted(list.find((p) => p.project_id === projectId)?.muted ?? false))
+      .catch(() => {});
   }, [projectId]);
 
   if (!pack) return <p className="text-body text-ink-faint">Loading…</p>;
@@ -48,6 +59,20 @@ export function PackEditor() {
     } catch (e) {
       setError((e as Error).message);
       setDeleting(false);
+    }
+  }
+
+  async function toggleMute() {
+    setMuting(true);
+    setError(null);
+    try {
+      const next = !muted;
+      await api.patch(`/api/packs/${projectId}/mute`, { muted: next });
+      setMuted(next);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setMuting(false);
     }
   }
 
@@ -193,6 +218,22 @@ export function PackEditor() {
           Cancel
         </button>
       </div>
+
+      <section className="space-y-3 border-t border-hairline pt-6">
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Priority</h2>
+        <p className="text-body text-ink-dim">
+          {muted
+            ? 'Muted — kept out of your daily brief and collapsed on the projects page.'
+            : 'Showing in your daily brief.'}
+        </p>
+        <button
+          className="text-body text-brass hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          disabled={muting}
+          onClick={toggleMute}
+        >
+          {muting ? 'Updating…' : muted ? 'Unmute' : 'Mute this project'}
+        </button>
+      </section>
 
       <section className="space-y-3 border-t border-hairline pt-6">
         <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Delete</h2>

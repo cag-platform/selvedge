@@ -170,10 +170,22 @@ export function Projects() {
         />
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {projects.map((p) => (
+        {projects.filter((p) => !p.muted).map((p) => (
           <ProjectCard key={p.project_id} project={p} />
         ))}
       </div>
+      {projects.some((p) => p.muted) && (
+        <details className="mt-6">
+          <summary className="cursor-pointer text-label font-body uppercase tracking-widest text-ink-faint">
+            Muted · {projects.filter((p) => p.muted).length}
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {projects.filter((p) => p.muted).map((p) => (
+              <ProjectCard key={p.project_id} project={p} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
