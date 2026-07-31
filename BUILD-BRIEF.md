@@ -211,3 +211,38 @@ hypothesis left.
 
 *Foundation closed. What remains is build, and the ten customers who will tell you whether
 the quiet months are quiet.*
+
+---
+
+## ADDENDUM (31 Jul 2026) — The Migration Center
+
+Founder decision: migration is a product surface, not an onboarding step. One
+Migration Center, two exit doors, and the doors are a funnel rather than
+alternatives:
+
+1. **"Get my app into my own hands"** — export from the builder → a repo in the
+   customer's own GitHub → deployed on the customer's own Railway → running
+   independently of the platform that built it. Priced as a job. Ends with:
+   "It's yours now. Want me to keep watching it?"
+2. **"…and take care of it"** — everything in door one, plus connect, the
+   protection brief, and the care plan. The full resting place.
+
+Why door one is load-bearing even though door two is the business: it is the
+trust-first version of the funnel. Selvedge's first act for a stranger is to
+FREE their app onto infrastructure they own — the anti-lock-in posture
+(IRONCLAD-1's export principle) made into an acquisition motion — and the
+access grant happens *during* a migration the customer asked for, which
+structurally defuses the permission cliff (the riskiest number in the 60-day
+gate). The destination infrastructure is exactly what Selvedge connects to
+natively, so door one's deliverable is door two's prerequisite.
+
+Discipline (the services trapdoor lives here): the Center supports **named
+source platforms with automated paths only**, starting with exactly one —
+Lovable → GitHub → Railway, the cleanest export in the market — and refuses
+everything else loudly, with a waitlist that doubles as demand measurement per
+platform. A refused migration costs nothing; a hand-done one costs the week.
+
+Build placement: the Center is Phase 1 work (it IS the connect flow, with the
+export/deploy steps ahead of it) and its Railway half is the same provider
+port already scheduled. Sequence inside Phase 1: fuel + GitHub + Railway
+connectors first, then the migration path as the front door onto them.
