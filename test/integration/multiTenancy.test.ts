@@ -15,6 +15,7 @@ import { createDevicesRouter } from '../../src/server/web/routes/devices.js';
 import { createOrgRouter } from '../../src/server/web/routes/org.js';
 import { createMemoryRouter } from '../../src/server/web/routes/memory.js';
 import { createAskRouter } from '../../src/server/web/routes/ask.js';
+import { createFuelRouter } from '../../src/server/web/routes/fuel.js';
 import { FakeLlmClient } from '../../src/server/llm/fake.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { localDateString } from '../../src/server/digest/timezone.js';
@@ -235,6 +236,33 @@ describe('multi-tenancy: org isolation across every API surface', () => {
     const sent = JSON.stringify(fake.requests);
     expect(sent).not.toContain('Loom (Org A)');
     expect(sent).not.toContain('acme/loom');
+  });
+
+  it('fuel credentials are scoped: org B cannot see or revoke org A\'s key', async () => {
+    // A leak here would expose (or let another tenant delete) the credential
+    // that spends org A's money. Cryptography already blocks decryption
+    // cross-org; this proves the HTTP surface is scoped too.
+    process.env.CREDENTIALS_KEY = 'x'.repeat(48);
+    const fuelApp = express();
+    fuelApp.use(express.json());
+    fuelApp.use((req, _res, next) => {
+      (req as Request & { orgId: string }).orgId = req.header('x-test-org') ?? '';
+      next();
+    });
+    fuelApp.use(createFuelRouter(db, async () => true));
+
+    await request(fuelApp).post('/api/fuel').set('x-test-org', orgA).send({ provider: 'anthropic', key: 'sk-ant-org-a-secret' });
+
+    // Org B sees an empty fuel list...
+    const listB = await request(fuelApp).get('/api/fuel').set('x-test-org', orgB);
+    expect(listB.body.connected).toHaveLength(0);
+    expect(JSON.stringify(listB.body)).not.toContain('org-a-secret');
+
+    // ...and revoking anthropic as org B does not remove org A's credential.
+    await request(fuelApp).delete('/api/fuel/anthropic').set('x-test-org', orgB);
+    const listA = await request(fuelApp).get('/api/fuel').set('x-test-org', orgA);
+    expect(listA.body.connected).toHaveLength(1);
+    delete process.env.CREDENTIALS_KEY;
   });
 
   it('an unrecognized org id never falls back to another org\'s data', async () => {
