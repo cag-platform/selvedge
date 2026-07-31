@@ -984,3 +984,58 @@ evidence, not codebase knowledge. Net effect: the accord is stronger than record
 both codebase-informed reviewers converged independently on "build the slice because
 the machinery exists," and the reviewer without codebase access reached the same slice
 shape from market logic alone. Three routes, one verdict.
+
+---
+
+## 24. FOUNDER'S FINAL POINT (31 Jul 2026) — UI and ease of use are the make-or-break axis
+
+**Recorded at the founder's instruction, and conceded by this review:** all three reviews
+scored problem, wedge, economics, trust, distribution and defensibility. **None scored
+the interface**, and that is an omission, not a scoping choice. For a product whose entire
+promise is "a competent, honest something is responsible for software you cannot read,"
+the interface is not the presentation of the product — it *is* the product. The mechanics
+have been analyzed to death across ~1,400 lines of review; the surface has not been
+analyzed at all.
+
+**The founder's own codebase is the evidence.** Per MERGE-REVIEW.md, four finished,
+tested server-side systems currently have no user-facing surface: the trust track record
+(`GET /api/trust/track-record` — the published-accuracy ledger, the single most
+trust-building asset in the product), per-project memory, context import, and Ask. The
+back end has outrun the interface. The most persuasive thing Selvedge can show a
+skeptical owner is, today, an endpoint with no page.
+
+**The three levels are already built and are a first-class product requirement, not a
+setting.** `voice.detail_level` (`plain_only | plain_expandable | technical_forward`),
+plus `voice.glossary_overrides` (the owner's vocabulary) and
+`stakes.downtime_translation` (the owner's own words for what breakage costs, quoted
+verbatim into narration). This machinery is what allows one product to serve refusal
+personas #1/#5 (nontechnical owner: "is my business okay?") and #6 (engineering lead:
+"give me the trace") without forking into two products or condescending to either. It
+is also the concrete implementation of GPT's operating principle #9 (*the interface
+answers the owner's question before the engineer's question*) and the direct antidote
+to Kimi's failure #10 (*the first customer sees a context graph instead of a "fix my
+checkout" button*). Both reviewers named this risk; neither connected it to machinery
+that already exists.
+
+**Implications carried into the slice:**
+1. **No milestone is done when its API is done.** M1–M5 each ship with the owner-facing
+   surface, or they do not ship. Backend-complete/UI-absent is the failure mode this
+   repository already demonstrates four times over.
+2. **The care of the user is the care of the app.** Every surface must hold at all three
+   detail levels, defaulting to the plainest that answers the question — the "smallest
+   sufficient explanation for the current decision" (§9) enforced as layout, not prose.
+3. **"Regardless of skill" includes regardless of ability.** The accessibility floor is
+   part of the promise: the `cannot_tell` state is already shape-distinct (dashed, not
+   merely colored) so it cannot be misread as calm by a colorblind user — that discipline
+   generalizes. The one known contrast debt (`--ink-faint` failing AA, currently
+   documented rather than fixed) should be closed before the slice meets a stranger.
+4. **The 60-day gate gains interface criteria** alongside the commercial ones: brief
+   comprehension without follow-up questions; approval decisions made without expanding
+   to technical detail; and — the honest test — a customer who completes a repair cycle
+   *without opening Cursor*, which is GPT's success sentence and is an interface outcome
+   before it is an engineering one.
+
+*Final word of the record, in the founder's frame: the mechanics have been reviewed
+enough. What remains unreviewed — and what will decide this — is whether a frightened
+owner at 1am opens Selvedge and immediately understands what is happening to their
+business. Build that surface with the same rigor the underbelly received.*
