@@ -84,6 +84,14 @@ export async function composeDigestForOrg(
       voice = 'composed';
     } else {
       voice = 'fallback';
+      // Hitting the spend cap is the customer's business, not a silent
+      // downgrade. Every other fallback reason is ours to fix and is reported
+      // in logs; this one changes what they paid for, so it is said plainly
+      // in the brief itself rather than leaving today's note quietly reading
+      // differently with no explanation.
+      if (composed.reason === 'daily_budget_exceeded') {
+        renderedText = `${mechanicalText}\n\nI'm writing plainly today — this account reached its daily limit for AI-written updates. Everything above is still accurate; only the wording is simpler. It resets tomorrow.`;
+      }
       // The alert channel for a double validator failure / model outage:
       // loud in logs, visible as voice='fallback' on the digest row and the
       // Today page's reduced-voice note (acceptance gate 6).

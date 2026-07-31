@@ -7,10 +7,12 @@ import {
   dailyLlmBudgetUsd,
   spendTodayUsd,
   DEFAULT_DAILY_LLM_BUDGET_USD,
+  PLAN_DAILY_LLM_BUDGET_USD,
 } from '../../src/server/llm/budget.js';
 import { narrateDispatch } from '../../src/server/narration/dispatch.js';
 import { route } from '../../src/server/routing/route.js';
 import { FakeLlmClient } from '../../src/server/llm/fake.js';
+import { composeBriefLlm } from '../../src/server/digest/composeLlm.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import type { NarratableEvent } from '../../src/server/narration/types.js';
 
@@ -79,6 +81,37 @@ describe('llm/budget — a cap that actually stops', () => {
     expect(dailyLlmBudgetUsd()).toBe(0);
   });
 
+  it('resolves the cap from the org plan, not one global number', async () => {
+    // A trial account and a Studio account must not share a limit, and the
+    // number a customer is held to has to be one they were sold.
+    await db.insert(orgs).values([{ orgId: 'org_trial', plan: 'trial' }, { orgId: 'org_studio', plan: 'studio' }]);
+
+    expect((await checkDailyBudget(db, 'org_trial')).capUsd).toBe(PLAN_DAILY_LLM_BUDGET_USD.trial);
+    expect((await checkDailyBudget(db, 'org_studio')).capUsd).toBe(PLAN_DAILY_LLM_BUDGET_USD.studio);
+    expect((await checkDailyBudget(db, orgId)).capUsd).toBe(PLAN_DAILY_LLM_BUDGET_USD.care); // default plan
+
+    // An unknown plan falls back to the safe default, never to "no limit".
+    expect(dailyLlmBudgetUsd('enterprise-typo')).toBe(DEFAULT_DAILY_LLM_BUDGET_USD);
+  });
+
+  it('the same spend is over budget on trial and under it on studio', async () => {
+    await db.insert(orgs).values([{ orgId: 'org_trial', plan: 'trial' }, { orgId: 'org_studio', plan: 'studio' }]);
+    for (const org of ['org_trial', 'org_studio']) {
+      await db.insert(llmUsage).values({
+        id: ulid(),
+        orgId: org,
+        purpose: 'narrate',
+        model: 'claude-sonnet-5',
+        tokensIn: 100,
+        tokensOut: 100,
+        costUsd: 0.5,
+        ok: 'true',
+      });
+    }
+    expect((await checkDailyBudget(db, 'org_trial')).over).toBe(true);
+    expect((await checkDailyBudget(db, 'org_studio')).over).toBe(false);
+  });
+
   it('reports over exactly at the cap, not merely above it', async () => {
     process.env.DAILY_LLM_BUDGET_USD = '1';
     await spend(db, 0.99);
@@ -112,6 +145,23 @@ describe('llm/budget — a cap that actually stops', () => {
     expect(result?.path).toBe('TEMPLATE');
     expect(result?.meta.fallback_reason).toBe('daily_budget_exceeded');
     expect(result?.output.fragment).toBeTruthy(); // degraded, never silent
+  });
+
+  it('tells the customer the brief was written plainly because of the cap', async () => {
+    // A silent downgrade would leave today's note quietly reading differently
+    // with no explanation. Hitting a limit they pay for is their business.
+    process.env.DAILY_LLM_BUDGET_USD = '0.10';
+    await spend(db, 0.5);
+
+    const composed = await composeBriefLlm(
+      { llm: new FakeLlmClient(), db },
+      orgId,
+      { attention: [], moved: [], standing: [], quiet: '', closedThreads: [] } as never,
+      [],
+      [],
+    );
+    expect(composed.ok).toBe(false);
+    expect(composed.ok === false && composed.reason).toBe('daily_budget_exceeded');
   });
 
   it('still lets the model run while under the cap', async () => {

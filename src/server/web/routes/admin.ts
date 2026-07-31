@@ -1,9 +1,9 @@
 import { Router, type Request } from 'express';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
-import { digests, llmUsage, narrations } from '../../db/schema/index.js';
+import { digests, llmUsage, narrations, orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { dailyLlmBudgetUsd } from '../../llm/budget.js';
+import { dailyLlmBudgetUsd, PLAN_DAILY_LLM_BUDGET_USD } from '../../llm/budget.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -34,6 +34,8 @@ export function createAdminRouter(db: Db) {
     '/api/admin/metrics',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
+      const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
+      const capUsd = dailyLlmBudgetUsd(org?.plan);
 
       const costRows = await db
         .select({
@@ -68,14 +70,16 @@ export function createAdminRouter(db: Db) {
 
       res.json({
         attention_usd_per_day: DAILY_ATTENTION_USD,
-        enforced_cap_usd_per_day: dailyLlmBudgetUsd(),
+        plan: org?.plan ?? 'care',
+        enforced_cap_usd_per_day: capUsd,
+        plan_caps: PLAN_DAILY_LLM_BUDGET_USD,
         cost_by_day: costRows.map((r) => ({
           day: r.day,
           cost_usd: Number(r.costUsd),
           calls: Number(r.calls),
           failed_calls: Number(r.failures),
           needs_attention: Number(r.costUsd) > DAILY_ATTENTION_USD,
-          over_enforced_cap: Number(r.costUsd) >= dailyLlmBudgetUsd(),
+          over_enforced_cap: Number(r.costUsd) >= capUsd,
         })),
         lib_hit_rate_by_day: libRows.map((r) => ({
           day: r.day,
