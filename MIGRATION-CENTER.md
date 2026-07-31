@@ -45,21 +45,34 @@ One destination shape, so every runbook converges:
 | DNS | Customer's registrar | Entri Connect (35+ providers, one consent, writes records automatically) where supported; plain instructions + DNS-over-HTTPS polling verification everywhere else [V: entri.com] |
 | Fuel | Customer's model subscription/key | The BYO connector (§25.3) |
 
-### The GitHub wrinkle (design decision)
+### The GitHub wrinkle — solved in-app: borrow the key, use it once, hand it back
 
-GitHub Apps **cannot create repos in a personal user account** — that needs a classic
-OAuth `repo` scope, which grants access to ALL the customer's private repos: a scary,
-trust-inconsistent consent screen [V: GitHub docs + community #171040]. The
-trust-consistent flow instead:
+GitHub Apps **cannot create repos in a personal user account** — that needs an OAuth
+`repo` scope, which grants access to ALL the customer's private repos [V: GitHub docs +
+community #171040]. The earlier draft of this document routed around that by sending
+the customer to GitHub's UI to "create a repository" — which fails the vocabulary test
+(a nontechnical owner doesn't know what a repository is) and breaks the in-app flow.
 
-1. Customer clicks a guided "create your repository" step (GitHub's own UI, their
-   account, one click from a template or empty).
-2. Customer installs the Selvedge GitHub App **on that repo only** (per-repo installs
-   are the App model's whole point).
-3. Selvedge pushes the migrated code via the installation token.
+The better design — **borrow-and-return**, fully in-app:
 
-One extra click, zero over-broad permissions. The permission ask stays exactly as large
-as the job — which is the product's entire personality applied to onboarding.
+1. In-app popup: *"Connect your GitHub account"* (or *"Create one — it's where your
+   app's code will live, in your name"* — GitHub signup happens inside the same popup
+   for customers who have none, and a brand-new account has nothing for a broad scope
+   to reach).
+2. Selvedge uses the OAuth token for exactly one action: create the single private
+   repo, in their account, named for their app.
+3. **Selvedge then revokes its own broad authorization** — `DELETE
+   /applications/{client_id}/grant` — and directs the customer's one remaining consent:
+   install the Selvedge App **on that repo only**.
+4. The ledger records all three acts: key borrowed, one door built, key returned —
+   with timestamps.
+
+Total broad-permission exposure: seconds, one action, self-revoked, receipted. The
+plain-level copy never says repository: *"I set up your app's new home on GitHub —
+it's in your name, and I gave back the master key. Here's the receipt."* This is the
+product's permission philosophy executed rather than merely respected: ask for exactly
+what the job needs, and when the job briefly needs more, give it back in the same
+breath and show your work.
 
 ---
 
@@ -153,7 +166,99 @@ as a side effect of the move.**
 
 ---
 
-## 4. SCALE DESIGN
+## 4. HOW MUCH LIVES IN THE APP — and the vocabulary rule
+
+**Founder directive:** a nontechnical customer who sees "create repository" is lost;
+every step needs the same three levels of context the rest of the product has. And:
+get as much of the migration as possible directly into the app.
+
+### The vocabulary rule
+
+The migration speaks through the same `voice.detail_level` machinery as everything
+else. The plain register never uses infrastructure nouns:
+
+| Plain (default) | Plain + why (expand) | Technical |
+|---|---|---|
+| "your app's new home" | "GitHub — where the code lives, in your name" | repo, branch, App installation |
+| "your app's memory" | "the database — every order, user, and record" | Postgres, `pg_dump`, row counts |
+| "your web address" | "pointing yourname.com at the new home" | DNS, A record, TTL, propagation |
+| "the keys" | "passwords and connections the app uses" | secrets, env vars, OAuth configs |
+| "your sign-in system" | "how your users log in — this moves with them" | auth provider, password hashes, JWT |
+| "the practice copy" | "a full copy running on Tuesday's data, so we can check everything before touching the real one" | staging deploy, snapshot, smoke checks |
+
+No step title, button, or progress line may use the right-hand column at plain level.
+The technical register stays one tap away for the engineer reading over a shoulder —
+same page, same three depths, exactly like the situation cards.
+
+### Three classes of step — and the answer to "can the whole thing be in-app?"
+
+**Class A — fully in-app (the large majority).** Everything driven by APIs and OAuth
+popups that never leave our surface: destination provisioning (Supabase project via
+Management API; Railway via OAuth/template deploy — signup happens *inside* the OAuth
+popup for customers who have no account; Neon claimable needs no signup at all),
+GitHub via borrow-and-return (§1), the entire parallel build, data import,
+verification, cutover orchestration, and DNS **where Entri Connect covers the
+customer's provider** (35+ providers, one sign-in inside our flow, records written
+automatically).
+
+**Class B — guided-remote: their screen, our copilot, our confirmation.** A handful of
+actions only the customer can perform, on the source platform's screen. We cannot
+click for them — but we can watch, and that changes everything about how these feel.
+The pattern, every time:
+
+1. The app shows exactly what to do, in plain words, with a picture of the screen
+   they'll see and a deep link that opens it.
+2. **The app detects completion server-side and confirms it** — the customer never has
+   to judge whether it worked. "Press the button on that screen; I'll tell you the
+   moment I can see it worked." Repo synced → we see the code arrive. Bolt Claim →
+   the project appears in their Supabase org. Database copied → we count the rows and
+   compare. DNS changed → we poll public resolvers and announce propagation live.
+
+The full Class-B inventory, per source: **Replit** — one line pasted into Replit's
+Shell tab (we show exactly where) that pipes the database straight from Replit to
+their new database: `pg_dump "$DATABASE_URL" | psql "<their-new-connection>"` — the
+data never touches Selvedge's servers, which is both the simplest and the most
+private design; **Lovable** — clicking "GitHub sync" and (Cloud apps) "Export data" in
+Lovable's UI; **Bolt** — the Claim button; **Base44** — copying one API key from their
+dashboard into our app (after which the entire data pull runs from our side);
+**DNS fallback** — for registrars Entri doesn't cover, typed-out record changes with
+live verification.
+
+**Class C — unavoidably theirs, and honestly named.** Two moments cannot and should
+not be absorbed: creating accounts that will be *in their name* (a signup inside an
+OAuth popup still asks for their email), and **entering a payment card at the hosting
+company**. Do not hide the card moment — frame it as the point: *"This is the part
+where the hosting starts being yours instead of theirs. It's about $5–20 a month, paid
+straight to the hosting company — most of why your bill is about to drop."* The deed
+moments are the product promise made tangible, not friction to apologize for.
+
+### The in-app share, per source
+
+| Source | In-app (Class A) | Their-screen steps (Class B) | Verdict |
+|---|---|---|---|
+| Lovable, own Supabase, already GitHub-synced | ~95% | possibly zero | **Effectively fully in-app** — the existence proof |
+| Lovable Cloud | ~90% | sync click + export click | Near-total |
+| Bolt | ~90% | one Claim click | Near-total |
+| v0 | ~90% | env-pull or re-entry of "Sensitive" values | Near-total |
+| Replit | ~85% | one pasted line + a few clicks | The paste is the floor — and it is one paste |
+| Base44 | ~90% of *supported* steps | one API key copy | The rewrite itself is Phase 3 agent work |
+
+So: **the entire migration cannot be literally 100% in-app for every source — but it
+gets within one or two watched, confirmed, plain-language steps of it, and for the
+best case it effectively is.** The bar that matters is not "zero steps elsewhere"; it
+is that the customer never faces another platform's screen without our copilot
+narrating exactly what to press and confirming the moment it worked, and never faces a
+word they don't know at the level they chose.
+
+One boundary held deliberately: Selvedge never asks for the customer's *login
+credentials* to a source platform to drive its UI for them. API keys the platform
+officially issues, yes; impersonating their session, never. The convenience isn't
+worth teaching customers to hand their passwords to a service — least of all one whose
+brand is trust.
+
+---
+
+## 5. SCALE DESIGN
 
 - **Runbooks are data, not code** — same doctrine as the routing table. A runbook per
   source platform: steps, per-step verification, known breakage classes and their
@@ -183,7 +288,7 @@ as a side effect of the move.**
 
 ---
 
-## 5. WHAT THIS CHANGES IN THE BUILD PLAN
+## 6. WHAT THIS CHANGES IN THE BUILD PLAN
 
 Phase 1's internal order becomes: **connect flows first** (GitHub App + guided repo
 creation; Railway OAuth/token; Supabase OAuth app; fuel), then the **Survey** (read-only
