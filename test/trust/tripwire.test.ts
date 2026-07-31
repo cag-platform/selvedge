@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, narrations, trustIncidents } from '../../src/server/db/schema/index.js';
+import { orgs, narrations, trustIncidents, feedback } from '../../src/server/db/schema/index.js';
 import { recordFalseAllClearIfContradicted, isContradictingSignal } from '../../src/server/trust/tripwire.js';
 import { trackRecord } from '../../src/server/trust/trackRecord.js';
 
@@ -121,5 +121,44 @@ describe('trust/trackRecord', () => {
     expect(tr.class1_incidents).toBe(0);
     expect(tr.summary).toMatch(/certain \d+% of the time/);
     expect(tr.summary).toMatch(/No false all-clears/);
+  });
+
+  it('qualifies the clean record: none CAUGHT is not none happened', async () => {
+    // A false all-clear is only detectable when a contradicting signal arrives
+    // inside the tripwire window. With no runtime probes yet, "no incidents"
+    // mostly means "nothing told us" — the summary must not read as proof.
+    await seedNarration(db, orgId, 'loom', 'users_fine', 'high', new Date('2026-07-19T12:00:00Z'));
+
+    const tr = await trackRecord(db, orgId, 30, now);
+    expect(tr.class1_incidents).toBe(0);
+    expect(tr.summary).toContain('No false all-clears caught');
+    expect(tr.summary).toContain('only know about the ones something later contradicted');
+  });
+
+  it('reports the complaints it collected instead of dropping them', async () => {
+    // These were counted into the payload and then never reached the sentence:
+    // a user could tap "didn't help" fifty times and still read a clean record.
+    await seedNarration(db, orgId, 'loom', 'users_fine', 'high', new Date('2026-07-19T12:00:00Z'));
+    await db.insert(feedback).values([
+      { id: 'fb_1', orgId, narrationId: 'n_x', kind: 'didnt_help' },
+      { id: 'fb_2', orgId, narrationId: 'n_y', kind: 'explain_differently' },
+    ]);
+
+    const tr = await trackRecord(db, orgId, 30, now);
+    expect(tr.feedback.didnt_help).toBe(1);
+    expect(tr.feedback.explain_differently).toBe(1);
+    expect(tr.summary).toContain('You told me 2 times that I hadn\'t helped.');
+  });
+
+  it('does not imply confidence data it never recorded', async () => {
+    // Template-path narrations carry no confidence. With the voice off every
+    // row is `unstated`, and the percentage used to vanish silently, leaving a
+    // clean-sounding sentence backed by nothing.
+    await seedNarration(db, orgId, 'loom', 'users_fine', null, new Date('2026-07-19T12:00:00Z'));
+
+    const tr = await trackRecord(db, orgId, 30, now);
+    expect(tr.confidence.unstated).toBe(1);
+    expect(tr.summary).not.toMatch(/certain \d+% of the time/);
+    expect(tr.summary).toContain("wasn't recording how sure I was");
   });
 });

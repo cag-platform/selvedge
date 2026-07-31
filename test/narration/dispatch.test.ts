@@ -189,4 +189,28 @@ describe('narrateDispatch', () => {
     expect(fake.requests).toHaveLength(1);
     expect(written).toHaveLength(1);
   });
+
+  it('carries the fingerprint even when the model fails and the template takes over', async () => {
+    // Without it, a "didn't help" tap on a fallback narration logged the
+    // complaint and retired nothing — the phrasing that failed the user kept
+    // its place in the library. The feedback route reads meta.fingerprint.
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      stakes: { tier: 'live_small', has_external_users: true, touches_money: false },
+    });
+    const decision = route({ event_type: 'build.succeeded' }, pack);
+    const library: NarrationLibraryPort = {
+      lookup: async () => null,
+      writeCandidate: async () => {},
+      fingerprint: () => 'fp_build_succeeded',
+    };
+    const result = await narrateDispatch(testEvent('build.succeeded'), pack, decision, {
+      llm: new DownLlmClient(),
+      db,
+      library,
+    });
+    expect(result?.meta.fallback_reason).toBe('network_or_timeout');
+    expect(result?.meta.lib_hit).toBe(false);
+    expect(result?.meta.fingerprint).toBe('fp_build_succeeded');
+  });
 });

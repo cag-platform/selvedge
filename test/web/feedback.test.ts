@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, narrations, feedback } from '../../src/server/db/schema/index.js';
+import { orgs, narrations, feedback, narrationLibrary } from '../../src/server/db/schema/index.js';
 import { createFeedbackRouter } from '../../src/server/web/routes/feedback.js';
 import { DbNarrationLibrary } from '../../src/server/narration/library.js';
 import { narrateDispatch } from '../../src/server/narration/dispatch.js';
@@ -48,7 +48,14 @@ describe('feedback taps (acceptance gate 4)', () => {
   it('a "didn\'t help" tap on a graduated entry retires it; the next identical event takes the LLM path', async () => {
     const library = new DbNarrationLibrary(db);
     const output = { fragment: 'Loom: your update went live cleanly.' };
-    for (let i = 0; i < 5; i++) await library.writeCandidate(orgId, ev(`seed_${i}`), pack, output);
+    // Graduation now needs breadth AND time (two orgs, three uses, a week of
+    // exposure) — a same-org burst no longer promotes anything.
+    await library.writeCandidate(orgId, ev('seed_0'), pack, output);
+    await library.writeCandidate(orgId, ev('seed_1'), pack, output);
+    await db
+      .update(narrationLibrary)
+      .set({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) });
+    await library.writeCandidate('org_b', ev('seed_2'), pack, output);
 
     // Sanity: graduated — a LIB-routed dispatch is served from the library.
     const decision = route({ event_type: 'build.succeeded' }, pack);

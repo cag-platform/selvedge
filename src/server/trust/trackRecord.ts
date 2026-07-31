@@ -66,16 +66,35 @@ export async function trackRecord(db: Db, orgId: string, windowDays = 30, now: D
     confidence,
     feedback: fb,
     class1_incidents: incidents.length,
-    summary: buildSummary(rows.length, confidence, verdicts, incidents.length, windowDays),
+    summary: buildSummary(rows.length, confidence, verdicts, incidents.length, windowDays, fb),
   };
 }
 
+/**
+ * The published accuracy line. Three honesty rules, each of which the first
+ * version broke:
+ *
+ * 1. Never claim an unqualified clean record. A false all-clear is only
+ *    detectable when a contradicting machine signal arrives within the
+ *    tripwire window — so zero incidents means "none caught", not "none
+ *    happened". Until real probes exist the difference is large, and the
+ *    product's whole position is that it does not overstate what it knows.
+ * 2. Report the complaints. `feedback` was collected here and then dropped on
+ *    the floor: a user could tap "didn't help" fifty times and still read
+ *    "I was certain 84% of the time." A track record that omits the
+ *    complaints is marketing, not a ledger.
+ * 3. Don't imply confidence data we never recorded. Template-path narrations
+ *    carry no confidence, so with the voice off every row is `unstated` and
+ *    the percentage silently vanished, leaving a clean-sounding sentence
+ *    backed by nothing. Say that instead.
+ */
 function buildSummary(
   narrated: number,
   confidence: TrackRecord['confidence'],
   verdicts: TrackRecord['verdicts'],
   class1: number,
   windowDays: number,
+  fb: TrackRecord['feedback'],
 ): string {
   if (narrated === 0) return `Nothing to report yet in the last ${windowDays} days.`;
 
@@ -87,15 +106,22 @@ function buildSummary(
   if (certainPct !== null) {
     parts.push(`In the last ${windowDays} days I was certain ${certainPct}% of the time`);
   } else {
-    parts.push(`Over the last ${windowDays} days`);
+    parts.push(`Over the last ${windowDays} days I wasn't recording how sure I was`);
   }
   if (flagged > 0) parts.push(`and told you when I wasn't (${flagged} time${flagged === 1 ? '' : 's'})`);
 
   let line = `${parts.join(' ')}.`;
+
   if (class1 > 0) {
     line += ` I got ${class1} all-clear${class1 === 1 ? '' : 's'} wrong and said so.`;
   } else {
-    line += ` No false all-clears.`;
+    line += ` No false all-clears caught — though I only know about the ones something later contradicted.`;
   }
+
+  const complaints = fb.didnt_help + fb.explain_differently;
+  if (complaints > 0) {
+    line += ` You told me ${complaints} time${complaints === 1 ? '' : 's'} that I hadn't helped.`;
+  }
+
   return line;
 }

@@ -37,32 +37,52 @@ describe('narration/library — DbNarrationLibrary', () => {
   });
   afterEach(async () => close());
 
-  it('candidates do not serve lookups; graduation at 5 uses within one org', async () => {
-    const output = { fragment: 'Loom: your update went live cleanly.' };
+  /** Age every candidate past MIN_EXPOSURE_MS so the time gate isn't the thing under test. */
+  async function ageEntries(days = 8): Promise<void> {
+    await db
+      .update(narrationLibrary)
+      .set({ createdAt: new Date(Date.now() - days * 24 * 60 * 60 * 1000) });
+  }
 
-    for (let i = 0; i < 4; i++) {
+  it('a burst inside ONE org never graduates, however many uses', async () => {
+    // The v1 defect: five emissions in one afternoon — the same flaky build
+    // failing repeatedly — promoted a phrasing globally for every tenant,
+    // with nobody having affirmed it. Silence is not consent.
+    const output = { fragment: 'Loom: your update went live cleanly.' };
+    for (let i = 0; i < 12; i++) {
       await library.writeCandidate('org_a', ev(), pack, output);
       expect(await library.lookup('org_a', ev(), pack)).toBeNull();
     }
-    // 5th use graduates it.
-    await library.writeCandidate('org_a', ev(), pack, output);
-    const hit = await library.lookup('org_a', ev(), pack);
-    expect(hit?.source).toBe('library');
-    expect(hit?.output.fragment).toBe('Loom: your update went live cleanly.');
+    await ageEntries();
+    expect(await library.lookup('org_a', ev(), pack)).toBeNull();
   });
 
-  it('graduates at 3 uses across two orgs', async () => {
+  it('does not graduate on breadth alone until it has had a week of exposure', async () => {
+    const output = { fragment: 'Loom: your update went live cleanly.' };
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_b', ev({ org_id: 'org_b' }), pack, output);
+    // Two orgs and three uses, but minutes old — a same-day burst.
+    expect(await library.lookup('org_b', ev({ org_id: 'org_b' }), pack)).toBeNull();
+  });
+
+  it('graduates on 3 uses across two orgs once the exposure window has passed', async () => {
     const output = { fragment: 'Loom: your update went live cleanly.' };
     await library.writeCandidate('org_a', ev(), pack, output);
     await library.writeCandidate('org_a', ev(), pack, output);
     expect(await library.lookup('org_a', ev(), pack)).toBeNull();
+    await ageEntries();
+    // The use that crosses the breadth threshold, now that time has passed too.
     await library.writeCandidate('org_b', ev({ org_id: 'org_b' }), pack, output);
     expect(await library.lookup('org_b', ev({ org_id: 'org_b' }), pack)).not.toBeNull();
   });
 
   it('serves a graduated phrasing across projects via the {project} slot', async () => {
     const output = { fragment: 'Loom: your update went live cleanly.' };
-    for (let i = 0; i < 5; i++) await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await ageEntries();
+    await library.writeCandidate('org_b', ev({ org_id: 'org_b' }), pack, output);
 
     const mirrorPack = makeTestPack({
       identity: { project_id: 'mirror', name: 'Mirror', owner_description: 'x' },
@@ -75,14 +95,20 @@ describe('narration/library — DbNarrationLibrary', () => {
 
   it('different signatures file under different fingerprints', async () => {
     const output = { fragment: 'Loom: shipped.' };
-    for (let i = 0; i < 5; i++) await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await ageEntries();
+    await library.writeCandidate('org_b', ev({ org_id: 'org_b' }), pack, output);
 
     expect(await library.lookup('org_a', ev({ signature: 'Completely Different Workflow' }), pack)).toBeNull();
   });
 
   it('retireByFingerprint sends a graduated entry back to the LLM path and bumps negative feedback', async () => {
     const output = { fragment: 'Loom: shipped.' };
-    for (let i = 0; i < 5; i++) await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await library.writeCandidate('org_a', ev(), pack, output);
+    await ageEntries();
+    await library.writeCandidate('org_b', ev({ org_id: 'org_b' }), pack, output);
     const fingerprint = library.fingerprint(ev(), pack);
 
     expect(await library.retireByFingerprint(fingerprint)).toBe(true);

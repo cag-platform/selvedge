@@ -95,7 +95,15 @@ export async function narrateDispatch(
     return {
       output,
       path: 'TEMPLATE',
-      meta: { fallback_reason: result.reason, ...(intended === 'LIB' ? { lib_hit: false } : {}) },
+      // The fingerprint must ride along even on the fallback path: without it
+      // a "didn't help" tap on a template-fallback narration logs the
+      // complaint and silently retires nothing, so the phrasing that failed
+      // the user keeps its place in the library.
+      meta: {
+        fallback_reason: result.reason,
+        ...(intended === 'LIB' ? { lib_hit: false } : {}),
+        ...(fingerprint ? { fingerprint } : {}),
+      },
     };
   }
 

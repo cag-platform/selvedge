@@ -105,7 +105,29 @@ export class DbNarrationLibrary implements NarrationLibraryPort {
     await this.maybeGraduate(libraryId);
   }
 
-  /** Graduation rule v1: 3 uses across >=2 orgs, or 5 within one org — zero negative feedback either way. */
+  /**
+   * Graduation rule v2 — breadth and time, not just silence.
+   *
+   * Silence is NOT consent. This product has no positive feedback signal by
+   * design (two negative taps and nothing else), so "zero complaints" is a
+   * necessary condition for promotion, never evidence of approval. v1 treated
+   * it as evidence: `total >= 5` let one org emit the same phrasing five times
+   * in an afternoon — one flaky build failing repeatedly — and promote it
+   * globally for every other tenant, with no human having affirmed it and
+   * quite possibly no human having read it (uses are counted on emission, not
+   * on delivery).
+   *
+   * v2 requires what silence cannot supply: the phrasing must have been used
+   * across at least two organisations, at least three times, and must have
+   * existed for at least a week. A burst inside one tenant now graduates
+   * nothing. The library is global, so promotion should require cross-org
+   * evidence — repetition within a single org says nothing about whether the
+   * wording works for anyone else.
+   */
+  private static readonly MIN_ORGS = 2;
+  private static readonly MIN_USES = 3;
+  private static readonly MIN_EXPOSURE_MS = 7 * 24 * 60 * 60 * 1000;
+
   private async maybeGraduate(libraryId: string): Promise<void> {
     const [entry] = await this.db.select().from(narrationLibrary).where(eq(narrationLibrary.id, libraryId)).limit(1);
     if (!entry || entry.status !== 'candidate' || entry.negativeFeedbackCount > 0) return;
@@ -113,8 +135,12 @@ export class DbNarrationLibrary implements NarrationLibraryPort {
     const uses = await this.db.select().from(narrationLibraryUses).where(eq(narrationLibraryUses.libraryId, libraryId));
     const orgCount = uses.length;
     const total = uses.reduce((sum, u) => sum + u.count, 0);
+    const exposedMs = Date.now() - new Date(entry.createdAt).getTime();
 
-    const graduates = (orgCount >= 2 && total >= 3) || total >= 5;
+    const graduates =
+      orgCount >= DbNarrationLibrary.MIN_ORGS &&
+      total >= DbNarrationLibrary.MIN_USES &&
+      exposedMs >= DbNarrationLibrary.MIN_EXPOSURE_MS;
     if (graduates) {
       await this.db
         .update(narrationLibrary)
