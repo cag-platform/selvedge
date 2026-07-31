@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
+import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs } from '../../src/server/db/schema/index.js';
+import { orgs, events } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
+import { ingestEvent } from '../../src/server/resolution/ingest.js';
 import { createPacksRouter } from '../../src/server/web/routes/packs.js';
 import { appWithOrg } from './helpers.js';
 import { makeTestPack } from '../fixtures/testPack.js';
@@ -91,5 +93,43 @@ describe('web/routes/packs', () => {
 
     const bad = await request(app).patch('/api/packs/p1').send({ voice: { detail_level: 'nonsense' } });
     expect(bad.status).toBe(422);
+  });
+
+  it('DELETE removes the project and its scoped data, and 404s on a repeat', async () => {
+    await createPack(db, 'org_a', makeTestPack({ identity: { project_id: 'p1', name: 'P1', owner_description: 'x' } }));
+    await ingestEvent(db, {
+      org_id: 'org_a',
+      source: 'github',
+      source_account_id: 'acme/test-project',
+      event_type: 'code.pr_opened',
+      occurred_at: '2026-07-19T10:00:00Z',
+      severity_hint: 'info',
+      raw: {},
+      dedupe_key: 'd1',
+    });
+    const app = appWithOrg('org_a', createPacksRouter(db));
+
+    // The event resolved to p1 (its source is p1's repo).
+    const beforeEvents = await db.select().from(events).where(eq(events.projectId, 'p1'));
+    expect(beforeEvents.length).toBeGreaterThan(0);
+
+    const del = await request(app).delete('/api/packs/p1');
+    expect(del.status).toBe(200);
+    expect(del.body.ok).toBe(true);
+
+    expect((await request(app).get('/api/packs/p1')).status).toBe(404);
+    expect((await db.select().from(events).where(eq(events.projectId, 'p1')))).toHaveLength(0);
+
+    // Deleting again is a clean 404, not a 500.
+    expect((await request(app).delete('/api/packs/p1')).status).toBe(404);
+  });
+
+  it("DELETE won't reach across orgs", async () => {
+    await createPack(db, 'org_b', makeTestPack({ identity: { project_id: 'p2', name: 'P2', owner_description: 'x' } }));
+    const app = appWithOrg('org_a', createPacksRouter(db));
+    expect((await request(app).delete('/api/packs/p2')).status).toBe(404);
+    // org_b's pack is untouched.
+    const appB = appWithOrg('org_b', createPacksRouter(db));
+    expect((await request(appB).get('/api/packs/p2')).status).toBe(200);
   });
 });

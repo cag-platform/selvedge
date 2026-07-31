@@ -21,7 +21,9 @@ export async function gatherWindowNarrations(db: Db, orgId: string, start: Date,
 }
 
 export async function gatherPacks(db: Db, orgId: string): Promise<ContextPack[]> {
-  return listPacks(db, orgId);
+  // Muted projects are deprioritized: they stay visible in Projects but drop
+  // out of the daily brief (and its pushes).
+  return listPacks(db, orgId, { includeMuted: false });
 }
 
 export async function getPreviousDigest(db: Db, orgId: string, dateString: string) {

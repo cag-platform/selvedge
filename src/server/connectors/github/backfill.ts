@@ -2,7 +2,7 @@ import type { Octokit } from 'octokit';
 import type { Db } from '../../db/client.js';
 import type { DeployCadence, InProgressItem } from '../../../shared/types/pack.js';
 import { resolveProjectId } from '../../resolution/resolveProject.js';
-import { createPack, listPacks, updateMachineSections } from '../../packs/store.js';
+import { archivedProjectIds, createPack, listPacks, updateMachineSections } from '../../packs/store.js';
 import { scaffoldPackFromRepo } from '../../packs/scaffold.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
 import { listInstallations } from './health.js';
@@ -94,9 +94,13 @@ export async function backfillRepoForOrg(db: Db, orgId: string, repoFullName: st
 export async function backfillInstallation(db: Db, octokit: Octokit, orgId: string): Promise<void> {
   const repos = await octokit.paginate(octokit.rest.apps.listReposAccessibleToInstallation, { per_page: 100 });
   const taken = new Set((await listPacks(db, orgId)).map((p) => p.identity.project_id));
+  const archived = await archivedProjectIds(db, orgId);
   for (const repo of repos as Array<{ full_name: string; archived?: boolean }>) {
     if (repo.archived) continue;
     const projectId = await resolveProjectId(db, orgId, 'github', repo.full_name);
+    // A repo whose project the owner permanently deleted stays dormant: don't
+    // re-scaffold it and don't re-populate its (tombstoned) pack.
+    if (projectId && archived.has(projectId)) continue;
     if (!projectId) {
       const draft = scaffoldPackFromRepo(repo.full_name, taken);
       await createPack(db, orgId, draft);

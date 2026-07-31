@@ -101,6 +101,44 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+type StackMemory = { apps: number; watched_days: number; things_learned: number; summary: string };
+
+/**
+ * The moat made visible (Ironclad 1): a growing count of what Selvedge has
+ * learned, and the honest anti-lock-in export. Being able to leave is what
+ * makes people stay.
+ */
+function MemoryBanner() {
+  const [mem, setMem] = useState<StackMemory | null>(null);
+  useEffect(() => {
+    api.get<StackMemory>('/api/memory').then(setMem).catch(() => setMem(null));
+  }, []);
+  if (!mem || mem.apps === 0) return null;
+
+  const exportContext = async () => {
+    const bundle = await api.get<unknown>('/api/export');
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'selvedge-context.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Pane className="mb-6 p-5">
+      <p className="text-body text-ink">{mem.summary}</p>
+      <button
+        onClick={() => void exportContext()}
+        className="mt-3 text-body text-brass hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+      >
+        Export my context →
+      </button>
+    </Pane>
+  );
+}
+
 export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -114,6 +152,7 @@ export function Projects() {
 
   return (
     <div className="animate-settle">
+      <MemoryBanner />
       <div className="mb-4 flex items-center justify-between">
         <p className={eyebrowCls}>
           {projects.length === 0 ? 'No projects yet — connect GitHub, or create one' : 'Your stack · read the edges'}
@@ -131,10 +170,22 @@ export function Projects() {
         />
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {projects.map((p) => (
+        {projects.filter((p) => !p.muted).map((p) => (
           <ProjectCard key={p.project_id} project={p} />
         ))}
       </div>
+      {projects.some((p) => p.muted) && (
+        <details className="mt-6">
+          <summary className="cursor-pointer text-label font-body uppercase tracking-widest text-ink-faint">
+            Muted · {projects.filter((p) => p.muted).length}
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {projects.filter((p) => p.muted).map((p) => (
+              <ProjectCard key={p.project_id} project={p} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -10,9 +10,12 @@ type SectionItem = {
   fragment: string;
   narration_id: string;
   verdict?: Verdict | null;
+  confidence?: 'high' | 'medium' | 'low' | null;
   technical_detail?: string | null;
   event_id?: string | null;
 };
+
+type Correction = { id: string; project_id: string | null; line: string };
 
 type Digest = {
   id: string;
@@ -41,7 +44,7 @@ type Narration = {
   occurredAt: string;
 };
 
-type TodayResponse = { digest: Digest | null; post_digest_events: Narration[] };
+type TodayResponse = { digest: Digest | null; post_digest_events: Narration[]; corrections?: Correction[] };
 
 /** The pane's own edge carries the day's top priority. */
 function briefStatus(digest: Digest): EdgeStatus {
@@ -111,6 +114,10 @@ function AttentionAnchor({ item }: { item: SectionItem }) {
   return (
     <div className="flex flex-wrap items-center gap-3 text-meta text-ink-dim">
       <StatusDot status={item.verdict ? verdictToStatus(item.verdict) : 'needs'} />
+      {/* Low confidence is never hidden to look calmer (Ironclad 2). */}
+      {item.confidence && item.confidence !== 'high' && (
+        <span className="text-ink-faint">{item.confidence === 'low' ? "not sure — checking" : 'fairly sure'}</span>
+      )}
       {(item.technical_detail || item.event_id) && (
         <Reveal>
           {item.technical_detail ?? 'no additional detail'}
@@ -187,6 +194,18 @@ export function Today() {
         <p className="rounded-card border border-hairline bg-panel-soft px-4 py-2 text-body text-ink-dim">
           Running with reduced voice today — this brief was assembled mechanically. All facts are unaffected.
         </p>
+      )}
+
+      {/* Own the miss out loud (Ironclad 2): a false all-clear, corrected. */}
+      {data.corrections && data.corrections.length > 0 && (
+        <div className="rounded-card border border-hairline border-l-2 border-l-thread bg-panel-soft px-4 py-3">
+          <p className="text-label font-body uppercase tracking-widest text-thread">Correcting myself</p>
+          {data.corrections.map((c) => (
+            <p key={c.id} className="mt-1 text-body text-ink">
+              {c.line}
+            </p>
+          ))}
+        </div>
       )}
 
       <Brief status={briefStatus(digest)}>
@@ -266,6 +285,11 @@ export function Today() {
       )}
 
       <ProjectRail projects={projects} />
+
+      {/* The independent-auditor stance, stated plainly (Ironclad 2). */}
+      <p className="text-meta text-ink-faint">
+        Selvedge didn't build your apps. That's the point — I have no reason to tell you everything's fine when it isn't.
+      </p>
     </div>
   );
 }

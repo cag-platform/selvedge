@@ -43,6 +43,27 @@
       "when": 1784521223571,
       "tag": "0005_freezing_big_bertha",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784521323571,
+      "tag": "0006_woven_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784521423571,
+      "tag": "0007_visible_trust",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784521523571,
+      "tag": "0008_hidden_projects",
+      "breakpoints": true
     }
   ]
 }

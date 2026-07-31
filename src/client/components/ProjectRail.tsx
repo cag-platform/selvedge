@@ -13,6 +13,7 @@ export type ProjectCardData = {
   tier: string;
   health_line: string;
   edge: EdgeStatus;
+  muted?: boolean;
 };
 
 const TIER_LABEL: Record<string, string> = {

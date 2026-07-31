@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { createPack, getPack, listPacks, updateHumanSections } from '../../packs/store.js';
+import { createPack, deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
 import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -106,6 +106,41 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
         }
         throw err;
       }
+    }),
+  );
+
+  // Mute / unmute a project — the softer "deprioritize". Kept out of the daily
+  // brief but still listed (collapsed). Reversible, unlike delete.
+  router.patch(
+    '/api/packs/:projectId/mute',
+    asyncHandler(async (req, res) => {
+      const { muted } = req.body as { muted?: unknown };
+      if (typeof muted !== 'boolean') {
+        res.status(400).json({ error: 'muted (boolean) is required' });
+        return;
+      }
+      const ok = await setPackMuted(db, orgIdOf(req), req.params.projectId!, muted);
+      if (!ok) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      res.json({ ok: true, muted });
+    }),
+  );
+
+  // Delete a project permanently (deliberate, no undo): purges its narrations
+  // and events, and archives the pack as a tombstone so the GitHub connector
+  // won't resurrect the repo. 404 when the project isn't there (or already
+  // deleted).
+  router.delete(
+    '/api/packs/:projectId',
+    asyncHandler(async (req, res) => {
+      const deleted = await deletePack(db, orgIdOf(req), req.params.projectId!);
+      if (!deleted) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      res.json({ ok: true });
     }),
   );
 

@@ -19,6 +19,7 @@ export const narrations = pgTable('narrations', {
   fragment: text('fragment'), // rendered plain_only sentence(s); null when path=SILENT
   technicalDetail: text('technical_detail'), // collapsed technical line for plain_expandable
   verdict: text('verdict'), // users_affected | users_fine | cannot_tell | null
+  confidence: text('confidence'), // high | medium | low | null — how sure the narrator was (Ironclad 2: visible trust)
   storm: boolean('storm').notNull().default(false), // true if this row is a collapsed storm summary
   meta: jsonb('meta'), // slot values used, modifier flags applied, etc. — for debugging/expandable detail
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
