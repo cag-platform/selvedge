@@ -848,3 +848,89 @@ complete the migration, and ≥8 of 10 migrated remain at day 60.
 ambiguity that separated it from "build a narrow version": the narrow version is now
 determined (the migration path + the flat care plan). Run the migration concierge; let
 its cohort data promote the verdict.**
+
+---
+
+## 22. FINAL ACCORD (31 Jul 2026) — three-reviewer synthesis
+
+Three independent reviews: GPT ("build a narrow version that delivers the full promise,"
+scores 7.5–9.5), Kimi ("build a vertical slice, not the platform," 5.5/10), and this
+review ("validate before building; narrow shape = migration path + flat care plan").
+
+**Evidence conflicts, recorded:** Kimi's "Vigilia at €29/mo" could not be verified by
+this review's sweep [U — the identical market slot is verifiably occupied by VibeDoctor
+$15–79/mo and Vibe App Scanner $19–39/mo, so the argument survives the citation].
+Kimi's "Lovable April 2026 cross-account breach" is unverified here [U]; the verified
+incident is the 2025 missing-RLS CVE. Kimi's unit-economics table independently matches
+this review's within rounding — treated as convergent validation.
+
+**Unanimous (all three reviewers):**
+1. The closed loop is the product; explanation alone is a feature. The customer buys
+   responsibility transfer — "make it not my problem" — not understanding.
+2. The three load-bearing unknowns are identical across all three reviews: the
+   permission cliff, repair unit economics under non-convergence, quiet-month
+   willingness to pay.
+3. Context/memory is not a day-one moat. Only longitudinal verified outcomes (and the
+   calibration record built on them) create switching cost; schemas and prompt assembly
+   do not.
+4. Overbuilding before validating trust and buying behavior is the #1 named failure
+   mode. (Kimi's formulation is the sharpest: if the first customer sees a context
+   graph instead of a "fix my checkout" button, the wrong thing was built.)
+5. The solo founder is the design target; the paying market is spend-qualified owners,
+   small teams, and agencies. Build for the solo founder's comprehension; sell where
+   the budget is.
+6. Repair-first acquisition is the primary distribution motion.
+
+**Adjudicated disputes:**
+- **Scores.** GPT scored the vision (customer clarity 9, venture-scale 8); Kimi and this
+  review scored the evidence (5.5 and ~5 composite). The accord composite is **5.5–6/10**:
+  GPT's 9s are not supportable against the researched abandonment base rate, the
+  April-2026 Replit monitoring launch, and the unproven recurring behavior — but GPT's
+  "software operations ownership" framing is accepted as the correct category name (it
+  is the enterprise-vocabulary twin of the founder's "resting place").
+- **Moat.** GPT's "philosophy is the moat" is rejected as stated — a philosophy is
+  copyable the day a competitor adopts it. Accord: the moat is **earned calibration
+  (the published honesty/outcome ledger) plus structural incentive alignment (flat
+  pricing where platforms bill consumption)** — the philosophy is the entry ticket.
+- **Verdict sequencing.** The three verdicts collapse into one once stated precisely,
+  because this founder's situation resolves the validate-vs-build tension: ~70% of the
+  slice's machinery already exists in-house (the watcher with verdict discipline and
+  honesty ledger; sandbox/checkpoint/diff/deploy machinery; a governance-ladder design
+  awaiting real wiring). When the marginal cost of the thin slice is weeks, the slice
+  IS the cheapest honest validation instrument — cheaper than a hand-run concierge at
+  equivalent evidence quality, and Kimi's per-incident pricing produces cleaner data
+  than concierge retainers.
+
+**ACCORD VERDICT: BUILD THE VERTICAL SLICE AS THE VALIDATION INSTRUMENT.**
+One stack (Lovable-exported Next.js + Supabase, hosted Vercel or Railway). The full
+loop — detect → explain → estimate → approve → author → test → deploy → verify →
+record — working end to end, with two refinements to Kimi's slice from this review's
+evidence:
+1. **Bound by failure-class menu, not a single failure type.** A one-failure-type slice
+   has an incident-frequency problem — too few events per app to generate 60-day
+   evidence. Ship the 6–8 most common verified production failure classes for the
+   stack (RLS/auth misconfiguration, env/credential loss, webhook/integration failure,
+   validation regressions, dependency/build breaks, data-not-saving), hard-refusing
+   everything else, loudly.
+2. **Recruit by monthly platform spend, not by builder brand** (§19–20): the
+   $200+/month refugee is the buyer with recurring budget and the "half your old
+   bill" hook; Lovable-exported apps and Replit émigrés are both inside the slice.
+
+Pricing per the accord (Kimi's structure, this review's corridor): free plain-language
+monitoring · **$49 per resolved incident — charged only on verified resolution**
+(the "no fix, no fee" structure already validated by the human rescue market) ·
+$99–249/month care tier, price-anchored at ~50% of the customer's documented prior
+platform spend. Hard per-incident attempt caps; the cap is the margin (§8).
+
+**The 60-day gate stands, unchanged in substance:** ≥10 paying accounts; permission
+grant ≥50% at the write-access step; repair convergence ≥60–70% under caps at ≤$10
+blended cost per success; day-60 retention ≥75%. Kill criteria as in §17. If the gate
+passes, GPT's verdict takes over (expand the narrow full-promise product); if it
+fails, the company is a rescue service or a feature — price it or sell it accordingly.
+
+*Final word of the accord: all three reviewers, starting from different priors and
+different evidence, converged on the same sentence — the customer hires this product
+so that a competent, honest something is responsible for software they depend on but
+cannot read. The only question any of the three could not answer from a desk is
+whether enough such customers will hand over the keys and keep paying in the quiet
+months. The slice exists to answer it. Sixty days.*
