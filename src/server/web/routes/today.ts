@@ -4,15 +4,20 @@ import type { Db } from '../../db/client.js';
 import { digests, narrations, orgs, trustIncidents } from '../../db/schema/index.js';
 import { localDateString, yesterdayBoundsUtc } from '../../digest/timezone.js';
 import { composeDigestForOrg } from '../../digest/compose.js';
-import type { ComposeLlmDeps } from '../../digest/composeLlm.js';
+import type { ComposeDepsResolver } from '../../llm/factory.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
 }
 
-/** Today page (deliverable 8): today's digest + any narration since it was composed. */
-export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
+/**
+ * Today page (deliverable 8): today's digest + any narration since it was
+ * composed. `resolveComposeDeps` builds this org's compose deps from its own
+ * fuel at request time — so a compose-now runs on the customer's key, not a
+ * shared one. Omitted → mechanical brief (the deterministic path).
+ */
+export function createTodayRouter(db: Db, resolveComposeDeps?: ComposeDepsResolver) {
   const router = Router();
 
   // On-demand composition — same idempotent path the 7:00 cron takes, so
@@ -20,7 +25,9 @@ export function createTodayRouter(db: Db, llmDeps?: ComposeLlmDeps) {
   router.post(
     '/api/today/compose',
     asyncHandler(async (req, res) => {
-      const digest = await composeDigestForOrg(db, orgIdOf(req), new Date(), llmDeps);
+      const orgId = orgIdOf(req);
+      const llmDeps = resolveComposeDeps ? await resolveComposeDeps(orgId) : undefined;
+      const digest = await composeDigestForOrg(db, orgId, new Date(), llmDeps);
       res.json({ digest });
     }),
   );

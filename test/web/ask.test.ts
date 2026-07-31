@@ -34,7 +34,7 @@ describe('web/routes/ask', () => {
       model: req.model,
     }));
 
-    const app = appWithOrg(orgId, createAskRouter(db, { llm: fake, db }));
+    const app = appWithOrg(orgId, createAskRouter(db, async () => ({ llm: fake, db })));
     const res = await request(app).post('/api/ask').send({ question: 'How is Loom?' });
 
     expect(res.status).toBe(200);
@@ -47,7 +47,7 @@ describe('web/routes/ask', () => {
 
   it('400s on an empty question', async () => {
     const fake = new FakeLlmClient();
-    const app = appWithOrg(orgId, createAskRouter(db, { llm: fake, db }));
+    const app = appWithOrg(orgId, createAskRouter(db, async () => ({ llm: fake, db })));
     expect((await request(app).post('/api/ask').send({ question: '   ' })).status).toBe(400);
     expect((await request(app).post('/api/ask').send({})).status).toBe(400);
   });
@@ -68,7 +68,7 @@ describe('web/routes/ask', () => {
       tokensOut: 0,
       model: req.model,
     }));
-    const app = appWithOrg(orgId, createAskRouter(db, { llm: fake, db }));
+    const app = appWithOrg(orgId, createAskRouter(db, async () => ({ llm: fake, db })));
     const res = await request(app).post('/api/ask').send({ question: 'How is Loom?' });
     expect(res.status).toBe(502);
   });

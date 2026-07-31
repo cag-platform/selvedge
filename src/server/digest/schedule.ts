@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { digests, orgs } from '../db/schema/index.js';
 import { composeDigestForOrg } from './compose.js';
-import type { ComposeLlmDeps } from './composeLlm.js';
+import type { ComposeDepsResolver } from '../llm/factory.js';
 import { localDateString } from './timezone.js';
 import type { PushSender } from '../push/types.js';
 import { sendToOrgDevices } from '../push/send.js';
@@ -18,7 +18,7 @@ import { morningBriefNotification } from '../push/notifications.js';
 export async function runDigestSchedule(
   db: Db,
   now: Date = new Date(),
-  llmDeps?: ComposeLlmDeps,
+  resolveComposeDeps?: ComposeDepsResolver,
   pushSender?: PushSender,
 ): Promise<string[]> {
   const allOrgs = await db.select({ orgId: orgs.orgId, timezone: orgs.timezone }).from(orgs);
@@ -38,6 +38,9 @@ export async function runDigestSchedule(
       .where(and(eq(digests.orgId, org.orgId), eq(digests.digestDate, todayStr)))
       .limit(1);
 
+    // Each org's brief composes on that org's own fuel, resolved here in the
+    // loop — a BYO org's daily brief runs on its own key.
+    const llmDeps = resolveComposeDeps ? await resolveComposeDeps(org.orgId) : undefined;
     const digest = await composeDigestForOrg(db, org.orgId, now, llmDeps);
     composedFor.push(org.orgId);
 

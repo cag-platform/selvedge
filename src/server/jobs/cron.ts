@@ -14,10 +14,10 @@ import { ensureCurrentPartitions } from '../db/partitions.js';
  * next month's events partition exists ahead of need.
  */
 export function startCronJobs(db: Db): void {
-  const composeDeps = buildComposeDeps(db);
+  // Per-org fuel resolution happens inside the schedule loop.
   const pushSender = buildPushSender();
   cron.schedule('*/15 * * * *', () => {
-    runDigestSchedule(db, new Date(), composeDeps, pushSender).catch((err) => console.error('digest schedule failed:', err));
+    runDigestSchedule(db, new Date(), (orgId) => buildComposeDeps(db, orgId), pushSender).catch((err) => console.error('digest schedule failed:', err));
   });
 
   cron.schedule('0 3 * * *', () => {

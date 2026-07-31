@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { answerQuestion, type AskDeps } from '../../ask/answer.js';
+import { answerQuestion } from '../../ask/answer.js';
+import type { AskDepsResolver } from '../../llm/factory.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -8,12 +9,13 @@ function orgIdOf(req: Request): string {
 }
 
 /**
- * Ask: free text over the whole stack. Requires the voice (an API key); when
- * it isn't configured the route still answers 200 with an honest, non-alarming
- * line and `available: false`, so the native client shows a message rather
- * than an error state.
+ * Ask: free text over the whole stack. Requires the voice — this org's fuel,
+ * resolved per request via `resolveAskDeps`. When the org has no fuel (no key
+ * connected, no platform key) the route still answers 200 with an honest,
+ * non-alarming line and `available: false`, so the client shows a message
+ * rather than an error state. Ask runs on the customer's own key.
  */
-export function createAskRouter(_db: Db, deps?: AskDeps) {
+export function createAskRouter(_db: Db, resolveAskDeps?: AskDepsResolver) {
   const router = Router();
 
   router.post(
@@ -25,15 +27,17 @@ export function createAskRouter(_db: Db, deps?: AskDeps) {
         return;
       }
 
+      const orgId = orgIdOf(req);
+      const deps = resolveAskDeps ? await resolveAskDeps(orgId) : undefined;
       if (!deps) {
         res.json({
-          answer: "I can't answer over your stack right now — the voice model isn't configured.",
+          answer: "I can't answer over your stack right now — no AI model is connected.",
           available: false,
         });
         return;
       }
 
-      const result = await answerQuestion(deps, orgIdOf(req), question.trim());
+      const result = await answerQuestion(deps, orgId, question.trim());
       if (!result.ok) {
         res.status(502).json({ error: 'ask_failed', reason: result.reason });
         return;

@@ -31,7 +31,8 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
 
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
-  const narrationDeps = buildNarrationDeps(db);
+  // Narration deps are resolved PER EVENT below, from the event's org fuel —
+  // no single startup client. An org with no fuel gets the template path.
   // Push: present only when APNs is configured; without it, PUSH-routed
   // narrations are stored (and fold into the digest) but nothing is sent.
   const pushSender = buildPushSender();
@@ -45,6 +46,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
         db,
         webhookSecret,
         ingest: async (event) => {
+          const narrationDeps = await buildNarrationDeps(db, event.org_id ?? '');
           await ingestEvent(db, event, narrationDeps, pushSender);
         },
       }),
@@ -78,14 +80,14 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createPacksRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db));
-  app.use(createTodayRouter(db, buildComposeDeps(db)));
+  app.use(createTodayRouter(db, (orgId) => buildComposeDeps(db, orgId)));
   app.use(createFeedbackRouter(db));
   app.use(createAdminRouter(db));
   app.use(createOrgRouter(db));
   app.use(createDevicesRouter(db));
   app.use(createFuelRouter(db));
   app.use(createConnectorsHealthRouter(db));
-  app.use(createAskRouter(db, buildAskDeps(db)));
+  app.use(createAskRouter(db, (orgId) => buildAskDeps(db, orgId)));
   app.use(createTrustRouter(db));
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));
