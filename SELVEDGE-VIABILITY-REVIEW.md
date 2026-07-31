@@ -796,3 +796,55 @@ subscription plus self-built orchestration cut the cost dramatically. **[V — f
    spend is now evidenced for the live-app segment [V, n=1 founder + the documented
    metered-billing backlash]; the score rises further only when the concierge cohort
    replicates it beyond n=1.
+
+---
+
+## 21. AMENDMENT (31 Jul 2026) — the founder's reframe: "the resting place"
+
+**Thesis restated by the founder:** *Selvedge is the natural resting place after leaving
+the big AI builders — where you can still iterate, improve, and strengthen your builds,
+with clear understanding of how they are running and what they need, and better
+stabilization across the board — for half or less of what the builders were charging.*
+
+**Assessment: this is the strongest framing in the document set.** It supersedes both the
+memos' "independent narrator" and the Foundation's "caretaker," and it converts three of
+this review's principal negatives into structural positions:
+
+1. **Absorption risk inverted.** No builder platform ships the "leave us" product; builder
+   churn (verified, high) becomes inbound flow rather than market decay. The bill-shock
+   and graduation moments are high-intent, searchable acquisition triggers.
+2. **Trust arbitrage corrected.** "I didn't build your app" is retired (the resting place
+   does build). The durable alignment is structural: metered platforms profit when agents
+   churn; a flat-priced home profits when agents are efficient. The honesty-ledger
+   discipline carries over unchanged.
+3. **The price promise self-qualifies the market.** "Half your old bill" is deliverable
+   with real margin against $200+/month metered workloads (API-rate COGS + at-cost
+   hosting) and impossible against $25/month subscriptions — the promise excludes the
+   unprofitable segment automatically.
+4. **Product coherence.** The iterate/improve half and the understand/stabilize half are
+   one product under this sentence; the earlier one-coherent-or-bundled objection (§2)
+   is resolved.
+
+**Costs of the framing, held adversarially:** (a) **migration is the new CAC** — the
+onboarding is a house move (repo, hosting, database, domains, secrets) and must be
+productized or it becomes the services trapdoor (failure #7); the compensation is
+category-best retention once moved; (b) **custody liability** — the resting place holds
+accounts and secrets; the Part 11 security floor becomes a day-one requirement;
+(c) **the incumbent resting place is Vercel** (builder → GitHub export → Vercel + Vercel
+Agent); differentiation — plain English, flat all-in price, cross-stack coverage,
+included maintenance — is real but must be argued against them specifically, not against
+the builders; (d) the load-bearing unknowns remain empirical: "will they pay monthly?"
+becomes "will they move, then pay half their old bill, monthly?"
+
+**Validation plan, final form:** the concierge test (§17) becomes a **migration
+concierge** — ten spend-qualified builder refugees ($200+/month current spend), migrated
+by hand, charged ~50% of their prior bill, cared for under the honesty-ledger discipline.
+This single pilot tests migration willingness, pricing, quiet-month retention, repair
+convergence, and permission granting simultaneously, and is revenue-positive (~$2.5K MRR)
+while doing so. Kill criteria unchanged; 60-day success adds: ≥6 of 10 candidates
+complete the migration, and ≥8 of 10 migrated remain at day 60.
+
+**Verdict: unchanged — VALIDATE BEFORE BUILDING — but the reframe resolves the shape
+ambiguity that separated it from "build a narrow version": the narrow version is now
+determined (the migration path + the flat care plan). Run the migration concierge; let
+its cohort data promote the verdict.**
