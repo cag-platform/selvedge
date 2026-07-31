@@ -95,4 +95,41 @@ describe('web/routes/today', () => {
     const res = await request(app).get('/api/today');
     expect(res.body.post_digest_events).toHaveLength(1);
   });
+
+  it('carries each live event\'s register and project name so the card renders at the owner\'s level', async () => {
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+      voice: { detail_level: 'technical_forward' },
+    });
+    await createPack(db, orgId, pack);
+    const now = new Date();
+    await composeDigestForOrg(db, orgId, now);
+    await ingestEvent(db, {
+      org_id: orgId,
+      source: 'github',
+      source_account_id: 'acme/loom',
+      event_type: 'code.pr_opened',
+      occurred_at: now.toISOString(),
+      severity_hint: 'info',
+      raw: {},
+      dedupe_key: 'd3',
+    });
+
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    const ev = res.body.post_digest_events.find((n: { projectId: string | null }) => n.projectId === 'loom');
+    expect(ev.detail_level).toBe('technical_forward'); // the pack's own register, not a global default
+    expect(ev.project_name).toBe('Loom');
+  });
+
+  it('a project-less tray event falls back to the expandable register, never plain_only', async () => {
+    await recordConnectorAuthFailed(db, orgId, 'GitHub', 'github', '999', new Date());
+    const app = appWithOrg(orgId, createTodayRouter(db));
+    const res = await request(app).get('/api/today');
+    const ev = res.body.post_digest_events[0];
+    expect(ev.projectId).toBeNull();
+    expect(ev.detail_level).toBe('plain_expandable'); // the why stays reachable even with no pack
+    expect(ev.project_name).toBeNull();
+  });
 });

@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { Brief, BriefEyebrow, BriefClose, BriefItem, Headline, Reveal } from '../components/Brief.js';
 import { StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
 import { ProjectRail, type ProjectCardData } from '../components/ProjectRail.js';
+import { SituationCard, FeedbackTaps, type SituationEvent } from '../components/SituationCard.js';
 import { verdictToStatus, type Verdict } from '../lib/verdict.js';
 
 type SectionItem = {
@@ -33,18 +34,7 @@ type Digest = {
   createdAt: string;
 };
 
-type Narration = {
-  id: string;
-  projectId: string | null;
-  eventId: string;
-  eventType: string;
-  fragment: string | null;
-  technicalDetail: string | null;
-  delivery: string;
-  occurredAt: string;
-};
-
-type TodayResponse = { digest: Digest | null; post_digest_events: Narration[]; corrections?: Correction[] };
+type TodayResponse = { digest: Digest | null; post_digest_events: SituationEvent[]; corrections?: Correction[] };
 
 /** The pane's own edge carries the day's top priority. */
 function briefStatus(digest: Digest): EdgeStatus {
@@ -54,60 +44,6 @@ function briefStatus(digest: Digest): EdgeStatus {
   if (digest.sections.attention.length > 0) return 'needs';
   if (digest.sections.moved.length > 0) return 'working';
   return 'healthy';
-}
-
-/**
- * The two quiet feedback actions every narrated item carries (Phase 2
- * deliverable 5). Deliberately no thumbs-up — absence of complaint is the
- * positive signal.
- */
-function FeedbackTaps({ narrationId }: { narrationId: string }) {
-  const [state, setState] = useState<'idle' | 'noting' | 'sent'>('idle');
-  const [note, setNote] = useState('');
-
-  async function send(kind: 'didnt_help' | 'explain_differently', noteText?: string) {
-    try {
-      await api.post('/api/feedback', { narration_id: narrationId, kind, ...(noteText ? { note: noteText } : {}) });
-    } finally {
-      setState('sent');
-    }
-  }
-
-  if (state === 'sent') return <span className="text-meta text-ink-quiet">noted</span>;
-
-  if (state === 'noting') {
-    return (
-      <form
-        className="mt-1 flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send('explain_differently', note);
-        }}
-      >
-        <input
-          autoFocus
-          className="w-60 rounded-inset border border-hairline bg-panel px-2 py-1 text-meta text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
-          placeholder="how should this have been said?"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-        <button type="submit" className="text-meta text-ink-quiet hover:text-ink-dim">
-          send
-        </button>
-      </form>
-    );
-  }
-
-  return (
-    <span className="flex gap-3 text-meta text-ink-quiet">
-      <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
-        didn't help
-      </button>
-      <button className="hover:text-ink-dim" onClick={() => setState('noting')}>
-        explain differently
-      </button>
-    </span>
-  );
 }
 
 function AttentionAnchor({ item }: { item: SectionItem }) {
@@ -262,27 +198,20 @@ export function Today() {
         )}
       </Brief>
 
-      {post_digest_events.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed').length > 0 && (
-        <section>
-          <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Since this brief</p>
-          <div className="space-y-3">
-            {post_digest_events.map((n) => (
-              <div key={n.id} className="relative rounded-card border border-hairline bg-panel p-4 pl-5">
-                <p className="text-body text-ink">{n.fragment}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-3">
-                  {n.technicalDetail && (
-                    <Reveal>
-                      {n.technicalDetail}
-                      <div className="mt-1 text-ink-quiet">event id: {n.eventId}</div>
-                    </Reveal>
-                  )}
-                  <FeedbackTaps narrationId={n.id} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {(() => {
+        const live = post_digest_events.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed');
+        if (live.length === 0) return null;
+        return (
+          <section>
+            <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Since this brief</p>
+            <div className="space-y-3">
+              {live.map((n) => (
+                <SituationCard key={n.id} event={n} />
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       <ProjectRail projects={projects} />
 

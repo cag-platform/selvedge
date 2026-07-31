@@ -4,6 +4,7 @@ import type { Db } from '../../db/client.js';
 import { digests, narrations, orgs, trustIncidents } from '../../db/schema/index.js';
 import { localDateString, yesterdayBoundsUtc } from '../../digest/timezone.js';
 import { composeDigestForOrg } from '../../digest/compose.js';
+import { getPack } from '../../packs/store.js';
 import type { ComposeDepsResolver } from '../../llm/factory.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
@@ -52,10 +53,32 @@ export function createTodayRouter(db: Db, resolveComposeDeps?: ComposeDepsResolv
       // since local midnight — a connector going auth_failed shouldn't wait
       // for a digest to exist before it's visible (acceptance gate 6).
       const since = digest ? digest.createdAt : yesterdayBoundsUtc(timezone, now).end;
-      const postDigestEvents = await db
+      const postDigestRows = await db
         .select()
         .from(narrations)
         .where(and(eq(narrations.orgId, orgId), digest ? gt(narrations.createdAt, since) : gte(narrations.createdAt, since)));
+
+      // Each live event is rendered as a situation card, and the card's
+      // register (how much technical detail rides along) is the project's own
+      // voice.detail_level — the same rule the digest obeys. Resolve it once
+      // per distinct project so a plain_only owner never sees the mono line,
+      // and a technical_forward owner sees it inline instead of collapsed.
+      const projectIds = [...new Set(postDigestRows.map((n) => n.projectId).filter((id): id is string => Boolean(id)))];
+      const packByProject = new Map(
+        await Promise.all(
+          projectIds.map(async (pid) => [pid, await getPack(db, orgId, pid)] as const),
+        ),
+      );
+      const postDigestEvents = postDigestRows.map((n) => {
+        const pack = n.projectId ? packByProject.get(n.projectId) : null;
+        return {
+          ...n,
+          // Tray events (no project yet) fall back to the expandable middle
+          // register — never plain_only, so their "why" is at least reachable.
+          detail_level: pack?.voice.detail_level ?? 'plain_expandable',
+          project_name: pack?.identity.name ?? null,
+        };
+      });
 
       // Enrich attention items with their narration's verdict + technical
       // line so the client can draw the edge (verdict -> status is fixed

@@ -6,6 +6,7 @@
 
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
+import { SituationCard } from '../components/SituationCard.js';
 import { ProjectRail } from '../components/ProjectRail.js';
 import { SelvedgeLockup, SelvedgeMark } from '../components/Logo.js';
 
@@ -238,6 +239,35 @@ export function Styleguide() {
             { project_id: 'sild', name: 'SILD', tier: 'live_small', health_line: "I can't fully verify this project's health right now.", edge: 'unknown' },
           ]}
         />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Situation cards — the same fact, three registers</h2>
+        <p className="mb-3 text-body text-ink-dim">
+          One live event from the watching loop, rendered at each owner's <span className="font-mono text-tech">detail_level</span>.
+          The verdict — and so the edge — is identical across all three. Only the technical line changes: absent, collapsed
+          behind <span className="italic">why</span>, or shown inline.
+        </p>
+        <div className="space-y-3">
+          {(['plain_only', 'plain_expandable', 'technical_forward'] as const).map((level) => (
+            <SituationCard
+              key={level}
+              event={{
+                id: `demo_${level}`,
+                projectId: 'chalk',
+                project_name: 'Chalk',
+                eventId: 'evt_demo',
+                eventType: 'runtime.health_failing',
+                fragment: 'Chalk looks down right now — visitors are hitting an error page.',
+                technicalDetail: 'GET / returned HTTP 500 on two consecutive checks, 60s apart.',
+                verdict: 'users_affected',
+                confidence: 'medium',
+                detail_level: level,
+                occurredAt: '2026-07-31T09:12:00Z',
+              }}
+            />
+          ))}
+        </div>
       </section>
 
       <section>
