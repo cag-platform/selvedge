@@ -1,5 +1,17 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { normalizeDeployStatus, railwayGql, getDeployState } from '../../../src/server/connectors/railway/client.js';
+import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget } from '../../../src/server/connectors/railway/client.js';
+
+describe('railway/parseRailwayTarget — address a service, or skip it', () => {
+  it('parses the three-part compound resource_id', () => {
+    expect(parseRailwayTarget('proj_1/env_1/svc_1')).toEqual({ projectId: 'proj_1', environmentId: 'env_1', serviceId: 'svc_1' });
+  });
+
+  it('returns null for anything that is not exactly three non-empty parts', () => {
+    for (const bad of ['proj/env', 'proj/env/svc/extra', 'proj//svc', '', 'justone', 'proj/env/']) {
+      expect(parseRailwayTarget(bad)).toBeNull();
+    }
+  });
+});
 
 describe('railway/normalizeDeployStatus — never guess "live"', () => {
   it('maps only an explicit success to live', () => {

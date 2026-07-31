@@ -19,6 +19,23 @@ export interface RailwayTarget {
   serviceId: string;
 }
 
+/**
+ * A Railway source in a pack's topology addresses one deployable service, and a
+ * service needs three ids to read. We carry them as one `resource_id` string —
+ * `projectId/environmentId/serviceId` — the same compound-string convention the
+ * GitHub source uses (`owner/repo`), so the pack schema needs no new fields.
+ *
+ * Graceful: a resource_id that isn't exactly three non-empty parts returns null,
+ * and the caller skips that source rather than throwing. We can't watch a
+ * service we can't address, and a malformed target is not a reason to crash a
+ * poll tick.
+ */
+export function parseRailwayTarget(resourceId: string): RailwayTarget | null {
+  const parts = resourceId.split('/');
+  if (parts.length !== 3 || parts.some((p) => p.trim() === '')) return null;
+  return { projectId: parts[0]!, environmentId: parts[1]!, serviceId: parts[2]! };
+}
+
 /** The normalized deploy state Selvedge reasons about, whatever the host calls it. */
 export type HostDeployStatus = 'live' | 'building' | 'failed' | 'unknown';
 

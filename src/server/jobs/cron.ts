@@ -8,6 +8,9 @@ import { revalidateBaselines } from '../memory/revalidate.js';
 import { ensureCurrentPartitions } from '../db/partitions.js';
 import { pollHealth, newMonitorState } from '../monitor/poller.js';
 import { makePollerIngest, listHealthChecksToPoll } from '../monitor/wiring.js';
+import { pollDeployStates } from '../connectors/railway/poller.js';
+import { listDeployServicesToPoll } from '../connectors/railway/wiring.js';
+import type { HostDeployStatus } from '../connectors/railway/client.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -34,6 +37,20 @@ export function startCronJobs(db: Db): void {
       listChecks: () => listHealthChecksToPoll(db),
       ingest: pollerIngest,
     }).catch((err) => console.error('health poll failed:', err));
+  });
+
+  // The Railway deploy poller, sharing the same ingest sink. Its last-known
+  // state per service is held across ticks here (in-process, single-process
+  // tradeoff); a service the customer hasn't connected a Railway token for is
+  // simply not in the list this tick.
+  const deployState = new Map<string, HostDeployStatus>();
+  cron.schedule('* * * * *', () => {
+    pollDeployStates({
+      db,
+      lastState: deployState,
+      listServices: () => listDeployServicesToPoll(db),
+      ingest: pollerIngest,
+    }).catch((err) => console.error('deploy poll failed:', err));
   });
 
   cron.schedule('0 3 * * *', () => {
