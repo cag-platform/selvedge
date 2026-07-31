@@ -761,3 +761,38 @@ effort-billing backlash, $1K/week reports, and charges for failed agent runs.]**
    the brief finds ≥20% avoidable spend, and (b) whether spend-narration cohorts retain
    better in quiet months than health-only cohorts. Evidence base for this segment is
    currently n=1 [WI] — the test exists to change that label.
+
+---
+
+## 20. AMENDMENT (31 Jul 2026) — founder evidence: the maintenance-cost arbitrage
+
+**Evidence received:** on Replit's $500/month membership, the founder burned the included
+credits within ~two weeks — not on failures, but on *routine active maintenance* of live
+apps (an order-management system and a multilingual chat app requiring regular upkeep,
+changes, and upgrades). Switching the same workload to a flat-rate Claude Code
+subscription plus self-built orchestration cut the cost dramatically. **[V — firsthand.]**
+
+**Revisions this forces:**
+
+1. **Failure reason #1 (episodic pain) is materially weakened for the right segment.**
+   Apps with real users generate *continuous* maintenance work, and metered platform
+   pricing bills it punitively. For owners of live, revenue-bearing apps, care is an
+   already-recurring operating cost, not insurance. The demand question narrows from
+   "does recurring demand exist?" to "how many owners look like this?" — measurable via
+   the spend-qualified concierge cohort (§19.4).
+2. **The category's economic engine, named:** maintenance-heavy owners arbitraging
+   metered platform pricing against flat-rate agent labor. Selvedge is the productized
+   form of that flight for owners who cannot build their own orchestration.
+3. **The price corridor is set on both sides.** Ceiling: the DIY substitute (a
+   ~$100–200/mo agent subscription + the owner's time) — the founder's own revealed
+   behavior, and refusal persona #3 in practice. Floor: Selvedge's COGS runs at API
+   rates, because the consumer-subscription flat-rate arbitrage the founder used
+   personally is not available to a commercial service running agents for customers.
+   The viable spread is roughly **$99–299/month** — above DIY, far below metered
+   platform spend — and the concierge pricing test exists to locate the point inside it.
+   Against DIY, the pitch is not price: it is verification, calibrated honesty, spend
+   governance, and not being the operator at 1am.
+4. **Willingness-to-pay score revised 4 → 5** (Part 15 grid): recurring maintenance
+   spend is now evidenced for the live-app segment [V, n=1 founder + the documented
+   metered-billing backlash]; the score rises further only when the concierge cohort
+   replicates it beyond n=1.
