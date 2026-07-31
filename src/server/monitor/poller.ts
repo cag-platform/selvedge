@@ -20,6 +20,8 @@ import { stepHealth, HEALTHY, type HealthState } from './healthEvents.js';
 
 export type CheckToPoll = {
   orgId: string;
+  /** The project this check belongs to — passed to ingest so events place without source resolution. */
+  projectId: string;
   sourceAccountId: string;
   intervalSec: number;
   spec: HealthCheckSpec & { id: string };
@@ -39,7 +41,7 @@ export type MonitorPollDeps = {
   db: Db;
   listChecks: () => Promise<CheckToPoll[]>;
   probe?: (spec: HealthCheckSpec) => Promise<ProbeResult>;
-  ingest: (event: NewSelvedgeEvent) => Promise<void>;
+  ingest: (event: NewSelvedgeEvent, projectId: string) => Promise<void>;
   state: MonitorState;
   now?: () => Date;
 };
@@ -75,7 +77,7 @@ export async function pollHealth(deps: MonitorPollDeps): Promise<NewSelvedgeEven
       deps.state.health.set(id, step.state);
 
       if (step.event) {
-        await deps.ingest(step.event);
+        await deps.ingest(step.event, check.projectId);
         emitted.push(step.event);
       }
     } finally {

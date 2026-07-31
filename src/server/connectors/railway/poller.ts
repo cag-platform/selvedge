@@ -23,6 +23,8 @@ import { deployStateToEvent } from './deployEvents.js';
 
 export type ServiceToPoll = {
   orgId: string;
+  /** The project this service belongs to — passed to ingest so events place without source resolution. */
+  projectId: string;
   target: RailwayTarget;
   token: string;
   /** GitHub repo full name for source_account_id continuity with build events. */
@@ -36,7 +38,7 @@ export type DeployPollDeps = {
   /** Read a service's normalized deploy state. Defaults to the live client. */
   getState?: (token: string, target: RailwayTarget) => Promise<{ status: HostDeployStatus } | null>;
   /** Where emitted events go. Real impl is a thin wrapper over ingestEvent. */
-  ingest: (event: NewSelvedgeEvent) => Promise<void>;
+  ingest: (event: NewSelvedgeEvent, projectId: string) => Promise<void>;
   /** The per-service last-known state, held across ticks by the caller. */
   lastState: Map<string, HostDeployStatus>;
   now?: () => Date;
@@ -73,7 +75,7 @@ export async function pollDeployStates(deps: DeployPollDeps): Promise<NewSelvedg
     deps.lastState.set(key, current);
 
     if (event) {
-      await deps.ingest(event);
+      await deps.ingest(event, svc.projectId);
       emitted.push(event);
     }
   }
