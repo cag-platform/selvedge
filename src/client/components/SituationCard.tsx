@@ -108,9 +108,20 @@ export function SituationCard({ event }: { event: SituationEvent }) {
         )}
       </div>
 
+      {/* Change→break correlation: a plain lead shown at every register, since
+          it's the most actionable thing on the card. Not part of the verdict —
+          it's "worth checking first", never "this was the cause". */}
+      {event.correlation && (
+        <p className="mt-1.5 text-meta text-ink-dim">
+          <span className="text-ink-quiet">↩ </span>
+          {event.correlation.plain}
+        </p>
+      )}
+
       {inlineTechnical && (
         <div className="mt-2 rounded-inset border border-hairline bg-panel-soft px-3 py-2 font-mono text-tech text-ink-dim">
           {event.technicalDetail}
+          {event.correlation && <div className="mt-1 text-ink-quiet">{event.correlation.technical}</div>}
           <div className="mt-1 text-ink-quiet">event id: {event.eventId}</div>
         </div>
       )}
@@ -121,6 +132,7 @@ export function SituationCard({ event }: { event: SituationEvent }) {
         {technical === 'collapsed' && (
           <Reveal summary="why">
             {event.technicalDetail}
+            {event.correlation && <div className="mt-1 text-ink-quiet">{event.correlation.technical}</div>}
             <div className="mt-1 text-ink-quiet">event id: {event.eventId}</div>
           </Reveal>
         )}

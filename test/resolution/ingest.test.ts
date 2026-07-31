@@ -147,4 +147,45 @@ describe('resolution/ingest', () => {
     expect(result.projectId).toBe('loom');
     expect(result.routeRowId).toBe('A5');
   });
+
+  it('a break narration carries the change→break correlation for a change that landed just before it', async () => {
+    const { narrations } = await import('../../src/server/db/schema/index.js');
+    const { eq } = await import('drizzle-orm');
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      stakes: { tier: 'live_small', has_external_users: true, touches_money: false },
+      topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+    });
+    await createPack(db, orgId, pack);
+
+    // A change lands, then a break twenty minutes later on the same project.
+    await ingestEvent(db, pushEvent({ event_type: 'code.commits_landed_default', occurred_at: '2026-07-19T10:00:00Z', dedupe_key: 'chg-1' }));
+    await ingestEvent(db, pushEvent({ event_type: 'runtime.health_failing', occurred_at: '2026-07-19T10:20:00Z', severity_hint: 'error', dedupe_key: 'brk-1' }));
+
+    const rows = await db.select().from(narrations).where(eq(narrations.eventType, 'runtime.health_failing'));
+    expect(rows).toHaveLength(1);
+    const correlation = (rows[0]!.meta as { correlation?: { changeType: string; minutesBefore: number; plain: string } }).correlation;
+    expect(correlation).toBeTruthy();
+    expect(correlation!.changeType).toBe('code.commits_landed_default');
+    expect(correlation!.minutesBefore).toBe(20);
+    expect(correlation!.plain).toMatch(/worth checking first/i);
+  });
+
+  it('a break narration carries no correlation when nothing shipped in the window', async () => {
+    const { narrations } = await import('../../src/server/db/schema/index.js');
+    const { eq } = await import('drizzle-orm');
+    const pack = makeTestPack({
+      identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+      stakes: { tier: 'live_small', has_external_users: true, touches_money: false },
+      topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+    });
+    await createPack(db, orgId, pack);
+
+    // A break with no preceding change — no fabricated culprit.
+    await ingestEvent(db, pushEvent({ event_type: 'runtime.health_failing', occurred_at: '2026-07-19T10:20:00Z', severity_hint: 'error', dedupe_key: 'brk-2' }));
+
+    const rows = await db.select().from(narrations).where(eq(narrations.eventType, 'runtime.health_failing'));
+    expect(rows).toHaveLength(1);
+    expect((rows[0]!.meta as { correlation?: unknown }).correlation).toBeUndefined();
+  });
 });

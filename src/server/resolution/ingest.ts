@@ -1,4 +1,5 @@
 import { ulid } from 'ulid';
+import { and, eq, gte, lt } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { events, narrations } from '../db/schema/index.js';
 import type { NewSelvedgeEvent } from '../../shared/types/event.js';
@@ -12,6 +13,7 @@ import { route } from '../routing/route.js';
 import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 import { extractSignature } from './knownFlaky.js';
+import { correlateChange, isBreakEvent, CORRELATION_WINDOW_MS, type Correlation } from './correlate.js';
 import { recordFalseAllClearIfContradicted } from '../trust/tripwire.js';
 import type { PushSender } from '../push/types.js';
 import { sendToOrgDevices } from '../push/send.js';
@@ -45,6 +47,42 @@ async function insertEvent(db: Db, id: string, receivedAt: Date, projectId: stri
     .onConflictDoNothing({ target: [events.orgId, events.dedupeKey, events.occurredAt] })
     .returning({ id: events.id });
   return rows.length > 0;
+}
+
+/**
+ * For a break event, line it up against the change that came just before it on
+ * the same project's timeline. Reads only the change events in the window (the
+ * partitioned events table is indexed by org+project), then defers the choice
+ * and the wording to the pure correlateChange. Returns null for non-break
+ * events and when nothing shipped in the window — no fabricated culprit.
+ */
+async function correlationFor(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  eventType: string,
+  occurredAt: Date,
+): Promise<Correlation | null> {
+  if (!isBreakEvent(eventType)) return null;
+
+  const windowStart = new Date(occurredAt.getTime() - CORRELATION_WINDOW_MS);
+  const rows = await db
+    .select({ id: events.id, eventType: events.eventType, occurredAt: events.occurredAt })
+    .from(events)
+    .where(
+      and(
+        eq(events.orgId, orgId),
+        eq(events.projectId, projectId),
+        gte(events.occurredAt, windowStart),
+        lt(events.occurredAt, occurredAt),
+      ),
+    );
+
+  return correlateChange(
+    eventType,
+    occurredAt,
+    rows.map((r) => ({ eventId: r.id, eventType: r.eventType, occurredAt: r.occurredAt as Date })),
+  );
 }
 
 async function routeNarrateAndPersist(
@@ -91,6 +129,11 @@ async function routeNarrateAndPersist(
 
   if (decision.delivery !== 'NONE' && dispatched) {
     const narrationId = ulid();
+    // Change→break correlation: for a break event, find the change that came
+    // just before it on this project's timeline. Stored on the narration so the
+    // Today surface can show "started right after…" as a lead — never woven into
+    // the verdict sentence, because it's correlation, not confirmed cause.
+    const correlation = await correlationFor(db, orgId, projectId, event.event_type, new Date(event.occurred_at));
     await db.insert(narrations).values({
       id: narrationId,
       orgId,
@@ -106,7 +149,7 @@ async function routeNarrateAndPersist(
       technicalDetail: dispatched.output.technicalDetail ?? null,
       verdict: dispatched.output.verdict ?? null,
       confidence: dispatched.meta.confidence ?? null,
-      meta: { modifiers: decision.modifiers, row_id: decision.row_id, ...dispatched.meta },
+      meta: { modifiers: decision.modifiers, row_id: decision.row_id, ...dispatched.meta, ...(correlation ? { correlation } : {}) },
     });
 
     // The unforgivable-error tripwire (Ironclad 2): if this narration is a

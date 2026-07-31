@@ -8,6 +8,20 @@ import type { DetailLevel } from '../../shared/types/pack.js';
  * apart from the component so both are unit-testable without a DOM.
  */
 
+/**
+ * The change→break correlation, when the break lined up against a recent change.
+ * `plain` is a lead the owner can act on; `technical` carries the caveat that
+ * this is correlation, never confirmed cause.
+ */
+export type Correlation = {
+  changeEventId: string;
+  changeType: string;
+  occurredAt: string;
+  minutesBefore: number;
+  plain: string;
+  technical: string;
+};
+
 export type SituationEvent = {
   id: string;
   projectId: string | null;
@@ -20,6 +34,7 @@ export type SituationEvent = {
   confidence?: 'high' | 'medium' | 'low' | null;
   kind?: string | null;
   detail_level?: DetailLevel | null;
+  correlation?: Correlation | null;
   occurredAt: string;
 };
 

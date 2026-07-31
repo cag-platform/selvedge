@@ -71,12 +71,16 @@ export function createTodayRouter(db: Db, resolveComposeDeps?: ComposeDepsResolv
       );
       const postDigestEvents = postDigestRows.map((n) => {
         const pack = n.projectId ? packByProject.get(n.projectId) : null;
+        // Change→break correlation, lifted out of meta so the card can show the
+        // "started right after…" lead without a second request.
+        const correlation = (n.meta as { correlation?: unknown } | null)?.correlation ?? null;
         return {
           ...n,
           // Tray events (no project yet) fall back to the expandable middle
           // register — never plain_only, so their "why" is at least reachable.
           detail_level: pack?.voice.detail_level ?? 'plain_expandable',
           project_name: pack?.identity.name ?? null,
+          correlation,
         };
       });
 
