@@ -5,6 +5,7 @@ import type { Db } from '../db/client.js';
 import type { LlmClient } from '../llm/types.js';
 import { composeModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
+import { checkDailyBudget } from '../llm/budget.js';
 import { isVerdict } from '../narration/verdictText.js';
 import type { Verdict } from '../narration/types.js';
 import type { DigestSections } from './render.js';
@@ -111,6 +112,12 @@ export async function composeBriefLlm(
   };
 
   let userContent = JSON.stringify(composerInput, null, 2);
+
+  // The daily spend cap, enforced on the composition call too. Over budget
+  // returns a normal failure, which the caller already handles by sending the
+  // mechanical brief — the brief always sends.
+  const budget = await checkDailyBudget(deps.db, orgId);
+  if (budget.over) return { ok: false, reason: 'daily_budget_exceeded' };
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = await deps.llm.complete({

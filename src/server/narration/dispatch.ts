@@ -3,6 +3,7 @@ import type { ContextPack } from '../../shared/types/pack.js';
 import type { RoutingDecision } from '../routing/types.js';
 import type { LlmClient } from '../llm/types.js';
 import { llmEnabled } from '../llm/config.js';
+import { checkDailyBudget } from '../llm/budget.js';
 import { narrate } from './narrate.js';
 import { llmFragmentCall } from './llmFragment.js';
 import type { NarratableEvent, NarrationOutput } from './types.js';
@@ -84,6 +85,28 @@ export async function narrateDispatch(
     if (hit) {
       return { output: hit.output, path: 'LIB', meta: { lib_hit: true, fingerprint: hit.fingerprint } };
     }
+  }
+
+  // The daily spend cap, enforced — gating the paid call and nothing else.
+  // Deliberately placed AFTER the library lookup: a graduated phrasing costs
+  // nothing to serve, so an org that has spent its budget still gets its
+  // cached voice rather than being dropped to templates for work already
+  // paid for. Over budget degrades to the deterministic path for the rest of
+  // the day rather than erroring — the same degradation as an unreachable
+  // model, so nothing goes silent and the brief still sends.
+  const budget = await checkDailyBudget(deps.db, event.org_id ?? '');
+  if (budget.over) {
+    const output = templateOutput();
+    if (!output) return null;
+    return {
+      output,
+      path: 'TEMPLATE',
+      meta: {
+        fallback_reason: 'daily_budget_exceeded',
+        ...(intended === 'LIB' ? { lib_hit: false } : {}),
+        ...(fingerprint ? { fingerprint } : {}),
+      },
+    };
   }
 
   const orgId = event.org_id ?? '';

@@ -3,13 +3,24 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { digests, llmUsage, narrations } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { dailyLlmBudgetUsd } from '../../llm/budget.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
 }
 
-/** The dogfood budget line (acceptance gate 5): flag, don't block, when a day lands over. */
-export const DAILY_BUDGET_USD = 0.15;
+/**
+ * The dogfood attention line on the admin day table — a low watermark that
+ * says "look at this day", not a limit.
+ *
+ * The enforced limit is a different number and lives in llm/budget.ts, where
+ * it actually stops model calls. Keeping the two apart deliberately: this one
+ * is an observation threshold for one operator's own dashboard, and it must
+ * never be mistaken for — or displayed as — a cap. A number that looks like a
+ * limit and enforces nothing is the exact defect this codebase's siblings
+ * shipped three times over.
+ */
+export const DAILY_ATTENTION_USD = 0.15;
 
 /**
  * Admin metrics (gates 2 and 5): per-day cost with the budget line,
@@ -56,13 +67,15 @@ export function createAdminRouter(db: Db) {
         .where(eq(narrations.orgId, orgId));
 
       res.json({
-        budget_usd_per_day: DAILY_BUDGET_USD,
+        attention_usd_per_day: DAILY_ATTENTION_USD,
+        enforced_cap_usd_per_day: dailyLlmBudgetUsd(),
         cost_by_day: costRows.map((r) => ({
           day: r.day,
           cost_usd: Number(r.costUsd),
           calls: Number(r.calls),
           failed_calls: Number(r.failures),
-          over_budget: Number(r.costUsd) > DAILY_BUDGET_USD,
+          needs_attention: Number(r.costUsd) > DAILY_ATTENTION_USD,
+          over_enforced_cap: Number(r.costUsd) >= dailyLlmBudgetUsd(),
         })),
         lib_hit_rate_by_day: libRows.map((r) => ({
           day: r.day,

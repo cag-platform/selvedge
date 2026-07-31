@@ -3,7 +3,14 @@ import { api } from '../lib/api.js';
 
 type Metrics = {
   budget_usd_per_day: number;
-  cost_by_day: Array<{ day: string; cost_usd: number; calls: number; failed_calls: number; over_budget: boolean }>;
+  cost_by_day: Array<{
+    day: string;
+    cost_usd: number;
+    calls: number;
+    failed_calls: number;
+    needs_attention: boolean;
+    over_enforced_cap: boolean;
+  }>;
   lib_hit_rate_by_day: Array<{ day: string; lib_routed: number; lib_hits: number; hit_rate: number }>;
   template_fallbacks_total: number;
   fragments_needing_review: number;
@@ -117,11 +124,11 @@ export function Admin() {
                 </tr>
               )}
               {metrics.cost_by_day.map((r) => (
-                <tr key={r.day} className={r.over_budget ? 'bg-panel-soft' : ''}>
+                <tr key={r.day} className={r.needs_attention ? 'bg-panel-soft' : ''}>
                   <td className="px-3 py-2">{r.day}</td>
-                  <td className={`px-3 py-2 ${r.over_budget ? 'font-medium text-brass' : ''}`}>
+                  <td className={`px-3 py-2 ${r.needs_attention ? 'font-medium text-brass' : ''}`}>
                     ${r.cost_usd.toFixed(4)}
-                    {r.over_budget ? ' (over budget)' : ''}
+                    {r.over_enforced_cap ? ' (hit the cap — voice off for the day)' : r.needs_attention ? ' (worth a look)' : ''}
                   </td>
                   <td className="px-3 py-2">{r.calls}</td>
                   <td className="px-3 py-2">{r.failed_calls}</td>

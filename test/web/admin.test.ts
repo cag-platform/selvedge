@@ -29,10 +29,12 @@ describe('web/routes/admin (gates 2 + 5)', () => {
     const app = appWithOrg(orgId, createAdminRouter(db));
     const res = await request(app).get('/api/admin/metrics');
     expect(res.status).toBe(200);
-    expect(res.body.budget_usd_per_day).toBeCloseTo(0.15);
+    expect(res.body.attention_usd_per_day).toBeCloseTo(0.15);
+    // The enforced cap is a separate, larger number that actually stops calls.
+    expect(res.body.enforced_cap_usd_per_day).toBeGreaterThan(res.body.attention_usd_per_day);
     expect(res.body.cost_by_day).toHaveLength(1);
     expect(res.body.cost_by_day[0].cost_usd).toBeCloseTo(0.204);
-    expect(res.body.cost_by_day[0].over_budget).toBe(true); // flagged, not blocked
+    expect(res.body.cost_by_day[0].needs_attention).toBe(true); // an attention line, not the cap
   });
 
   it('computes lib_hit_rate from narrations.meta', async () => {
