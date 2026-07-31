@@ -973,3 +973,14 @@ experiment exists to earn.
 *Review closed. The question on the table is no longer whether the thesis is good —
 it is whether ten responsible owners will hand over the keys and keep paying through
 the quiet months. Build the slice; let them answer.*
+
+**Correction to the record (31 Jul 2026):** GPT's review was also conducted with full
+access to all three codebases (and to the Foundation document itself); Kimi's was not.
+Two claims above are amended accordingly: the §23 asset inventory is the only one in the
+record with file-level backing, but not the only one that *could* have been produced;
+and §22's suggestion that the other reviewers could not see the in-house machinery is
+withdrawn for GPT. The score-gap adjudication (§22) stands — it rests on market
+evidence, not codebase knowledge. Net effect: the accord is stronger than recorded —
+both codebase-informed reviewers converged independently on "build the slice because
+the machinery exists," and the reviewer without codebase access reached the same slice
+shape from market logic alone. Three routes, one verdict.
