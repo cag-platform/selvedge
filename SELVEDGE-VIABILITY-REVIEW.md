@@ -934,3 +934,42 @@ so that a competent, honest something is responsible for software they depend on
 cannot read. The only question any of the three could not answer from a desk is
 whether enough such customers will hand over the keys and keep paying in the quiet
 months. The slice exists to answer it. Sixty days.*
+
+---
+
+## 23. CLOSING NOTE (31 Jul 2026) — consensus reached; milestone-to-asset map
+
+GPT's final position converged on the accord verdict independently: freeze the vision,
+build the vertical validation slice (GitHub + TypeScript/Node + Railway/Vercel +
+Supabase/Postgres, 6–8 failure classes, human-approved deploys only), gate at 60 days.
+Its milestone plan, operating principles, and kill criteria are adopted into the accord
+with no material conflicts. Debate closed.
+
+**What only this review can add — the asset inventory per milestone** (from direct
+reading of the three codebases; see MERGE-REVIEW.md for file-level detail):
+
+| Milestone | Already built | Missing | Rough effort |
+|---|---|---|---|
+| M1 Protection Brief | ~60%: GitHub App connector, auto-drafted packs, backfill, plain-English brief machinery, unknown-state verdicts | Railway/Vercel connector (port from toile's Railway lib), Supabase connector (new), dependency map, confirm-not-author stakes flow | ~1–2 wks |
+| M2 Event Understanding | ~70%: ingest pipeline, routing table, narration + confidence, digest/Today, trust tripwire | Runtime error ingestion + health events — exactly toile's monitor port + Railway deploy events (the merge review's top transfer) | ~1–2 wks |
+| M3 Guided Repair | ~50%: sandbox lifecycle, checkpoints, diffs, PR machinery, agent runner (all toile) | Diagnosis→repair flow, per-class playbooks, cost estimate, **a spend cap that actually blocks**, risk-tiered approval (wire SILD's classifier design for real) | ~2–3 wks |
+| M4 Verification | ~40%: verdict discipline + eval gates (selvedge), deploy-success polling + probes (toile) | The five-value repair verdict (verified / probably / inconclusive / unsuccessful / stopped), generated smoke checks, post-deploy observation window | ~1–2 wks |
+| M5 Outcome Ledger | ~40%: narrations, trust incidents, metering, memory + export | Intent→outcome linking per incident, second-occurrence reuse | ~1 wk |
+
+Total: **6–10 focused weeks** to a shippable slice — consistent with the merge review's
+5–8-week estimate plus the repair-flow work, and inside the 6–15-month absorption window
+with room to spare.
+
+**Two execution warnings from inside these very repos** (the in-house cautionary tales
+for GPT's principles #4–#7): toile's spend cap currently *displays* a limit it no longer
+enforces, and SILD's governance gate shipped with every safety condition unreachable —
+this founder's own codebases contain both failure modes the slice's principles exist to
+prevent. The slice's caps and gates must be wired at the decision point, measured
+against outcomes, and covered by tests that fail when they go inert. **One caveat on
+"freeze the vision": freeze the scope; never freeze the honesty discipline** — the
+ledger, the unknown-verdicts, and the published calibration are the trust the whole
+experiment exists to earn.
+
+*Review closed. The question on the table is no longer whether the thesis is good —
+it is whether ten responsible owners will hand over the keys and keep paying through
+the quiet months. Build the slice; let them answer.*
