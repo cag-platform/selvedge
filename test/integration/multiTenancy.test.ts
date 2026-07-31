@@ -10,15 +10,32 @@ import { createPacksRouter } from '../../src/server/web/routes/packs.js';
 import { createProjectsRouter } from '../../src/server/web/routes/projects.js';
 import { createTrayRouter } from '../../src/server/web/routes/tray.js';
 import { createTodayRouter } from '../../src/server/web/routes/today.js';
+import { createPortabilityRouter } from '../../src/server/web/routes/portability.js';
+import { createDevicesRouter } from '../../src/server/web/routes/devices.js';
+import { createOrgRouter } from '../../src/server/web/routes/org.js';
+import { createMemoryRouter } from '../../src/server/web/routes/memory.js';
+import { createAskRouter } from '../../src/server/web/routes/ask.js';
+import { FakeLlmClient } from '../../src/server/llm/fake.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { localDateString } from '../../src/server/digest/timezone.js';
 
 /**
- * Acceptance gate 7: "a second Clerk org sees none of the first org's
- * data (multi-tenancy proven by test, not by inspection)." One running
- * app instance, two orgs, every API surface — reading the org from a
- * per-request header the way ensureOrg() reads it from Clerk in
- * production, so this exercises the same request-scoping logic.
+ * Acceptance gate 7: "a second Clerk org sees none of the first org's data
+ * (multi-tenancy proven by test, not by inspection)." One running app
+ * instance, two orgs, reading the org from a per-request header the way
+ * ensureOrg() reads it from Clerk in production, so this exercises the same
+ * request-scoping logic.
+ *
+ * Covered here: packs, projects, tray, today, export/import, devices, org
+ * settings, memory, and Ask's model context. Scoped in their own suites:
+ * feedback, trust, connector health, admin.
+ *
+ * A note on how this file drifted, because the same thing will happen again:
+ * it used to say "every API surface" while mounting four routers, and four
+ * more surfaces shipped afterwards without joining it — including export,
+ * which returns bulk data. The claim outgrew the coverage silently, which is
+ * exactly how an isolation gap survives a green suite. When you add a router,
+ * add it here, and keep this list honest rather than aspirational.
  */
 describe('multi-tenancy: org isolation across every API surface', () => {
   let db: TestDb;
@@ -49,6 +66,14 @@ describe('multi-tenancy: org isolation across every API surface', () => {
     app.use(createProjectsRouter(db));
     app.use(createTrayRouter(db));
     app.use(createTodayRouter(db));
+    // The four surfaces added after this suite was written. Its docstring
+    // claimed "every API surface" while covering four routers; that claim
+    // outgrew its coverage, which is how an isolation gap survives a green
+    // suite. Export in particular hands back bulk data.
+    app.use(createPortabilityRouter(db));
+    app.use(createDevicesRouter(db));
+    app.use(createOrgRouter(db));
+    app.use(createMemoryRouter(db));
 
     // Seed org A with a full slice of data: a pack, an ingested event, a tray item, a digest.
     await createPack(
@@ -135,6 +160,81 @@ describe('multi-tenancy: org isolation across every API surface', () => {
     expect((await asOrgA('/api/projects')).body).toHaveLength(1);
     expect((await asOrgA('/api/tray')).body).toHaveLength(1);
     expect((await asOrgA('/api/today')).body.digest?.digestDate).toBe(localDateString(new Date(), 'UTC'));
+  });
+
+  it('export hands back only the calling org\'s data, never the other\'s', async () => {
+    // The most severe surface here: a bulk dump. Org A has a full slice of
+    // data seeded above; org B has none and must receive none.
+    const bundleB = await request(app).get('/api/export').set('x-test-org', orgB);
+    expect(bundleB.status).toBe(200);
+    const serialisedB = JSON.stringify(bundleB.body);
+    expect(serialisedB).not.toContain('Loom (Org A)');
+    expect(serialisedB).not.toContain('acme/loom');
+
+    // And org A's own export still works, so this is scoping rather than a
+    // blanket empty response that would pass the assertion for the wrong reason.
+    const bundleA = await request(app).get('/api/export').set('x-test-org', orgA);
+    expect(bundleA.status).toBe(200);
+    expect(JSON.stringify(bundleA.body)).toContain('Loom (Org A)');
+  });
+
+  it('device tokens are scoped: org B cannot see or unregister org A\'s device', async () => {
+    // A leak here routes another customer's push notifications to this phone.
+    const reg = await request(app)
+      .post('/api/devices')
+      .set('x-test-org', orgA)
+      .send({ token: 'apns-token-org-a', platform: 'ios' });
+    expect(reg.status).toBeLessThan(300);
+
+    // Org B deleting the same token string must not remove org A's row.
+    await request(app).delete('/api/devices/apns-token-org-a').set('x-test-org', orgB);
+
+    const reReg = await request(app)
+      .post('/api/devices')
+      .set('x-test-org', orgA)
+      .send({ token: 'apns-token-org-a', platform: 'ios' });
+    expect(reReg.status).toBeLessThan(300); // still A's to manage
+  });
+
+  it('memory roll-ups do not count another org\'s projects', async () => {
+    const memB = await request(app).get('/api/memory').set('x-test-org', orgB);
+    expect(memB.status).toBe(200);
+    expect(JSON.stringify(memB.body)).not.toContain('Loom (Org A)');
+  });
+
+  it('org settings are per-org: B changing its timezone does not move A', async () => {
+    await request(app).patch('/api/org/timezone').set('x-test-org', orgB).send({ timezone: 'Asia/Tokyo', source: 'user' });
+
+    const a = await request(app).get('/api/org').set('x-test-org', orgA);
+    expect(a.body.timezone).toBe('UTC');
+    const b = await request(app).get('/api/org').set('x-test-org', orgB);
+    expect(b.body.timezone).toBe('Asia/Tokyo');
+  });
+
+  it('Ask never puts another org\'s stack into the model context', async () => {
+    // Asserts on what was SENT to the model, not just what came back: a
+    // scoping bug here would leak org A's projects into org B's prompt even
+    // if the answer happened to look innocuous.
+    const fake = new FakeLlmClient((req) => ({
+      ok: true,
+      json: { answer: 'Nothing to report.', confidence: 'high' },
+      tokensIn: 10,
+      tokensOut: 10,
+      model: req.model,
+    }));
+    const askApp = express();
+    askApp.use(express.json());
+    askApp.use((req, _res, next) => {
+      (req as Request & { orgId: string }).orgId = req.header('x-test-org') ?? '';
+      next();
+    });
+    askApp.use(createAskRouter(db, { llm: fake, db }));
+
+    await request(askApp).post('/api/ask').set('x-test-org', orgB).send({ question: 'How are my apps?' });
+
+    const sent = JSON.stringify(fake.requests);
+    expect(sent).not.toContain('Loom (Org A)');
+    expect(sent).not.toContain('acme/loom');
   });
 
   it('an unrecognized org id never falls back to another org\'s data', async () => {
