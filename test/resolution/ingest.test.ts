@@ -4,7 +4,7 @@ import { orgs } from '../../src/server/db/schema/index.js';
 import { createPack, getPack } from '../../src/server/packs/store.js';
 import { ingestEvent, ingestResolvedEvent } from '../../src/server/resolution/ingest.js';
 import { makeTestPack } from '../fixtures/testPack.js';
-import type { NewSiltaEvent } from '../../src/shared/types/event.js';
+import type { NewSelvedgeEvent } from '../../src/shared/types/event.js';
 
 describe('resolution/ingest', () => {
   let db: TestDb;
@@ -22,7 +22,7 @@ describe('resolution/ingest', () => {
     await close();
   });
 
-  function pushEvent(overrides: Partial<NewSiltaEvent> = {}): NewSiltaEvent {
+  function pushEvent(overrides: Partial<NewSelvedgeEvent> = {}): NewSelvedgeEvent {
     return {
       org_id: orgId,
       source: 'github',

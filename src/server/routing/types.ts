@@ -31,8 +31,8 @@ export type RoutingTable = {
 
 /**
  * Everything about the event that route() needs, expressed independently of
- * SiltaEvent so the pure routing module never has to import the full event
- * envelope (or touch `raw`). The resolution layer maps a SiltaEvent to this.
+ * SelvedgeEvent so the pure routing module never has to import the full event
+ * envelope (or touch `raw`). The resolution layer maps a SelvedgeEvent to this.
  */
 export type RoutableEvent = {
   event_type: string;

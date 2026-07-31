@@ -1,7 +1,7 @@
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { events, narrations } from '../db/schema/index.js';
-import type { NewSiltaEvent } from '../../shared/types/event.js';
+import type { NewSelvedgeEvent } from '../../shared/types/event.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { getPack } from '../packs/store.js';
 import { resolveProjectId } from './resolveProject.js';
@@ -26,7 +26,7 @@ export type IngestResult = {
 };
 
 /** Inserts the event row; returns null if this was a duplicate delivery (dedupe_key already seen for this org+timestamp). */
-async function insertEvent(db: Db, id: string, receivedAt: Date, projectId: string | null, event: NewSiltaEvent) {
+async function insertEvent(db: Db, id: string, receivedAt: Date, projectId: string | null, event: NewSelvedgeEvent) {
   const rows = await db
     .insert(events)
     .values({
@@ -53,7 +53,7 @@ async function routeNarrateAndPersist(
   projectId: string,
   pack: ContextPack,
   id: string,
-  event: NewSiltaEvent,
+  event: NewSelvedgeEvent,
   narrationDeps?: NarrationDeps,
   pushSender?: PushSender,
 ) {
@@ -143,7 +143,7 @@ async function routeNarrateAndPersist(
  */
 export async function ingestEvent(
   db: Db,
-  event: NewSiltaEvent,
+  event: NewSelvedgeEvent,
   narrationDeps?: NarrationDeps,
   pushSender?: PushSender,
 ): Promise<IngestResult> {
@@ -168,7 +168,7 @@ export async function ingestEvent(
   }
 
   const refinedType = refineEventType(event.event_type, event.raw, pack);
-  const refinedEvent: NewSiltaEvent = { ...event, event_type: refinedType };
+  const refinedEvent: NewSelvedgeEvent = { ...event, event_type: refinedType };
 
   const decision = await routeNarrateAndPersist(db, event.org_id, projectId, pack, id, refinedEvent, narrationDeps, pushSender);
 
@@ -184,7 +184,7 @@ export async function ingestEvent(
 export async function ingestResolvedEvent(
   db: Db,
   projectId: string,
-  event: NewSiltaEvent,
+  event: NewSelvedgeEvent,
   narrationDeps?: NarrationDeps,
 ): Promise<IngestResult> {
   const id = ulid();

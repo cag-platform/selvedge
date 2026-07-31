@@ -64,7 +64,7 @@ not the code) · **New** (exists nowhere; build it).
 | Asset | What it does | Phase |
 |---|---|---|
 | `test/helpers/testDb.ts` | PGlite — real Postgres in WASM, same migrations as production | 0 |
-| 40 test files / ~238 tests | The safety net Toile arrives without | 0 |
+| 49 test files / 387 tests | The safety net Toile arrives without (the ~238 figure quoted in `MERGE-REVIEW.md` was read from the stale default branch) | 0 |
 | `evals/` (harness, run, fixtures, mockLlm, styleGrade) + golden set | Verdict preservation, thread closure, invented facts, word budget | 0 |
 | `.github/workflows/test.yml`, `evals.yml` | Evals **block merge, no override flag** | 0 |
 
@@ -79,7 +79,7 @@ not the code) · **New** (exists nowhere; build it).
 | Phrasings graduate on silence (emission count + no complaint) | `narration/library.ts` `maybeGraduate` | 0 |
 | Track record ignores collected feedback; prints "No false all-clears" from absence of detection | `trust/trackRecord.ts` `buildSummary` | 0 |
 | `--ink-faint` fails AA for body text | `styles/tokens.css` + usage | 0 |
-| Package still named `silta` | `package.json` | 0 |
+| ~~Package and central event type still named `silta` / `SiltaEvent`~~ | **DONE 31 Jul** — `package.json` → `selvedge`, `SiltaEvent`/`NewSiltaEvent` → `SelvedgeEvent`/`NewSelvedgeEvent` across 8 files; typecheck and 387 tests green | 0 |
 | APNs sender never run against a real device | `push/apns.ts` | 2 |
 | Stall-sweep path can't push (no sender threaded through) | `resolution/ingest.ts` | 2 |
 | Four finished systems with **no user-facing surface**: trust track record, per-project memory, import, Ask | routes exist, pages don't | 2 / 5 |

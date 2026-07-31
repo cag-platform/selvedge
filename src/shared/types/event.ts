@@ -18,7 +18,7 @@ export type ConnectorKind =
 
 export type SeverityHint = 'info' | 'warn' | 'error';
 
-export type SiltaEvent = {
+export type SelvedgeEvent = {
   id: string; // ulid
   org_id: string;
   source: ConnectorKind;
@@ -33,7 +33,7 @@ export type SiltaEvent = {
 };
 
 /** Fields a connector normalizer produces; storage layer fills id/received_at/project_id. */
-export type NewSiltaEvent = Omit<SiltaEvent, 'id' | 'received_at' | 'project_id'> & {
+export type NewSelvedgeEvent = Omit<SelvedgeEvent, 'id' | 'received_at' | 'project_id'> & {
   project_id?: string | null;
 };
 

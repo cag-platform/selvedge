@@ -5,7 +5,7 @@ import { createPack } from '../../src/server/packs/store.js';
 import { ingestEvent } from '../../src/server/resolution/ingest.js';
 import { composeDigestForOrg } from '../../src/server/digest/compose.js';
 import { makeTestPack } from '../fixtures/testPack.js';
-import type { NewSiltaEvent } from '../../src/shared/types/event.js';
+import type { NewSelvedgeEvent } from '../../src/shared/types/event.js';
 
 describe('digest/compose (integration)', () => {
   let db: TestDb;
@@ -21,7 +21,7 @@ describe('digest/compose (integration)', () => {
 
   afterEach(async () => close());
 
-  function ev(overrides: Partial<NewSiltaEvent>): NewSiltaEvent {
+  function ev(overrides: Partial<NewSelvedgeEvent>): NewSelvedgeEvent {
     return {
       org_id: orgId,
       source: 'github',

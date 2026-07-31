@@ -1,4 +1,4 @@
-import type { NewSiltaEvent } from '../../../shared/types/event.js';
+import type { NewSelvedgeEvent } from '../../../shared/types/event.js';
 import type { CreateOrDeletePayload, PullRequestPayload, PushPayload, WorkflowRunPayload } from './payloadTypes.js';
 
 /**
@@ -19,7 +19,7 @@ function defaultBranchRef(repo: { default_branch: string }): string {
   return `refs/heads/${repo.default_branch}`;
 }
 
-export function normalizePush(orgId: string, payload: PushPayload): NewSiltaEvent | null {
+export function normalizePush(orgId: string, payload: PushPayload): NewSelvedgeEvent | null {
   const { ref, before, after, commits, repository } = payload;
   if (!ref.startsWith('refs/heads/')) return null; // tag pushes etc.
   if (commits.length === 0) return null; // e.g. branch created pointing at an existing commit
@@ -43,7 +43,7 @@ export function normalizePush(orgId: string, payload: PushPayload): NewSiltaEven
   };
 }
 
-export function normalizePullRequest(orgId: string, payload: PullRequestPayload): NewSiltaEvent | null {
+export function normalizePullRequest(orgId: string, payload: PullRequestPayload): NewSelvedgeEvent | null {
   if (payload.action !== 'opened') return null; // merges are covered by the push event; other actions unmodeled in Phase 1
   const { pull_request: pr, repository, number } = payload;
 
@@ -61,7 +61,7 @@ export function normalizePullRequest(orgId: string, payload: PullRequestPayload)
 
 const DEPLOY_WORKFLOW_NAME = /deploy/i;
 
-export function normalizeWorkflowRun(orgId: string, payload: WorkflowRunPayload): NewSiltaEvent | null {
+export function normalizeWorkflowRun(orgId: string, payload: WorkflowRunPayload): NewSelvedgeEvent | null {
   const { action, workflow_run: run, repository } = payload;
 
   if (action === 'requested') {
@@ -117,11 +117,11 @@ export function normalizeWorkflowRun(orgId: string, payload: WorkflowRunPayload)
 
 /**
  * Branch create/delete webhooks are received and HMAC-verified (deliverable
- * 2) but produce no SiltaEvent: the routing table has no row for them, and
+ * 2) but produce no SelvedgeEvent: the routing table has no row for them, and
  * A1/A3 already give the resolution layer enough signal for in_progress
  * bookkeeping. Kept as an explicit function (rather than silently dropped
  * in the router) so the "why" is visible next to push/PR/workflow_run.
  */
-export function normalizeCreateOrDelete(_orgId: string, _payload: CreateOrDeletePayload): NewSiltaEvent | null {
+export function normalizeCreateOrDelete(_orgId: string, _payload: CreateOrDeletePayload): NewSelvedgeEvent | null {
   return null;
 }

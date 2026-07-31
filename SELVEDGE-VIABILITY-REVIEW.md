@@ -1124,3 +1124,45 @@ and treat managed-fuel viability as the gating question for the venture-scale ca
 rather than a later pricing detail. A second platform risk also enters: under BYO,
 provider rate-limit or pricing changes degrade the customer's experience while the
 support burden lands on Selvedge.
+
+---
+
+## 26. NAME — decided (31 Jul 2026)
+
+**The product keeps the name Selvedge.** Considered and set aside: reusing SILD (inherits
+a shutdown, an App Store identity change, and a name that does no work for the new
+product), Tailor (homophone with Taylor; unprotectable common noun), Fettle (overexposed),
+Plumb / Kempt / Hale / Trim / Inlay / Bide / Staunch / Anneal, Toile (pronunciation, and
+mishears as *toil* — drudgery — which is the opposite of the promise) and Baste (strong,
+but the cooking sense dominates).
+
+**Why it holds.** *Selvedge* is literally **self + edge** — Middle English *selvage*, after
+Middle Dutch *selfegge*: the woven border that finishes itself and cannot fray, needing no
+hem. Three true readings, all on-message: the edge that holds; the thing that finishes
+itself; and the founder's own reading — **giving yourself an edge as a solo builder.**
+
+The practical case is decisive. The signature UI element *is* the selvedge edge — a
+status-coloured seam whose acceptance bar is "a stranger reads the whole stack's health
+from the edges alone" — and every status state is expressed through it. Renaming would
+orphan the one part of the product that is already excellent.
+
+The earlier objection ("it doesn't fit the product") does not survive contact with the
+category: Replit is a REPL plus an Italian domain hack, Cursor is the blinking caret,
+Lovable was GPT Engineer, Slack means *not taut*. None of them describes its product.
+Meaning flows from the product to the name.
+
+**The tagline therefore carries the explanatory load:**
+
+> **Selvedge** — keeps your apps running.
+> *The tailor for software you didn't write.*
+
+The tailor metaphor is retained as positioning, not as a name: a tailor alters what you
+already own, keeps your measurements on file, and works on an ongoing, discreet
+relationship — the opposite of a builder who makes from scratch. Every repo in the family
+(toile, loom, chalk, drape) already lives inside that metaphor. The self-edge etymology is
+lore for an about page, not a customer-facing claim.
+
+**Applied 31 Jul:** package renamed `silta` → `selvedge`; the central event contract
+renamed `SiltaEvent`/`NewSiltaEvent` → `SelvedgeEvent`/`NewSelvedgeEvent` across 8 files.
+Typecheck clean, 387 tests green. Strategy memos unpacked from `selvedge-strategy.zip`
+into `docs/strategy/` with a supersession note; the binary removed.

@@ -2,14 +2,14 @@ import { Router, raw } from 'express';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { connectorHealth } from '../../db/schema/index.js';
-import type { NewSiltaEvent } from '../../../shared/types/event.js';
+import type { NewSelvedgeEvent } from '../../../shared/types/event.js';
 import { verifyGithubSignature } from './hmac.js';
 import { normalizeCreateOrDelete, normalizePullRequest, normalizePush, normalizeWorkflowRun } from './normalizer.js';
 import { getHealth, markAuthFailed, markFresh } from './health.js';
 import { recordConnectorAuthFailed } from '../../resolution/connectorEvents.js';
 import type { CreateOrDeletePayload, PullRequestPayload, PushPayload, WorkflowRunPayload } from './payloadTypes.js';
 
-export type Ingest = (event: NewSiltaEvent) => Promise<void>;
+export type Ingest = (event: NewSelvedgeEvent) => Promise<void>;
 
 /** Looks up which org installed this GitHub App installation. */
 async function findOrgForInstallation(db: Db, installationId: string): Promise<string | null> {
@@ -83,7 +83,7 @@ export function createGithubWebhookRouter(deps: { db: Db; webhookSecret: string;
       return;
     }
 
-    let event: NewSiltaEvent | null = null;
+    let event: NewSelvedgeEvent | null = null;
     switch (eventName) {
       case 'push':
         event = normalizePush(orgId, payload as PushPayload);
