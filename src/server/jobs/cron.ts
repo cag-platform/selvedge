@@ -8,9 +8,9 @@ import { revalidateBaselines } from '../memory/revalidate.js';
 import { ensureCurrentPartitions } from '../db/partitions.js';
 import { pollHealth, newMonitorState } from '../monitor/poller.js';
 import { makePollerIngest, listHealthChecksToPoll } from '../monitor/wiring.js';
-import { pollDeployStates } from '../connectors/railway/poller.js';
-import { listDeployServicesToPoll } from '../connectors/railway/wiring.js';
-import type { HostDeployStatus } from '../connectors/railway/client.js';
+import { pollDeployStates } from '../connectors/host/poller.js';
+import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
+import type { HostDeployStatus } from '../connectors/host/deploy.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in

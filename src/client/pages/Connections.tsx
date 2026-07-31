@@ -70,7 +70,7 @@ export function Connections() {
 }
 
 type HostRow = { provider: string; last4: string | null; status: string };
-const HOST_LABEL: Record<string, string> = { railway: 'Railway', supabase: 'Supabase' };
+const HOST_LABEL: Record<string, string> = { railway: 'Railway', vercel: 'Vercel', supabase: 'Supabase' };
 
 /**
  * Host tokens — what lets Selvedge watch your deploys. Unlike a model key, a bad

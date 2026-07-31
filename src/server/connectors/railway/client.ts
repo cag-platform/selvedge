@@ -11,6 +11,9 @@
  * is where "the deploy is fine" gets decided.
  */
 
+import type { HostDeployStatus } from '../host/deploy.js';
+export type { HostDeployStatus } from '../host/deploy.js';
+
 const ENDPOINT = 'https://backboard.railway.com/graphql/v2';
 
 export interface RailwayTarget {
@@ -35,9 +38,6 @@ export function parseRailwayTarget(resourceId: string): RailwayTarget | null {
   if (parts.length !== 3 || parts.some((p) => p.trim() === '')) return null;
   return { projectId: parts[0]!, environmentId: parts[1]!, serviceId: parts[2]! };
 }
-
-/** The normalized deploy state Selvedge reasons about, whatever the host calls it. */
-export type HostDeployStatus = 'live' | 'building' | 'failed' | 'unknown';
 
 /**
  * Map Railway's deployment status to ours. The false-calm rule applies to

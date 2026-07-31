@@ -235,6 +235,8 @@ export function PackEditor() {
         </button>
       </section>
 
+      {projectId && <BeaconSection projectId={projectId} />}
+
       <section className="space-y-3 border-t border-hairline pt-6">
         <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Delete</h2>
         {!confirmingDelete ? (
@@ -258,5 +260,89 @@ export function PackEditor() {
         )}
       </section>
     </Pane>
+  );
+}
+
+/**
+ * Error reporting (the beacon). An optional, advanced connection: point your
+ * app's error counts at Selvedge and it watches for a spike above the app's own
+ * baseline. The token is shown exactly once, on setup — Selvedge stores only a
+ * hash of it, so it can never be shown again.
+ */
+function BeaconSection({ projectId }: { projectId: string }) {
+  const [status, setStatus] = useState<{ issued: boolean; lastSeenAt: string | null } | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    api
+      .get<{ issued: boolean; lastSeenAt: string | null }>(`/api/projects/${projectId}/beacon`)
+      .then(setStatus)
+      .catch(() => setStatus({ issued: false, lastSeenAt: null }));
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function issue() {
+    setBusy(true);
+    try {
+      const r = await api.post<{ token: string }>(`/api/projects/${projectId}/beacon`, {});
+      setToken(r.token);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke() {
+    setBusy(true);
+    try {
+      await api.del(`/api/projects/${projectId}/beacon`);
+      setToken(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3 border-t border-hairline pt-6">
+      <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Error reporting</h2>
+      <p className="text-body text-ink-dim">
+        Optional. If your app can report how many requests errored, I'll watch for a spike above its normal rate and
+        raise it — the same as anything else that breaks. Most apps don't need this.
+      </p>
+
+      {token && (
+        <div className="space-y-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2">
+          <p className="text-meta text-ink-dim">Your beacon token — copy it now, it won't be shown again:</p>
+          <code className="block break-all font-mono text-tech text-ink">{token}</code>
+          <p className="text-meta text-ink-quiet">
+            Have your app POST {`{ errors, requests }`} per window to <span className="font-mono">/beacons/errors</span> with
+            header <span className="font-mono">X-Beacon-Token</span>.
+          </p>
+        </div>
+      )}
+
+      {status?.issued ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-meta text-ink-quiet">
+            Reporting is on{status.lastSeenAt ? ` — last report ${new Date(status.lastSeenAt).toLocaleString()}` : ' — no reports yet'}.
+          </span>
+          <button className="text-body text-brass hover:underline" disabled={busy} onClick={issue}>
+            Regenerate token
+          </button>
+          <button className="text-body text-thread hover:underline" disabled={busy} onClick={revoke}>
+            Turn off
+          </button>
+        </div>
+      ) : (
+        <button className="text-body text-brass hover:underline" disabled={busy} onClick={issue}>
+          {busy ? 'Setting up…' : 'Set up error reporting'}
+        </button>
+      )}
+    </section>
   );
 }

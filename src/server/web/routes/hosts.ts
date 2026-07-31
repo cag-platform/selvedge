@@ -20,7 +20,7 @@ function orgIdOf(req: Request): string {
  * the connectors-health surface reports whether it's actually working.
  */
 
-const HOST_PROVIDERS = ['railway', 'supabase'] as const;
+const HOST_PROVIDERS = ['railway', 'vercel', 'supabase'] as const;
 type HostProvider = (typeof HOST_PROVIDERS)[number];
 
 function isHostProvider(v: unknown): v is HostProvider {
