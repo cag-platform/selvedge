@@ -1,6 +1,7 @@
 import type { Db } from '../db/client.js';
 import type { ContextPack } from '../../shared/types/pack.js';
-import { capabilityGapLine, quietProjectLine, unsortedTrayNarration, weeklyRetrospectiveLine } from '../narration/index.js';
+import { deriveProjectStatus } from '../packs/healthLine.js';
+import { capabilityGapLine, quietProjectLine, quietUnverifiedLine, unsortedTrayNarration, weeklyRetrospectiveLine } from '../narration/index.js';
 import { listUnsortedEvents } from '../resolution/unsortedTray.js';
 import { narrations } from '../db/schema/index.js';
 import { and, eq, gte, lt } from 'drizzle-orm';
@@ -17,13 +18,35 @@ export function capabilityGapStandingLines(packs: ContextPack[]): string[] {
   return lines;
 }
 
-/** G2: projects with tier >= live_small, healthy, and no narration in today's window — one reassurance line, not silence. */
+/**
+ * G2: live projects with no narration in today's window — a reassurance line
+ * rather than silence.
+ *
+ * The reassurance is split by what we can actually verify. Previously this
+ * filtered on tier and silence alone and then said "quiet and healthy" about
+ * every one of them, so a live_critical project whose connector had died —
+ * the exact case the owner most needs to hear about — was reported as healthy
+ * *because* no events arrived. Absence of news is not health.
+ *
+ * Confirmed healthy → the reassurance. Unverifiable → said plainly. Projects
+ * that are down or carrying a known gap are excluded here; the attention and
+ * capability-gap lines already own them.
+ */
 export function quietLine(packs: ContextPack[], projectIdsWithActivity: Set<string>): string {
   const quietTiers = new Set(['live_small', 'live_critical']);
-  const names = packs
-    .filter((p) => quietTiers.has(p.stakes.tier) && !projectIdsWithActivity.has(p.identity.project_id))
-    .map((p) => p.identity.name);
-  return quietProjectLine(names);
+  const quiet = packs.filter(
+    (p) => quietTiers.has(p.stakes.tier) && !projectIdsWithActivity.has(p.identity.project_id),
+  );
+
+  const healthy: string[] = [];
+  const unverified: string[] = [];
+  for (const pack of quiet) {
+    const status = deriveProjectStatus(pack);
+    if (status === 'healthy') healthy.push(pack.identity.name);
+    else if (status === 'unknown') unverified.push(pack.identity.name);
+  }
+
+  return [quietProjectLine(healthy), quietUnverifiedLine(unverified)].filter(Boolean).join(' ');
 }
 
 /** E4: unmappable events piling up in the unsorted tray. */

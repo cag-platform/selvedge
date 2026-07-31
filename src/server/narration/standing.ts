@@ -8,14 +8,39 @@ import type { ContextPack, CapabilityGap } from '../../shared/types/pack.js';
  * rendering").
  */
 
-export function capabilityGapLine(pack: ContextPack, gap: CapabilityGap): string {
-  return `${pack.identity.name} is healthy — ${gap.summary}`;
+/** Join names as "A", "A and B", "A, B and C". */
+function nameList(names: string[]): string {
+  return names.length === 1 ? (names[0] as string) : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
+/**
+ * G1. Only claims "is healthy" when health is actually confirmed — the same
+ * rule healthLine() applies on the project card. A gap on a project whose
+ * health we cannot see is stated on its own; asserting calm we haven't
+ * verified is the one prohibited move.
+ */
+export function capabilityGapLine(pack: ContextPack, gap: CapabilityGap): string {
+  return pack.state?.serving_now?.healthy === true
+    ? `${pack.identity.name} is healthy — ${gap.summary}`
+    : `${pack.identity.name} — ${gap.summary}`;
+}
+
+/** G2a — the reassurance line. Only for projects whose health is confirmed. */
 export function quietProjectLine(names: string[]): string {
   if (names.length === 0) return '';
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `${list} ${names.length === 1 ? 'was' : 'were'} quiet and healthy.`;
+  return `${nameList(names)} ${names.length === 1 ? 'was' : 'were'} quiet and healthy.`;
+}
+
+/**
+ * G2b — the honest counterpart. A live project that sent no events and whose
+ * health we cannot confirm is NOT reassuring news: silence from something we
+ * can't see is exactly the case where "quiet and healthy" would be a false
+ * all-clear. Say what is true instead.
+ */
+export function quietUnverifiedLine(names: string[]): string {
+  if (names.length === 0) return '';
+  const wasWere = names.length === 1 ? 'was' : 'were';
+  return `${nameList(names)} ${wasWere} quiet, but I couldn't check ${names.length === 1 ? 'it' : 'them'} — no health signal came through.`;
 }
 
 /** G3 — Sunday's mechanical weekly retrospective (Phase 1: counts, not prose; the "memory product" framing is a Phase 2 LLM upgrade). */

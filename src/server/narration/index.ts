@@ -5,5 +5,5 @@ export { packToNarratorContext, type NarratorContext } from './packContext.js';
 export { VERDICT_PHRASE, isVerdict } from './verdictText.js';
 export { templateRegistry } from './templates/registry.js';
 export { connectorAuthFailedNarration, unsortedTrayNarration } from './orgLevel.js';
-export { capabilityGapLine, quietProjectLine, weeklyRetrospectiveLine } from './standing.js';
+export { capabilityGapLine, quietProjectLine, quietUnverifiedLine, weeklyRetrospectiveLine } from './standing.js';
 export * from './types.js';
