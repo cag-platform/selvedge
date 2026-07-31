@@ -20,6 +20,7 @@ import { createAdminRouter } from './routes/admin.js';
 import { createOrgRouter } from './routes/org.js';
 import { createDevicesRouter } from './routes/devices.js';
 import { createFuelRouter } from './routes/fuel.js';
+import { createHostsRouter } from './routes/hosts.js';
 import { createGithubSetupRouter } from './routes/githubSetup.js';
 import { createProtectionRouter } from './routes/protection.js';
 import { createConnectorsHealthRouter } from './routes/connectorsHealth.js';
@@ -98,6 +99,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createOrgRouter(db));
   app.use(createDevicesRouter(db));
   app.use(createFuelRouter(db));
+  app.use(createHostsRouter(db));
   app.use(createGithubSetupRouter(db, { redirectUri: process.env.GITHUB_OAUTH_REDIRECT_URI }));
   app.use(createProtectionRouter(db));
   app.use(createConnectorsHealthRouter(db));

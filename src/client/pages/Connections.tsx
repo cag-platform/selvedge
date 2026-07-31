@@ -63,7 +63,115 @@ export function Connections() {
           Coming soon: {state.coming_soon.map(fuelLabel).join(', ')}.
         </p>
       )}
+
+      <Hosts />
     </div>
+  );
+}
+
+type HostRow = { provider: string; last4: string | null; status: string };
+const HOST_LABEL: Record<string, string> = { railway: 'Railway', supabase: 'Supabase' };
+
+/**
+ * Host tokens — what lets Selvedge watch your deploys. Unlike a model key, a bad
+ * host token is safe: everything downstream degrades to "can't tell", never a
+ * false alarm, so it's stored without a blocking check and confirmed the next
+ * time deploys are read.
+ */
+function Hosts() {
+  const [connected, setConnected] = useState<HostRow[] | null>(null);
+  const [available, setAvailable] = useState<string[]>([]);
+
+  const load = () =>
+    api
+      .get<{ connected: HostRow[]; available: string[] }>('/api/hosts')
+      .then((r) => {
+        setConnected(r.connected);
+        setAvailable(r.available);
+      })
+      .catch(() => setConnected([]));
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (!connected) return null;
+  const connectedProviders = new Set(connected.map((c) => c.provider));
+  const connectable = available.filter((p) => !connectedProviders.has(p));
+
+  return (
+    <section>
+      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Your host</p>
+      <p className="mb-3 max-w-xl text-meta text-ink-dim">
+        Grant a token so I can see whether your deploys go live or fail. It's your account; the token stays in the vault,
+        and you can remove it any time.
+      </p>
+      <div className="space-y-2">
+        {connected.map((c) => (
+          <div key={c.provider} className="flex items-center justify-between rounded-card border border-hairline bg-panel px-4 py-3">
+            <div>
+              <p className="text-body text-ink">{HOST_LABEL[c.provider] ?? c.provider}</p>
+              <p className="text-meta text-ink-quiet">{c.last4 ? `token ending ${c.last4}` : 'token stored'}</p>
+            </div>
+            <button
+              onClick={async () => {
+                await api.del(`/api/hosts/${c.provider}`);
+                void load();
+              }}
+              className="text-meta text-ink-quiet hover:text-thread"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        {connectable.map((p) => (
+          <HostConnect key={p} provider={p} onConnected={() => void load()} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HostConnect({ provider, onConnected }: { provider: string; onConnected: () => void }) {
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          await api.post('/api/hosts', { provider, token: token.trim() });
+          setToken('');
+          onConnected();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "that didn't work");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      className="flex flex-wrap items-center gap-3 rounded-card border border-dashed border-hairline bg-panel-soft px-4 py-3"
+    >
+      <span className="text-body text-ink-dim">{HOST_LABEL[provider] ?? provider}</span>
+      <input
+        type="password"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+        placeholder={`paste your ${HOST_LABEL[provider] ?? provider} token`}
+        className="min-w-[14rem] flex-1 rounded-inset border border-hairline bg-panel px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+      />
+      <button
+        type="submit"
+        disabled={busy || token.trim().length < 8}
+        className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-ink hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+      >
+        {busy ? 'Saving…' : 'Connect'}
+      </button>
+      {error && <span className="text-meta text-thread">{error}</span>}
+    </form>
   );
 }
 
