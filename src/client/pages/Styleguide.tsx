@@ -7,8 +7,70 @@
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
 import { SituationCard } from '../components/SituationCard.js';
+import { WorkCard } from '../components/WorkCard.js';
+import type { WorkCardData } from '../lib/card.js';
 import { ProjectRail } from '../components/ProjectRail.js';
 import { SelvedgeLockup, SelvedgeMark } from '../components/Logo.js';
+
+const DEMO_CARDS: WorkCardData[] = [
+  {
+    id: 'demo_sensitive',
+    projectId: 'loom',
+    trigger: 'request',
+    title: 'Add a coupon field to the checkout',
+    proposal: 'You asked to add a coupon code box at checkout. I\'ll scope it, then show you exactly what I\'d change and what it costs before anything ships.',
+    risk: 'sensitive',
+    gate: 'hard',
+    estimate: { lowCents: 600, highCents: 2400 },
+    stop: { capCents: 5000, checkpointAtFractions: [0.4, 0.75] },
+    state: 'proposed',
+    verdict: null,
+    spentCents: 0,
+    backupVerified: false,
+    acts: [{ at: '2026-07-31T09:00:00Z', kind: 'proposed', detail: 'Proposed a coupon field.' }],
+    createdAt: '2026-07-31T09:00:00Z',
+    updatedAt: '2026-07-31T09:00:00Z',
+  },
+  {
+    id: 'demo_working',
+    projectId: 'loom',
+    trigger: 'incident',
+    title: 'Look into why Loom is down',
+    proposal: 'Loom looks down. I\'m investigating what changed and will propose a fix.',
+    risk: 'ordinary',
+    gate: 'normal',
+    estimate: { lowCents: 300, highCents: 1200 },
+    stop: { capCents: 3000, checkpointAtFractions: [] },
+    state: 'working',
+    verdict: null,
+    spentCents: 800,
+    backupVerified: true,
+    acts: [
+      { at: '2026-07-31T09:00:00Z', kind: 'approved', detail: 'Approved.' },
+      { at: '2026-07-31T09:01:00Z', kind: 'work_started', detail: 'Started work.' },
+    ],
+    createdAt: '2026-07-31T09:00:00Z',
+    updatedAt: '2026-07-31T09:02:00Z',
+  },
+  {
+    id: 'demo_done',
+    projectId: 'mirror',
+    trigger: 'request',
+    title: 'Make the gift note optional',
+    proposal: 'You asked to make the gift-note field optional at checkout.',
+    risk: 'ordinary',
+    gate: 'normal',
+    estimate: { lowCents: 400, highCents: 900 },
+    stop: { capCents: 1500, checkpointAtFractions: [] },
+    state: 'done',
+    verdict: 'verified',
+    spentCents: 520,
+    backupVerified: false,
+    acts: [{ at: '2026-07-31T08:00:00Z', kind: 'completed', detail: 'Done — verified.' }],
+    createdAt: '2026-07-31T08:00:00Z',
+    updatedAt: '2026-07-31T08:30:00Z',
+  },
+];
 
 const COLORS: Array<{ token: string; varName: string; note: string }> = [
   { token: 'paper', varName: '--paper', note: 'the daylight ground' },
@@ -275,6 +337,19 @@ export function Styleguide() {
                 occurredAt: '2026-07-31T09:12:00Z',
               }}
             />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-headline font-display">Work cards — the same grammar, every ask</h2>
+        <p className="mb-3 text-body text-ink-dim">
+          One card whether it's a $6 fix or a $200 feature: a plain proposal, an estimate, a stop-point, an approval.
+          A sensitive change wears the thread edge and cannot be approved until a backup is confirmed.
+        </p>
+        <div className="space-y-3">
+          {DEMO_CARDS.map((c) => (
+            <WorkCard key={c.id} card={c} onChanged={() => {}} />
           ))}
         </div>
       </section>

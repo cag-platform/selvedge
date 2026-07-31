@@ -4,6 +4,8 @@ import { Brief, BriefEyebrow, BriefClose, BriefItem, Headline, Reveal } from '..
 import { StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
 import { ProjectRail, type ProjectCardData } from '../components/ProjectRail.js';
 import { SituationCard, FeedbackTaps, type SituationEvent } from '../components/SituationCard.js';
+import { WorkCard } from '../components/WorkCard.js';
+import { needsOwner, type WorkCardData } from '../lib/card.js';
 import { verdictToStatus, type Verdict } from '../lib/verdict.js';
 
 type SectionItem = {
@@ -68,6 +70,7 @@ function AttentionAnchor({ item }: { item: SectionItem }) {
 export function Today() {
   const [data, setData] = useState<TodayResponse | null>(null);
   const [projects, setProjects] = useState<ProjectCardData[]>([]);
+  const [cards, setCards] = useState<WorkCardData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
 
@@ -75,6 +78,7 @@ export function Today() {
     Promise.all([
       api.get<TodayResponse>('/api/today').then(setData),
       api.get<ProjectCardData[]>('/api/projects').then(setProjects),
+      api.get<{ cards: WorkCardData[] }>('/api/cards').then((r) => setCards(r.cards)),
     ]).catch((e: Error) => setError(e.message));
 
   useEffect(() => {
@@ -99,10 +103,25 @@ export function Today() {
 
   const { digest, post_digest_events } = data;
   const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const cardsForYou = cards.filter((c) => needsOwner(c.state));
+
+  // A change waiting on the owner leads the day — it's the most actionable
+  // thing on the page, so it sits above the brief.
+  const attentionCards = cardsForYou.length > 0 && (
+    <section aria-label="Waiting on you">
+      <p className="mb-3 text-label font-body uppercase tracking-widest text-thread">A change needs your OK</p>
+      <div className="space-y-3">
+        {cardsForYou.map((c) => (
+          <WorkCard key={c.id} card={c} onChanged={() => void load()} />
+        ))}
+      </div>
+    </section>
+  );
 
   if (!digest) {
     return (
       <div className="animate-settle space-y-8">
+        {attentionCards}
         <Brief status="healthy">
           <div>
             <BriefEyebrow>Morning brief · {dateLine}</BriefEyebrow>
@@ -126,6 +145,8 @@ export function Today() {
 
   return (
     <div className="animate-settle space-y-8">
+      {attentionCards}
+
       {digest.voice === 'fallback' && (
         <p className="rounded-card border border-hairline bg-panel-soft px-4 py-2 text-body text-ink-dim">
           Running with reduced voice today — this brief was assembled mechanically. All facts are unaffected.

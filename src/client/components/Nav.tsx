@@ -26,11 +26,17 @@ export function Nav() {
             <NavLink to="/" end className={linkClass}>
               Today
             </NavLink>
+            <NavLink to="/work" className={linkClass}>
+              Work
+            </NavLink>
             <NavLink to="/projects" className={linkClass}>
               Projects
             </NavLink>
             <NavLink to="/tray" className={linkClass}>
               Unsorted
+            </NavLink>
+            <NavLink to="/connections" className={linkClass}>
+              Connections
             </NavLink>
             <NavLink to="/admin" className={linkClass}>
               Admin

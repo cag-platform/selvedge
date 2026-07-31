@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
+import { Work } from './pages/Work.js';
+import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
 import { PackEditor } from './pages/PackEditor.js';
@@ -53,9 +55,11 @@ function AuthedApp() {
           <main className="mx-auto max-w-3xl px-4 py-8">
             <Routes>
               <Route path="/" element={<Today />} />
+              <Route path="/work" element={<Work />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               <Route path="/tray" element={<Tray />} />
+              <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
           </main>
