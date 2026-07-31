@@ -724,3 +724,40 @@ IRONCLAD-1 (visible memory) · IRONCLAD-2 (visible trust) · IRONCLAD-3 (change�
 correlation) · IRONCLAD-4 (multi-tool builder) — from `selvedge-strategy.zip`.
 "Selvedge Product Foundation" itself: **not delivered — reconstructed as stated in the
 scope note.**
+
+---
+
+## 19. AMENDMENT (31 Jul 2026) — founder pushback: platform spend opacity
+
+**Pushback received:** the founder, as a recent Replit customer at ~$2,000/month, reports
+that Replit's shipped monitoring did not make the spend visible — much of it hosting and
+excess fees discovered late. **[V — firsthand; corroborated by the documented
+effort-billing backlash, $1K/week reports, and charges for failed agent runs.]**
+
+**Revisions this forces:**
+
+1. **Part 4/13 qualifier.** "Replit shipped the caretaker wedge" overstates. Replit
+   shipped *app-health* monitoring; it did not ship *owner-interest* monitoring, and a
+   consumption-billed platform is economically disincentivized from ever doing so — the
+   surface whose job is "you are overspending with us, here is the avoidable part" is
+   structurally un-absorbable, for the same fox-and-henhouse reason the positioning memo
+   gives for truth-about-health. Absorption risk for the monitoring surface stands
+   unchanged (a half-honest tab where the user already lives still blunts the wedge for
+   users who never audit their bill).
+2. **Differentiation upgrade (Part 4/5).** **Cost custody joins the wedge:** the
+   protection brief should narrate total cost of ownership across all connected
+   platforms — hosting, agent fees, database, API spend — with the avoidable portion
+   named in plain English. Cross-platform by nature, high-felt-value, and permanently
+   conflict-of-interest-protected from platform copying. Differentiation score 5 → 6.
+3. **Willingness-to-pay reframe (Part 6).** The hostile $20–25 price anchor applies to
+   *tool* spend, not *operating* spend. For owners with real platform bills ($500+/mo),
+   the pitch flips from insurance (soft ROI, weak recurring behavior) to savings (hard
+   ROI, provable in the first brief). New qualification heuristic: **select prospects by
+   monthly platform spend, not app count.** This is the strongest counter yet found to
+   failure reason #1 (episodic pain): a bill recurs monthly even when nothing breaks —
+   spend narration gives the quiet months a job.
+4. **Validation plan addition (Part 17).** Add to the concierge test: connect billing
+   visibility (Replit/host invoices or usage APIs) for the cohort; measure (a) how often
+   the brief finds ≥20% avoidable spend, and (b) whether spend-narration cohorts retain
+   better in quiet months than health-only cohorts. Evidence base for this segment is
+   currently n=1 [WI] — the test exists to change that label.
