@@ -14,6 +14,7 @@ import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 import { extractSignature } from './knownFlaky.js';
 import { correlateChange, isBreakEvent, CORRELATION_WINDOW_MS, type Correlation } from './correlate.js';
+import { proposeIncidentCard } from '../cards/incident.js';
 import { recordFalseAllClearIfContradicted } from '../trust/tripwire.js';
 import type { PushSender } from '../push/types.js';
 import { sendToOrgDevices } from '../push/send.js';
@@ -174,6 +175,16 @@ async function routeNarrateAndPersist(
         console.error(`critical push failed for org ${orgId}:`, err),
       );
     }
+  }
+
+  // Incident trigger (Phase 3): a break event proactively proposes a fix card,
+  // deduped to one open card per project. Fires on the event itself, not the
+  // narration, so it's independent of delivery. Best-effort — a card failure
+  // must never break event ingestion.
+  if (isBreakEvent(event.event_type)) {
+    await proposeIncidentCard(db, orgId, projectId, pack, event.event_type, now).catch((err) =>
+      console.error(`incident card proposal failed for org ${orgId}:`, err),
+    );
   }
 
   return decision;

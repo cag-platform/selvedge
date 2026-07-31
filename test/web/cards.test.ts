@@ -3,6 +3,8 @@ import request from 'supertest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs } from '../../src/server/db/schema/index.js';
 import { createCard } from '../../src/server/cards/store.js';
+import { createPack } from '../../src/server/packs/store.js';
+import { makeTestPack } from '../fixtures/testPack.js';
 import { createCardsRouter } from '../../src/server/web/routes/cards.js';
 import { appWithOrg } from './helpers.js';
 import type { ProposeInput } from '../../src/server/cards/propose.js';
@@ -90,5 +92,45 @@ describe('web/routes/cards — the owner side of the loop', () => {
     const other = appWithOrg('org_2', createCardsRouter(db));
     expect((await request(other).get('/api/cards/card_1')).status).toBe(404);
     expect((await request(other).post('/api/cards/card_1/approve').send({})).status).toBe(404);
+  });
+
+  describe('the request trigger — an owner asks for a change', () => {
+    beforeEach(async () => {
+      await createPack(
+        db,
+        orgId,
+        makeTestPack({
+          identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+          stakes: { tier: 'live_small', has_external_users: true, touches_money: true },
+        }),
+      );
+    });
+
+    it('creates an ordinary card from a plain request', async () => {
+      const res = await request(app()).post('/api/projects/loom/cards').send({ text: 'make the gift note optional' });
+      expect(res.status).toBe(201);
+      expect(res.body.card.trigger).toBe('request');
+      expect(res.body.card.risk).toBe('ordinary');
+      expect(res.body.card.state).toBe('proposed');
+    });
+
+    it('derives sensitivity server-side from the request text — a checkout change is hard-gated', async () => {
+      const res = await request(app()).post('/api/projects/loom/cards').send({ text: 'add a coupon field to the stripe checkout' });
+      expect(res.body.card.risk).toBe('sensitive');
+      expect(res.body.card.gate).toBe('hard');
+    });
+
+    it('honors the owner escalating, and never a client downgrade', async () => {
+      // The client cannot pass cosmeticOnly to dodge the gate; only escalation is accepted.
+      const res = await request(app())
+        .post('/api/projects/loom/cards')
+        .send({ text: 'tweak the thing', touches: { touchesUserData: true } });
+      expect(res.body.card.risk).toBe('sensitive');
+    });
+
+    it('rejects an empty request and an unknown project', async () => {
+      expect((await request(app()).post('/api/projects/loom/cards').send({ text: '  ' })).status).toBe(400);
+      expect((await request(app()).post('/api/projects/ghost/cards').send({ text: 'do a thing' })).status).toBe(404);
+    });
   });
 });
