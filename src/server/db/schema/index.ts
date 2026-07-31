@@ -3,6 +3,7 @@ export * from './events.js';
 export * from './packs.js';
 export * from './connectorHealth.js';
 export * from './connectorCredentials.js';
+export * from './healthChecks.js';
 export * from './devices.js';
 export * from './narrations.js';
 export * from './digests.js';
