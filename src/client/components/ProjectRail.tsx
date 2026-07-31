@@ -33,7 +33,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       <SelvedgeEdge status={project.edge} />
       <div className="flex items-baseline justify-between gap-2">
         <p className="truncate text-body font-medium text-ink">{project.name}</p>
-        <p className="shrink-0 text-label uppercase tracking-widest text-ink-faint">{TIER_LABEL[project.tier] ?? project.tier}</p>
+        <p className="shrink-0 text-label uppercase tracking-widest text-ink-quiet">{TIER_LABEL[project.tier] ?? project.tier}</p>
       </div>
       <p className="mt-1 truncate text-meta text-ink-dim">{project.health_line}</p>
     </Link>
@@ -44,7 +44,7 @@ export function ProjectRail({ projects }: { projects: ProjectCardData[] }) {
   if (projects.length === 0) return null;
   return (
     <section aria-label="Your stack">
-      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-faint">Your stack · read the edges</p>
+      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Your stack · read the edges</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((p) => (
           <ProjectCard key={p.project_id} project={p} />

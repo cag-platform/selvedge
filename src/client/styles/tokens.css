@@ -13,7 +13,16 @@
   --paper: #e9edf1; /* the daylight ground */
   --ink: #28303a;
   --ink-dim: #586573;
+  /* DECORATION ONLY — the dashed unknown seam. At 2.56:1 on paper this fails
+     AA for text of any size, so it must never carry words. Text that wants to
+     recede uses --ink-quiet below. The seam is exempt because it is
+     aria-hidden decoration sitting over a plain-text health line that says the
+     same thing, and because its meaning is carried by SHAPE (dashed) rather
+     than colour — that is the point of the dash. */
   --ink-faint: #8b96a2;
+  /* The quiet text colour: recedes without becoming unreadable. 4.68:1 on
+     paper, 5.36:1 on panel — passes AA for body text on both grounds. */
+  --ink-quiet: #5f6a77;
   --panel: #fbfcfd;
   --panel-soft: #f4f7fa;
   --hairline: rgba(40, 48, 58, 0.11);

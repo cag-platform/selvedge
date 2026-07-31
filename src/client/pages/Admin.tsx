@@ -55,7 +55,7 @@ function TimezoneSettings() {
 
   return (
     <section>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">Daily brief timezone</h2>
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">Daily brief timezone</h2>
       <div className="rounded-card border border-hairline bg-panel p-4">
         <p className="text-sm text-ink-dim">
           The brief composes at 7:00am in <span className="font-medium text-ink">{org.timezone}</span>
@@ -96,13 +96,13 @@ export function Admin() {
     api.get<DigestPair[]>('/api/admin/digests').then(setPairs);
   }, []);
 
-  if (!metrics || !pairs) return <p className="text-ink-faint">Loading…</p>;
+  if (!metrics || !pairs) return <p className="text-ink-quiet">Loading…</p>;
 
   return (
     <div className="space-y-8">
       <TimezoneSettings />
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">
           Cost per day (budget line ${metrics.budget_usd_per_day.toFixed(2)}/day)
         </h2>
         <div className="overflow-hidden rounded-card border border-hairline bg-panel">
@@ -118,7 +118,7 @@ export function Admin() {
             <tbody>
               {metrics.cost_by_day.length === 0 && (
                 <tr>
-                  <td className="px-3 py-2 text-ink-faint" colSpan={4}>
+                  <td className="px-3 py-2 text-ink-quiet" colSpan={4}>
                     No model calls yet.
                   </td>
                 </tr>
@@ -140,7 +140,7 @@ export function Admin() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">Library hit rate</h2>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">Library hit rate</h2>
         <div className="overflow-hidden rounded-card border border-hairline bg-panel">
           <table className="w-full text-sm">
             <thead className="bg-panel-soft text-left text-ink-dim">
@@ -154,7 +154,7 @@ export function Admin() {
             <tbody>
               {metrics.lib_hit_rate_by_day.length === 0 && (
                 <tr>
-                  <td className="px-3 py-2 text-ink-faint" colSpan={4}>
+                  <td className="px-3 py-2 text-ink-quiet" colSpan={4}>
                     No LIB-routed narrations yet.
                   </td>
                 </tr>
@@ -170,18 +170,18 @@ export function Admin() {
             </tbody>
           </table>
         </div>
-        <p className="mt-1 text-xs text-ink-faint">
+        <p className="mt-1 text-xs text-ink-quiet">
           Template fallbacks so far: {metrics.template_fallbacks_total} · fragments flagged for review:{' '}
           {metrics.fragments_needing_review}
         </p>
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-faint">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">
           Before / after (mechanical vs composed)
         </h2>
         <div className="space-y-4">
-          {pairs.length === 0 && <p className="text-sm text-ink-faint">No digests yet.</p>}
+          {pairs.length === 0 && <p className="text-sm text-ink-quiet">No digests yet.</p>}
           {pairs.map((p) => (
             <div key={p.digest_date} className="rounded-card border border-hairline bg-panel p-4">
               <p className="mb-2 text-sm font-medium text-ink">
@@ -189,13 +189,13 @@ export function Admin() {
               </p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className="mb-1 text-xs font-semibold uppercase text-ink-faint">Phase 1 · mechanical</p>
+                  <p className="mb-1 text-xs font-semibold uppercase text-ink-quiet">Phase 1 · mechanical</p>
                   <pre className="whitespace-pre-wrap rounded bg-panel-soft p-3 text-sm text-ink-dim">
                     {p.mechanical_text ?? '—'}
                   </pre>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs font-semibold uppercase text-ink-faint">Phase 2 · composed</p>
+                  <p className="mb-1 text-xs font-semibold uppercase text-ink-quiet">Phase 2 · composed</p>
                   <pre className="whitespace-pre-wrap rounded bg-panel-soft p-3 text-sm text-ink">
                     {p.composed_text ?? (p.voice === 'fallback' ? '(fell back to mechanical this day)' : '—')}
                   </pre>

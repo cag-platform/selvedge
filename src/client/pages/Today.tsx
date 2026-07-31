@@ -73,7 +73,7 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
     }
   }
 
-  if (state === 'sent') return <span className="text-meta text-ink-faint">noted</span>;
+  if (state === 'sent') return <span className="text-meta text-ink-quiet">noted</span>;
 
   if (state === 'noting') {
     return (
@@ -91,7 +91,7 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
-        <button type="submit" className="text-meta text-ink-faint hover:text-ink-dim">
+        <button type="submit" className="text-meta text-ink-quiet hover:text-ink-dim">
           send
         </button>
       </form>
@@ -99,7 +99,7 @@ function FeedbackTaps({ narrationId }: { narrationId: string }) {
   }
 
   return (
-    <span className="flex gap-3 text-meta text-ink-faint">
+    <span className="flex gap-3 text-meta text-ink-quiet">
       <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
         didn't help
       </button>
@@ -116,12 +116,12 @@ function AttentionAnchor({ item }: { item: SectionItem }) {
       <StatusDot status={item.verdict ? verdictToStatus(item.verdict) : 'needs'} />
       {/* Low confidence is never hidden to look calmer (Ironclad 2). */}
       {item.confidence && item.confidence !== 'high' && (
-        <span className="text-ink-faint">{item.confidence === 'low' ? "not sure — checking" : 'fairly sure'}</span>
+        <span className="text-ink-quiet">{item.confidence === 'low' ? "not sure — checking" : 'fairly sure'}</span>
       )}
       {(item.technical_detail || item.event_id) && (
         <Reveal>
           {item.technical_detail ?? 'no additional detail'}
-          {item.event_id && <div className="mt-1 text-ink-faint">event id: {item.event_id}</div>}
+          {item.event_id && <div className="mt-1 text-ink-quiet">event id: {item.event_id}</div>}
         </Reveal>
       )}
       <FeedbackTaps narrationId={item.narration_id} />
@@ -159,7 +159,7 @@ export function Today() {
   };
 
   if (error) return <p className="text-body text-thread">{error}</p>;
-  if (!data) return <p className="text-body text-ink-faint">Loading…</p>;
+  if (!data) return <p className="text-body text-ink-quiet">Loading…</p>;
 
   const { digest, post_digest_events } = data;
   const dateLine = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -237,7 +237,7 @@ export function Today() {
                   (item.technical_detail || item.event_id) && (
                     <Reveal>
                       {item.technical_detail ?? 'no additional detail'}
-                      {item.event_id && <div className="mt-1 text-ink-faint">event id: {item.event_id}</div>}
+                      {item.event_id && <div className="mt-1 text-ink-quiet">event id: {item.event_id}</div>}
                     </Reveal>
                   )
                 }
@@ -264,7 +264,7 @@ export function Today() {
 
       {post_digest_events.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed').length > 0 && (
         <section>
-          <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-faint">Since this brief</p>
+          <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Since this brief</p>
           <div className="space-y-3">
             {post_digest_events.map((n) => (
               <div key={n.id} className="relative rounded-card border border-hairline bg-panel p-4 pl-5">
@@ -273,7 +273,7 @@ export function Today() {
                   {n.technicalDetail && (
                     <Reveal>
                       {n.technicalDetail}
-                      <div className="mt-1 text-ink-faint">event id: {n.eventId}</div>
+                      <div className="mt-1 text-ink-quiet">event id: {n.eventId}</div>
                     </Reveal>
                   )}
                   <FeedbackTaps narrationId={n.id} />
@@ -287,7 +287,7 @@ export function Today() {
       <ProjectRail projects={projects} />
 
       {/* The independent-auditor stance, stated plainly (Ironclad 2). */}
-      <p className="text-meta text-ink-faint">
+      <p className="text-meta text-ink-quiet">
         Selvedge didn't build your apps. That's the point — I have no reason to tell you everything's fine when it isn't.
       </p>
     </div>

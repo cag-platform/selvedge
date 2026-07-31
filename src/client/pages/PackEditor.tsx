@@ -34,7 +34,7 @@ export function PackEditor() {
       .catch(() => {});
   }, [projectId]);
 
-  if (!pack) return <p className="text-body text-ink-faint">Loading…</p>;
+  if (!pack) return <p className="text-body text-ink-quiet">Loading…</p>;
 
   async function save() {
     if (!pack) return;
@@ -81,7 +81,7 @@ export function PackEditor() {
       <h1 className="text-headline font-display text-ink">Teach me about {pack.identity.name}</h1>
 
       <section className="space-y-3">
-        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Identity</h2>
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Identity</h2>
         <label className={labelCls}>
           Name
           <input
@@ -111,7 +111,7 @@ export function PackEditor() {
 
       {/* The three stakes questions, phrased exactly as in the schema doc. */}
       <section className="space-y-3">
-        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Stakes</h2>
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Stakes</h2>
 
         <label className={labelCls}>
           Does anyone besides you use this?
@@ -178,7 +178,7 @@ export function PackEditor() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Voice</h2>
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Voice</h2>
         <label className={labelCls}>
           How much detail do you want?
           <select
@@ -220,7 +220,7 @@ export function PackEditor() {
       </div>
 
       <section className="space-y-3 border-t border-hairline pt-6">
-        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Priority</h2>
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Priority</h2>
         <p className="text-body text-ink-dim">
           {muted
             ? 'Muted — kept out of your daily brief and collapsed on the projects page.'
@@ -236,7 +236,7 @@ export function PackEditor() {
       </section>
 
       <section className="space-y-3 border-t border-hairline pt-6">
-        <h2 className="text-label font-body uppercase tracking-widest text-ink-faint">Delete</h2>
+        <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Delete</h2>
         {!confirmingDelete ? (
           <button className="text-body text-thread hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass" onClick={() => setConfirmingDelete(true)}>
             Delete this project

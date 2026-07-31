@@ -56,8 +56,14 @@ register is a different material, not a smaller font.
   `<section>` with labels where content warrants.
 - **Disclosure** is a real `<details>` (`Reveal`) — keyboard and screen
   reader behavior for free.
-- **Contrast**: `--ink` (12.6:1) and `--ink-dim` (5.6:1) on paper pass AA
-  for body text. `--ink-faint` (≈2.9:1) does **not** pass for body copy —
+- **Contrast**: `--ink` (11.3:1) and `--ink-dim` (5.1:1) on paper pass AA for
+  body text. `--ink-quiet` (4.7:1 on paper, 5.4:1 on panel) is the quiet text
+  colour and passes AA. `--ink-faint` measures **2.6:1** — worse than the 2.9
+  previously recorded here, and below even the 3:1 large-text floor — so it is
+  now **decoration only**: the dashed unknown seam, which is `aria-hidden`,
+  sits over a plain-text health line carrying the same information, and
+  encodes its meaning in SHAPE rather than colour. It must never carry words.
+  (Superseded note follows for the record.) `--ink-faint` (≈2.9:1) does **not** pass for body copy —
   by rule it is restricted to non-essential, duplicated, or decorative
   text (eyebrows, meta lines, disabled affordances) and may never be the
   sole carrier of information. This is a deliberate tension in the locked

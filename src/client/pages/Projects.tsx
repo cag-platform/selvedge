@@ -76,7 +76,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
           </label>
           {isLive && (
             <label className={labelCls}>
-              If it goes down, what does that mean? <span className="text-ink-faint">(optional)</span>
+              If it goes down, what does that mean? <span className="text-ink-quiet">(optional)</span>
               <input
                 className={inputCls}
                 value={downtime}
@@ -148,7 +148,7 @@ export function Projects() {
     void load();
   }, []);
 
-  if (!projects) return <p className="text-body text-ink-faint">Loading…</p>;
+  if (!projects) return <p className="text-body text-ink-quiet">Loading…</p>;
 
   return (
     <div className="animate-settle">
@@ -176,7 +176,7 @@ export function Projects() {
       </div>
       {projects.some((p) => p.muted) && (
         <details className="mt-6">
-          <summary className="cursor-pointer text-label font-body uppercase tracking-widest text-ink-faint">
+          <summary className="cursor-pointer text-label font-body uppercase tracking-widest text-ink-quiet">
             Muted · {projects.filter((p) => p.muted).length}
           </summary>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -22,7 +22,7 @@ export const btnDanger =
 
 export const labelCls = 'block text-body text-ink-dim';
 
-export const eyebrowCls = 'text-label font-body uppercase tracking-widest text-ink-faint';
+export const eyebrowCls = 'text-label font-body uppercase tracking-widest text-ink-quiet';
 
 /**
  * A pane. Solid --panel by design, not just as fallback: the glass budget

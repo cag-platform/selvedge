@@ -15,6 +15,7 @@ export default {
           DEFAULT: 'var(--ink)',
           dim: 'var(--ink-dim)',
           faint: 'var(--ink-faint)',
+          quiet: 'var(--ink-quiet)',
         },
         panel: {
           DEFAULT: 'var(--panel)',

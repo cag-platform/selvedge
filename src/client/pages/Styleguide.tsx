@@ -26,7 +26,7 @@ const STATUS: Array<{ token: string; varName: string; note: string }> = [
 ];
 
 const TYPE_SCALE: Array<{ name: string; varName: string; px: string; sample: string; className: string }> = [
-  { name: 'label', varName: '--text-label', px: '11', sample: 'YOUR STACK · READ THE EDGES', className: 'text-label font-body uppercase tracking-widest text-ink-faint' },
+  { name: 'label', varName: '--text-label', px: '11', sample: 'YOUR STACK · READ THE EDGES', className: 'text-label font-body uppercase tracking-widest text-ink-quiet' },
   { name: 'meta', varName: '--text-meta', px: '12', sample: 'composed this morning at 7:02', className: 'text-meta font-body text-ink-dim' },
   { name: 'tech', varName: '--text-tech', px: '12.5', sample: 'workflow_run failed · exit 1 · deploy.yml#L34', className: 'text-tech font-mono text-ink-dim' },
   { name: 'body', varName: '--text-body', px: '14', sample: 'Everything else ran quietly and stayed up.', className: 'text-body font-body text-ink' },
@@ -45,7 +45,7 @@ function Swatch({ varName, token, note }: { varName: string; token: string; note
       />
       <div>
         <p className="font-mono text-tech text-ink">
-          {token} <span className="text-ink-faint">{varName}</span>
+          {token} <span className="text-ink-quiet">{varName}</span>
         </p>
         <p className="text-meta text-ink-dim">{note}</p>
       </div>
@@ -57,7 +57,7 @@ export function Styleguide() {
   return (
     <div className="space-y-10 pb-16">
       <header>
-        <p className="text-label font-body uppercase tracking-widest text-ink-faint">Selvedge · design tokens</p>
+        <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge · design tokens</p>
         <h1 className="mt-1 text-display font-display font-medium">Cloth and light</h1>
         <p className="mt-2 max-w-xl text-body text-ink-dim">
           Chalk-paper daylight, frosted panels, one signature seam. Color is rationed: selvedge-red appears only for
@@ -102,7 +102,7 @@ export function Styleguide() {
             <div className="h-12 w-12 shrink-0 rounded-inset border-2 border-dashed" style={{ borderColor: 'var(--ink-faint)' }} />
             <div>
               <p className="font-mono text-tech text-ink">
-                cannot_tell <span className="text-ink-faint">--ink-faint + dashed</span>
+                cannot_tell <span className="text-ink-quiet">--ink-faint + dashed</span>
               </p>
               <p className="text-meta text-ink-dim">shape-distinct: "can't see" must never read as "fine"</p>
             </div>
@@ -137,7 +137,7 @@ export function Styleguide() {
         <div className="space-y-4 rounded-pane border border-hairline bg-panel p-5">
           {TYPE_SCALE.map((t) => (
             <div key={t.name} className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-              <span className="w-24 shrink-0 font-mono text-tech text-ink-faint">
+              <span className="w-24 shrink-0 font-mono text-tech text-ink-quiet">
                 {t.name} · {t.px}
               </span>
               <span className={t.className}>{t.sample}</span>

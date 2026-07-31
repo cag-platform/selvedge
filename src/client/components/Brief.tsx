@@ -29,7 +29,7 @@ export function Brief({ status, children }: { status: EdgeStatus; children: Reac
 }
 
 export function BriefEyebrow({ children }: { children: ReactNode }) {
-  return <p className="text-label font-body uppercase tracking-widest text-ink-faint">{children}</p>;
+  return <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{children}</p>;
 }
 
 export function Headline({ children }: { children: ReactNode }) {
@@ -47,7 +47,7 @@ export function BriefClose({ children }: { children: ReactNode }) {
 export function Reveal({ summary = 'details', children }: { summary?: string; children: ReactNode }) {
   return (
     <details className="mt-1 group">
-      <summary className="cursor-pointer list-none text-meta text-ink-faint hover:text-ink-dim [&::-webkit-details-marker]:hidden">
+      <summary className="cursor-pointer list-none text-meta text-ink-quiet hover:text-ink-dim [&::-webkit-details-marker]:hidden">
         <span className="group-open:hidden">{summary}</span>
         <span className="hidden group-open:inline">hide {summary}</span>
       </summary>
@@ -100,5 +100,5 @@ export function BriefItem({
   if (kind === 'standing') {
     return <p className="text-body text-ink-dim">{children}</p>;
   }
-  return <p className="text-body text-ink-faint">{children}</p>; // quiet
+  return <p className="text-body text-ink-quiet">{children}</p>; // quiet
 }

@@ -32,7 +32,7 @@ export function Tray() {
     refresh();
   }
 
-  if (!items) return <p className="text-body text-ink-faint">Loading…</p>;
+  if (!items) return <p className="text-body text-ink-quiet">Loading…</p>;
   if (items.length === 0) {
     return (
       <Pane className="p-6">
