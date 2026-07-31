@@ -1039,3 +1039,88 @@ that already exists.
 enough. What remains unreviewed — and what will decide this — is whether a frightened
 owner at 1am opens Selvedge and immediately understands what is happening to their
 business. Build that surface with the same rigor the underbelly received.*
+
+---
+
+## 25. WEDGE & PRICING REVISION (31 Jul 2026) — founder decisions
+
+Four decisions taken by the founder after the accord, recorded as the operative
+definition. Each overrides the corresponding earlier section.
+
+**1. Full builder, no capability wall (overrides §22's failure-class bound).**
+The refuse-and-route boundary this review proposed is rejected, on the founder's
+argument: a caretaker that says "too big for me" gets deleted, and a resting place
+with a capability wall is a waypoint, not a home. Selvedge does maintenance *and*
+build work. Toile's machinery is the engine; the care surface is the only interface.
+There is no builder mode, no second tab — every ask returns the same card (proposal,
+estimate, stop-point, approve), whether it is a $6 fix or a $200 feature.
+
+This review concedes two of its own errors in making that case: a repairs-only wedge
+replaces ~20% of the customer's platform spend, which silently breaks the "half your
+old bill" promise; and it was scoring Toile against a deliberately crippled subset of
+itself — the full-builder version is *closer* to shippable than the narrow one, not
+further.
+
+Engineering consequences that follow: verification degrades honestly rather than
+disappearing (net-new work can still be checked for build success, regression against
+prior smoke checks, and an acceptance check generated from the request — landing on
+"probably" / "inconclusive" more often than repairs do, and saying so);
+**large work needs staged budget checkpoints, not a single cap** ("40% in, $58 of
+$150, continue?") or a runaway becomes money burned with nothing delivered; and
+**risk-tiering becomes structural** — SILD's money-critical/terminology/stylistic
+pattern applied to code (payments, auth, user data → hard gate + verified backup;
+ordinary logic → normal approval; copy/styling → near-frictionless), wired at the
+decision point this time.
+
+**2. Tier on volume, never on capability.** A paywall is functionally a refusal and
+produces the same deleted app. Every tier can do everything; tiers differ only in
+included work and overage rate, quoted on the card at the moment of asking. Discrete
+large projects are quoted as jobs (fixed price, staged) — the WordPress care-plan +
+project-work model, which the market already understands.
+
+**3. Pricing is a layer over customer-supplied model access ("bring your own agent").**
+Founder's decisive evidence: he makes **daily** changes across these codebases, flat
+under an Anthropic subscription. That is ~60–90 tasks/month — ~$750/month of model
+spend at API rates, which loses money on any $99–299 allowance plan. Conclusion: do
+not resell compute the customer already has. Charge for the layer (watching,
+explaining, verification, caps, checkpoints, deploys, rollback, ledger, memory) and
+treat model access as a connection, like GitHub or Railway.
+
+Two fuels, one product: **BYO** (flat layer price, unlimited work, customer's
+subscription or API key) and **managed** (allowance + quoted overage, for owners
+without an AI subscription — the only place §25.2's tier table applies). Under BYO,
+COGS falls to sandbox + probes + storage + CI ≈ **$10–15/month even for a daily-active
+user → 85–90% margin at $99 flat**, and the heavy user becomes the *cheapest* to
+serve. This deflates most of Part 8's risk model: runaway cost, non-convergence
+margin drag, and "the cap is the margin" all lose their force under BYO.
+
+**4. Multi-provider by design:** agent SDK support for Claude, GPT, Kimi and Gemini.
+Strategically this is insurance as much as choice — it de-risks decision 3 (below).
+Engineering note: Selvedge already has a clean provider seam for *narration*
+(`llm/types.ts`), but the *agent* layer is not a driver swap — Toile shells to the
+Claude Code CLI with its own stream format, session resumption and tool surface;
+each rival SDK is a different harness with different failure modes and its own eval
+matrix. Recommendation: build the seam now, ship **one** provider well in the slice,
+add others on demand evidence or if decision 3's blocker fires.
+
+**PRE-LAUNCH BLOCKER (unresolved):** whether Anthropic's (and each provider's)
+consumer-subscription terms permit a third-party multi-tenant service to orchestrate
+a customer's subscription credential on their behalf. Toile does this today with the
+founder's own token in his own tool — unambiguous. A commercial service doing it for
+customers is a different question and is **[U]** here; it must be confirmed with the
+providers directly, not inferred from documentation. Fallback if disallowed:
+customer-supplied *API keys* (legally clean, same layer pricing, but the heavy-user
+arbitrage narrows and managed fuel becomes load-bearing).
+
+**Open tension, recorded rather than resolved (the founder's own concern):** BYO
+caps ARPU at tool-subscription levels (~$20–100) and excludes owners without an AI
+subscription — i.e. it serves the technical refugee and excludes the nontechnical
+owner the product was designed for, reopening the positioning memo's customer
+contradiction inside the pricing model. Managed fuel raises ARPU and opens the market
+but restores the COGS risk. **Assessment: BYO is the right launch model and the wrong
+forever model.** $99 × ~10K customers reaches the $10M mark on excellent margins;
+$100M almost certainly requires managed fuel to work at scale. Sequence accordingly,
+and treat managed-fuel viability as the gating question for the venture-scale case
+rather than a later pricing detail. A second platform risk also enters: under BYO,
+provider rate-limit or pricing changes degrade the customer's experience while the
+support burden lands on Selvedge.
