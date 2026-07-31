@@ -4,6 +4,8 @@ import { clerkMiddleware } from '@clerk/express';
 import type { Db } from '../db/client.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
 import { createGithubInstallRouter } from '../connectors/github/install.js';
+import { createErrorBeaconRouter } from '../connectors/errors/beacon.js';
+import { makePollerIngest } from '../monitor/wiring.js';
 import { ingestEvent } from '../resolution/ingest.js';
 import { backfillRepoForOrg } from '../connectors/github/backfill.js';
 import { buildAskDeps, buildComposeDeps, buildNarrationDeps } from '../llm/factory.js';
@@ -25,6 +27,7 @@ import { createAskRouter } from './routes/ask.js';
 import { createTrustRouter } from './routes/trust.js';
 import { createMemoryRouter } from './routes/memory.js';
 import { createPortabilityRouter } from './routes/portability.js';
+import { createBeaconRouter } from './routes/beacon.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -54,6 +57,12 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
       }),
     );
   }
+
+  // The error beacon receiver: no session (the beacon token is the auth), so
+  // it's mounted before Clerk alongside the GitHub webhook. It shares the same
+  // (event, projectId) ingest sink the pollers use.
+  const beaconIngest = makePollerIngest(db);
+  app.use(createErrorBeaconRouter({ db, ingest: beaconIngest }));
 
   // Clerk keys are deploy-time configuration; a fresh service must still
   // boot (healthz green, webhooks accepted) before they exist, so an
@@ -95,6 +104,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createTrustRouter(db));
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));
+  app.use(createBeaconRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

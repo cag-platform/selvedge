@@ -41,3 +41,12 @@ export const C5: TemplateFn = (event, pack) => ({
   fragment: `${projectName(pack)}: a database resource limit is getting close — worth a look this week.`,
   technicalDetail: technicalLine(event),
 });
+
+// VOICE-REVIEW: an error-rate spike means a real fraction of requests are
+// failing, so the honest default verdict is users_affected (the LLM+VERDICT
+// tier refines it; this is the template floor).
+export const C7: TemplateFn = (event, pack) => ({
+  fragment: `${projectName(pack)}: errors are climbing above normal — ${VERDICT_PHRASE.users_affected}: some requests are failing right now.`,
+  technicalDetail: technicalLine(event),
+  verdict: 'users_affected',
+});

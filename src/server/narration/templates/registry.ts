@@ -9,8 +9,9 @@ import type { TemplateFn } from '../types.js';
  * resolved, so narrate() is a one-hop lookup. Rows with no entry here are
  * either SILENT at every tier (A1, B1 — never narrated) or org-level
  * (E1, E4 — see narration/orgLevel.ts), or outside Phase 1's v1_scope
- * (Group D, C6/C7, F, G — G is standing narration composed directly by the
- * digest layer, not per-event).
+ * (Group D, C6, F, G — G is standing narration composed directly by the
+ * digest layer, not per-event). C7 (error_rate_spike) gained a producer with
+ * the error beacon, so it now has a template.
  */
 export const templateRegistry: Record<string, TemplateFn> = {
   A2: A.A2,
@@ -29,5 +30,6 @@ export const templateRegistry: Record<string, TemplateFn> = {
   C3: C.C3,
   C4: C.C4,
   C5: C.C5,
+  C7: C.C7,
   E2: E.E2,
 };
