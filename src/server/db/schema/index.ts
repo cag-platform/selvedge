@@ -5,6 +5,7 @@ export * from './connectorHealth.js';
 export * from './connectorCredentials.js';
 export * from './healthChecks.js';
 export * from './errorBeacon.js';
+export * from './cards.js';
 export * from './devices.js';
 export * from './narrations.js';
 export * from './digests.js';

@@ -28,6 +28,7 @@ import { createTrustRouter } from './routes/trust.js';
 import { createMemoryRouter } from './routes/memory.js';
 import { createPortabilityRouter } from './routes/portability.js';
 import { createBeaconRouter } from './routes/beacon.js';
+import { createCardsRouter } from './routes/cards.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -105,6 +106,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));
   app.use(createBeaconRouter(db));
+  app.use(createCardsRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {
