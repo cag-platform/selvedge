@@ -203,16 +203,26 @@ export function Today() {
                 {item.fragment}
               </BriefItem>
             ))}
-            {digest.sections.moved.map((item) => (
-              <BriefItem key={item.narration_id} kind="moved" actions={<FeedbackTaps narrationId={item.narration_id} />}>
-                {item.fragment}
-              </BriefItem>
-            ))}
-            {digest.sections.standing.map((line, i) => (
-              <BriefItem key={i} kind="standing">
-                {line}
-              </BriefItem>
-            ))}
+            {/* What moved: its own block, so the note has rhythm — urgent, then
+                movement, then the standing facts — instead of one flat run. */}
+            {digest.sections.moved.length > 0 && (
+              <div className={`space-y-3 ${digest.sections.attention.length > 0 ? 'border-t border-hairline pt-4' : ''}`}>
+                {digest.sections.moved.map((item) => (
+                  <BriefItem key={item.narration_id} kind="moved" actions={<FeedbackTaps narrationId={item.narration_id} />}>
+                    {item.fragment}
+                  </BriefItem>
+                ))}
+              </div>
+            )}
+            {digest.sections.standing.length > 0 && (
+              <div className="space-y-1.5 border-t border-hairline pt-4">
+                {digest.sections.standing.map((line, i) => (
+                  <BriefItem key={i} kind="standing">
+                    {line}
+                  </BriefItem>
+                ))}
+              </div>
+            )}
             {digest.sections.quiet && <BriefClose>{digest.sections.quiet}</BriefClose>}
             {digest.sections.today && <BriefItem kind="standing">{digest.sections.today}</BriefItem>}
           </>

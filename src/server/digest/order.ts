@@ -27,6 +27,33 @@ export function orderAttention(items: NarrationWithPack[]): NarrationWithPack[] 
   });
 }
 
+/**
+ * Collapse identical (project, fragment) repeats into ONE line with a plain
+ * count — three "new work landed on the main branch today" lines are one fact
+ * that happened three times, not three facts. The first occurrence keeps its
+ * narration id (feedback and traceability attach there); order is preserved.
+ */
+export function collapseRepeats(items: NarrationWithPack[]): NarrationWithPack[] {
+  const byKey = new Map<string, { item: NarrationWithPack; count: number }>();
+  let uniqueId = 0;
+  for (const item of items) {
+    // Items with no fragment can't be duplicates of anything — always unique.
+    const key = item.fragment ? `${item.projectId ?? ''}|${item.fragment}` : `#${uniqueId++}`;
+    const existing = byKey.get(key);
+    if (existing) existing.count += 1;
+    else byKey.set(key, { item, count: 1 });
+  }
+  return [...byKey.values()].map(({ item, count }) =>
+    count > 1 && item.fragment ? { ...item, fragment: withTimesSuffix(item.fragment, count) } : item,
+  );
+}
+
+/** "…landed today." + 3 → "…landed today (3 times)." — plain, inside the sentence. */
+function withTimesSuffix(fragment: string, count: number): string {
+  const suffix = ` (${count} times)`;
+  return fragment.endsWith('.') ? `${fragment.slice(0, -1)}${suffix}.` : `${fragment}${suffix}`;
+}
+
 /** digest-composer §3: milestone (A4) first, then live_critical ships, then the rest. */
 export function orderMoved(items: NarrationWithPack[]): NarrationWithPack[] {
   return [...items].sort((a, b) => {

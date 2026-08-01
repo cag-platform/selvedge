@@ -28,12 +28,14 @@ function ConfidenceNote({ confidence }: { confidence?: 'high' | 'medium' | 'low'
 }
 
 /**
- * The two quiet feedback actions every narrated item carries (Phase 2
+ * The quiet feedback affordance every narrated item carries (Phase 2
  * deliverable 5). Deliberately no thumbs-up — absence of complaint is the
- * positive signal, so happiness is never inferred from a click that never came.
+ * positive signal. Collapsed to a single, near-invisible "wasn't helpful?"
+ * so a page of ten items doesn't read as twenty links of chrome; the two
+ * real options appear only once the owner reaches for them.
  */
 export function FeedbackTaps({ narrationId }: { narrationId: string }) {
-  const [state, setState] = useState<'idle' | 'noting' | 'sent'>('idle');
+  const [state, setState] = useState<'idle' | 'offering' | 'noting' | 'sent'>('idle');
   const [note, setNote] = useState('');
 
   async function send(kind: 'didnt_help' | 'explain_differently', noteText?: string) {
@@ -69,15 +71,26 @@ export function FeedbackTaps({ narrationId }: { narrationId: string }) {
     );
   }
 
+  if (state === 'offering') {
+    return (
+      <span className="flex gap-3 text-meta text-ink-quiet">
+        <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
+          didn't help
+        </button>
+        <button className="hover:text-ink-dim" onClick={() => setState('noting')}>
+          explain differently
+        </button>
+      </span>
+    );
+  }
+
   return (
-    <span className="flex gap-3 text-meta text-ink-quiet">
-      <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
-        didn't help
-      </button>
-      <button className="hover:text-ink-dim" onClick={() => setState('noting')}>
-        explain differently
-      </button>
-    </span>
+    <button
+      className="text-meta text-ink-faint transition-colors hover:text-ink-quiet"
+      onClick={() => setState('offering')}
+    >
+      wasn't helpful?
+    </button>
   );
 }
 

@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { digests, orgs } from '../db/schema/index.js';
 import { gatherPacks, gatherWindowNarrations, getPreviousDigest } from './gather.js';
-import { orderAttention, orderMoved, type NarrationWithPack } from './order.js';
+import { orderAttention, orderMoved, collapseRepeats, type NarrationWithPack } from './order.js';
 import { buildSections, renderDigestText, type OpenThread } from './render.js';
 import { capabilityGapStandingLines, quietLine, unsortedTrayLine, weeklyRetrospective } from './standing.js';
 import { localDateString, yesterdayBoundsUtc } from './timezone.js';
@@ -50,9 +50,14 @@ export async function composeDigestForOrg(
   const packById = new Map(packs.map((p) => [p.identity.project_id, p]));
   const withPack: NarrationWithPack[] = narrationRows.map((n) => ({ ...n, pack: n.projectId ? packById.get(n.projectId) ?? null : null }));
 
-  const attention = orderAttention(withPack.filter((n) => n.kind === 'attention'));
-  const moved = orderMoved(withPack.filter((n) => n.kind === 'moved'));
-  const standingNarrationLines = withPack.filter((n) => n.kind === 'standing').map((n) => n.fragment).filter((f): f is string => Boolean(f));
+  // Identical repeats collapse to one line with a plain count — three "new
+  // work landed" narrations are one fact that happened three times, not three
+  // lines of noise on the owner's morning read.
+  const attention = collapseRepeats(orderAttention(withPack.filter((n) => n.kind === 'attention')));
+  const moved = collapseRepeats(orderMoved(withPack.filter((n) => n.kind === 'moved')));
+  const standingNarrationLines = [
+    ...new Set(withPack.filter((n) => n.kind === 'standing').map((n) => n.fragment).filter((f): f is string => Boolean(f))),
+  ];
 
   const activeProjectIds = new Set(withPack.map((n) => n.projectId).filter((id): id is string => Boolean(id)));
   const gapLines = capabilityGapStandingLines(packs);
