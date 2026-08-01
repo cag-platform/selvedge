@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAuth } from '@clerk/express';
+import { tenantOf } from '../../web/middleware/tenant.js';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../../web/middleware/asyncHandler.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
@@ -20,9 +20,9 @@ export function createGithubInstallRouter(deps: { db: Db }) {
   const router = Router();
 
   router.get('/api/connectors/github/install', (req, res) => {
-    const orgId = getAuth(req).orgId;
+    const orgId = tenantOf(req);
     if (!orgId) {
-      res.status(401).json({ error: 'no active organization' });
+      res.status(401).json({ error: 'not signed in' });
       return;
     }
     const appSlug = process.env.GITHUB_APP_SLUG;
@@ -38,9 +38,9 @@ export function createGithubInstallRouter(deps: { db: Db }) {
   router.get(
     '/api/connectors/github/repos',
     asyncHandler(async (req, res) => {
-      const orgId = getAuth(req).orgId;
+      const orgId = tenantOf(req);
       if (!orgId) {
-        res.status(401).json({ error: 'no active organization' });
+        res.status(401).json({ error: 'not signed in' });
         return;
       }
       const [installation] = await listInstallations(deps.db, orgId);
@@ -70,7 +70,7 @@ export function createGithubInstallRouter(deps: { db: Db }) {
       let orgId = req.query.state ? String(req.query.state) : null;
       if (!orgId) {
         try {
-          orgId = getAuth(req).orgId ?? null;
+          orgId = tenantOf(req);
         } catch {
           orgId = null;
         }
