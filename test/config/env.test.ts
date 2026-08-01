@@ -42,12 +42,22 @@ describe('validateEnv — boots with the database alone, degrades the rest', () 
 
 describe('describeConfig — booleans only, no secrets', () => {
   it('reports each feature on/off without any value', () => {
-    const cfg = describeConfig({ ...bootOnly, DAYTONA_API_KEY: 'secret-value' } as NodeJS.ProcessEnv);
+    const cfg = describeConfig({
+      ...bootOnly,
+      DAYTONA_API_KEY: 'secret-value',
+      CLAUDE_CODE_OAUTH_TOKEN: 'tok',
+      GITHUB_TOKEN: 'ght',
+    } as NodeJS.ProcessEnv);
     expect(cfg.database).toBe(true);
-    expect(cfg.agent).toBe(true);
+    expect(cfg.agent).toBe(true); // all three build-engine vars present
     expect(cfg.push).toBe(false);
     // No secret leaks into the description.
     expect(JSON.stringify(cfg)).not.toContain('secret-value');
+  });
+
+  it('the build engine is only "on" when all of its credentials are present', () => {
+    const partial = describeConfig({ ...bootOnly, DAYTONA_API_KEY: 'k' } as NodeJS.ProcessEnv);
+    expect(partial.agent).toBe(false); // Daytona alone isn't enough
   });
 });
 

@@ -23,8 +23,20 @@ function orgIdOf(req: Request): string {
  * A machine rejection becomes a plain, honest 4xx: a hard-gate card that can't
  * be approved yet says so in words the owner can act on, never a bare 500.
  */
-export function createCardsRouter(db: Db) {
+/**
+ * `onRunnable` is fired (fire-and-forget) after a card becomes runnable — an
+ * approval, or a continue past a checkpoint — so the build engine can pick it
+ * up. It's optional: when the engine isn't configured, the card simply waits at
+ * `approved`, with no inert half-run and no surprise spend.
+ */
+export function createCardsRouter(db: Db, opts: { onRunnable?: (orgId: string, cardId: string) => void } = {}) {
   const router = Router();
+
+  const fireIfRunnable = (orgId: string, result: ApplyResult) => {
+    if (opts.onRunnable && result.ok && (result.card.state === 'approved' || result.card.state === 'working')) {
+      opts.onRunnable(orgId, result.card.id);
+    }
+  };
 
   router.get(
     '/api/cards',
@@ -92,9 +104,11 @@ export function createCardsRouter(db: Db) {
     }),
   );
 
-  const act = (action: (req: Request) => CardAction) =>
+  const act = (action: (req: Request) => CardAction, runnable = false) =>
     asyncHandler(async (req: Request, res: Response) => {
-      const result = await applyAction(db, orgIdOf(req), req.params.cardId ?? '', action(req));
+      const orgId = orgIdOf(req);
+      const result = await applyAction(db, orgId, req.params.cardId ?? '', action(req));
+      if (runnable) fireIfRunnable(orgId, result);
       respond(res, result);
     });
 
@@ -102,11 +116,14 @@ export function createCardsRouter(db: Db) {
   // passes backup_verified once the owner has confirmed one exists.
   router.post(
     '/api/cards/:cardId/approve',
-    act((req) => ({
-      type: 'approve',
-      at: new Date().toISOString(),
-      backupVerified: (req.body as { backup_verified?: boolean })?.backup_verified === true,
-    })),
+    act(
+      (req) => ({
+        type: 'approve',
+        at: new Date().toISOString(),
+        backupVerified: (req.body as { backup_verified?: boolean })?.backup_verified === true,
+      }),
+      true, // approving makes the card runnable — hand it to the engine
+    ),
   );
 
   router.post(
@@ -114,10 +131,10 @@ export function createCardsRouter(db: Db) {
     act((req) => ({ type: 'decline', at: new Date().toISOString(), reason: reasonOf(req) })),
   );
 
-  // Continue past a checkpoint pause.
+  // Continue past a checkpoint pause — the card is runnable again.
   router.post(
     '/api/cards/:cardId/continue',
-    act(() => ({ type: 'resume', at: new Date().toISOString() })),
+    act(() => ({ type: 'resume', at: new Date().toISOString() }), true),
   );
 
   router.post(

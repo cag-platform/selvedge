@@ -35,7 +35,7 @@ export const FEATURES: FeatureSpec[] = [
   { key: 'github_app', label: 'GitHub App (watch repos)', kind: 'feature', vars: ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_APP_SLUG', 'GITHUB_WEBHOOK_SECRET'], gives: 'receiving code/build events and reading repos' },
   { key: 'github_oauth', label: 'GitHub OAuth (borrow-and-return)', kind: 'feature', vars: ['GITHUB_OAUTH_CLIENT_ID', 'GITHUB_OAUTH_CLIENT_SECRET', 'GITHUB_OAUTH_REDIRECT_URI'], gives: 'the in-app repo setup flow for migrations' },
   { key: 'push', label: 'Push notifications', kind: 'feature', vars: ['APNS_AUTH_KEY', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID'], gives: 'critical alerts on the owner’s phone; without it they still fold into the brief' },
-  { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY'], gives: 'the part that actually makes an approved change in an isolated sandbox' },
+  { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'GITHUB_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox, the Claude Code agent, and a GitHub token to clone the repo and push the review branch' },
   { key: 'evaluator', label: 'Evaluating model (independent verdict)', kind: 'feature', vars: ['EVAL_MODEL'], gives: 'judges acceptance on a different model than authored the change, so it never grades its own work' },
 ];
 

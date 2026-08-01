@@ -31,6 +31,8 @@ import { createPortabilityRouter } from './routes/portability.js';
 import { createBeaconRouter } from './routes/beacon.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createLedgerRouter } from './routes/ledger.js';
+import { buildBuildEngine } from '../runner/daytona/factory.js';
+import { driveCard } from '../cards/drive.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -109,7 +111,17 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));
   app.use(createBeaconRouter(db));
-  app.use(createCardsRouter(db));
+  // The build engine — present only when Daytona + the Claude token + a GitHub
+  // token are all configured. When present, approving a card hands it off to run
+  // (in the background; the run takes minutes and the cap guards the spend). When
+  // absent, an approved card simply waits — no inert half-run.
+  const engine = buildBuildEngine(db);
+  const onRunnable = engine
+    ? (orgId: string, cardId: string) => {
+        void driveCard(db, orgId, cardId, engine).catch((err) => console.error(`card drive failed for ${cardId}:`, err));
+      }
+    : undefined;
+  app.use(createCardsRouter(db, onRunnable ? { onRunnable } : {}));
   app.use(createLedgerRouter(db));
 
   app.use(express.static(clientDir));
