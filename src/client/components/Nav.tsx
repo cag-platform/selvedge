@@ -20,7 +20,7 @@ export function Nav() {
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1">
           <NavLink to="/" end aria-label="Selvedge — Today" className="mr-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass">
-            <SelvedgeLockup tone="ink" className="h-7 w-auto" />
+            <SelvedgeLockup tone="chalk" className="h-7 w-auto" />
           </NavLink>
           <nav aria-label="Primary" className="flex items-center gap-1">
             <NavLink to="/" end className={linkClass}>

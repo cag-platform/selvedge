@@ -46,7 +46,7 @@ function AuthedApp() {
       <SignedOut>
         <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
           <div className="flex flex-col items-center gap-3 text-center">
-            <SelvedgeLockup tone="ink" className="h-11 w-auto" />
+            <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
             <p className="max-w-sm text-body text-ink-dim">
               A calm, plain-English watch over the software you ship. One morning brief; the important things, first.
             </p>

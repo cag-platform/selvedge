@@ -1,39 +1,43 @@
 /**
  * SELVEDGE DESIGN TOKENS — the single source of truth ("The Look", Prompt 1).
  *
- * Design thesis: Selvedge sells calm. "Cloth and light" — chalk-paper
- * daylight ground, frosted panels, and one signature element: the selvedge
- * edge. Color is rationed: --thread (selvedge-red) appears ONLY for what
- * needs the user. Everything below derives from the approved Today
- * prototype; no component may introduce a color/radius/type not here.
+ * Design thesis: the dark craftsperson's workbench — Toile's coloring in
+ * Selvedge's cloth. Deep navy is the canvas; raised navy panes lift the
+ * brief, cards, and inputs; cream is the ink. Selvedge keeps its own
+ * typography (Fraunces headlines, the mono technical register) and its one
+ * signature: --thread appears ONLY for what needs the user. Jewel tones
+ * (emerald action, gold attention, sage health) stay rationed as accents.
+ * No component may introduce a color/radius/type not here.
  */
 
 :root {
   /* ---- COLOR ---- */
-  --paper: #e9edf1; /* the daylight ground */
-  --ink: #28303a;
-  --ink-dim: #586573;
-  /* DECORATION ONLY — the dashed unknown seam. At 2.56:1 on paper this fails
-     AA for text of any size, so it must never carry words. Text that wants to
-     recede uses --ink-quiet below. The seam is exempt because it is
-     aria-hidden decoration sitting over a plain-text health line that says the
-     same thing, and because its meaning is carried by SHAPE (dashed) rather
-     than colour — that is the point of the dash. */
-  --ink-faint: #8b96a2;
-  /* The quiet text colour: recedes without becoming unreadable. 4.68:1 on
-     paper, 5.36:1 on panel — passes AA for body text on both grounds. */
-  --ink-quiet: #5f6a77;
-  --panel: #fbfcfd;
-  --panel-soft: #f4f7fa;
-  --hairline: rgba(40, 48, 58, 0.11);
+  --paper: #0f1b2d; /* navy-950 — the workbench canvas */
+  --ink: #f5f3ed; /* cream — primary ink on dark */
+  --ink-dim: #a9b6c6; /* secondary text; ~7.4:1 on panel */
+  /* DECORATION ONLY — the dashed unknown seam. Too dim on navy to carry
+     words (≈3:1), so it must never be text. Text that wants to recede uses
+     --ink-quiet below. The seam is exempt because it is aria-hidden
+     decoration sitting over a plain-text health line that says the same
+     thing, and because its meaning is carried by SHAPE (dashed) rather than
+     colour — that is the point of the dash. */
+  --ink-faint: #64748b;
+  /* The quiet text colour: recedes without becoming unreadable. ≈6.5:1 on
+     paper, ≈5.9:1 on panel — passes AA for body text on both grounds. */
+  --ink-quiet: #94a3b8;
+  --panel: #15263b; /* navy-900 — raised surface */
+  --panel-soft: #1c2e46; /* insets, hover fills, inputs */
+  --hairline: rgba(245, 243, 237, 0.13);
 
   /* STATUS — rationed by rule, not preference:
-     thread = needs-you ONLY. brass = working/attention-adjacent.
-     healthy = quiet good. cannot_tell renders ink-faint + DASHED (shape-
-     distinct from healthy: "I can't see this" must never read as "fine"). */
-  --thread: #d2442e;
-  --brass: #b07e22;
-  --healthy: #4f926f;
+     thread = needs-you ONLY. brass = working/attention-adjacent (gold now).
+     healthy = quiet good (sage). cannot_tell renders ink-faint + DASHED
+     (shape-distinct from healthy: "I can't see this" must never read as
+     "fine"). action = the one doing color (deep emerald, Toile's CTA). */
+  --thread: #e2704b; /* selvedge rust, lifted for dark ground (≈4.9:1 on panel) */
+  --brass: #c49a2a; /* gold — ≈5.8:1 on panel */
+  --healthy: #7fae8e; /* sage — ≈6:1 on panel */
+  --action: #2d5a3d; /* deep emerald button fill; carries cream text (≈7:1) */
 
   /* ---- TYPE ----
      Register shifts TYPEFACE on drill-down (body -> mono) — load-bearing:
@@ -69,21 +73,21 @@
   --glass-fill: var(--panel);
   --glass-fill-soft: var(--panel-soft);
   --glass-blur: none;
-  /* top-left specular: the "light" in cloth-and-light */
-  --specular: radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 55%);
+  /* top-left sheen: lamplight on the workbench — faint on dark, never milky */
+  --specular: radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 55%);
 }
 
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   :root {
-    --glass-fill: rgba(251, 252, 253, 0.6);
-    --glass-fill-soft: rgba(244, 247, 250, 0.55);
+    --glass-fill: rgba(21, 38, 59, 0.62);
+    --glass-fill-soft: rgba(28, 46, 70, 0.55);
     --glass-blur: blur(14px) saturate(1.12);
   }
 }
 
 /* Performance budget (Prompt 6): at most TWO simultaneous backdrop-filter
    layers per screen — the nav bar and the brief pane. Cards, panes, and
-   rows use solid --panel directly (they sit on flat paper; blur buys
+   rows use solid --panel directly (they sit on the flat canvas; blur buys
    nothing there). Never nest one blurred element inside another. */
 
 /* Low-power / user-preference fallback: solid fills, no blur. */

@@ -25,6 +25,7 @@ export default {
         thread: 'var(--thread)',
         brass: 'var(--brass)',
         healthy: 'var(--healthy)',
+        action: 'var(--action)',
       },
       fontFamily: {
         display: 'var(--font-display)',
