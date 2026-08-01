@@ -9,6 +9,7 @@ import { getBuild } from '../../build/store.js';
 import { runAgentTurn, type AgentTurnConfig } from '../../build/agent.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
+import { shipChanges, rollbackShip } from '../../build/ship.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -131,7 +132,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         staged_changes_ready: build?.stagedChangesReady ?? false,
         sandbox: build?.sandboxId ? 'attached' : 'none',
         thread: thread.map((m) => ({ id: m.id, role: m.role, content: m.content, at: m.createdAt.toISOString() })),
-        runs: runs.map((r) => ({ id: r.id, status: r.status, cost_cents: r.costCents, at: r.createdAt.toISOString() })),
+        runs: runs.map((r) => ({ id: r.id, status: r.status, cost_cents: r.costCents, commit: r.commitSha, kind: r.prompt.startsWith('ship:') ? 'ship' : 'turn', at: r.createdAt.toISOString() })),
         cost: { today_cents: todayCents, month_cents: monthCents },
       });
     }),
@@ -192,6 +193,56 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
       res.json(await preview(db, orgId, projectId, resolved.cfg));
+    }),
+  );
+
+  // Ship: the one moment the workshop touches the real world — gated on the
+  // actual changed files, sensitive changes need a confirmed backup.
+  router.post(
+    '/api/projects/:projectId/workshop/ship',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const resolved = await configFor(orgId, projectId);
+      if ('error' in resolved) {
+        res.status(resolved.status).json({ error: resolved.error });
+        return;
+      }
+      if (await activeRun(orgId, projectId)) {
+        res.status(409).json({ error: "I'm still working — let me finish before we ship." });
+        return;
+      }
+      const body = (req.body ?? {}) as { backup_confirmed?: boolean; summary?: string };
+      const out = await shipChanges(db, orgId, projectId, resolved.cfg, {
+        backupConfirmed: body.backup_confirmed === true,
+        ...(typeof body.summary === 'string' && body.summary.trim() !== '' ? { summary: body.summary.trim() } : {}),
+      });
+      if (out.outcome === 'shipped') {
+        res.json({ shipped: true, commit: out.commit, message: out.message });
+        return;
+      }
+      res.status(out.outcome === 'backup_required' ? 409 : 400).json({ error: out.message, reason: out.outcome });
+    }),
+  );
+
+  // Undo a ship: a real git revert of exactly that commit, pushed the same way.
+  router.post(
+    '/api/projects/:projectId/workshop/rollback',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const resolved = await configFor(orgId, projectId);
+      if ('error' in resolved) {
+        res.status(resolved.status).json({ error: resolved.error });
+        return;
+      }
+      const commit = typeof (req.body as { commit?: unknown })?.commit === 'string' ? (req.body as { commit: string }).commit : '';
+      const out = await rollbackShip(db, orgId, projectId, resolved.cfg, commit);
+      if (!out.ok) {
+        res.status(400).json({ error: out.message });
+        return;
+      }
+      res.json({ rolled_back: true, message: out.message });
     }),
   );
 

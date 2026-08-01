@@ -100,6 +100,27 @@ export function requestSignals(text: string, owner: OwnerTouches = {}): ChangeSi
 }
 
 /**
+ * Risk signals from the FILES a change touched — the ship-time gate's input.
+ * Judging the actual diff beats judging the conversation: a payments project
+ * whose change only touched styles.css is cosmetic; an "innocent" ask that
+ * ended up editing checkout code is sensitive. Escalate-only, like everything
+ * here: any sensitive path wins; cosmetic only when EVERY file is clearly
+ * copy/styling (css/styles/text/docs) and nothing sensitive appears.
+ */
+export function pathSignals(paths: string[]): ChangeSignals {
+  const joined = paths.join('\n');
+  const touchesPayments = PAYMENT_RE.test(joined);
+  const touchesAuth = AUTH_RE.test(joined);
+  const touchesUserData = USERDATA_RE.test(joined);
+  if (touchesPayments || touchesAuth || touchesUserData) {
+    return { touchesPayments, touchesAuth, touchesUserData };
+  }
+  const COSMETIC_PATH = /\.(css|scss|less|md|txt|svg|png|jpe?g|ico|webp)$|\b(styles?|copy|content|docs|assets|fonts?)\b/i;
+  if (paths.length > 0 && paths.every((p) => COSMETIC_PATH.test(p))) return { cosmeticOnly: true };
+  return {};
+}
+
+/**
  * A placeholder estimate and cap until the Phase-5 ledger learns each project's
  * real per-failure-class costs. Conservative and finite: the cap is the safety
  * number, and it is never zero. Marked clearly so the estimate can be honest

@@ -21,10 +21,87 @@ type WorkshopData = {
   staged_changes_ready: boolean;
   sandbox: 'attached' | 'none';
   thread: Message[];
-  runs: Array<{ id: string; status: string; cost_cents: number | null; at: string }>;
+  runs: Array<{ id: string; status: string; cost_cents: number | null; commit: string | null; kind: 'ship' | 'turn'; at: string }>;
   cost: { today_cents: number; month_cents: number };
 };
 type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
+
+/**
+ * Ship controls: one button when work is staged. A sensitive change (the server
+ * judges the actual changed files) comes back asking for a backup confirmation;
+ * the checkbox appears and the same button ships it. The last ship carries its
+ * undo — a real revert, one click.
+ */
+function ShipControls({ projectId, working, lastShipCommit, onDone }: { projectId: string; working: boolean; lastShipCommit: string | null; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [needsBackup, setNeedsBackup] = useState(false);
+  const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function ship() {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(`/api/projects/${projectId}/workshop/ship`, { backup_confirmed: backupConfirmed });
+      setNeedsBackup(false);
+      setBackupConfirmed(false);
+      onDone();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'that did not go through';
+      if (/backup/i.test(message)) {
+        setNeedsBackup(true);
+        setNote(message);
+      } else {
+        setNote(message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undo() {
+    if (!lastShipCommit) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(`/api/projects/${projectId}/workshop/rollback`, { commit: lastShipCommit });
+      onDone();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : 'the undo did not go through');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-brass bg-panel-soft px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-body text-ink">There's finished work here that isn't live yet.</p>
+        <div className="flex items-center gap-2">
+          {lastShipCommit && (
+            <button disabled={busy} onClick={() => void undo()} className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50">
+              Undo last ship
+            </button>
+          )}
+          <button
+            disabled={busy || working || (needsBackup && !backupConfirmed)}
+            onClick={() => void ship()}
+            className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+          >
+            {busy ? 'Shipping…' : 'Ship it'}
+          </button>
+        </div>
+      </div>
+      {needsBackup && (
+        <label className="flex items-start gap-2 text-meta text-ink-dim">
+          <input type="checkbox" className="mt-0.5" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
+          <span>I have a recent backup I could restore from.</span>
+        </label>
+      )}
+      {note && <p className="text-meta text-ink-dim">{note}</p>}
+    </div>
+  );
+}
 
 export function Workshop() {
   const { projectId } = useParams();
@@ -124,10 +201,13 @@ export function Workshop() {
         </p>
       )}
 
-      {data.staged_changes_ready && (
-        <p className="rounded-card border border-hairline border-l-2 border-l-brass bg-panel-soft px-4 py-3 text-body text-ink">
-          There's finished work in the workshop that isn't live yet. It stays safely here until you ship it.
-        </p>
+      {data.staged_changes_ready && projectId && (
+        <ShipControls
+          projectId={projectId}
+          working={data.working}
+          lastShipCommit={data.runs.find((r) => r.kind === 'ship' && r.commit)?.commit ?? null}
+          onDone={() => void load()}
+        />
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
