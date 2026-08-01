@@ -134,9 +134,12 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // Final safety net: asyncHandler() forwards unexpected route errors here
   // via next(err) instead of leaving the client hanging (Express 4 doesn't
   // auto-forward a rejected promise the way Express 5 does).
-  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
-    console.error(err);
-    res.status(500).json({ error: 'internal error' });
+  const onError: ErrorRequestHandler = (err, req, res, _next) => {
+    // A reference id ties what the owner sees to the exact log line, so an
+    // "internal error" report (even a screenshot) is diagnosable.
+    const ref = Math.random().toString(36).slice(2, 8);
+    console.error(`[err ${ref}] ${req.method} ${req.path}:`, err);
+    res.status(500).json({ error: `internal error (ref ${ref})` });
   };
   app.use(onError);
 

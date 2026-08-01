@@ -102,17 +102,27 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       ]);
 
       // The cost watch, always visible: what the agent has spent here today and
-      // this month, in cents — never a surprise bill.
+      // this month, in cents — never a surprise bill. Dates go through drizzle's
+      // typed gte() (the driver-correct path), never inside a raw SQL fragment;
+      // and a cost-watch failure degrades to zeros with a logged error — it must
+      // never take the whole workshop page down.
       const startOfDay = new Date();
       startOfDay.setUTCHours(0, 0, 0, 0);
       const startOfMonth = new Date(Date.UTC(startOfDay.getUTCFullYear(), startOfDay.getUTCMonth(), 1));
-      const [costs] = await db
-        .select({
-          todayCents: sql<number>`coalesce(sum(case when ${agentRuns.createdAt} >= ${startOfDay} then ${agentRuns.costCents} else 0 end), 0)`,
-          monthCents: sql<number>`coalesce(sum(case when ${agentRuns.createdAt} >= ${startOfMonth} then ${agentRuns.costCents} else 0 end), 0)`,
-        })
-        .from(agentRuns)
-        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId)));
+      const sumSince = async (since: Date): Promise<number> => {
+        const [row] = await db
+          .select({ cents: sql<number>`coalesce(sum(${agentRuns.costCents}), 0)` })
+          .from(agentRuns)
+          .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId), gte(agentRuns.createdAt, since)));
+        return Number(row?.cents ?? 0);
+      };
+      let todayCents = 0;
+      let monthCents = 0;
+      try {
+        [todayCents, monthCents] = await Promise.all([sumSince(startOfDay), sumSince(startOfMonth)]);
+      } catch (err) {
+        console.error(`workshop cost watch failed for ${orgId}/${projectId}:`, err);
+      }
 
       res.json({
         project: { id: projectId, name: pack.identity.name },
@@ -122,7 +132,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         sandbox: build?.sandboxId ? 'attached' : 'none',
         thread: thread.map((m) => ({ id: m.id, role: m.role, content: m.content, at: m.createdAt.toISOString() })),
         runs: runs.map((r) => ({ id: r.id, status: r.status, cost_cents: r.costCents, at: r.createdAt.toISOString() })),
-        cost: { today_cents: Number(costs?.todayCents ?? 0), month_cents: Number(costs?.monthCents ?? 0) },
+        cost: { today_cents: todayCents, month_cents: monthCents },
       });
     }),
   );
