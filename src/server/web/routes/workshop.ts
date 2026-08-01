@@ -9,7 +9,7 @@ import { getBuild } from '../../build/store.js';
 import { runAgentTurn, type AgentTurnConfig } from '../../build/agent.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
-import { shipChanges, rollbackShip } from '../../build/ship.js';
+import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -52,7 +52,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   const env = deps.env ?? engineEnv;
 
   /** The pack's GitHub source + engine creds, or a plain reason why not. */
-  async function configFor(orgId: string, projectId: string): Promise<{ cfg: AgentTurnConfig } | { error: string; status: number }> {
+  async function configFor(orgId: string, projectId: string): Promise<{ cfg: AgentTurnConfig; liveUrl: string | null } | { error: string; status: number }> {
     const pack = await getPack(db, orgId, projectId);
     if (!pack) return { error: 'no such project', status: 404 };
     const creds = env();
@@ -63,7 +63,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
     if (!source) {
       return { status: 409, error: "This project has no connected code source yet, so there's nothing for me to work on." };
     }
-    return { cfg: { ...creds, repoFullName: source.resource_id, branch: 'main' } };
+    return { cfg: { ...creds, repoFullName: source.resource_id, branch: 'main' }, liveUrl: pack.identity.links?.live_url ?? null };
   }
 
   async function activeRun(orgId: string, projectId: string) {
@@ -218,6 +218,17 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         ...(typeof body.summary === 'string' && body.summary.trim() !== '' ? { summary: body.summary.trim() } : {}),
       });
       if (out.outcome === 'shipped') {
+        // The auto-undo watch: if the project has a live URL, watch it land in
+        // the background — a confirmed break reverts this exact commit and the
+        // thread hears about it either way. No live URL → nothing to watch,
+        // said nowhere: the ship message already told the owner the watcher's
+        // scope honestly.
+        if (resolved.liveUrl) {
+          const { commit } = out;
+          void observeAfterShip(db, orgId, projectId, resolved.cfg, commit, resolved.liveUrl).catch((err) =>
+            console.error(`post-ship watch failed for ${orgId}/${projectId}:`, err),
+          );
+        }
         res.json({ shipped: true, commit: out.commit, message: out.message });
         return;
       }

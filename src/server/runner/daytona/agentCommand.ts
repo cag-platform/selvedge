@@ -122,6 +122,59 @@ export function parseAssistantText(stdout: string): string {
 }
 
 /**
+ * Compact, owner-readable lines for what the agent is doing right now — one per
+ * tool use, in plain words ("Editing src/App.tsx", "Running: npm test"). This is
+ * the live activity feed: parsed incrementally from the stream-json log while
+ * the turn runs, so the owner watches the work, not a spinner.
+ */
+export function parseToolActivity(stdout: string): string[] {
+  const lines: string[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (event.type !== 'assistant') continue;
+    const message = event.message as { content?: Array<Record<string, unknown>> } | undefined;
+    for (const block of message?.content ?? []) {
+      if (block.type !== 'tool_use') continue;
+      const name = typeof block.name === 'string' ? block.name : 'tool';
+      const input = (block.input ?? {}) as Record<string, unknown>;
+      const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : null);
+      const short = (v: string | null, n: number) => (v && v.length > n ? `${v.slice(0, n - 1)}…` : v ?? '');
+      const rel = (p: string | null) => (p ? p.replace(/^\/workspace\/app\//, '') : '');
+      switch (name) {
+        case 'Edit':
+        case 'Write':
+        case 'NotebookEdit':
+          lines.push(`Editing ${rel(str('file_path')) || 'a file'}`);
+          break;
+        case 'Read':
+          lines.push(`Reading ${rel(str('file_path')) || 'a file'}`);
+          break;
+        case 'Bash':
+          lines.push(`Running: ${short(str('command'), 70)}`);
+          break;
+        case 'Glob':
+        case 'Grep':
+          lines.push(`Searching for ${short(str('pattern'), 50)}`);
+          break;
+        case 'TodoWrite':
+          lines.push('Updating its plan');
+          break;
+        default:
+          lines.push(`Using ${name}`);
+      }
+    }
+  }
+  return lines;
+}
+
+/**
  * Map a finished Claude turn to the runner's step result. One turn is the whole
  * change, so `done` is always true — the runner then hands off to verification,
  * which is where an incomplete or wrong change is caught. The cost is real

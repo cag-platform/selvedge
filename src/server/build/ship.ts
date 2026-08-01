@@ -6,6 +6,8 @@ import { ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
 import type { ExecuteInSandbox } from './agent.js';
 import { pathSignals } from '../cards/triggers.js';
 import { classifyRisk, gateFor } from '../cards/risk.js';
+import { observeDeploy, type ObserveResult } from '../verify/observe.js';
+import { runCheck } from '../monitor/probe.js';
 
 /**
  * Ship — the one moment the workshop touches the real world, and therefore the
@@ -116,6 +118,74 @@ export async function shipChanges(
   await setBuild(db, orgId, projectId, { stagedChangesReady: false });
 
   return { outcome: 'shipped', commit, message: 'Shipped. Your host is taking it live; the watcher has it from here.' };
+}
+
+/** How long we watch the live app after a ship, and how often we look. The
+ *  window is long enough to cover the host's build (~minutes) plus real serving
+ *  time on the new version. */
+export const OBSERVE_WINDOW_MS = 12 * 60 * 1000;
+export const OBSERVE_INTERVAL_MS = 30 * 1000;
+
+/**
+ * The post-ship watch, with the auto-undo armed. After a ship, watch the live
+ * app across the window; a CONFIRMED break (the monitor's two-failure debounce —
+ * one blip never rolls anything back) reverts exactly that commit and tells the
+ * thread. Holding gets a quiet line too, so a good ship is confirmed out loud
+ * rather than assumed. Everything injected for tests; the defaults are the real
+ * health probe and the real revert.
+ */
+export async function observeAfterShip(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  cfg: SandboxConfig,
+  commit: string,
+  liveUrl: string,
+  deps: {
+    probe?: () => Promise<{ up: boolean; latencyMs: number; detail: string | null }>;
+    rollback?: () => Promise<{ ok: boolean; message: string }>;
+    sleep?: (ms: number) => Promise<void>;
+    now?: () => number;
+    windowMs?: number;
+    intervalMs?: number;
+  } = {},
+): Promise<ObserveResult> {
+  let undoOk = false;
+  let undoMessage = '';
+  const observed = await observeDeploy({
+    probe: deps.probe ?? (() => runCheck({ kind: 'http', url: liveUrl })),
+    rollback: async () => {
+      const out = await (deps.rollback ?? (() => rollbackShip(db, orgId, projectId, cfg, commit)))();
+      undoOk = out.ok;
+      undoMessage = out.message;
+    },
+    sleep: deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+    now: deps.now ?? (() => Date.now()),
+    windowMs: deps.windowMs ?? OBSERVE_WINDOW_MS,
+    intervalMs: deps.intervalMs ?? OBSERVE_INTERVAL_MS,
+  });
+
+  if (observed.outcome === 'broke') {
+    await db.insert(agentMessages).values({
+      id: ulid(),
+      orgId,
+      projectId,
+      role: 'agent',
+      // Never claim "undone" unless the revert actually applied.
+      content: undoOk
+        ? `That ship broke the live app — it stopped answering, twice in a row. I've already undone it (reverted ${commit.slice(0, 7)}), and your host is rolling back to the version that worked.`
+        : `That ship broke the live app, and I tried to undo it automatically but the undo didn't apply cleanly: ${undoMessage} Please look when you can.`,
+    });
+  } else {
+    await db.insert(agentMessages).values({
+      id: ulid(),
+      orgId,
+      projectId,
+      role: 'agent',
+      content: `Watched the live app for ${Math.round((deps.windowMs ?? OBSERVE_WINDOW_MS) / 60000)} minutes after that ship — it's standing. All good.`,
+    });
+  }
+  return observed;
 }
 
 /** Undo a ship: a real `git revert` of exactly that commit, pushed the same way. */

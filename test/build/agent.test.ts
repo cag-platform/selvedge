@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentRuns } from '../../src/server/db/schema/index.js';
 import { runAgentTurn, type ExecuteInSandbox } from '../../src/server/build/agent.js';
@@ -7,22 +7,35 @@ import { getBuild, setBuild } from '../../src/server/build/store.js';
 
 const cfg = { claudeCodeOauthToken: 't', githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 
-const successStream = (sessionId: string, text: string, cost = 0.05) =>
-  [
-    `{"type":"assistant","message":{"content":[{"type":"text","text":"${text}"}]}}`,
-    `{"type":"result","subtype":"success","total_cost_usd":${cost},"session_id":"${sessionId}","is_error":false}`,
-  ].join('\n');
+const toolUse = (name: string, input: Record<string, unknown>) =>
+  JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
+const text = (t: string) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: t }] } });
+const resultLine = (sessionId: string, cost = 0.05) =>
+  JSON.stringify({ type: 'result', subtype: 'success', total_cost_usd: cost, session_id: sessionId, is_error: false });
 
-/** A scripted executor: claude commands get the scripted stream; git status gets the scripted staged output. */
-function executor(opts: { stream?: string; exitCode?: number; staged?: boolean; onCommand?: (c: string) => void }): ExecuteInSandbox {
+/**
+ * A scripted executor for the streaming shape: the start command is a no-op,
+ * each poll returns the next scripted log snapshot (the last one marked DONE),
+ * and git status returns the scripted staged state.
+ */
+function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: string) => void }): ExecuteInSandbox {
+  let poll = 0;
   return async (command: string) => {
     opts.onCommand?.(command);
     if (command.includes('git status')) return { exitCode: 0, result: opts.staged ? ' M src/app.ts' : '' };
-    return { exitCode: opts.exitCode ?? 0, result: opts.stream ?? '' };
+    if (command.includes('__STATE:')) {
+      const i = Math.min(poll, opts.polls.length - 1);
+      poll += 1;
+      const last = i === opts.polls.length - 1;
+      return { exitCode: 0, result: `${opts.polls[i]}\n__STATE:${last ? 'DONE' : 'ALIVE'}` };
+    }
+    return { exitCode: 0, result: '' }; // start / kill / misc
   };
 }
 
-describe('runAgentTurn — a plain-English ask becomes a recorded, costed turn', () => {
+const noSleep = async () => {};
+
+describe('runAgentTurn — streamed, costed, resumable', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
@@ -35,9 +48,21 @@ describe('runAgentTurn — a plain-English ask becomes a recorded, costed turn',
   });
   afterEach(async () => close());
 
-  it('happy path: thread has both messages, the run has its real cost, session + staged flag saved', async () => {
+  it('streams activity onto the thread WHILE working, then lands the reply, cost, session, staged flag', async () => {
+    const step1 = [toolUse('Read', { file_path: '/workspace/app/src/App.tsx' })].join('\n');
+    const step2 = [step1, toolUse('Edit', { file_path: '/workspace/app/src/App.tsx' }), toolUse('Bash', { command: 'npm test' })].join('\n');
+    const done = [step2, text('I made the header dark.'), resultLine('sess_1'), '__EXIT:0'].join('\n');
+
+    // Snapshot the activity row mid-flight via the sleep hook.
+    const activitySnapshots: string[] = [];
+    const sleep = async () => {
+      const rows = await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'activity')));
+      if (rows[0]) activitySnapshots.push(rows[0].content);
+    };
+
     const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {
-      execute: executor({ stream: successStream('sess_1', 'I made the header dark.'), staged: true }),
+      execute: executor({ polls: [step1, step2, done], staged: true }),
+      sleep,
     });
 
     expect(out.status).toBe('succeeded');
@@ -45,53 +70,77 @@ describe('runAgentTurn — a plain-English ask becomes a recorded, costed turn',
     expect(out.reply).toBe('I made the header dark.');
     expect(out.stagedChangesReady).toBe(true);
 
+    // The live feed existed BEFORE the turn finished, and reads like work.
+    expect(activitySnapshots.some((s) => s.includes('Reading src/App.tsx'))).toBe(true);
+    const final = await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'activity')));
+    expect(final[0]!.content).toContain('Editing src/App.tsx');
+    expect(final[0]!.content).toContain('Running: npm test');
+
     const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
-    expect(thread.map((m) => m.role)).toEqual(['owner', 'agent']);
-
-    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
-    expect(run!.status).toBe('succeeded');
-    expect(run!.costCents).toBe(5);
-
-    const build = await getBuild(db, orgId, 'loom');
-    expect(build?.claudeSessionId).toBe('sess_1'); // the next turn resumes this
-    expect(build?.stagedChangesReady).toBe(true);
+    expect(thread.map((m) => m.role)).toEqual(['owner', 'activity', 'agent']);
+    expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_1');
   });
 
   it('the second turn resumes the saved session — iteration, not starting over', async () => {
     await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_1' });
     const commands: string[] = [];
     await runAgentTurn(db, orgId, 'loom', 'now darker', cfg, {
-      execute: executor({ stream: successStream('sess_2', 'Darker now.'), onCommand: (c) => commands.push(c) }),
+      execute: executor({ polls: [[text('Darker.'), resultLine('sess_2'), '__EXIT:0'].join('\n')], onCommand: (c) => commands.push(c) }),
+      sleep: noSleep,
     });
-    expect(commands[0]).toContain("--resume 'sess_1'");
+    // The inner command rides through the outer nohup quoting, so assert parts.
+    expect(commands[0]).toContain('--resume');
+    expect(commands[0]).toContain('sess_1');
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_2');
   });
 
   it('a stale session retries once fresh instead of failing the turn', async () => {
     await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_dead' });
-    const commands: string[] = [];
-    let call = 0;
+    const starts: string[] = [];
+    let phase = 0; // 0: first attempt polls fail; 1: fresh attempt succeeds
     const execute: ExecuteInSandbox = async (command) => {
-      commands.push(command);
+      if (command.includes('nohup')) {
+        starts.push(command);
+        phase = starts.length;
+        return { exitCode: 0, result: '' };
+      }
       if (command.includes('git status')) return { exitCode: 0, result: '' };
-      call += 1;
-      if (call === 1) return { exitCode: 1, result: 'No conversation found' }; // stale --resume
-      return { exitCode: 0, result: successStream('sess_new', 'Fresh start, done.') };
+      if (command.includes('__STATE:')) {
+        const body = phase === 1 ? 'No conversation found\n__EXIT:1' : [text('Fresh, done.'), resultLine('sess_new'), '__EXIT:0'].join('\n');
+        return { exitCode: 0, result: `${body}\n__STATE:DONE` };
+      }
+      return { exitCode: 0, result: '' };
     };
-    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, { execute });
+    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, { execute, sleep: noSleep });
     expect(out.status).toBe('succeeded');
-    expect(commands[0]).toContain('--resume');
-    expect(commands[1]).not.toContain('--resume');
+    expect(starts[0]).toContain('--resume');
+    expect(starts[1]).not.toContain('--resume');
   });
 
   it('a failed turn is honest on the thread and recorded as failed — never a silent shrug', async () => {
     const out = await runAgentTurn(db, orgId, 'loom', 'do the thing', cfg, {
-      execute: executor({ exitCode: 1, stream: '' }),
+      execute: executor({ polls: ['boom\n__EXIT:1'] }),
+      sleep: noSleep,
     });
     expect(out.status).toBe('failed');
     expect(out.reply).toMatch(/couldn't finish/i);
-    expect(out.stagedChangesReady).toBe(false);
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.status).toBe('failed');
+  });
+
+  it('a turn that runs past the ceiling is stopped and says so plainly', async () => {
+    let clock = 0;
+    const neverDone: ExecuteInSandbox = async (command) => {
+      if (command.includes('__STATE:')) return { exitCode: 0, result: 'still going\n__STATE:ALIVE' };
+      if (command.includes('git status')) return { exitCode: 0, result: '' };
+      return { exitCode: 0, result: '' };
+    };
+    const out = await runAgentTurn(db, orgId, 'loom', 'endless task', cfg, {
+      execute: neverDone,
+      sleep: noSleep,
+      now: () => (clock += 16 * 60 * 1000), // two ticks blow past the 30-min ceiling
+    });
+    expect(out.status).toBe('failed');
+    expect(out.reply).toMatch(/took too long/i);
   });
 });

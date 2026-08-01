@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentRuns } from '../../src/server/db/schema/index.js';
-import { shipChanges, rollbackShip } from '../../src/server/build/ship.js';
+import { shipChanges, rollbackShip, observeAfterShip } from '../../src/server/build/ship.js';
 import { setBuild, getBuild } from '../../src/server/build/store.js';
 import type { ExecuteInSandbox } from '../../src/server/build/agent.js';
 import { pathSignals } from '../../src/server/cards/triggers.js';
@@ -87,6 +87,61 @@ describe('shipChanges — build freely, gate at ship', () => {
     const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'], pushExit: 1 }) });
     expect(out.outcome).toBe('failed');
     expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(true);
+  });
+});
+
+describe('observeAfterShip — the auto-undo, armed on a confirmed break only', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const up = { up: true, latencyMs: 5, detail: null };
+  const down = { up: false, latencyMs: 0, detail: 'HTTP 500' };
+  const fast = { sleep: async () => {}, windowMs: 120_000, intervalMs: 30_000 };
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId: 'org_1' });
+    await setBuild(db, 'org_1', 'loom', { sandboxId: 'sbx_1', repoFullName: 'acme/loom' });
+  });
+  afterEach(async () => close());
+
+  const observe = (probes: Array<typeof up>, rollback: () => Promise<{ ok: boolean; message: string }>) => {
+    let i = 0;
+    let clock = 0;
+    return observeAfterShip(db, 'org_1', 'loom', cfg, 'a1b2c3d', 'https://loom.example', {
+      ...fast,
+      now: () => (clock += 15_000),
+      probe: async () => probes[Math.min(i++, probes.length - 1)]!,
+      rollback,
+    });
+  };
+
+  it('a confirmed break (two failures) auto-reverts and tells the thread plainly', async () => {
+    let reverted = false;
+    const out = await observe([up, down, down], async () => { reverted = true; return { ok: true, message: 'undone' }; });
+    expect(out.outcome).toBe('broke');
+    expect(reverted).toBe(true);
+    const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, 'org_1'));
+    expect(thread.at(-1)!.content).toMatch(/broke the live app/i);
+    expect(thread.at(-1)!.content).toMatch(/already undone/i);
+  });
+
+  it('a single blip never rolls back, and a held window is confirmed out loud', async () => {
+    let reverted = false;
+    const out = await observe([up, down, up, up], async () => { reverted = true; return { ok: true, message: '' }; });
+    expect(out.outcome).toBe('held');
+    expect(reverted).toBe(false);
+    const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, 'org_1'));
+    expect(thread.at(-1)!.content).toMatch(/it's standing/i);
+  });
+
+  it('never claims "undone" when the auto-revert itself failed', async () => {
+    const out = await observe([down, down], async () => ({ ok: false, message: 'CONFLICT — a later change overlaps.' }));
+    expect(out.outcome).toBe('broke');
+    const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, 'org_1'));
+    expect(thread.at(-1)!.content).toMatch(/didn't apply cleanly/i);
+    expect(thread.at(-1)!.content).not.toMatch(/already undone/i);
   });
 });
 

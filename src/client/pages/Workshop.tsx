@@ -13,7 +13,7 @@ import { formatCents } from '../lib/ledger.js';
  * sandbox stops itself after 15 idle minutes.
  */
 
-type Message = { id: string; role: 'owner' | 'agent'; content: string; at: string };
+type Message = { id: string; role: 'owner' | 'agent' | 'activity'; content: string; at: string };
 type WorkshopData = {
   project: { id: string; name: string };
   engine_on: boolean;
@@ -221,14 +221,22 @@ export function Workshop() {
                 goes live.
               </p>
             )}
-            {data.thread.map((m) => (
-              <div key={m.id} className={m.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-3'}>
-                <p className="text-label font-body uppercase tracking-widest text-ink-quiet">
-                  {m.role === 'owner' ? 'You' : 'Selvedge'}
-                </p>
-                <p className="whitespace-pre-line text-body text-ink">{m.content}</p>
-              </div>
-            ))}
+            {data.thread.map((m) =>
+              m.role === 'activity' ? (
+                // The live work feed: what the agent is actually doing, line by
+                // line, updating in place while the turn runs.
+                <div key={m.id} className="border-l-2 border-hairline pl-3">
+                  <p className="whitespace-pre-line font-mono text-tech text-ink-quiet">{m.content}</p>
+                </div>
+              ) : (
+                <div key={m.id} className={m.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-3'}>
+                  <p className="text-label font-body uppercase tracking-widest text-ink-quiet">
+                    {m.role === 'owner' ? 'You' : 'Selvedge'}
+                  </p>
+                  <p className="whitespace-pre-line text-body text-ink">{m.content}</p>
+                </div>
+              ),
+            )}
             {data.working && (
               <div className="border-l-2 border-brass pl-3">
                 <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge</p>
