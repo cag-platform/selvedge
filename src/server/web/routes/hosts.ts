@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { connectCredential, listConnected, revokeCredential } from '../../connectors/credentials/store.js';
+import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -42,6 +43,10 @@ export function createHostsRouter(db: Db) {
   router.post(
     '/api/hosts',
     asyncHandler(async (req, res) => {
+      if (!vaultConfigured()) {
+        res.status(503).json({ error: "I can't store keys yet — the server's credential vault isn't configured (CREDENTIALS_KEY needs to be set in the deploy, at least 32 characters). Nothing was saved." });
+        return;
+      }
       const { provider, token, label } = req.body as { provider?: unknown; token?: unknown; label?: unknown };
       if (!isHostProvider(provider)) {
         res.status(400).json({ error: 'provide a supported host' });

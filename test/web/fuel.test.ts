@@ -27,6 +27,17 @@ describe('web/routes/fuel — the BYO connect experience', () => {
     await close();
   });
 
+  it('an unconfigured vault is a plain 503 sentence, never an "internal error"', async () => {
+    // The exact production bug: CREDENTIALS_KEY missing → the vault throws →
+    // the owner saw a bare 500. Now it says what's wrong and what to set.
+    delete process.env.CREDENTIALS_KEY;
+    const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'anthropic', key: KEY });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/CREDENTIALS_KEY/);
+    expect(res.body.error).toMatch(/nothing was saved/i);
+  });
+
   it('connects a verified key and reports it without ever echoing the secret', async () => {
     const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
     const res = await request(app).post('/api/fuel').send({ provider: 'anthropic', key: KEY, label: 'My Claude' });

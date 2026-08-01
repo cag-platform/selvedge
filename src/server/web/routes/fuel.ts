@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { connectCredential, listConnected, revokeCredential } from '../../connectors/credentials/store.js';
+import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { FUEL_PROVIDERS, type FuelProvider } from '../../connectors/fuel/resolve.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
 import type { LlmClient } from '../../llm/types.js';
@@ -65,6 +66,12 @@ export function createFuelRouter(db: Db, verify: FuelVerifier = realVerifier) {
   router.post(
     '/api/fuel',
     asyncHandler(async (req, res) => {
+      // A missing vault key must be a plain sentence, never an "internal error".
+      if (!vaultConfigured()) {
+        res.status(503).json({ error: "I can't store keys yet — the server's credential vault isn't configured (CREDENTIALS_KEY needs to be set in the deploy, at least 32 characters). Nothing was saved." });
+        return;
+      }
+
       const { provider, key, label } = req.body as { provider?: unknown; key?: unknown; label?: unknown };
 
       if (!isFuelProvider(provider)) {

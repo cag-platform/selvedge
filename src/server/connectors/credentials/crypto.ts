@@ -51,6 +51,11 @@ function aad(orgId: string, provider: string): Buffer {
   return Buffer.from(`${VERSION}:${orgId}:${provider}`, 'utf8');
 }
 
+/** Whether the vault can work at all — lets routes say so plainly instead of 500ing. */
+export function vaultConfigured(): boolean {
+  return (process.env.CREDENTIALS_KEY ?? '').length >= 32;
+}
+
 export function encryptCredential(orgId: string, provider: string, plain: string): string {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', deriveOrgKey(orgId), iv);
