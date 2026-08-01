@@ -30,6 +30,7 @@ import { createMemoryRouter } from './routes/memory.js';
 import { createPortabilityRouter } from './routes/portability.js';
 import { createBeaconRouter } from './routes/beacon.js';
 import { createCardsRouter } from './routes/cards.js';
+import { createLedgerRouter } from './routes/ledger.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -109,6 +110,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createPortabilityRouter(db));
   app.use(createBeaconRouter(db));
   app.use(createCardsRouter(db));
+  app.use(createLedgerRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

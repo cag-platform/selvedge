@@ -84,6 +84,26 @@ describe('proposeIncidentCard — the proactive front of the loop', () => {
     expect(cards[0]!.trigger).toBe('incident');
   });
 
+  it('a repeat incident carries the memory of last time into the proposal', async () => {
+    await createPack(db, orgId, moneyPack);
+    // First occurrence, worked through to done.
+    const first = await proposeIncidentCard(db, orgId, 'loom', moneyPack, 'runtime.health_failing', NOW);
+    for (const a of [
+      { type: 'approve' as const, at: NOW.toISOString(), backupVerified: true },
+      { type: 'start_work' as const, at: NOW.toISOString() },
+      { type: 'spend' as const, at: NOW.toISOString(), cents: 650 },
+      { type: 'begin_verify' as const, at: NOW.toISOString() },
+      { type: 'complete' as const, at: NOW.toISOString(), verdict: 'verified' as const },
+    ]) {
+      await applyAction(db, orgId, first!.id, a);
+    }
+
+    // Same incident again → the proposal recalls the first.
+    const second = await proposeIncidentCard(db, orgId, 'loom', moneyPack, 'runtime.health_failing', NOW);
+    expect(second!.proposal).toMatch(/seen this one before/i);
+    expect(second!.proposal).toMatch(/\$6\.50/); // last time's cost
+  });
+
   it('a non-break event proposes nothing', async () => {
     await createPack(db, orgId, moneyPack);
     await ingestEvent(db, {

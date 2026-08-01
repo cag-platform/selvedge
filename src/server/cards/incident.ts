@@ -6,7 +6,9 @@ import { createCard } from './store.js';
 import { listCards } from './store.js';
 import { classifyRisk } from './risk.js';
 import { incidentWorthCard, incidentSignals, incidentProposal, defaultEstimateAndCap } from './triggers.js';
-import { estimateForChange } from '../ledger/store.js';
+import { listLedger } from '../ledger/store.js';
+import { learnedEstimate } from '../ledger/costs.js';
+import { priorOccurrence, recallNote } from '../ledger/recall.js';
 
 const TERMINAL = new Set<Card['state']>(['declined', 'stopped', 'done', 'failed']);
 
@@ -37,15 +39,16 @@ export async function proposeIncidentCard(
 
   const { title, proposal } = incidentProposal(pack, eventType);
   const signals = incidentSignals(pack);
-  // Learn the estimate from this project's own history for this risk class,
-  // falling back to the tier default until there's enough of it.
-  const { estimate, capCents } = await estimateForChange(
-    db,
-    orgId,
-    projectId,
-    classifyRisk(signals),
-    defaultEstimateAndCap(pack.stakes.tier),
-  );
+
+  // One read of this project's history powers both the estimate and the memory.
+  const history = await listLedger(db, orgId, { projectId });
+  const { estimate, capCents } = learnedEstimate(history, classifyRisk(signals), defaultEstimateAndCap(pack.stakes.tier));
+
+  // "I've seen this before": if we've worked this exact incident before, carry
+  // last time's outcome into the proposal so the owner isn't told about a repeat
+  // as if it were new.
+  const prior = priorOccurrence(history, { intent: title, trigger: 'incident' });
+  const fullProposal = prior ? `${proposal}\n\n${recallNote(prior)}` : proposal;
 
   return createCard(db, {
     id: ulid(),
@@ -53,7 +56,7 @@ export async function proposeIncidentCard(
     projectId,
     trigger: 'incident',
     title,
-    proposal,
+    proposal: fullProposal,
     signals,
     estimate,
     capCents,

@@ -4,6 +4,7 @@ import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
+import { TrackRecord } from './pages/TrackRecord.js';
 import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
@@ -56,6 +57,7 @@ function AuthedApp() {
             <Routes>
               <Route path="/" element={<Today />} />
               <Route path="/work" element={<Work />} />
+              <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               <Route path="/tray" element={<Tray />} />
