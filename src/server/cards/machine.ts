@@ -26,7 +26,7 @@ export type CardAction =
   | { type: 'resume'; at: string }
   | { type: 'stop'; at: string; reason?: string }
   | { type: 'begin_verify'; at: string }
-  | { type: 'complete'; at: string; verdict: Exclude<CardVerdict, 'stopped'> }
+  | { type: 'complete'; at: string; verdict: Exclude<CardVerdict, 'stopped'>; summary?: string; results?: unknown }
   | { type: 'fail'; at: string; reason: string };
 
 export type AdvanceError =
@@ -134,8 +134,9 @@ export function advance(card: Card, action: CardAction): AdvanceResult {
       const next = withAct(card, action.at, {
         at: action.at,
         kind: 'completed',
-        detail: `Done — ${action.verdict}.`,
-        meta: { verdict: action.verdict },
+        // The honest verdict summary when verification supplied one, else a plain fallback.
+        detail: action.summary ?? `Done — ${action.verdict}.`,
+        meta: { verdict: action.verdict, ...(action.results !== undefined ? { results: action.results } : {}) },
       });
       return { ok: true, card: { ...next, state: 'done', verdict: action.verdict } };
     }
