@@ -85,7 +85,7 @@ export function WorkCard({ card, onChanged }: { card: WorkCardData; onChanged: (
             <button
               disabled={busy || (hardGate && !backupConfirmed)}
               onClick={() => void act('approve', { backup_verified: backupConfirmed })}
-              className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+              className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
             >
               Approve
             </button>
@@ -105,7 +105,7 @@ export function WorkCard({ card, onChanged }: { card: WorkCardData; onChanged: (
           <button
             disabled={busy}
             onClick={() => void act('continue')}
-            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
             Continue
           </button>

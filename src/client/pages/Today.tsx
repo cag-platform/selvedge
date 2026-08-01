@@ -131,7 +131,7 @@ export function Today() {
           <button
             onClick={() => void composeNow()}
             disabled={composing}
-            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
             {composing ? 'Composing…' : "Compose today's brief now"}
           </button>

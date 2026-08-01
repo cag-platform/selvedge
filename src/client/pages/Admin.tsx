@@ -73,12 +73,12 @@ function TimezoneSettings() {
           />
           <button
             onClick={() => void save(value)}
-            className="rounded-inset bg-ink px-3 py-1.5 text-sm font-medium text-panel transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+            className="rounded-inset bg-ink px-3 py-1.5 text-sm font-medium text-panel transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           >
             Save
           </button>
           {browserTz && browserTz !== org.timezone && (
-            <button onClick={() => void save(browserTz)} className="text-sm text-brass hover:underline">
+            <button onClick={() => void save(browserTz)} className="text-sm text-action-bright hover:underline">
               Use my timezone ({browserTz})
             </button>
           )}

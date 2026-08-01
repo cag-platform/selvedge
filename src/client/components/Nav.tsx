@@ -3,8 +3,8 @@ import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
 import { SelvedgeLockup } from './Logo.js';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
-  `rounded-inset px-3 py-1.5 text-body font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass ${
-    isActive ? 'bg-ink text-panel' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'
+  `rounded-inset px-3 py-1.5 text-body font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
+    isActive ? 'bg-action text-ink' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'
   }`;
 
 export function Nav() {
@@ -19,7 +19,7 @@ export function Nav() {
     >
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <div className="flex items-center gap-1">
-          <NavLink to="/" end aria-label="Selvedge — Today" className="mr-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass">
+          <NavLink to="/" end aria-label="Selvedge — Today" className="mr-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright">
             <SelvedgeLockup tone="chalk" className="h-7 w-auto" />
           </NavLink>
           <nav aria-label="Primary" className="flex items-center gap-1">

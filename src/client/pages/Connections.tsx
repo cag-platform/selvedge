@@ -161,12 +161,12 @@ function HostConnect({ provider, onConnected }: { provider: string; onConnected:
         value={token}
         onChange={(e) => setToken(e.target.value)}
         placeholder={`paste your ${HOST_LABEL[provider] ?? provider} token`}
-        className="min-w-[14rem] flex-1 rounded-inset border border-hairline bg-panel px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+        className="min-w-[14rem] flex-1 rounded-inset border border-hairline bg-panel px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
       />
       <button
         type="submit"
         disabled={busy || token.trim().length < 8}
-        className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-ink hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+        className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-ink hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
       >
         {busy ? 'Saving…' : 'Connect'}
       </button>
@@ -237,7 +237,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
-            className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+            className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           >
             {providers.map((p) => (
               <option key={p} value={p}>
@@ -250,7 +250,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="paste your API key"
-            className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+            className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           />
         </div>
         {hint && <p className="text-meta text-ink-quiet">Your {fuelLabel(provider)} key — {hint}. It's checked before it's saved.</p>}
@@ -258,7 +258,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
           <button
             type="submit"
             disabled={state === 'checking' || key.trim().length < 8}
-            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
             {state === 'checking' ? 'Checking…' : 'Connect'}
           </button>

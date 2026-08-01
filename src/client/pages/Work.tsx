@@ -121,7 +121,7 @@ function AskForChange({ projects, onCreated }: { projects: ProjectCardData[]; on
           <select
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+            className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           >
             {projects.map((p) => (
               <option key={p.project_id} value={p.project_id}>
@@ -134,14 +134,14 @@ function AskForChange({ projects, onCreated }: { projects: ProjectCardData[]; on
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="e.g. make the gift note optional at checkout"
-          className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
         />
       </div>
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={busy || text.trim().length === 0 || projectId === ''}
-          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
         >
           {busy ? 'Scoping…' : 'Propose it'}
         </button>

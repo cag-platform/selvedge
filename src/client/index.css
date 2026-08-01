@@ -14,6 +14,19 @@
     font-family: var(--font-body);
     font-size: var(--text-body);
   }
+
+  /* The interaction emerald, woven through the small places you touch:
+     what you select, what you type into, what you tick. */
+  ::selection {
+    background-color: var(--action);
+    color: var(--ink);
+  }
+  input,
+  select,
+  textarea {
+    accent-color: var(--action-bright);
+    caret-color: var(--action-bright);
+  }
 }
 
 /* One gentle arrival, then stillness. Duration token collapses to 0ms

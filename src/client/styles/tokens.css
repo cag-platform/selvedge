@@ -38,6 +38,10 @@
   --brass: #c49a2a; /* gold — ≈5.8:1 on panel */
   --healthy: #7fae8e; /* sage — ≈6:1 on panel */
   --action: #2d5a3d; /* deep emerald button fill; carries cream text (≈7:1) */
+  /* The interaction emerald: links, focus rings, carets, accents on things
+     you can DO. ≈4.6:1 on panel — AA at body size. Never a status color:
+     healthy (sage) says "fine", action-bright says "touch here". */
+  --action-bright: #5c9a74;
 
   /* ---- TYPE ----
      Register shifts TYPEFACE on drill-down (body -> mono) — load-bearing:

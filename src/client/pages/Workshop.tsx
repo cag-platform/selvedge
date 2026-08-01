@@ -74,7 +74,7 @@ function ShipControls({ projectId, working, lastShipCommit, onDone }: { projectI
   }
 
   return (
-    <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-brass bg-panel-soft px-4 py-3">
+    <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-action-bright bg-panel-soft px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-body text-ink">There's finished work here that isn't live yet.</p>
         <div className="flex items-center gap-2">
@@ -86,7 +86,7 @@ function ShipControls({ projectId, working, lastShipCommit, onDone }: { projectI
           <button
             disabled={busy || working || (needsBackup && !backupConfirmed)}
             onClick={() => void ship()}
-            className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+            className="rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
             {busy ? 'Shipping…' : 'Ship it'}
           </button>
@@ -253,12 +253,12 @@ export function Workshop() {
               onChange={(e) => setText(e.target.value)}
               disabled={sending || data.working || !data.engine_on}
               placeholder={data.working ? 'Working — one thing at a time…' : 'What should change?'}
-              className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-60"
+              className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
             />
             <button
               type="submit"
               disabled={sending || data.working || !data.engine_on || text.trim() === ''}
-              className="rounded-inset border border-hairline bg-panel-soft px-4 py-2 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass disabled:opacity-50"
+              className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
             >
               {sending ? 'Sending…' : 'Do it'}
             </button>

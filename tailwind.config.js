@@ -25,7 +25,10 @@ export default {
         thread: 'var(--thread)',
         brass: 'var(--brass)',
         healthy: 'var(--healthy)',
-        action: 'var(--action)',
+        action: {
+          DEFAULT: 'var(--action)',
+          bright: 'var(--action-bright)',
+        },
       },
       fontFamily: {
         display: 'var(--font-display)',

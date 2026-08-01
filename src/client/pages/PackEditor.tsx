@@ -83,7 +83,7 @@ export function PackEditor() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-headline font-display text-ink">Teach me about {pack.identity.name}</h1>
         <button
-          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           onClick={() => navigate(`/projects/${projectId}/workshop`)}
         >
           Open the workshop
@@ -237,7 +237,7 @@ export function PackEditor() {
             : 'Showing in your daily brief.'}
         </p>
         <button
-          className="text-body text-brass hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          className="text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           disabled={muting}
           onClick={toggleMute}
         >
@@ -252,7 +252,7 @@ export function PackEditor() {
       <section className="space-y-3 border-t border-hairline pt-6">
         <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Delete</h2>
         {!confirmingDelete ? (
-          <button className="text-body text-thread hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass" onClick={() => setConfirmingDelete(true)}>
+          <button className="text-body text-thread hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright" onClick={() => setConfirmingDelete(true)}>
             Delete this project
           </button>
         ) : (
@@ -381,7 +381,7 @@ function BeaconSection({ projectId }: { projectId: string }) {
           <span className="text-meta text-ink-quiet">
             Reporting is on{status.lastSeenAt ? ` — last report ${new Date(status.lastSeenAt).toLocaleString()}` : ' — no reports yet'}.
           </span>
-          <button className="text-body text-brass hover:underline" disabled={busy} onClick={issue}>
+          <button className="text-body text-action-bright hover:underline" disabled={busy} onClick={issue}>
             Regenerate token
           </button>
           <button className="text-body text-thread hover:underline" disabled={busy} onClick={revoke}>
@@ -389,7 +389,7 @@ function BeaconSection({ projectId }: { projectId: string }) {
           </button>
         </div>
       ) : (
-        <button className="text-body text-brass hover:underline" disabled={busy} onClick={issue}>
+        <button className="text-body text-action-bright hover:underline" disabled={busy} onClick={issue}>
           {busy ? 'Setting up…' : 'Set up error reporting'}
         </button>
       )}

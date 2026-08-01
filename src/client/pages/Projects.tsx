@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
 
-function NewProjectForm({ onCreated }: { onCreated: () => void }) {
+function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => void }) {
   const [repos, setRepos] = useState<Array<{ full_name: string }>>([]);
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('__create__');
   const [manualRepo, setManualRepo] = useState('');
-  const [tier, setTier] = useState('live_small');
+  // New things start as experiments — raise the stakes later, when it's real.
+  const [tier, setTier] = useState('sandbox');
   const [touchesMoney, setTouchesMoney] = useState(false);
   const [downtime, setDowntime] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -18,21 +20,28 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
     api.get<Array<{ full_name: string }>>('/api/connectors/github/repos').then(setRepos).catch(() => setRepos([]));
   }, []);
 
+  // A brand-new repo means a brand-new thing: no users yet, nothing depends
+  // on it, no money through it. Skip the stakes questions entirely — it
+  // starts as a sandbox and the owner raises the stakes when it's real.
+  const brandNew = repo === '__create__';
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSaving(true);
     try {
-      await api.post('/api/packs', {
+      const pack = await api.post<{ identity: { project_id: string } }>('/api/packs', {
         name,
-        ...(repo === '__create__'
-          ? { create_repo: true }
-          : { repo: repo === '__manual__' ? manualRepo : repo }),
-        tier,
-        touches_money: touchesMoney,
-        downtime_translation: downtime || undefined,
+        ...(brandNew
+          ? { create_repo: true, tier: 'sandbox', touches_money: false }
+          : {
+              repo: repo === '__manual__' ? manualRepo : repo,
+              tier,
+              touches_money: touchesMoney,
+              downtime_translation: downtime || undefined,
+            }),
       });
-      onCreated();
+      onCreated(brandNew ? pack.identity.project_id : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'something went wrong');
     } finally {
@@ -40,7 +49,7 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
     }
   };
 
-  const isLive = tier === 'live_small' || tier === 'live_critical';
+  const isLive = !brandNew && (tier === 'live_small' || tier === 'live_critical');
 
   return (
     <Pane className="mb-6 p-5">
@@ -62,9 +71,10 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
               ))}
               <option value="__manual__">Type a repo by name…</option>
             </select>
-            {repo === '__create__' && (
+            {brandNew && (
               <span className="mt-1 block text-body text-ink-quiet">
-                A private repo named after the project, made for you on GitHub.
+                A private repo named after the project, made for you on GitHub. It starts as a
+                sandbox — you land in the Workshop and just start building.
               </span>
             )}
             {repo === '__manual__' && (
@@ -77,15 +87,17 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
               />
             )}
           </label>
-          <label className={labelCls}>
-            What is it?
-            <select className={inputCls} value={tier} onChange={(e) => setTier(e.target.value)}>
-              <option value="sandbox">Sandbox — an experiment</option>
-              <option value="personal">Personal — just for me</option>
-              <option value="live_small">Live — real people use it</option>
-              <option value="live_critical">Live · critical — people depend on it</option>
-            </select>
-          </label>
+          {!brandNew && (
+            <label className={labelCls}>
+              What is it?
+              <select className={inputCls} value={tier} onChange={(e) => setTier(e.target.value)}>
+                <option value="sandbox">Sandbox — an experiment</option>
+                <option value="personal">Personal — just for me</option>
+                <option value="live_small">Live — real people use it</option>
+                <option value="live_critical">Live · critical — people depend on it</option>
+              </select>
+            </label>
+          )}
           {isLive && (
             <label className={labelCls}>
               If it goes down, what does that mean? <span className="text-ink-quiet">(optional)</span>
@@ -99,12 +111,16 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
           )}
         </div>
         <div className="mt-4 flex items-center justify-between">
-          <label className="flex items-center gap-2 text-body text-ink-dim">
-            <input type="checkbox" checked={touchesMoney} onChange={(e) => setTouchesMoney(e.target.checked)} />
-            Money moves through it
-          </label>
+          {brandNew ? (
+            <span />
+          ) : (
+            <label className="flex items-center gap-2 text-body text-ink-dim">
+              <input type="checkbox" checked={touchesMoney} onChange={(e) => setTouchesMoney(e.target.checked)} />
+              Money moves through it
+            </label>
+          )}
           <button type="submit" disabled={saving} className={btnPrimary}>
-            {saving ? 'Creating…' : 'Create project'}
+            {saving ? (brandNew ? 'Making the repo…' : 'Creating…') : brandNew ? 'Create & start building' : 'Create project'}
           </button>
         </div>
         {error && <p className="mt-2 text-body text-thread">{error}</p>}
@@ -143,7 +159,7 @@ function MemoryBanner() {
       <p className="text-body text-ink">{mem.summary}</p>
       <button
         onClick={() => void exportContext()}
-        className="mt-3 text-body text-brass hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+        className="mt-3 text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
       >
         Export my context →
       </button>
@@ -154,6 +170,7 @@ function MemoryBanner() {
 export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const navigate = useNavigate();
 
   const load = () => api.get<ProjectCardData[]>('/api/projects').then(setProjects);
   useEffect(() => {
@@ -175,8 +192,14 @@ export function Projects() {
       </div>
       {(showForm || projects.length === 0) && (
         <NewProjectForm
-          onCreated={() => {
+          onCreated={(newProjectId) => {
             setShowForm(false);
+            // A brand-new project goes straight to the Workshop — the point of
+            // starting from nothing is to start building, not to file paperwork.
+            if (newProjectId) {
+              navigate(`/projects/${newProjectId}/workshop`);
+              return;
+            }
             void load();
           }}
         />

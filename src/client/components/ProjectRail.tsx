@@ -28,7 +28,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
     <Link
       to={`/projects/${project.project_id}/edit`}
       // Solid --panel by budget: only nav + brief may blur (tokens.css).
-      className="relative block rounded-card border border-hairline bg-panel p-4 pl-5 transition-shadow duration-settle ease-settle hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass"
+      className="relative block rounded-card border border-hairline bg-panel p-4 pl-5 transition-colors duration-settle ease-settle hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
     >
       <SelvedgeEdge status={project.edge} />
       <div className="flex items-baseline justify-between gap-2">

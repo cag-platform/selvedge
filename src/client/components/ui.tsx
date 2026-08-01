@@ -1,25 +1,26 @@
 import type { ReactNode } from 'react';
 
 /**
- * Shared form/control classes ("The Look", Prompt 5) — tokens only, brass
- * focus rings everywhere, no color/radius/type outside the token set.
+ * Shared form/control classes ("The Look", Prompt 5) — tokens only, the
+ * interaction emerald on every focus ring, no color/radius/type outside
+ * the token set.
  */
 
 export const inputCls =
-  'mt-1 w-full rounded-inset border border-hairline bg-panel px-2.5 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass';
+  'mt-1 w-full rounded-inset border border-hairline bg-panel px-2.5 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright';
 
 // Deep emerald with cream ink — Toile's signature CTA, the one "doing" color.
 export const btnPrimary =
-  'rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink transition-opacity duration-settle ease-settle hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass disabled:opacity-50';
+  'rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink transition-opacity duration-settle ease-settle hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50';
 
 export const btnGhost =
-  'rounded-inset px-4 py-1.5 text-body text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass';
+  'rounded-inset px-4 py-1.5 text-body text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright';
 
 // Destructive action. thread is the app's rationed color; a real, irreversible
 // delete (the one place a project can be removed) is exactly the kind of
 // "this needs you" moment it's reserved for.
 export const btnDanger =
-  'rounded-inset border border-thread px-4 py-1.5 text-body text-thread transition-[background-color,color] duration-settle ease-settle hover:bg-thread hover:text-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass disabled:opacity-50';
+  'rounded-inset border border-thread px-4 py-1.5 text-body text-thread transition-[background-color,color] duration-settle ease-settle hover:bg-thread hover:text-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50';
 
 export const labelCls = 'block text-body text-ink-dim';
 

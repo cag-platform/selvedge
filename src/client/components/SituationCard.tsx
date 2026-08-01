@@ -59,7 +59,7 @@ export function FeedbackTaps({ narrationId }: { narrationId: string }) {
       >
         <input
           autoFocus
-          className="w-60 rounded-inset border border-hairline bg-panel px-2 py-1 text-meta text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          className="w-60 rounded-inset border border-hairline bg-panel px-2 py-1 text-meta text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           placeholder="how should this have been said?"
           value={note}
           onChange={(e) => setNote(e.target.value)}
