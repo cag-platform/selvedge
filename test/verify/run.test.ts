@@ -75,6 +75,53 @@ describe('verifyCard — checks in, an honest verdict onto the card', () => {
     expect(res.card.verdict).toBe('inconclusive');
   });
 
+  it('a verified change that holds after shipping stays verified', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    const res = await verifyCard(
+      { ...h.deps, shipAndObserve: async () => ({ outcome: 'held', rolledBack: false, samples: 5 }) },
+      h.getCard(),
+    );
+    expect(res.card.verdict).toBe('verified');
+  });
+
+  it('a change that passed its checks but broke prod is rolled back and downgraded to didnt_work', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    let rolledBack = false;
+    const res = await verifyCard(
+      {
+        ...h.deps,
+        shipAndObserve: async () => {
+          rolledBack = true;
+          return { outcome: 'broke', rolledBack: true, samples: 3 };
+        },
+      },
+      h.getCard(),
+    );
+    expect(rolledBack).toBe(true);
+    expect(res.card.verdict).toBe('didnt_work'); // production overruled the checks
+    expect(res.card.acts.at(-1)!.detail).toMatch(/rolled it (straight )?back/i);
+  });
+
+  it('a change that failed its checks is never shipped', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('fail')]);
+    let shipped = false;
+    const res = await verifyCard(
+      { ...h.deps, shipAndObserve: async () => { shipped = true; return { outcome: 'held', rolledBack: false, samples: 1 }; } },
+      h.getCard(),
+    );
+    expect(shipped).toBe(false); // didnt_work never reaches the observation window
+    expect(res.card.verdict).toBe('didnt_work');
+  });
+
+  it('being unable to ship or watch is honest inconclusive, not a claimed hold', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    const res = await verifyCard(
+      { ...h.deps, shipAndObserve: async () => { throw new Error('deploy failed'); } },
+      h.getCard(),
+    );
+    expect(res.card.verdict).toBe('inconclusive');
+  });
+
   it('refuses a card that is not in verifying — runs no checks', async () => {
     const proposed = proposeCard({
       id: 'card_1', orgId: 'org_1', projectId: 'loom', trigger: 'request', title: 'x', proposal: 'x',

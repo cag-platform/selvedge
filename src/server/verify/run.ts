@@ -3,6 +3,7 @@ import type { CardAction } from '../cards/machine.js';
 import type { ApplyResult } from '../cards/store.js';
 import type { SandboxHandle } from '../runner/types.js';
 import { verdictReport, type CheckResult, type VerdictReport } from './verdict.js';
+import { verdictAfterObservation, type ObserveResult } from './observe.js';
 
 /**
  * The verify orchestration — what runs when a card reaches `verifying`. It runs
@@ -34,6 +35,12 @@ export type VerifyDeps = {
   apply: (action: CardAction) => Promise<ApplyResult>;
   /** Generate and run the checks. Real impl uses the evaluating model + sandbox. */
   runChecks: (ctx: VerifyContext) => Promise<CheckResult[]>;
+  /**
+   * Ship the change and watch it in production (deploy → observe → roll back on
+   * a confirmed break). Injected, host-specific. Present only when the change is
+   * actually deployable; when absent, the pre-deploy verdict stands as-is.
+   */
+  shipAndObserve?: (ctx: VerifyContext) => Promise<ObserveResult>;
   now: () => Date;
 };
 
@@ -53,7 +60,23 @@ export async function verifyCard(deps: VerifyDeps, card: Card): Promise<VerifyRe
     results = [];
   }
 
-  const report = verdictReport(results);
+  let report = verdictReport(results);
+
+  // Post-deploy observation: only a change that passed its checks is shipped and
+  // watched. If it breaks the app in the window, the injected ship-and-observe
+  // has already rolled it back, and the verdict becomes didnt_work — the
+  // pre-deploy checks were not the last word, production was.
+  if (deps.shipAndObserve && (report.verdict === 'verified' || report.verdict === 'probably')) {
+    try {
+      const observed = await deps.shipAndObserve({ card });
+      const folded = verdictAfterObservation(report.verdict, observed);
+      report = { verdict: folded.verdict, summary: folded.summary, results: report.results };
+    } catch {
+      // Couldn't ship or watch → we can't claim it held. Honest inconclusive.
+      report = verdictReport([]);
+    }
+  }
+
   const done = await deps.apply({
     type: 'complete',
     at: deps.now().toISOString(),

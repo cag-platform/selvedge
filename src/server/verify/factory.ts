@@ -1,6 +1,6 @@
 import type { Db } from '../db/client.js';
 import { getCard, applyAction } from '../cards/store.js';
-import { verifyCard, type VerifyContext, type VerifyResult } from './run.js';
+import { verifyCard, type VerifyContext, type VerifyResult, type VerifyDeps } from './run.js';
 import { verdictReport, type CheckResult } from './verdict.js';
 
 /**
@@ -11,6 +11,8 @@ import { verdictReport, type CheckResult } from './verdict.js';
  */
 export type VerifyCardDeps = {
   runChecks: (ctx: VerifyContext) => Promise<CheckResult[]>;
+  /** Ship and watch a passed change (deploy → observe → roll back on break). Optional. */
+  shipAndObserve?: VerifyDeps['shipAndObserve'];
   now?: () => Date;
 };
 
@@ -24,6 +26,7 @@ export async function verifyCardForOrg(db: Db, orgId: string, cardId: string, de
     {
       apply: (action) => applyAction(db, orgId, cardId, action),
       runChecks: deps.runChecks,
+      ...(deps.shipAndObserve ? { shipAndObserve: deps.shipAndObserve } : {}),
       now: deps.now ?? (() => new Date()),
     },
     card,
