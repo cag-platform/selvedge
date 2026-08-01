@@ -25,7 +25,11 @@ export type FeatureSpec = {
 
 export const FEATURES: FeatureSpec[] = [
   { key: 'database', label: 'Database', kind: 'boot', vars: ['DATABASE_URL'], gives: 'the app cannot run without its database' },
-  { key: 'vault', label: 'Credential vault', kind: 'boot', vars: ['CREDENTIALS_KEY'], gives: 'encrypts every stored model key and host token; without it the vault is dead' },
+  // The vault degrades gracefully — the crypto layer fails closed when USED
+  // without a key, so the app still boots and watches; only storing/reading a
+  // credential fails. Deliberately NOT boot-fatal, so setting this key later on
+  // an existing deploy never has to mean a crash-loop in the meantime.
+  { key: 'vault', label: 'Credential vault', kind: 'auth', vars: ['CREDENTIALS_KEY'], gives: 'encrypts every stored model key and host token; without it, connecting a key or token fails until it is set (watching still works)' },
   { key: 'auth', label: 'Sign-in', kind: 'auth', vars: ['CLERK_SECRET_KEY', 'CLERK_PUBLISHABLE_KEY'], gives: 'the /api is 503 until sign-in is configured' },
   { key: 'platform_voice', label: 'Platform voice (fallback fuel)', kind: 'feature', vars: ['ANTHROPIC_API_KEY'], gives: 'a shared model key for orgs that have not brought their own; without it, no-fuel orgs get the plain mechanical brief' },
   { key: 'github_app', label: 'GitHub App (watch repos)', kind: 'feature', vars: ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_APP_SLUG', 'GITHUB_WEBHOOK_SECRET'], gives: 'receiving code/build events and reading repos' },

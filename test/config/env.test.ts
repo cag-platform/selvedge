@@ -1,20 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import { validateEnv, describeConfig, envReportLines, FEATURES } from '../../src/server/config/env.js';
 
-/** A minimal env with just the boot-critical credentials set. */
-const bootOnly = { DATABASE_URL: 'postgres://x', CREDENTIALS_KEY: 'k'.repeat(40) } as NodeJS.ProcessEnv;
+/** A minimal env with just the one boot-critical credential set. */
+const bootOnly = { DATABASE_URL: 'postgres://x' } as NodeJS.ProcessEnv;
 
-describe('validateEnv — boots only with the critical credentials, degrades the rest', () => {
-  it('is not ok when a boot-critical credential is missing', () => {
-    expect(validateEnv({ CREDENTIALS_KEY: 'k'.repeat(40) } as NodeJS.ProcessEnv).ok).toBe(false); // no DATABASE_URL
-    expect(validateEnv({ DATABASE_URL: 'x' } as NodeJS.ProcessEnv).ok).toBe(false); // no CREDENTIALS_KEY
+describe('validateEnv — boots with the database alone, degrades the rest', () => {
+  it('is not ok only when the database is missing', () => {
     expect(validateEnv({} as NodeJS.ProcessEnv).ok).toBe(false);
+    expect(validateEnv({ CREDENTIALS_KEY: 'k'.repeat(40) } as NodeJS.ProcessEnv).ok).toBe(false); // still no DATABASE_URL
   });
 
-  it('is ok once the boot-critical credentials are present, even with every feature off', () => {
+  it('boots without the vault key — the vault degrades, it never crashes the app', () => {
+    // The exact risk this guards: an existing deploy that predates the vault must
+    // still boot. Only credential storage is off until CREDENTIALS_KEY is set.
+    expect(validateEnv({ DATABASE_URL: 'x' } as NodeJS.ProcessEnv).ok).toBe(true);
+  });
+
+  it('is ok with just the database, every feature off', () => {
     const report = validateEnv(bootOnly);
     expect(report.ok).toBe(true);
-    // Every non-boot feature reports off, not a failure.
     expect(report.features.filter((f) => f.kind === 'feature').every((f) => f.status === 'off')).toBe(true);
   });
 
