@@ -4,6 +4,7 @@ import type { Db } from '../../db/client.js';
 import { digests, llmUsage, narrations, orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { dailyLlmBudgetUsd, PLAN_DAILY_LLM_BUDGET_USD } from '../../llm/budget.js';
+import { validateEnv } from '../../config/env.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -29,6 +30,20 @@ export const DAILY_ATTENTION_USD = 0.15;
  */
 export function createAdminRouter(db: Db) {
   const router = Router();
+
+  // What's configured — booleans only, never a secret. Lets an operator confirm
+  // after setting env vars which features are on, which are partially set, and
+  // which are still off, without shell access to the deploy.
+  router.get(
+    '/api/admin/config',
+    asyncHandler(async (_req, res) => {
+      const report = validateEnv();
+      res.json({
+        ok: report.ok,
+        features: report.features.map((f) => ({ key: f.key, label: f.label, kind: f.kind, status: f.status, missing: f.missing, gives: f.gives })),
+      });
+    }),
+  );
 
   router.get(
     '/api/admin/metrics',
