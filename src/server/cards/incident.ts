@@ -4,7 +4,9 @@ import type { ContextPack } from '../../shared/types/pack.js';
 import type { Card } from './types.js';
 import { createCard } from './store.js';
 import { listCards } from './store.js';
+import { classifyRisk } from './risk.js';
 import { incidentWorthCard, incidentSignals, incidentProposal, defaultEstimateAndCap } from './triggers.js';
+import { estimateForChange } from '../ledger/store.js';
 
 const TERMINAL = new Set<Card['state']>(['declined', 'stopped', 'done', 'failed']);
 
@@ -34,7 +36,16 @@ export async function proposeIncidentCard(
   if (existing.some((c) => c.trigger === 'incident' && !TERMINAL.has(c.state))) return null;
 
   const { title, proposal } = incidentProposal(pack, eventType);
-  const { estimate, capCents } = defaultEstimateAndCap(pack.stakes.tier);
+  const signals = incidentSignals(pack);
+  // Learn the estimate from this project's own history for this risk class,
+  // falling back to the tier default until there's enough of it.
+  const { estimate, capCents } = await estimateForChange(
+    db,
+    orgId,
+    projectId,
+    classifyRisk(signals),
+    defaultEstimateAndCap(pack.stakes.tier),
+  );
 
   return createCard(db, {
     id: ulid(),
@@ -43,7 +54,7 @@ export async function proposeIncidentCard(
     trigger: 'incident',
     title,
     proposal,
-    signals: incidentSignals(pack),
+    signals,
     estimate,
     capCents,
     now: now.toISOString(),

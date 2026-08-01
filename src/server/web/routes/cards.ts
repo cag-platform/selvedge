@@ -6,6 +6,8 @@ import { getCard, listCards, applyAction, createCard, type ApplyResult } from '.
 import type { CardAction } from '../../cards/machine.js';
 import { getPack } from '../../packs/store.js';
 import { requestSignals, defaultEstimateAndCap, type OwnerTouches } from '../../cards/triggers.js';
+import { classifyRisk } from '../../cards/risk.js';
+import { estimateForChange } from '../../ledger/store.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -55,7 +57,13 @@ export function createCardsRouter(db: Db) {
       }
 
       const signals = requestSignals(text, body.touches ?? {});
-      const { estimate, capCents } = defaultEstimateAndCap(pack.stakes.tier);
+      const { estimate, capCents } = await estimateForChange(
+        db,
+        orgId,
+        projectId,
+        classifyRisk(signals),
+        defaultEstimateAndCap(pack.stakes.tier),
+      );
       const card = await createCard(db, {
         id: ulid(),
         orgId,
