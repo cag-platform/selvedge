@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import type { ContextPack, StakesTier, UserScale, DetailLevel, PushThreshold } from '../../shared/types/pack.js';
 import { Pane, btnDanger, btnGhost, btnPrimary, inputCls, labelCls } from '../components/ui.js';
+import { SelvedgeEdge } from '../components/SelvedgeEdge.js';
+import { entryEdge, outcomeLabel, formatCents, type LedgerEntryData } from '../lib/ledger.js';
 
 /**
  * The pack editor ("The Look", Prompt 5): identity in the owner's own
@@ -235,6 +237,8 @@ export function PackEditor() {
         </button>
       </section>
 
+      {projectId && <ProjectRecord projectId={projectId} />}
+
       {projectId && <BeaconSection projectId={projectId} />}
 
       <section className="space-y-3 border-t border-hairline pt-6">
@@ -260,6 +264,44 @@ export function PackEditor() {
         )}
       </section>
     </Pane>
+  );
+}
+
+/**
+ * This project's track record — its slice of the ledger. What Selvedge has done
+ * here, what it cost, how it turned out. Misses shown as misses.
+ */
+function ProjectRecord({ projectId }: { projectId: string }) {
+  const [entries, setEntries] = useState<LedgerEntryData[] | null>(null);
+
+  useEffect(() => {
+    api
+      .get<{ entries: LedgerEntryData[] }>(`/api/ledger?project=${encodeURIComponent(projectId)}`)
+      .then((r) => setEntries(r.entries))
+      .catch(() => setEntries([]));
+  }, [projectId]);
+
+  if (!entries || entries.length === 0) return null;
+  const spent = entries.reduce((sum, e) => sum + e.spentCents, 0);
+
+  return (
+    <section className="space-y-3 border-t border-hairline pt-6">
+      <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Track record</h2>
+      <p className="text-meta text-ink-quiet">
+        {entries.length} change{entries.length === 1 ? '' : 's'} · {formatCents(spent)} all-in
+      </p>
+      <div className="space-y-2">
+        {entries.slice(0, 8).map((e) => (
+          <div key={e.cardId} className="relative rounded-inset border border-hairline bg-panel-soft px-3 py-2 pl-4">
+            <SelvedgeEdge status={entryEdge(e)} />
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <p className="text-body text-ink">{e.intent}</p>
+              <span className="shrink-0 text-meta text-ink-quiet">{outcomeLabel(e)} · {formatCents(e.spentCents)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
