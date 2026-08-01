@@ -13,3 +13,4 @@ export * from './llmUsage.js';
 export * from './narrationLibrary.js';
 export * from './feedback.js';
 export * from './trustIncidents.js';
+export * from './build.js';
