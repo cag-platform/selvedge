@@ -6,7 +6,8 @@ import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/
 function NewProjectForm({ onCreated }: { onCreated: () => void }) {
   const [repos, setRepos] = useState<Array<{ full_name: string }>>([]);
   const [name, setName] = useState('');
-  const [repo, setRepo] = useState('');
+  const [repo, setRepo] = useState('__create__');
+  const [manualRepo, setManualRepo] = useState('');
   const [tier, setTier] = useState('live_small');
   const [touchesMoney, setTouchesMoney] = useState(false);
   const [downtime, setDowntime] = useState('');
@@ -24,7 +25,9 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
     try {
       await api.post('/api/packs', {
         name,
-        repo,
+        ...(repo === '__create__'
+          ? { create_repo: true }
+          : { repo: repo === '__manual__' ? manualRepo : repo }),
         tier,
         touches_money: touchesMoney,
         downtime_translation: downtime || undefined,
@@ -50,19 +53,28 @@ function NewProjectForm({ onCreated }: { onCreated: () => void }) {
           </label>
           <label className={labelCls}>
             GitHub repo
-            {repos.length > 0 ? (
-              <select className={inputCls} value={repo} onChange={(e) => setRepo(e.target.value)} required>
-                <option value="" disabled>
-                  Choose a repo…
+            <select className={inputCls} value={repo} onChange={(e) => setRepo(e.target.value)} required>
+              <option value="__create__">＋ Create a new private repo for it</option>
+              {repos.map((r) => (
+                <option key={r.full_name} value={r.full_name}>
+                  {r.full_name}
                 </option>
-                {repos.map((r) => (
-                  <option key={r.full_name} value={r.full_name}>
-                    {r.full_name}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input className={inputCls} value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo" required />
+              ))}
+              <option value="__manual__">Type a repo by name…</option>
+            </select>
+            {repo === '__create__' && (
+              <span className="mt-1 block text-body text-ink-quiet">
+                A private repo named after the project, made for you on GitHub.
+              </span>
+            )}
+            {repo === '__manual__' && (
+              <input
+                className={`${inputCls} mt-2`}
+                value={manualRepo}
+                onChange={(e) => setManualRepo(e.target.value)}
+                placeholder="owner/repo"
+                required
+              />
             )}
           </label>
           <label className={labelCls}>

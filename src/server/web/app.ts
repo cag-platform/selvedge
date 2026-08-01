@@ -9,6 +9,7 @@ import { createErrorBeaconRouter } from '../connectors/errors/beacon.js';
 import { makePollerIngest } from '../monitor/wiring.js';
 import { ingestEvent } from '../resolution/ingest.js';
 import { backfillRepoForOrg } from '../connectors/github/backfill.js';
+import { createNewRepo } from '../connectors/github/newRepo.js';
 import { buildAskDeps, buildComposeDeps, buildNarrationDeps } from '../llm/factory.js';
 import { buildPushSender } from '../push/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
@@ -100,7 +101,14 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   }
 
   app.use('/api', ensureOrg(db));
-  app.use(createPacksRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
+  app.use(
+    createPacksRouter(db, {
+      backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo),
+      // Start-from-nothing projects can mint their own private repo, but only
+      // when the build engine's GitHub token is around to do it.
+      ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}),
+    }),
+  );
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db));
   app.use(createTodayRouter(db, (orgId) => buildComposeDeps(db, orgId)));

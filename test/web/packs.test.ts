@@ -65,6 +65,48 @@ describe('web/routes/packs', () => {
     expect(backfilled).toEqual([{ orgId: 'org_a', repo: 'acme/loom' }]);
   });
 
+  it('POST with create_repo mints the repo first and maps the project to it', async () => {
+    const created: string[] = [];
+    const app = appWithOrg(
+      'org_a',
+      createPacksRouter(db, {
+        createRepo: async (name) => {
+          created.push(name);
+          return { fullName: `cag-platform/${name}` };
+        },
+      }),
+    );
+    const res = await request(app).post('/api/packs').send({ name: 'Fresh Idea', create_repo: true, tier: 'sandbox' });
+    expect(res.status).toBe(201);
+    expect(created).toEqual(['fresh-idea']);
+    expect(res.body.topology.sources[0].resource_id).toBe('cag-platform/fresh-idea');
+    expect(res.body.identity.links.repo_url).toBe('https://github.com/cag-platform/fresh-idea');
+  });
+
+  it('POST with create_repo surfaces GitHub failures plainly and creates no pack', async () => {
+    const { GithubError } = await import('../../src/server/connectors/github/newRepo.js');
+    const app = appWithOrg(
+      'org_a',
+      createPacksRouter(db, {
+        createRepo: async (name) => {
+          throw new GithubError(`a repo named "${name}" already exists in cag-platform`, true);
+        },
+      }),
+    );
+    const res = await request(app).post('/api/packs').send({ name: 'Taken', create_repo: true, tier: 'sandbox' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already exists/);
+    expect(res.body.error).toMatch(/Nothing was created/);
+    expect((await request(app).get('/api/packs')).body).toHaveLength(0);
+  });
+
+  it('POST with create_repo is a clear 503 when the engine token is not configured', async () => {
+    const app = appWithOrg('org_a', createPacksRouter(db)); // no createRepo dep
+    const res = await request(app).post('/api/packs').send({ name: 'No Engine', create_repo: true, tier: 'sandbox' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/GITHUB_TOKEN/);
+  });
+
   it('POST rejects bad input and duplicate project ids', async () => {
     const app = appWithOrg('org_a', createPacksRouter(db));
 

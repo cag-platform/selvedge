@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import { createPack, deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
 import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
+import { GithubError } from '../../connectors/github/newRepo.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -14,6 +15,8 @@ const TIERS = new Set(['sandbox', 'personal', 'live_small', 'live_critical']);
 export type PacksRouterDeps = {
   /** Fire-and-forget history seed for a newly mapped repo; injected so tests don't need GitHub credentials. */
   backfill?: (orgId: string, repo: string) => Promise<void>;
+  /** Create a fresh private repo for a start-from-nothing project. Absent when GITHUB_TOKEN isn't configured. */
+  createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
 };
 
 export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
@@ -22,12 +25,13 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
   router.post(
     '/api/packs',
     asyncHandler(async (req, res) => {
-      const body = req.body as Partial<NewProjectInput>;
-      if (!body.name?.trim() || !body.repo?.trim() || !TIERS.has(body.tier ?? '')) {
+      const body = req.body as Partial<NewProjectInput> & { create_repo?: boolean };
+      const createRepo = body.create_repo === true;
+      if (!body.name?.trim() || (!createRepo && !body.repo?.trim()) || !TIERS.has(body.tier ?? '')) {
         res.status(400).json({ error: 'name, repo, and a valid tier are required' });
         return;
       }
-      if (!/^[^/\s]+\/[^/\s]+$/.test(body.repo.trim())) {
+      if (!createRepo && !/^[^/\s]+\/[^/\s]+$/.test(body.repo!.trim())) {
         res.status(400).json({ error: 'repo must be a GitHub full name like "owner/repo"' });
         return;
       }
@@ -41,9 +45,31 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
         res.status(409).json({ error: `a project with id "${projectId}" already exists` });
         return;
       }
+      // Start-from-nothing: make the repo first, then map the project to it.
+      // The repo is created before the pack so a GitHub failure leaves nothing
+      // half-made; a pack failure after leaves a repo but no project — visible
+      // and harmless, and re-creating the project just maps to it by name.
+      let repo: string;
+      if (createRepo) {
+        if (!deps.createRepo) {
+          res.status(503).json({ error: 'Creating repos needs the build engine’s GITHUB_TOKEN — set it, or pick an existing repo.' });
+          return;
+        }
+        try {
+          repo = (await deps.createRepo(projectId, `${body.name.trim()} — created by Selvedge`)).fullName;
+        } catch (err) {
+          if (err instanceof GithubError) {
+            res.status(err.alreadyExists ? 409 : 502).json({ error: `GitHub did not create the repo: ${err.message}. Nothing was created.` });
+            return;
+          }
+          throw err;
+        }
+      } else {
+        repo = body.repo!.trim();
+      }
       const pack = scaffoldPack({
         name: body.name.trim(),
-        repo: body.repo.trim(),
+        repo,
         tier: body.tier!,
         touches_money: body.touches_money,
         downtime_translation: body.downtime_translation?.trim() || undefined,
