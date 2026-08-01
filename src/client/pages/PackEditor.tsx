@@ -80,7 +80,15 @@ export function PackEditor() {
 
   return (
     <Pane className="animate-settle space-y-7 p-6">
-      <h1 className="text-headline font-display text-ink">Teach me about {pack.identity.name}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-headline font-display text-ink">Teach me about {pack.identity.name}</h1>
+        <button
+          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-brass"
+          onClick={() => navigate(`/projects/${projectId}/workshop`)}
+        >
+          Open the workshop
+        </button>
+      </div>
 
       <section className="space-y-3">
         <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Identity</h2>

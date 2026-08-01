@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
 import { TrackRecord } from './pages/TrackRecord.js';
+import { Workshop } from './pages/Workshop.js';
 import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
@@ -36,6 +37,9 @@ function AutoTimezone() {
 }
 
 function AuthedApp() {
+  // The workshop's two-pane layout (conversation + live preview) needs room;
+  // every other page keeps the calm single-column measure.
+  const wide = useLocation().pathname.endsWith('/workshop');
   return (
     <>
       <SignedOut>
@@ -53,13 +57,14 @@ function AuthedApp() {
         <AutoTimezone />
         <div className="min-h-screen">
           <Nav />
-          <main className="mx-auto max-w-3xl px-4 py-8">
+          <main className={`mx-auto ${wide ? 'max-w-6xl' : 'max-w-3xl'} px-4 py-8`}>
             <Routes>
               <Route path="/" element={<Today />} />
               <Route path="/work" element={<Work />} />
               <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
+              <Route path="/projects/:projectId/workshop" element={<Workshop />} />
               <Route path="/tray" element={<Tray />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />
