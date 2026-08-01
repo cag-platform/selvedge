@@ -39,7 +39,7 @@ export function buildAgentPrompt(card: Card): string {
  * permissions` is safe here because the whole thing runs inside a throwaway
  * sandbox that holds only this one app's code.
  */
-export function claudeCommand(prompt: string, model = 'sonnet'): string {
+export function claudeCommand(prompt: string, model = 'sonnet', resumeSessionId?: string | null): string {
   const args = [
     'claude',
     '-p',
@@ -51,12 +51,17 @@ export function claudeCommand(prompt: string, model = 'sonnet'): string {
     '--model',
     model,
   ];
+  // Iteration: --resume continues the same conversation, so "now make it
+  // darker" builds on the last change instead of starting from scratch.
+  if (resumeSessionId) args.push('--resume', shellQuote(resumeSessionId));
   return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
 }
 
 export type ResultEvent = {
   subtype: string;
   totalCostUsd: number | null;
+  /** The Claude Code session id — saved so the next turn can --resume it. */
+  sessionId: string | null;
   isError: boolean;
 };
 
@@ -81,11 +86,39 @@ export function parseResult(stdout: string): ResultEvent | null {
       found = {
         subtype: typeof event.subtype === 'string' ? event.subtype : 'unknown',
         totalCostUsd: typeof event.total_cost_usd === 'number' ? event.total_cost_usd : null,
+        sessionId: typeof event.session_id === 'string' ? event.session_id : null,
         isError: event.is_error === true || event.subtype !== 'success',
       };
     }
   }
   return found;
+}
+
+/**
+ * The agent's own words from the stream — every assistant text block, joined.
+ * This is what the chat thread shows as the agent's reply: its actual narrative
+ * of what it did, not a canned line. Empty when the stream carried none.
+ */
+export function parseAssistantText(stdout: string): string {
+  const parts: string[] = [];
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (event.type !== 'assistant') continue;
+    const message = event.message as { content?: Array<{ type?: string; text?: string }> } | undefined;
+    for (const block of message?.content ?? []) {
+      if (block.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
+        parts.push(block.text.trim());
+      }
+    }
+  }
+  return parts.join('\n\n');
 }
 
 /**
