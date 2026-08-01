@@ -2,6 +2,8 @@ import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
+import { isAllowedPreviewUrl } from '../../shared/preview.js';
+import { previewSlugFor } from '../web/previewProxy.js';
 
 /**
  * The live preview — see the app running in the project's sandbox, in an
@@ -141,20 +143,32 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
     if (!(await isAppServerUp(sandbox))) await startAppServer(sandbox);
 
     const link = await sandbox.getPreviewLink(APP_PORT);
+    // The SSRF guard's enforcement point: a URL outside the Daytona allowlist
+    // is never stored, so the proxy can never be steered at an arbitrary host.
+    if (!isAllowedPreviewUrl(link.url)) {
+      return { state: 'error', url: null, message: 'The preview URL did not look like a Daytona preview, so I refused it.' };
+    }
+    const slug = build.previewSlug ?? previewSlugFor(orgId, projectId);
     let token = build.previewToken;
     if (!tokenStillGood(token, build.previewTokenExpiresAt)) {
       const signed = await sandbox.getSignedPreviewUrl(APP_PORT, TOKEN_TTL_SECONDS);
       token = signed.token;
       await setBuild(db, orgId, projectId, {
         previewUrl: link.url,
+        previewSlug: slug,
         previewToken: token,
         previewTokenExpiresAt: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
       });
     } else {
-      await setBuild(db, orgId, projectId, { previewUrl: link.url });
+      await setBuild(db, orgId, projectId, { previewUrl: link.url, previewSlug: slug });
     }
 
-    return { state: 'ready', url: withPreviewToken(link.url, token!), message: null };
+    // With PREVIEW_DOMAIN configured, the iframe gets the proxied subdomain URL
+    // (the proxy injects the skip-warning header — no Daytona interstitial).
+    // Without it, the signed direct Daytona URL, warning included.
+    const domain = process.env.PREVIEW_DOMAIN?.trim();
+    const url = domain ? `https://${slug}.${domain}/` : withPreviewToken(link.url, token!);
+    return { state: 'ready', url, message: null };
   } catch (err) {
     return {
       state: 'error',

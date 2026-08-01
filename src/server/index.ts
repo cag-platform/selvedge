@@ -2,6 +2,7 @@ import { db } from './db/client.js';
 import { createApp } from './web/app.js';
 import { startCronJobs } from './jobs/cron.js';
 import { validateEnv, envReportLines } from './config/env.js';
+import { getPreviewProxy } from './web/previewProxy.js';
 
 // The credential contract, enforced at boot. A missing boot-critical credential
 // (the database, the vault key) stops the process with a clear message rather
@@ -22,6 +23,8 @@ const app = createApp(db);
 startCronJobs(db);
 
 const port = Number(process.env.PORT ?? 3000);
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Selvedge listening on :${port}`);
 });
+// The preview's HMR websocket rides the same proxy (skip-warning header included).
+server.on('upgrade', getPreviewProxy(db).upgrade);

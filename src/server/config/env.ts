@@ -40,7 +40,7 @@ export const FEATURES: FeatureSpec[] = [
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'SEED_ORG_ID'];
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

@@ -29,6 +29,8 @@ export const projectBuild = pgTable(
     previewUrl: text('preview_url'),
     previewToken: text('preview_token'),
     previewTokenExpiresAt: timestamp('preview_token_expires_at', { withTimezone: true }),
+    /** The unique subdomain label this project's preview is served from (preview proxy). */
+    previewSlug: text('preview_slug'),
     /** Set when an edit left changes ready to ship; cleared on ship or sandbox loss. */
     stagedChangesReady: boolean('staged_changes_ready').notNull().default(false),
     /** Claude model alias the agent runs under (haiku | sonnet | opus). */

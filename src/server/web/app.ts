@@ -2,6 +2,7 @@ import path from 'node:path';
 import express, { type ErrorRequestHandler } from 'express';
 import { clerkMiddleware } from '@clerk/express';
 import type { Db } from '../db/client.js';
+import { getPreviewProxy } from './previewProxy.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
 import { createGithubInstallRouter } from '../connectors/github/install.js';
 import { createErrorBeaconRouter } from '../connectors/errors/beacon.js';
@@ -39,6 +40,11 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   const app = express();
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
+
+  // The preview proxy: host-scoped (only *.PREVIEW_DOMAIN requests), mounted
+  // before everything so preview traffic never touches auth or body parsing.
+  // Inert when PREVIEW_DOMAIN is unset.
+  app.use(getPreviewProxy(db).middleware);
 
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
