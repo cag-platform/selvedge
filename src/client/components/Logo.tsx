@@ -1,13 +1,13 @@
 /**
  * The Selvedge brand marks, inlined so they inherit theme and stay crisp
  * at any size (source: selvedge-logos kit). The mark is the thesis made
- * literal — woven warp threads with one selvedge-red thread (#D2442E, the
- * --thread token) crossed by the weft at the base. `tone` swaps the cloth
- * color (ink navy on light ground, chalk on dark); the red thread never
- * changes — it's the one rationed color.
+ * literal — woven warp threads with one emerald thread (#5C9A74, the
+ * --action-bright token) crossed by the weft at the base. `tone` swaps the
+ * cloth color (ink navy on light ground, chalk on dark); the emerald
+ * thread never changes — it's the brand color, the color of making.
  */
 
-const THREAD = '#D2442E';
+const THREAD = '#5C9A74';
 const INK = '#1A1F36'; // brand navy (deeper than --ink; the logo's own value)
 const CHALK = '#F3F0E9';
 

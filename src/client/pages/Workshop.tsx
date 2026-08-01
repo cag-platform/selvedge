@@ -216,9 +216,9 @@ export function Workshop() {
           <div className="flex-1 space-y-4 overflow-y-auto p-4" style={{ maxHeight: '32rem' }}>
             {data.thread.length === 0 && (
               <p className="text-body text-ink-quiet">
-                Say what you want in plain words — "make the header dark", "fix the broken checkout button", "add a
-                simple contact form". I'll do it here in the workshop, and you'll see it on the right before anything
-                goes live.
+                Say what you want in plain words — "build a landing page with our hours and a photo gallery", "add a
+                simple contact form", "fix the broken checkout button". I'll build it here in the workshop, and you'll
+                see it on the right before anything goes live.
               </p>
             )}
             {data.thread.map((m) =>
@@ -252,7 +252,7 @@ export function Workshop() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               disabled={sending || data.working || !data.engine_on}
-              placeholder={data.working ? 'Working — one thing at a time…' : 'What should change?'}
+              placeholder={data.working ? 'Working — one thing at a time…' : 'What should we build?'}
               className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
             />
             <button
