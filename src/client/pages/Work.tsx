@@ -39,10 +39,7 @@ export function Work() {
     <div className="animate-settle space-y-8">
       <div>
         <h1 className="text-display font-display font-medium text-ink">Work</h1>
-        <p className="mt-2 max-w-xl text-body text-ink-dim">
-          Every change I'm working on — whether I raised it from something that broke, or you asked for it. Each one
-          comes with a plain proposal, a cost, and a stop-point, before anything happens.
-        </p>
+        <p className="mt-2 max-w-xl text-body text-ink-dim">Make a quick change without opening the Workshop.</p>
       </div>
 
       {projects.length > 0 && <AskForChange projects={projects} onCreated={() => void load()} />}

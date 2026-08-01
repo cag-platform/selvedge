@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
 type Metrics = {
-  budget_usd_per_day: number;
+  attention_usd_per_day: number;
+  plan: string;
+  enforced_cap_usd_per_day: number;
   cost_by_day: Array<{
     day: string;
     cost_usd: number;
@@ -103,7 +105,8 @@ export function Admin() {
       <TimezoneSettings />
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">
-          Cost per day (budget line ${metrics.budget_usd_per_day.toFixed(2)}/day)
+          Cost per day — cap ${Number(metrics.enforced_cap_usd_per_day ?? 0).toFixed(2)}/day on the {metrics.plan} plan
+          {' '}(worth-a-look line ${Number(metrics.attention_usd_per_day ?? 0).toFixed(2)})
         </h2>
         <div className="overflow-hidden rounded-card border border-hairline bg-panel">
           <table className="w-full text-sm">
@@ -127,7 +130,7 @@ export function Admin() {
                 <tr key={r.day} className={r.needs_attention ? 'bg-panel-soft' : ''}>
                   <td className="px-3 py-2">{r.day}</td>
                   <td className={`px-3 py-2 ${r.needs_attention ? 'font-medium text-brass' : ''}`}>
-                    ${r.cost_usd.toFixed(4)}
+                    ${Number(r.cost_usd ?? 0).toFixed(4)}
                     {r.over_enforced_cap ? ' (hit the cap — voice off for the day)' : r.needs_attention ? ' (worth a look)' : ''}
                   </td>
                   <td className="px-3 py-2">{r.calls}</td>
@@ -164,7 +167,7 @@ export function Admin() {
                   <td className="px-3 py-2">{r.day}</td>
                   <td className="px-3 py-2">{r.lib_routed}</td>
                   <td className="px-3 py-2">{r.lib_hits}</td>
-                  <td className="px-3 py-2">{(r.hit_rate * 100).toFixed(0)}%</td>
+                  <td className="px-3 py-2">{(Number(r.hit_rate ?? 0) * 100).toFixed(0)}%</td>
                 </tr>
               ))}
             </tbody>

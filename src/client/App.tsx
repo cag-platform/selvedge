@@ -13,6 +13,7 @@ import { PackEditor } from './pages/PackEditor.js';
 import { Admin } from './pages/Admin.js';
 import { Styleguide } from './pages/Styleguide.js';
 import { SelvedgeLockup } from './components/Logo.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
 
 /**
@@ -58,6 +59,7 @@ function AuthedApp() {
         <div className="min-h-screen">
           <Nav />
           <main className={`mx-auto ${wide ? 'max-w-6xl' : 'max-w-3xl'} px-4 py-8`}>
+            <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Today />} />
               <Route path="/work" element={<Work />} />
@@ -69,6 +71,7 @@ function AuthedApp() {
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
+            </ErrorBoundary>
           </main>
         </div>
       </SignedIn>
