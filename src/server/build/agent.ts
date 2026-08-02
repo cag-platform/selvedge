@@ -43,7 +43,16 @@ export type AttachedImage = { mime: string; dataBase64: string };
  * multi-hundred-MB export stays safe to attach.
  */
 export type AttachedFile = { name: string; mime?: string } & ({ dataBase64: string } | { localPath: string });
-export type TurnAttachments = { images?: AttachedImage[]; files?: AttachedFile[] };
+export type TurnOptions = {
+  images?: AttachedImage[];
+  files?: AttachedFile[];
+  /**
+   * 'plan' is the iteration station: the agent explores read-only and comes
+   * back with a numbered plan — no edits, nothing staged, nothing to ship.
+   * For going back and forth on an idea before committing to a build.
+   */
+  mode?: 'build' | 'plan';
+};
 
 export type AgentTurnConfig = SandboxConfig & { model?: string };
 
@@ -168,6 +177,27 @@ async function writeAddedFiles(
   return added;
 }
 
+/**
+ * The iteration station's framing. Belt-and-braces with the skipped staging
+ * check below: this tells the agent not to touch anything, and the caller
+ * treats a plan turn as producing nothing to ship regardless.
+ */
+function planWrap(prompt: string): string {
+  return [
+    'You are helping think this through BEFORE any code is written. Do NOT create, edit, move, or delete any files,',
+    'and do NOT run commands that change anything (no installs, no migrations, no starting servers). You may read',
+    'files and explore the project read-only to understand it.',
+    '',
+    'Answer in plain English, for a smart person who does not read code. If the idea below is vague or could go',
+    'several ways, say what you would assume and name the choice you would want settled. Then give a short, numbered',
+    'plan of what building it would actually involve, and flag anything that looks risky, expensive, or bigger than',
+    'it sounds. End with the one thing you would do first.',
+    '',
+    'The idea:',
+    prompt,
+  ].join('\n');
+}
+
 /** Point the agent at what the owner attached — screenshots (Read tool) and added files. */
 function withAttachmentNotes(prompt: string, imagePaths: string[], addedFiles: string[]): string {
   let out = prompt;
@@ -187,7 +217,7 @@ export async function runAgentTurn(
   projectId: string,
   ownerText: string,
   cfg: AgentTurnConfig,
-  attachments: TurnAttachments = {},
+  options: TurnOptions = {},
   deps: {
     execute?: ExecuteInSandbox;
     uploadFile?: UploadToSandbox;
@@ -206,11 +236,11 @@ export async function runAgentTurn(
   // Image attachments are shown on the thread (bytes kept separate — see the
   // table's own note); a persistence hiccup must not sink the turn, since the
   // agent gets the images below regardless of whether the DB row landed.
-  if (attachments.images?.length) {
+  if (options.images?.length) {
     try {
       await db
         .insert(agentMessageAttachments)
-        .values(attachments.images.map((img) => ({ id: ulid(), orgId, projectId, agentMessageId: ownerMessageId, mime: img.mime, dataBase64: img.dataBase64 })));
+        .values(options.images.map((img) => ({ id: ulid(), orgId, projectId, agentMessageId: ownerMessageId, mime: img.mime, dataBase64: img.dataBase64 })));
     } catch (err) {
       console.error(`could not persist attachments for ${orgId}/${projectId}:`, err);
     }
@@ -218,7 +248,11 @@ export async function runAgentTurn(
 
   const runId = ulid();
   const model = cfg.model ?? 'sonnet';
-  await db.insert(agentRuns).values({ id: runId, orgId, projectId, prompt: ownerText, model, status: 'running', startedAt: new Date() });
+  // The prompt column doubles as the run's kind marker (ship.ts writes
+  // "ship: …"); a plan turn is tagged the same way so the workshop can tell
+  // thinking apart from building without another column.
+  const runPrompt = options.mode === 'plan' ? `plan: ${ownerText}` : ownerText;
+  await db.insert(agentRuns).values({ id: runId, orgId, projectId, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
@@ -248,9 +282,10 @@ export async function runAgentTurn(
 
   // Write what the owner attached BEFORE the turn starts, once — a retried
   // attempt (stale-session case below) reuses the same files, never re-writes.
-  const imagePaths = await writeAttachedImages(execute, uploadFile, runId, attachments.images ?? []);
-  const addedFiles = await writeAddedFiles(execute, uploadFile, uploadLocalFile, runId, attachments.files ?? []);
-  const cliPrompt = withAttachmentNotes(ownerText, imagePaths, addedFiles);
+  const imagePaths = await writeAttachedImages(execute, uploadFile, runId, options.images ?? []);
+  const addedFiles = await writeAddedFiles(execute, uploadFile, uploadLocalFile, runId, options.files ?? []);
+  const planning = options.mode === 'plan';
+  const cliPrompt = withAttachmentNotes(planning ? planWrap(ownerText) : ownerText, imagePaths, addedFiles);
 
   // The live activity row: inserted once, updated in place as the log grows.
   const activityId = ulid();
@@ -304,14 +339,16 @@ export async function runAgentTurn(
   const costCents = Math.max(0, Math.round((result?.totalCostUsd ?? 0) * 100));
 
   // Does the sandbox now hold uncommitted changes — i.e. something to ship?
-  let stagedChangesReady = false;
-  if (succeeded) {
+  // A plan turn is thinking out loud, so it never marks work ready to ship —
+  // and never CLEARS a real staged change that was already waiting, either.
+  let stagedChangesReady = prior?.stagedChangesReady ?? false;
+  if (succeeded && !planning) {
     const status = await execute(`cd ${WORKDIR} && git status --porcelain | head -5`, 30).catch(() => ({ exitCode: 1, result: '' }));
     stagedChangesReady = status.exitCode === 0 && (status.result ?? '').trim() !== '';
   }
 
   const reply = succeeded
-    ? narrative || 'Done — take a look at the preview.'
+    ? narrative || (planning ? 'Here is how I would approach it.' : 'Done — take a look at the preview.')
     : log === null
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
       : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";

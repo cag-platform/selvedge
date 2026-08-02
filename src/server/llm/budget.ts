@@ -1,6 +1,7 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { llmUsage, orgs } from '../db/schema/index.js';
+import type { LlmPurpose } from './types.js';
 
 /**
  * The daily model-spend cap, per org — a cap that actually stops.
@@ -60,13 +61,64 @@ export function dailyLlmBudgetUsd(plan?: string): number {
   return DEFAULT_DAILY_LLM_BUDGET_USD;
 }
 
-/** Model spend recorded for this org since UTC midnight. Counts failed calls too — they cost money. */
-export async function spendTodayUsd(db: Db, orgId: string, now: Date = new Date()): Promise<number> {
+/**
+ * The purposes that belong to Sketch rather than to the watching. Kept as a
+ * list so the split stays one edit if thinking-side work grows a second
+ * purpose.
+ */
+export const SKETCH_PURPOSES: LlmPurpose[] = ['sketch'];
+
+/**
+ * Sketch's own daily allowance, deliberately separate from the watching's.
+ *
+ * This is the split the note above calls for. Sketch is the chattiest surface
+ * in the product — many turns, growing context — and the daily brief is the
+ * product. If they shared one number, an afternoon of thinking would silently
+ * turn tomorrow morning's brief mechanical. So sketching gets its own budget,
+ * and its spend is excluded from the watching's cap entirely: neither can
+ * starve the other.
+ *
+ * Sized against real numbers: a Sketch turn on sonnet costs roughly $0.02, so
+ * these buy about 25 / 100 / 400 turns a day.
+ */
+export const PLAN_DAILY_SKETCH_BUDGET_USD: Record<string, number> = {
+  trial: 0.5,
+  care: 2.0,
+  studio: 8.0,
+};
+
+export const DEFAULT_DAILY_SKETCH_BUDGET_USD = 2.0;
+
+export function dailySketchBudgetUsd(plan?: string): number {
+  const raw = process.env.SKETCH_DAILY_BUDGET_USD;
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    // Same rule as the watching's cap: malformed or negative never means "no limit".
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  if (plan && plan in PLAN_DAILY_SKETCH_BUDGET_USD) return PLAN_DAILY_SKETCH_BUDGET_USD[plan] as number;
+  return DEFAULT_DAILY_SKETCH_BUDGET_USD;
+}
+
+/**
+ * Model spend recorded for this org since UTC midnight. Counts failed calls
+ * too — they cost money. `only` / `except` narrow it to one side of the
+ * sketch/watching split; passing neither counts everything.
+ */
+export async function spendTodayUsd(
+  db: Db,
+  orgId: string,
+  now: Date = new Date(),
+  scope: { only?: LlmPurpose[]; except?: LlmPurpose[] } = {},
+): Promise<number> {
   const midnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const filters = [eq(llmUsage.orgId, orgId), gte(llmUsage.createdAt, midnight)];
+  if (scope.only?.length) filters.push(inArray(llmUsage.purpose, scope.only));
+  if (scope.except?.length) filters.push(notInArray(llmUsage.purpose, scope.except));
   const [row] = await db
     .select({ total: sql<number>`coalesce(sum(${llmUsage.costUsd}), 0)` })
     .from(llmUsage)
-    .where(and(eq(llmUsage.orgId, orgId), gte(llmUsage.createdAt, midnight)));
+    .where(and(...filters));
   return Number(row?.total ?? 0);
 }
 
@@ -76,10 +128,21 @@ export type BudgetState = { over: boolean; spentUsd: number; capUsd: number };
  * The gate every model call path consults. Returns the numbers as well as the
  * verdict so callers can record *why* they degraded rather than leaving a
  * silent behaviour change.
+ *
+ * Sketch spend is excluded: this cap guards the watching, and the watching
+ * must not go mechanical because someone spent the afternoon thinking.
  */
 export async function checkDailyBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
   const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
   const capUsd = dailyLlmBudgetUsd(org?.plan);
-  const spentUsd = await spendTodayUsd(db, orgId, now);
+  const spentUsd = await spendTodayUsd(db, orgId, now, { except: SKETCH_PURPOSES });
+  return { over: spentUsd >= capUsd, spentUsd, capUsd };
+}
+
+/** The same gate for Sketch, against Sketch's own allowance and its own spend. */
+export async function checkSketchBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
+  const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
+  const capUsd = dailySketchBudgetUsd(org?.plan);
+  const spentUsd = await spendTodayUsd(db, orgId, now, { only: SKETCH_PURPOSES });
   return { over: spentUsd >= capUsd, spentUsd, capUsd };
 }

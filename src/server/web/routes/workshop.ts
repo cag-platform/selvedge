@@ -95,6 +95,38 @@ function engineEnv(): { claudeCodeOauthToken: string; githubToken: string } | nu
   return { claudeCodeOauthToken: claude, githubToken: github };
 }
 
+/**
+ * Start a workshop turn from outside the workshop — Sketch hands a finished
+ * brief in this way. Throws a plain-English reason when the workshop can't
+ * take it, so the caller can tell the owner the truth instead of sending them
+ * to a workshop that never received anything.
+ */
+export async function startWorkshopTurn(db: Db, orgId: string, projectId: string, text: string): Promise<void> {
+  const pack = await getPack(db, orgId, projectId);
+  if (!pack) throw new Error('no such project');
+  const creds = engineEnv();
+  if (!creds) throw new Error("the workshop isn't switched on yet");
+  const source = pack.topology.sources.find((s) => s.connector === 'github');
+  if (!source) throw new Error('this project has no connected code source yet');
+
+  const cfg: AgentTurnConfig = { ...creds, repoFullName: source.resource_id, branch: 'main' };
+  // Fire and forget, exactly as POST /message does — the turn takes minutes and
+  // the workshop page polls for it.
+  void runAgentTurn(db, orgId, projectId, text, cfg).catch(async (err) => {
+    console.error(`handed-off turn failed to start for ${orgId}/${projectId}:`, err);
+    await db
+      .insert(agentMessages)
+      .values({
+        id: ulid(),
+        orgId,
+        projectId,
+        role: 'agent',
+        content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
+      })
+      .catch(() => undefined);
+  });
+}
+
 export type WorkshopDeps = {
   /** Injected for tests; defaults to the real agent turn. */
   runTurn?: typeof runAgentTurn;

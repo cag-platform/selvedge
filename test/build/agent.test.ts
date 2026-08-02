@@ -185,6 +185,47 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(atts[0]!.mime).toBe('image/png');
   });
 
+  it('plan mode thinks it through without touching anything — no staging, no ship, framed as a plan', async () => {
+    const commands: string[] = [];
+    const out = await runAgentTurn(
+      db,
+      orgId,
+      'loom',
+      'a review queue for the plant library',
+      cfg,
+      { mode: 'plan' },
+      {
+        // staged: true — even if the sandbox reported dirty files, a plan turn
+        // must not mark work ready to ship.
+        execute: executor({ polls: [[text('Here is the plan: 1. …'), resultLine('sess_p'), '__EXIT:0'].join('\n')], staged: true, onCommand: (c) => commands.push(c) }),
+        sleep: noSleep,
+      },
+    );
+    expect(out.status).toBe('succeeded');
+    expect(out.stagedChangesReady).toBe(false);
+    expect(out.reply).toContain('Here is the plan');
+
+    // The agent was told, in the prompt itself, not to change anything.
+    const startCmd = commands.find((c) => c.includes('nohup'))!;
+    expect(startCmd).toContain('Do NOT create, edit, move, or delete any files');
+    // And it never even asked git what changed.
+    expect(commands.some((c) => c.includes('git status'))).toBe(false);
+
+    // The run is tagged as a plan, so the workshop can tell thinking from building.
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.prompt.startsWith('plan:')).toBe(true);
+  });
+
+  it('a plan turn never clears a real staged change that was already waiting to ship', async () => {
+    await setBuild(db, orgId, 'loom', { stagedChangesReady: true });
+    const out = await runAgentTurn(db, orgId, 'loom', 'what about a dark mode?', cfg, { mode: 'plan' }, {
+      execute: executor({ polls: [[text('Plan…'), resultLine('sess_q'), '__EXIT:0'].join('\n')] }),
+      sleep: noSleep,
+    });
+    expect(out.stagedChangesReady).toBe(true);
+    expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(true);
+  });
+
   it('a bad attachment does not sink the turn — it is noted and the rest proceeds', async () => {
     const uploadFile: UploadToSandbox = async (absPath) => {
       if (absPath.endsWith('.zip')) throw new Error('disk full');
