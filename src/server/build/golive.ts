@@ -135,10 +135,15 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
   const pack = await getPack(db, orgId, projectId);
   if (!pack) return { outcome: 'not_possible', message: 'no such project' };
 
-  // Their own account if they brought one, Selvedge's otherwise. Never a step.
+  // Their own hosting account — see hostAccount.ts for why it is theirs and not
+  // Selvedge's. Without one there is nowhere legitimate to put this.
   const account = await findAccount(db, orgId);
   if (!account) {
-    return { outcome: 'not_possible', message: "Putting apps online isn't switched on yet — no hosting is configured." };
+    return {
+      outcome: 'not_possible',
+      message:
+        "I don't have anywhere to put this yet. Connect your hosting on the Connections page — it stays in your name, and you could hand it to someone else or walk away from Selvedge without anything breaking.",
+    };
   }
 
   const repo = pack.topology.sources.find((s) => s.connector === 'github')?.resource_id;

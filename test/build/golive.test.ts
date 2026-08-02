@@ -131,10 +131,11 @@ describe('goLive — one button, from a repo to a working address', () => {
     expect(msg).toBeTruthy();
   });
 
-  it('refuses plainly when nothing is configured to host anything', async () => {
+  it('with no hosting of their own, it asks them to connect theirs — and says why that is the good outcome', async () => {
     const out = await goLive(db, orgId, 'loom', deps({ account: async () => null }));
     expect(out.outcome).toBe('not_possible');
-    expect(out.message).toMatch(/isn't switched on/i);
+    expect(out.message).toMatch(/connect your hosting/i);
+    expect(out.message).toMatch(/stays in your name/i);
   });
 
   it('refuses a project with no code connected', async () => {
@@ -192,5 +193,48 @@ describe("the cost guard — Selvedge's hosting is rationed, the owner's own is 
     expect(liveAppLimit('studio')).toBe(10);
     expect(liveAppLimit('nonsense')).toBe(1); // never "unlimited"
     expect(liveAppLimit(undefined)).toBe(1);
+  });
+});
+
+/**
+ * Railway's fair-use policy prohibits reselling compute; Vercel's terms
+ * prohibit making the service available to third parties (MIGRATION-CENTER §1).
+ * So Selvedge's own account is never a silent fallback for customer apps — the
+ * deed stays in the customer's name, which is also the whole pitch.
+ */
+describe('the hosting account is the customer’s, by construction', () => {
+  const OLD = process.env.SELVEDGE_MANAGED_HOSTING;
+  afterEach(() => {
+    if (OLD === undefined) delete process.env.SELVEDGE_MANAGED_HOSTING;
+    else process.env.SELVEDGE_MANAGED_HOSTING = OLD;
+  });
+
+  it('never falls back to Selvedge’s own account by default', async () => {
+    delete process.env.SELVEDGE_MANAGED_HOSTING;
+    process.env.RAILWAY_API_TOKEN = 'platform-token';
+    const { resolveHostAccount, managedHostingAllowed } = await import('../../src/server/build/hostAccount.js');
+    expect(managedHostingAllowed()).toBe(false);
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_x' });
+      expect(await resolveHostAccount(t.db, 'org_x')).toBeNull();
+    } finally {
+      await t.close();
+      delete process.env.RAILWAY_API_TOKEN;
+    }
+  });
+
+  it('allows Selvedge’s own account only behind the explicit dogfooding flag', async () => {
+    process.env.SELVEDGE_MANAGED_HOSTING = '1';
+    process.env.RAILWAY_API_TOKEN = 'platform-token';
+    const { resolveHostAccount } = await import('../../src/server/build/hostAccount.js');
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_y' });
+      expect(await resolveHostAccount(t.db, 'org_y')).toEqual({ token: 'platform-token', owner: 'selvedge' });
+    } finally {
+      await t.close();
+      delete process.env.RAILWAY_API_TOKEN;
+    }
   });
 });
