@@ -8,6 +8,8 @@ import { pathSignals } from '../cards/triggers.js';
 import { classifyRisk, gateFor } from '../cards/risk.js';
 import { observeDeploy, type ObserveResult } from '../verify/observe.js';
 import { runCheck } from '../monitor/probe.js';
+import { getPack } from '../packs/store.js';
+import type { ContextPack } from '../../shared/types/pack.js';
 
 /**
  * Ship — the one moment the workshop touches the real world, and therefore the
@@ -38,6 +40,40 @@ export type ShipOutcome =
 
 function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Roles that mean "something out there deploys this repo". */
+const HOST_ROLES = new Set(['production_host', 'preview_host']);
+const HOST_CONNECTORS = new Set(['railway', 'vercel', 'replit']);
+
+/**
+ * What we can honestly say happens after the push.
+ *
+ * Ship used to tell every owner "your host is taking it live now" — an
+ * assumption that they had already wired push-to-deploy. For a project where
+ * nobody ever did (an app Selvedge itself just created, say), that sentence is
+ * the exact false all-clear the whole product exists to prevent: the ship
+ * succeeds, nothing deploys, and Selvedge says it did.
+ */
+export type ShipReach = 'watched' | 'host_only' | 'pushed_only';
+
+export function shipReach(pack: ContextPack | null): ShipReach {
+  if (pack?.identity.links?.live_url) return 'watched';
+  const hosted = (pack?.topology.sources ?? []).some(
+    (s) => HOST_CONNECTORS.has(s.connector) || HOST_ROLES.has(s.role),
+  );
+  return hosted ? 'host_only' : 'pushed_only';
+}
+
+/** The line the owner reads on the thread — true for each of the three cases. */
+export function shipMessageFor(reach: ShipReach): string {
+  if (reach === 'watched') {
+    return "Shipped — your host is taking it live now, and I'm watching it land. If anything looks wrong you'll hear from me, and you can undo this ship from here.";
+  }
+  if (reach === 'host_only') {
+    return "Shipped — your host should pick it up from here. I don't have a live web address for this project, so I can't watch it land; add one on the project page and I'll keep an eye on the next one. You can undo this ship from here.";
+  }
+  return "Saved and pushed to GitHub — but nothing is set up to put this project online yet, so it is NOT live. The work is safely stored and you can undo this ship from here.";
 }
 
 export async function shipChanges(
@@ -107,17 +143,21 @@ export async function shipChanges(
     startedAt: new Date(),
     finishedAt: new Date(),
   });
+  // Say only what is true for THIS project: whether anything is actually
+  // wired to put the push online, and whether we can watch it land.
+  const reach = shipReach(await getPack(db, orgId, projectId).catch(() => null));
+  const line = shipMessageFor(reach);
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,
     projectId,
     role: 'agent',
-    content: `Shipped — your host is taking it live now, and I'm watching it land. If anything looks wrong you'll hear from me, and you can undo this ship from here.`,
-    meta: { ship: { commit } },
+    content: line,
+    meta: { ship: { commit, reach } },
   });
   await setBuild(db, orgId, projectId, { stagedChangesReady: false });
 
-  return { outcome: 'shipped', commit, message: 'Shipped. Your host is taking it live; the watcher has it from here.' };
+  return { outcome: 'shipped', commit, message: line };
 }
 
 /** How long we watch the live app after a ship, and how often we look. The

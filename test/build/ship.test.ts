@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentRuns } from '../../src/server/db/schema/index.js';
-import { shipChanges, rollbackShip, observeAfterShip } from '../../src/server/build/ship.js';
+import { shipChanges, rollbackShip, observeAfterShip, shipReach, shipMessageFor } from '../../src/server/build/ship.js';
+import { createPack } from '../../src/server/packs/store.js';
+import { makeTestPack } from '../fixtures/testPack.js';
 import { setBuild, getBuild } from '../../src/server/build/store.js';
 import type { ExecuteInSandbox } from '../../src/server/build/agent.js';
 import { pathSignals } from '../../src/server/cards/triggers.js';
@@ -34,6 +36,42 @@ describe('pathSignals — the gate judges the actual diff', () => {
   });
 });
 
+/**
+ * Ship used to tell every owner "your host is taking it live now" without ever
+ * checking that anything was wired to deploy. For a project nobody connected a
+ * host to, that is a false all-clear: the ship succeeds, nothing goes live, and
+ * Selvedge says it did.
+ */
+describe('shipReach — never promise a deploy nobody set up', () => {
+  const pack = (over: Parameters<typeof makeTestPack>[0] = {}) => makeTestPack(over);
+
+  it('with a live address, the ship is watched', () => {
+    expect(
+      shipReach(pack({ identity: { project_id: 'p', name: 'P', owner_description: 'x', links: { live_url: 'https://shop.example' } } })),
+    ).toBe('watched');
+  });
+
+  it('with a host connected but no address, it is honest about not being able to watch', () => {
+    const reach = shipReach(
+      pack({ topology: { sources: [{ connector: 'railway', resource_id: 'p/e/s', role: 'production_host' }] } }),
+    );
+    expect(reach).toBe('host_only');
+    expect(shipMessageFor(reach)).toMatch(/can't watch it land/i);
+  });
+
+  it('with nothing wired at all, it says plainly that the app is NOT live', () => {
+    const reach = shipReach(pack({ topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] } }));
+    expect(reach).toBe('pushed_only');
+    const line = shipMessageFor(reach);
+    expect(line).toMatch(/not live/i);
+    expect(line).not.toMatch(/taking it live/i);
+  });
+
+  it('a missing pack is treated as nothing wired — never as a deploy', () => {
+    expect(shipReach(null)).toBe('pushed_only');
+  });
+});
+
 describe('shipChanges — build freely, gate at ship', () => {
   let db: TestDb;
   let close: () => Promise<void>;
@@ -60,8 +98,34 @@ describe('shipChanges — build freely, gate at ship', () => {
     expect(run!.prompt).toBe('ship: dark header');
     expect(run!.commitSha).toBe(out.commit);
     expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(false);
+    // This project has no host wired, so the thread says pushed — not "live".
+    // (The wording per case is covered by the shipReach tests above.)
     const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
-    expect(thread[0]!.content).toMatch(/shipped/i);
+    expect(thread[0]!.content).toMatch(/pushed/i);
+  });
+
+  it('on a project with no host wired, the thread says plainly that it is NOT live', async () => {
+    // No pack exists for 'loom' in this suite — the "nobody wired anything" case.
+    const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
+    expect(out.outcome).toBe('shipped');
+    const [msg] = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(msg!.content).toMatch(/not live/i);
+    expect(msg!.content).not.toMatch(/taking it live/i);
+  });
+
+  it('on a project with a live address, it says it is watching — the old promise, now earned', async () => {
+    await createPack(
+      db,
+      orgId,
+      makeTestPack({
+        identity: { project_id: 'hosted', name: 'Hosted', owner_description: 'x', links: { live_url: 'https://shop.example' } },
+      }),
+    );
+    await setBuild(db, orgId, 'hosted', { sandboxId: 'sbx_2', stagedChangesReady: true, repoFullName: 'acme/hosted' });
+    const out = await shipChanges(db, orgId, 'hosted', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
+    expect(out.outcome).toBe('shipped');
+    if (out.outcome !== 'shipped') return;
+    expect(out.message).toMatch(/watching it land/i);
   });
 
   it('a sensitive diff cannot ship without a confirmed backup — and nothing is pushed', async () => {

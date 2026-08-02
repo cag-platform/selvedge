@@ -307,7 +307,7 @@ export async function runAgentTurn(
     const suffix = ulid().toLowerCase();
     const log = `/tmp/selvedge-turn-${suffix}.log`;
     const pid = `/tmp/selvedge-turn-${suffix}.pid`;
-    await execute(startCommand(claudeCommand(cliPrompt, model, resumeSessionId), log, pid), 60);
+    await execute(startCommand(claudeCommand(cliPrompt, model, resumeSessionId, planning ? 'plan' : 'build'), log, pid), 60);
 
     const startedAt = now();
     while (now() - startedAt < TURN_TIMEOUT_MS) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, resultToStep } from '../../src/server/runner/daytona/agentCommand.js';
+import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, resultToStep } from '../../src/server/runner/daytona/agentCommand.js';
 import type { Card } from '../../src/server/cards/types.js';
 
 function card(overrides: Partial<Card> = {}): Card {
@@ -31,6 +31,68 @@ describe('claudeCommand — one stream-json turn', () => {
 
   it('adds --resume when a session id is given — iteration continues the conversation', () => {
     expect(claudeCommand('darker please', 'sonnet', 'sess_1')).toContain("--resume 'sess_1'");
+  });
+
+  it('carries the standing rules on every turn, including a resumed one', () => {
+    expect(claudeCommand('do a thing', 'sonnet')).toContain('--append-system-prompt');
+    expect(claudeCommand('and again', 'sonnet', 'sess_1')).toContain('--append-system-prompt');
+  });
+
+  it('a plan turn leaves out the "do the setup work now" half', () => {
+    expect(claudeCommand('think about it', 'sonnet', null, 'plan')).not.toContain('Installing packages');
+    expect(claudeCommand('build it', 'sonnet', null, 'build')).toContain('Installing packages');
+  });
+});
+
+/**
+ * These rules exist because the agent, given no framing, wrote a founder a
+ * "Next Steps for You" list: create a Railway project, run npm install, run
+ * pip install, copy your DATABASE_URL. Each assertion below is one way that
+ * failure could come back.
+ */
+describe('agentRules — the agent knows who it is building for', () => {
+  const rules = agentRules('build');
+
+  it('says plainly that the reader has no terminal and does not read code', () => {
+    expect(rules).toMatch(/does not read code/i);
+    expect(rules).toMatch(/no terminal/i);
+    expect(rules).toMatch(/never run a command/i);
+  });
+
+  it('forbids the handover checklist by name, in the words it actually used', () => {
+    expect(rules).toMatch(/npm install/i);
+    expect(rules).toMatch(/DATABASE_URL/i);
+    expect(rules).toMatch(/checklist/i);
+    expect(rules).toMatch(/NEVER end with instructions/i);
+  });
+
+  it('makes the setup work the agent\'s own job, not something to hand over', () => {
+    expect(rules).toMatch(/YOUR job/i);
+    expect(rules).toMatch(/standing up a database/i);
+    expect(rules).toMatch(/migrating its schema/i);
+  });
+
+  it('tells it the platform contract, so it does not duplicate or fight it', () => {
+    expect(rules).toContain('/workspace/app');
+    expect(rules).toMatch(/port 3000/i);
+    expect(rules).toMatch(/0\.0\.0\.0/);
+    expect(rules).toMatch(/do not commit or push/i);
+  });
+
+  it('routes secrets through env vars and .env.example, never hard-coded or invented', () => {
+    expect(rules).toMatch(/environment\s+variables/i);
+    expect(rules).toMatch(/never hard-coded and never invented/i);
+    expect(rules).toContain('.env.example');
+  });
+
+  it('keeps the honesty rule — a false all-clear is still the worst outcome', () => {
+    expect(rules).toMatch(/never claim something works/i);
+    expect(rules).toMatch(/false all-clear/i);
+  });
+
+  it('bans the developer documentation nobody here will read', () => {
+    expect(rules).toMatch(/README/);
+    expect(rules).toMatch(/unless you are explicitly asked/i);
   });
 });
 
