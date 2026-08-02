@@ -1,4 +1,5 @@
 import { ulid } from 'ulid';
+import fs from 'node:fs/promises';
 import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/index.js';
@@ -29,11 +30,19 @@ export type ExecuteInSandbox = (command: string, timeoutSec: number) => Promise<
 
 /** Write a file's bytes into the sandbox at an absolute path (Daytona's fs.uploadFile). */
 export type UploadToSandbox = (absPath: string, data: Buffer) => Promise<void>;
+/** Stream a LOCAL file straight into the sandbox — no whole-file buffering, for large attachments. */
+export type UploadLocalFileToSandbox = (absPath: string, localPath: string) => Promise<void>;
 
-/** A screenshot or mockup: shown with the Read tool, never lands in the project. */
+/** A screenshot or mockup: shown with the Read tool, never lands in the project. Small — inline is fine. */
 export type AttachedImage = { mime: string; dataBase64: string };
-/** A doc, code file, or .zip: dropped straight into the project (zips are extracted). */
-export type AttachedFile = { name: string; mime?: string; dataBase64: string };
+/**
+ * A doc, code file, or .zip: dropped straight into the project (zips are
+ * extracted). Small files travel inline; anything larger is staged to local
+ * disk first (see build/uploads.ts) and referenced by localPath so it's
+ * streamed into the sandbox rather than held whole in memory — that's how a
+ * multi-hundred-MB export stays safe to attach.
+ */
+export type AttachedFile = { name: string; mime?: string } & ({ dataBase64: string } | { localPath: string });
 export type TurnAttachments = { images?: AttachedImage[]; files?: AttachedFile[] };
 
 export type AgentTurnConfig = SandboxConfig & { model?: string };
@@ -116,19 +125,28 @@ async function writeAttachedImages(execute: ExecuteInSandbox, upload: UploadToSa
  * root under a safe basename; .zip archives are extracted in place (the
  * archive itself is staged in /tmp and removed). Returns a human summary of
  * what was added, for the agent's prompt note. Never throws — a bad file
- * degrades to a note that it failed, not a failed turn.
+ * degrades to a note that it failed, not a failed turn. A staged (localPath)
+ * file's local temp copy is deleted once it's been dealt with, success or
+ * not — it was only ever meant to live between "attach" and this turn.
  */
-async function writeAddedFiles(execute: ExecuteInSandbox, upload: UploadToSandbox, runId: string, files: AttachedFile[]): Promise<string[]> {
+async function writeAddedFiles(
+  execute: ExecuteInSandbox,
+  upload: UploadToSandbox,
+  uploadLocal: UploadLocalFileToSandbox,
+  runId: string,
+  files: AttachedFile[],
+): Promise<string[]> {
   if (!files.length) return [];
   await execute(`mkdir -p ${WORKDIR}`, 30).catch(() => undefined);
   const added: string[] = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i]!;
-    const buf = Buffer.from(file.dataBase64, 'base64');
+    const staged = 'localPath' in file;
     try {
       if (isZipFile(file)) {
         const tmp = `/tmp/selvedge-upload-${runId}-${i}.zip`;
-        await upload(tmp, buf);
+        if (staged) await uploadLocal(tmp, file.localPath);
+        else await upload(tmp, Buffer.from(file.dataBase64, 'base64'));
         const res = await execute(
           `cd ${WORKDIR} && (unzip -o -q ${shellQuote(tmp)} -d ${WORKDIR} || python3 -m zipfile -e ${shellQuote(tmp)} ${WORKDIR}); rm -f ${shellQuote(tmp)}`,
           180,
@@ -136,12 +154,15 @@ async function writeAddedFiles(execute: ExecuteInSandbox, upload: UploadToSandbo
         added.push(res.exitCode === 0 ? `${file.name} (extracted into the project)` : `${file.name} (upload failed to extract)`);
       } else {
         const name = safeBasename(file.name);
-        await upload(`${WORKDIR}/${name}`, buf);
+        if (staged) await uploadLocal(`${WORKDIR}/${name}`, file.localPath);
+        else await upload(`${WORKDIR}/${name}`, Buffer.from(file.dataBase64, 'base64'));
         added.push(name);
       }
     } catch (err) {
       console.error(`could not write uploaded file ${file.name}:`, err);
       added.push(`${file.name} (upload failed)`);
+    } finally {
+      if (staged) await fs.unlink(file.localPath).catch(() => undefined);
     }
   }
   return added;
@@ -167,7 +188,13 @@ export async function runAgentTurn(
   ownerText: string,
   cfg: AgentTurnConfig,
   attachments: TurnAttachments = {},
-  deps: { execute?: ExecuteInSandbox; uploadFile?: UploadToSandbox; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+  deps: {
+    execute?: ExecuteInSandbox;
+    uploadFile?: UploadToSandbox;
+    uploadLocalFile?: UploadLocalFileToSandbox;
+    sleep?: (ms: number) => Promise<void>;
+    now?: () => number;
+  } = {},
 ): Promise<AgentTurnOutcome> {
   const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = deps.now ?? (() => Date.now());
@@ -210,11 +237,19 @@ export async function runAgentTurn(
       const sandbox = await getSandbox();
       await sandbox.fs.uploadFile(data, absPath);
     });
+  // The streaming overload: takes a LOCAL path and streams it in, so a large
+  // staged upload never has to be held whole in this process's memory.
+  const uploadLocalFile: UploadLocalFileToSandbox =
+    deps.uploadLocalFile ??
+    (async (absPath: string, localPath: string) => {
+      const sandbox = await getSandbox();
+      await sandbox.fs.uploadFile(localPath, absPath);
+    });
 
   // Write what the owner attached BEFORE the turn starts, once — a retried
   // attempt (stale-session case below) reuses the same files, never re-writes.
   const imagePaths = await writeAttachedImages(execute, uploadFile, runId, attachments.images ?? []);
-  const addedFiles = await writeAddedFiles(execute, uploadFile, runId, attachments.files ?? []);
+  const addedFiles = await writeAddedFiles(execute, uploadFile, uploadLocalFile, runId, attachments.files ?? []);
   const cliPrompt = withAttachmentNotes(ownerText, imagePaths, addedFiles);
 
   // The live activity row: inserted once, updated in place as the log grows.

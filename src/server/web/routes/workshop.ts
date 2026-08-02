@@ -1,4 +1,7 @@
+import fsp from 'node:fs/promises';
+import os from 'node:os';
 import { Router, type Request } from 'express';
+import multer from 'multer';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
@@ -7,6 +10,7 @@ import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
 import { getBuild } from '../../build/store.js';
 import { runAgentTurn, type AgentTurnConfig, type AttachedImage, type AttachedFile } from '../../build/agent.js';
+import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
@@ -30,23 +34,30 @@ function orgIdOf(req: Request): string {
 /** A run this old still marked running is a crashed process, not real work — it must not block forever. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
 
-// Files for the agent to analyze, dissect, or learn from while building —
-// screenshots the agent reads, and docs/code/zips dropped straight into the
-// project. Kept modest (unlike a dedicated upload service, this rides the
-// same JSON body as the message) so one request can't tie up the server.
+// Files for the agent to analyze, dissect, or learn from while building.
+//
+// Screenshots are small (a UI mockup), so they ride inline as base64 in the
+// message body — one request, no round trip. Docs/code/zips can be large
+// (a full app export, a data dump), so they go through a separate staged-
+// upload endpoint first: multer streams the bytes straight to local disk
+// (bounded memory regardless of size), the message then references the
+// staged upload by id, and the turn streams it from disk into the sandbox —
+// the whole file is never held at once in this process's memory or a JSON
+// string.
 const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const MAX_IMAGES = 4;
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~8M base64 chars
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~8M base64 chars, inline in the message body
 const MAX_FILES = 5;
-const MAX_FILE_BYTES = 15 * 1024 * 1024; // ~20M base64 chars; comfortably fits a small app export
+/** Generous — disk-streamed, not memory-buffered, so size isn't the risk a JSON body would make it. */
+const MAX_STAGED_FILE_BYTES = 300 * 1024 * 1024;
 
 function base64ByteLength(s: string): number {
   return Math.floor((s.length * 3) / 4);
 }
 
-/** Validate the message body's attachments; returns a plain-English error, or none. */
-function validateAttachments(images: unknown, files: unknown): { error: string } | { images: AttachedImage[]; files: AttachedFile[] } {
-  const outImages: AttachedImage[] = [];
+/** Validate the message body's inline images; returns a plain-English error, or none. */
+function validateImages(images: unknown): { error: string } | { images: AttachedImage[] } {
+  const out: AttachedImage[] = [];
   if (images !== undefined) {
     if (!Array.isArray(images)) return { error: 'images must be a list' };
     if (images.length > MAX_IMAGES) return { error: `at most ${MAX_IMAGES} images per message` };
@@ -56,24 +67,24 @@ function validateAttachments(images: unknown, files: unknown): { error: string }
       if (typeof mime !== 'string' || !IMAGE_MIMES.has(mime)) return { error: 'images must be PNG, JPEG, WebP, or GIF' };
       if (typeof dataBase64 !== 'string' || dataBase64.length === 0) return { error: 'an image is missing its data' };
       if (base64ByteLength(dataBase64) > MAX_IMAGE_BYTES) return { error: `an image is over ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB` };
-      outImages.push({ mime, dataBase64 });
+      out.push({ mime, dataBase64 });
     }
   }
-  const outFiles: AttachedFile[] = [];
-  if (files !== undefined) {
-    if (!Array.isArray(files)) return { error: 'files must be a list' };
-    if (files.length > MAX_FILES) return { error: `at most ${MAX_FILES} files per message` };
-    for (const f of files) {
-      const name = (f as { name?: unknown })?.name;
-      const mime = (f as { mime?: unknown })?.mime;
-      const dataBase64 = (f as { dataBase64?: unknown })?.dataBase64;
-      if (typeof name !== 'string' || name.trim() === '') return { error: 'a file is missing its name' };
-      if (typeof dataBase64 !== 'string' || dataBase64.length === 0) return { error: `${name} is missing its data` };
-      if (base64ByteLength(dataBase64) > MAX_FILE_BYTES) return { error: `${name} is over ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB` };
-      outFiles.push({ name, ...(typeof mime === 'string' ? { mime } : {}), dataBase64 });
-    }
+  return { images: out };
+}
+
+/** Validate the message body's file refs are shaped right (ids to resolve later); returns a plain-English error, or none. */
+function validateFileRefs(files: unknown): { error: string } | { ids: string[] } {
+  if (files === undefined) return { ids: [] };
+  if (!Array.isArray(files)) return { error: 'files must be a list' };
+  if (files.length > MAX_FILES) return { error: `at most ${MAX_FILES} files per message` };
+  const ids: string[] = [];
+  for (const f of files) {
+    const id = (f as { id?: unknown })?.id;
+    if (typeof id !== 'string' || id.trim() === '') return { error: 'a file is missing its upload id — try attaching it again' };
+    ids.push(id);
   }
-  return { images: outImages, files: outFiles };
+  return { ids };
 }
 
 function engineEnv(): { claudeCodeOauthToken: string; githubToken: string } | null {
@@ -229,9 +240,14 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(400).json({ error: 'say what you want changed' });
         return;
       }
-      const attachments = validateAttachments(body?.images, body?.files);
-      if ('error' in attachments) {
-        res.status(400).json({ error: attachments.error });
+      const images = validateImages(body?.images);
+      if ('error' in images) {
+        res.status(400).json({ error: images.error });
+        return;
+      }
+      const fileRefs = validateFileRefs(body?.files);
+      if ('error' in fileRefs) {
+        res.status(400).json({ error: fileRefs.error });
         return;
       }
 
@@ -245,10 +261,28 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
 
+      // Check each staged upload out of the registry now — right before firing,
+      // so nothing is consumed (and then orphaned) by a request that was going
+      // to fail one of the checks above anyway. Any missing id (expired, wrong
+      // project, already used) fails the whole message; whatever was already
+      // checked out gets its temp file cleaned up rather than left behind.
+      const consumed: Array<{ path: string }> = [];
+      const files: AttachedFile[] = [];
+      for (const id of fileRefs.ids) {
+        const staged = consumeStagedUpload(orgId, projectId, id);
+        if (!staged) {
+          await Promise.all(consumed.map((s) => fsp.unlink(s.path).catch(() => undefined)));
+          res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
+          return;
+        }
+        consumed.push(staged);
+        files.push({ name: staged.name, mime: staged.mime, localPath: staged.path });
+      }
+
       // Fire the turn in the background; the page polls the thread. If it can't
       // even start (sandbox failure), the thread gets an honest line — never a
       // silent shrug.
-      void runTurn(db, orgId, projectId, text, resolved.cfg, attachments).catch(async (err) => {
+      void runTurn(db, orgId, projectId, text, resolved.cfg, { images: images.images, files }).catch(async (err) => {
         console.error(`workshop turn failed to start for ${orgId}/${projectId}:`, err);
         await db
           .insert(agentMessages)
@@ -263,6 +297,45 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       });
 
       res.status(202).json({ started: true });
+    }),
+  );
+
+  // Stage a file (doc, code, .zip) before sending a message — multer streams
+  // it straight to local disk, so its size is bounded by disk, not by this
+  // process's memory. The returned id is what the message body references.
+  const stageFile = multer({ dest: os.tmpdir(), limits: { fileSize: MAX_STAGED_FILE_BYTES, files: 1 } }).single('file');
+  router.post(
+    '/api/projects/:projectId/workshop/uploads',
+    (req, res, next) => {
+      stageFile(req, res, (err: unknown) => {
+        if (!err) {
+          next();
+          return;
+        }
+        const code = (err as { code?: string })?.code;
+        if (code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `that file is over ${Math.round(MAX_STAGED_FILE_BYTES / (1024 * 1024))}MB` });
+          return;
+        }
+        res.status(400).json({ error: 'could not read that file' });
+      });
+    },
+    asyncHandler(async (req, res) => {
+      const file = (req as Request & { file?: Express.Multer.File }).file;
+      if (!file) {
+        res.status(400).json({ error: 'no file was sent' });
+        return;
+      }
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const pack = await getPack(db, orgId, projectId);
+      if (!pack) {
+        await fsp.unlink(file.path).catch(() => undefined);
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      const staged = await stageUpload(orgId, projectId, file.originalname, file.mimetype || 'application/octet-stream', file.path, file.size);
+      res.status(201).json({ id: staged.id, name: staged.name, size: staged.size });
     }),
   );
 

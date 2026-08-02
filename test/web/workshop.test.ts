@@ -97,7 +97,17 @@ describe('web/routes/workshop — the workshop surface', () => {
     expect((await request(other).get('/api/projects/loom/workshop')).status).toBe(404);
   });
 
-  it('passes attached images and files through to the turn', async () => {
+  it('stages a large file over HTTP (streamed to disk, not the JSON body) and passes it through to the turn by id', async () => {
+    const theApp = app();
+    // "way more than 15MB" — this used to be impossible; now it's just a multipart upload.
+    const bigFile = Buffer.alloc(20 * 1024 * 1024, 'x'); // 20MB — larger than the old inline cap
+    const staged = await request(theApp)
+      .post('/api/projects/loom/workshop/uploads')
+      .attach('file', bigFile, 'library.zip');
+    expect(staged.status).toBe(201);
+    expect(staged.body).toMatchObject({ name: 'library.zip', size: bigFile.length });
+    expect(typeof staged.body.id).toBe('string');
+
     let seen: unknown = null;
     const res = await request(
       app({
@@ -109,25 +119,46 @@ describe('web/routes/workshop — the workshop surface', () => {
     )
       .post('/api/projects/loom/workshop/message')
       .send({
-        text: 'match this mockup',
+        text: 'seed the database from this',
         images: [{ mime: 'image/png', dataBase64: Buffer.from('x').toString('base64') }],
-        files: [{ name: 'notes.md', dataBase64: Buffer.from('y').toString('base64') }],
+        files: [{ id: staged.body.id }],
       });
     expect(res.status).toBe(202);
-    expect(seen).toEqual({
+    expect(seen).toMatchObject({
       images: [{ mime: 'image/png', dataBase64: Buffer.from('x').toString('base64') }],
-      files: [{ name: 'notes.md', dataBase64: Buffer.from('y').toString('base64') }],
+      files: [{ name: 'library.zip', mime: 'application/zip', localPath: expect.any(String) }],
     });
   });
 
-  it('rejects an attachment that fails the plain checks — bad mime, oversize, too many', async () => {
-    const bigCsv = Buffer.alloc(16 * 1024 * 1024, 'x').toString('base64'); // over the 15MB file cap
-    const tooBig = await request(app())
+  it('refuses a file id that was never staged (or already used) — plainly, before firing anything', async () => {
+    const res = await request(app())
       .post('/api/projects/loom/workshop/message')
-      .send({ text: 'x', files: [{ name: 'huge.csv', dataBase64: bigCsv }] });
-    expect(tooBig.status).toBe(400);
-    expect(tooBig.body.error).toMatch(/over/i);
+      .send({ text: 'x', files: [{ id: 'not-a-real-upload' }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/wasn't found/i);
+  });
 
+  it("a file staged for one project can't be spent on another project's message", async () => {
+    const staged = await request(app())
+      .post('/api/projects/loom/workshop/uploads')
+      .attach('file', Buffer.from('data'), 'notes.txt');
+    expect(staged.status).toBe(201);
+
+    await createPack(
+      db,
+      orgId,
+      makeTestPack({
+        identity: { project_id: 'patina', name: 'Patina', owner_description: 'x' },
+        topology: { sources: [{ connector: 'github', resource_id: 'acme/patina', role: 'source_of_truth' }] },
+      }),
+    );
+    const res = await request(app())
+      .post('/api/projects/patina/workshop/message')
+      .send({ text: 'x', files: [{ id: staged.body.id }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a huge upload plainly, and rejects malformed message-body attachments', async () => {
     const badMime = await request(app())
       .post('/api/projects/loom/workshop/message')
       .send({ text: 'x', images: [{ mime: 'application/pdf', dataBase64: 'abc' }] });
@@ -139,6 +170,12 @@ describe('web/routes/workshop — the workshop surface', () => {
       .send({ text: 'x', images: Array.from({ length: 5 }, () => ({ mime: 'image/png', dataBase64: 'abc' })) });
     expect(tooMany.status).toBe(400);
     expect(tooMany.body.error).toMatch(/at most 4/i);
+
+    const badFileRef = await request(app())
+      .post('/api/projects/loom/workshop/message')
+      .send({ text: 'x', files: [{ notAnId: true }] });
+    expect(badFileRef.status).toBe(400);
+    expect(badFileRef.body.error).toMatch(/upload id/i);
   });
 
   it('the thread lists attachment refs, and serves an image only within its own org/project', async () => {

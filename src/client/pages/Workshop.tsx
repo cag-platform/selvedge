@@ -118,6 +118,7 @@ export function Workshop() {
   const [sending, setSending] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -178,7 +179,7 @@ export function Workshop() {
   if (error) return <p className="text-body text-thread">{error}</p>;
   if (!data) return <p className="text-body text-ink-quiet">Loading…</p>;
 
-  const canSend = text.trim() !== '';
+  const canSend = text.trim() !== '' && !uploadingFiles;
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -190,7 +191,7 @@ export function Workshop() {
       await api.post(`/api/projects/${projectId}/workshop/message`, {
         text: text.trim(),
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
-        ...(files.length ? { files: files.map((f) => ({ name: f.name, mime: f.mime, dataBase64: f.dataBase64 })) } : {}),
+        ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
       });
       setText('');
       setImages([]);
@@ -322,6 +323,9 @@ export function Workshop() {
                 onImagesChange={setImages}
                 files={files}
                 onFilesChange={setFiles}
+                uploadUrl={`/api/projects/${projectId}/workshop/uploads`}
+                uploading={uploadingFiles}
+                onUploadingChange={setUploadingFiles}
                 disabled={sending || data.working || !data.engine_on}
                 onError={setAttachNote}
               />

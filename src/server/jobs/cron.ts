@@ -11,6 +11,7 @@ import { makePollerIngest, listHealthChecksToPoll } from '../monitor/wiring.js';
 import { pollDeployStates } from '../connectors/host/poller.js';
 import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
+import { sweepStagedUploads } from '../build/uploads.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -58,5 +59,12 @@ export function startCronJobs(db: Db): void {
     ensureCurrentPartitions(db).catch((err) => console.error('ensureCurrentPartitions failed:', err));
     // Anti-rot: keep learned baselines tracking reality (Ironclad 1).
     revalidateBaselines(db).catch((err) => console.error('revalidateBaselines failed:', err));
+  });
+
+  // Disk-safety backstop: a Workshop file attached but never sent (or a
+  // redeploy landed between "attach" and "send") is deleted after 30 idle
+  // minutes rather than left on disk.
+  cron.schedule('*/15 * * * *', () => {
+    sweepStagedUploads().catch((err) => console.error('staged upload sweep failed:', err));
   });
 }
