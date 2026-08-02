@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
-import { PendingChips, AttachButtons, pastedImageFiles, addImages, type PendingImage, type PendingFile } from '../components/WorkshopAttach.js';
+import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from '../components/WorkshopAttach.js';
 
 /**
  * The workshop — where a project gets fixed, changed, and iterated on, in plain
@@ -120,6 +120,7 @@ export function Workshop() {
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [attachNote, setAttachNote] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const wasWorking = useRef(false);
@@ -204,6 +205,24 @@ export function Workshop() {
     }
   }
 
+  // Drop a screenshot or a file (a .zip, a data export) anywhere in the
+  // conversation pane — the natural gesture, not just the paperclip button.
+  // Screenshots go the inline path; everything else uploads like a picked file.
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragActive(false);
+    if (!projectId) return;
+    const dropped = Array.from(e.dataTransfer.files);
+    if (!dropped.length) return;
+    const pics = dropped.filter((f) => f.type.startsWith('image/'));
+    const rest = dropped.filter((f) => !f.type.startsWith('image/'));
+    if (pics.length) void addImages(pics, images, setImages, setAttachNote);
+    if (rest.length) {
+      setUploadingFiles(true);
+      await addDocs(rest, files, setFiles, setAttachNote, `/api/projects/${projectId}/workshop/uploads`).finally(() => setUploadingFiles(false));
+    }
+  }
+
   return (
     <div className="animate-settle space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -243,7 +262,25 @@ export function Workshop() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* The conversation */}
-        <section className="flex min-h-[28rem] flex-col rounded-card border border-hairline bg-panel">
+        <section
+          className={`relative flex min-h-[28rem] flex-col rounded-card border bg-panel transition-colors ${
+            dragActive ? 'border-action-bright border-dashed' : 'border-hairline'
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragActive(true);
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setDragActive(false);
+          }}
+          onDrop={(e) => void handleDrop(e)}
+        >
+          {dragActive && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-card bg-panel">
+              <p className="text-body font-medium text-ink">Drop it here — a screenshot or a file</p>
+            </div>
+          )}
           <div className="flex-1 space-y-4 overflow-y-auto p-4" style={{ maxHeight: '32rem' }}>
             {data.thread.length === 0 && (
               <p className="text-body text-ink-quiet">
@@ -293,7 +330,9 @@ export function Workshop() {
           </div>
           <div className="border-t border-hairline p-3">
             <PendingChips images={images} onImagesChange={setImages} files={files} onFilesChange={setFiles} />
-            {attachNote && <p className="pb-2 text-meta text-thread">{attachNote}</p>}
+            {attachNote && (
+              <p className="mb-2 rounded-inset border-2 border-thread bg-panel-soft px-3 py-2 text-body font-medium text-thread">{attachNote}</p>
+            )}
             <form ref={composerForm} onSubmit={send} className="flex items-end gap-2">
               <textarea
                 ref={composerInput}

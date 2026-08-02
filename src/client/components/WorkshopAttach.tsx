@@ -95,14 +95,25 @@ export async function addDocs(
       form.append('file', file);
       const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'include' });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        onError(body?.error ?? `Could not attach ${file.name}.`);
+        const text = await res.text().catch(() => '');
+        let parsedError: string | undefined;
+        try {
+          parsedError = (JSON.parse(text) as { error?: string }).error;
+        } catch {
+          // Not JSON — a platform-level rejection (e.g. a proxy's own size cap)
+          // often comes back as plain text or HTML, not our API's error shape.
+        }
+        // Logged so a report of "it just didn't attach" is diagnosable from
+        // the browser console — the exact status and body, not a guess.
+        console.error(`upload of ${file.name} failed: HTTP ${res.status}`, text.slice(0, 500));
+        onError(parsedError ?? `Could not attach ${file.name} (server said HTTP ${res.status}).`);
         continue;
       }
       const staged = (await res.json()) as { id: string; name: string; size: number };
       list = [...list, staged];
       onChange(list);
-    } catch {
+    } catch (err) {
+      console.error(`upload of ${file.name} threw:`, err);
       onError(`Could not attach ${file.name} — check the connection and try again.`);
     }
   }
