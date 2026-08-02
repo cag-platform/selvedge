@@ -14,6 +14,7 @@ import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
+import { goLive } from '../../build/golive.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -130,6 +131,8 @@ export async function startWorkshopTurn(db: Db, orgId: string, projectId: string
 export type WorkshopDeps = {
   /** Injected for tests; defaults to the real agent turn. */
   runTurn?: typeof runAgentTurn;
+  /** Injected for tests; defaults to the real provisioning flow. */
+  goLive?: typeof goLive;
   preview?: (db: Db, orgId: string, projectId: string, cfg: SandboxConfig) => Promise<PreviewStatus>;
   env?: () => { claudeCodeOauthToken: string; githubToken: string } | null;
 };
@@ -243,6 +246,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
 
       res.json({
         project: { id: projectId, name: pack.identity.name },
+        live_url: pack.identity.links?.live_url ?? null,
         engine_on: env() !== null,
         working: running !== null,
         staged_changes_ready: build?.stagedChangesReady ?? false,
@@ -473,6 +477,26 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
       res.json({ rolled_back: true, message: out.message });
+    }),
+  );
+
+  // Put it online: create the database and hosting, mint an address, wait for
+  // the first build. Minutes long, so it runs in the background and narrates
+  // itself onto the thread the page already polls.
+  router.post(
+    '/api/projects/:projectId/workshop/golive',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const pack = await getPack(db, orgId, projectId);
+      if (!pack) {
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      void (deps.goLive ?? goLive)(db, orgId, projectId).catch((err) => {
+        console.error(`go-live failed for ${orgId}/${projectId}:`, err);
+      });
+      res.status(202).json({ started: true });
     }),
   );
 

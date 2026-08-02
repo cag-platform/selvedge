@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from '../components/WorkshopAttach.js';
+import { btnPrimary } from '../components/ui.js';
 
 /**
  * The workshop — where a project gets fixed, changed, and iterated on, in plain
@@ -23,6 +24,8 @@ type Message = {
 };
 type WorkshopData = {
   project: { id: string; name: string };
+  /** The app's real web address, once it has been put online. */
+  live_url: string | null;
   engine_on: boolean;
   working: boolean;
   staged_changes_ready: boolean;
@@ -105,6 +108,59 @@ function ShipControls({ projectId, working, lastShipCommit, onDone }: { projectI
           <span>I have a recent backup I could restore from.</span>
         </label>
       )}
+      {note && <p className="text-meta text-ink-dim">{note}</p>}
+    </div>
+  );
+}
+
+/**
+ * Online or not — the answer to "is this a real thing people can visit yet?".
+ *
+ * Putting it online is one press: Selvedge makes the database if the app needs
+ * one, sets up the hosting, and gives it an address. The owner never makes an
+ * account or copies a connection string. Progress arrives on the thread below,
+ * because it takes a few minutes and a spinner would say less.
+ */
+function OnlineBar({ projectId, liveUrl, onStarted }: { projectId: string; liveUrl: string | null; onStarted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  if (liveUrl) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-hairline border-l-2 border-l-healthy bg-panel px-4 py-3">
+        <p className="text-body text-ink">
+          Online at{' '}
+          <a href={liveUrl} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
+            {liveUrl.replace(/^https:\/\//, '')}
+          </a>
+        </p>
+        <p className="text-meta text-ink-quiet">Shipping a change updates it.</p>
+      </div>
+    );
+  }
+
+  async function put() {
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(`/api/projects/${projectId}/workshop/golive`, {});
+      setNote("Setting it up — I'll say how it goes below. This takes a few minutes.");
+      onStarted();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "that didn't go through");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-card border border-hairline bg-panel-soft px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-body text-ink">This isn't online yet — only you can see it.</p>
+        <button disabled={busy} onClick={() => void put()} className={btnPrimary}>
+          {busy ? 'Starting…' : 'Put it online'}
+        </button>
+      </div>
       {note && <p className="text-meta text-ink-dim">{note}</p>}
     </div>
   );
@@ -250,6 +306,8 @@ export function Workshop() {
           this project (the watching, the brief) is unaffected.
         </p>
       )}
+
+      {projectId && <OnlineBar projectId={projectId} liveUrl={data.live_url} onStarted={() => void load()} />}
 
       {data.staged_changes_ready && projectId && (
         <ShipControls
