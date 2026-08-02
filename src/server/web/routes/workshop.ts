@@ -1,12 +1,12 @@
 import { Router, type Request } from 'express';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getPack } from '../../packs/store.js';
-import { agentMessages, agentRuns } from '../../db/schema/index.js';
+import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
 import { getBuild } from '../../build/store.js';
-import { runAgentTurn, type AgentTurnConfig } from '../../build/agent.js';
+import { runAgentTurn, type AgentTurnConfig, type AttachedImage, type AttachedFile } from '../../build/agent.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
@@ -29,6 +29,52 @@ function orgIdOf(req: Request): string {
 
 /** A run this old still marked running is a crashed process, not real work — it must not block forever. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
+
+// Files for the agent to analyze, dissect, or learn from while building —
+// screenshots the agent reads, and docs/code/zips dropped straight into the
+// project. Kept modest (unlike a dedicated upload service, this rides the
+// same JSON body as the message) so one request can't tie up the server.
+const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~8M base64 chars
+const MAX_FILES = 5;
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // ~20M base64 chars; comfortably fits a small app export
+
+function base64ByteLength(s: string): number {
+  return Math.floor((s.length * 3) / 4);
+}
+
+/** Validate the message body's attachments; returns a plain-English error, or none. */
+function validateAttachments(images: unknown, files: unknown): { error: string } | { images: AttachedImage[]; files: AttachedFile[] } {
+  const outImages: AttachedImage[] = [];
+  if (images !== undefined) {
+    if (!Array.isArray(images)) return { error: 'images must be a list' };
+    if (images.length > MAX_IMAGES) return { error: `at most ${MAX_IMAGES} images per message` };
+    for (const img of images) {
+      const mime = (img as { mime?: unknown })?.mime;
+      const dataBase64 = (img as { dataBase64?: unknown })?.dataBase64;
+      if (typeof mime !== 'string' || !IMAGE_MIMES.has(mime)) return { error: 'images must be PNG, JPEG, WebP, or GIF' };
+      if (typeof dataBase64 !== 'string' || dataBase64.length === 0) return { error: 'an image is missing its data' };
+      if (base64ByteLength(dataBase64) > MAX_IMAGE_BYTES) return { error: `an image is over ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB` };
+      outImages.push({ mime, dataBase64 });
+    }
+  }
+  const outFiles: AttachedFile[] = [];
+  if (files !== undefined) {
+    if (!Array.isArray(files)) return { error: 'files must be a list' };
+    if (files.length > MAX_FILES) return { error: `at most ${MAX_FILES} files per message` };
+    for (const f of files) {
+      const name = (f as { name?: unknown })?.name;
+      const mime = (f as { mime?: unknown })?.mime;
+      const dataBase64 = (f as { dataBase64?: unknown })?.dataBase64;
+      if (typeof name !== 'string' || name.trim() === '') return { error: 'a file is missing its name' };
+      if (typeof dataBase64 !== 'string' || dataBase64.length === 0) return { error: `${name} is missing its data` };
+      if (base64ByteLength(dataBase64) > MAX_FILE_BYTES) return { error: `${name} is over ${Math.round(MAX_FILE_BYTES / (1024 * 1024))}MB` };
+      outFiles.push({ name, ...(typeof mime === 'string' ? { mime } : {}), dataBase64 });
+    }
+  }
+  return { images: outImages, files: outFiles };
+}
 
 function engineEnv(): { claudeCodeOauthToken: string; githubToken: string } | null {
   const claude = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
@@ -125,13 +171,46 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         console.error(`workshop cost watch failed for ${orgId}/${projectId}:`, err);
       }
 
+      // Attachment refs (ids + mime only — bytes are served separately, on
+      // request, so loading the thread never has to move image bytes around).
+      // A lookup hiccup degrades to no thumbnails, not a broken thread.
+      const attByMessage = new Map<string, Array<{ id: string; mime: string }>>();
+      const messageIds = thread.map((m) => m.id);
+      if (messageIds.length) {
+        try {
+          const atts = await db
+            .select({ id: agentMessageAttachments.id, mime: agentMessageAttachments.mime, agentMessageId: agentMessageAttachments.agentMessageId })
+            .from(agentMessageAttachments)
+            .where(
+              and(
+                eq(agentMessageAttachments.orgId, orgId),
+                eq(agentMessageAttachments.projectId, projectId),
+                inArray(agentMessageAttachments.agentMessageId, messageIds),
+              ),
+            );
+          for (const a of atts) {
+            const list = attByMessage.get(a.agentMessageId) ?? [];
+            list.push({ id: a.id, mime: a.mime });
+            attByMessage.set(a.agentMessageId, list);
+          }
+        } catch (err) {
+          console.error(`workshop attachment lookup failed for ${orgId}/${projectId}:`, err);
+        }
+      }
+
       res.json({
         project: { id: projectId, name: pack.identity.name },
         engine_on: env() !== null,
         working: running !== null,
         staged_changes_ready: build?.stagedChangesReady ?? false,
         sandbox: build?.sandboxId ? 'attached' : 'none',
-        thread: thread.map((m) => ({ id: m.id, role: m.role, content: m.content, at: m.createdAt.toISOString() })),
+        thread: thread.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          at: m.createdAt.toISOString(),
+          attachments: attByMessage.get(m.id) ?? [],
+        })),
         runs: runs.map((r) => ({ id: r.id, status: r.status, cost_cents: r.costCents, commit: r.commitSha, kind: r.prompt.startsWith('ship:') ? 'ship' : 'turn', at: r.createdAt.toISOString() })),
         cost: { today_cents: todayCents, month_cents: monthCents },
       });
@@ -144,9 +223,15 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
       const projectId = req.params.projectId ?? '';
-      const text = typeof (req.body as { text?: unknown })?.text === 'string' ? (req.body as { text: string }).text.trim() : '';
+      const body = req.body as { text?: unknown; images?: unknown; files?: unknown };
+      const text = typeof body?.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want changed' });
+        return;
+      }
+      const attachments = validateAttachments(body?.images, body?.files);
+      if ('error' in attachments) {
+        res.status(400).json({ error: attachments.error });
         return;
       }
 
@@ -163,7 +248,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       // Fire the turn in the background; the page polls the thread. If it can't
       // even start (sandbox failure), the thread gets an honest line — never a
       // silent shrug.
-      void runTurn(db, orgId, projectId, text, resolved.cfg).catch(async (err) => {
+      void runTurn(db, orgId, projectId, text, resolved.cfg, attachments).catch(async (err) => {
         console.error(`workshop turn failed to start for ${orgId}/${projectId}:`, err);
         await db
           .insert(agentMessages)
@@ -178,6 +263,35 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       });
 
       res.status(202).json({ started: true });
+    }),
+  );
+
+  // An attached image's bytes. Joined through agent_messages so an attachment
+  // can only be fetched via the project (and org) it belongs to.
+  router.get(
+    '/api/projects/:projectId/workshop/attachments/:attachmentId',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const attachmentId = req.params.attachmentId ?? '';
+      const [row] = await db
+        .select({ mime: agentMessageAttachments.mime, data: agentMessageAttachments.dataBase64 })
+        .from(agentMessageAttachments)
+        .where(
+          and(
+            eq(agentMessageAttachments.id, attachmentId),
+            eq(agentMessageAttachments.orgId, orgId),
+            eq(agentMessageAttachments.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      if (!row) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      res.setHeader('Content-Type', row.mime);
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.send(Buffer.from(row.data, 'base64'));
     }),
   );
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
+import { PendingChips, AttachButtons, pastedImageFiles, addImages, type PendingImage, type PendingFile } from '../components/WorkshopAttach.js';
 
 /**
  * The workshop — where a project gets fixed, changed, and iterated on, in plain
@@ -13,7 +14,13 @@ import { formatCents } from '../lib/ledger.js';
  * sandbox stops itself after 15 idle minutes.
  */
 
-type Message = { id: string; role: 'owner' | 'agent' | 'activity'; content: string; at: string };
+type Message = {
+  id: string;
+  role: 'owner' | 'agent' | 'activity';
+  content: string;
+  at: string;
+  attachments: Array<{ id: string; mime: string }>;
+};
 type WorkshopData = {
   project: { id: string; name: string };
   engine_on: boolean;
@@ -109,6 +116,9 @@ export function Workshop() {
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [images, setImages] = useState<PendingImage[]>([]);
+  const [files, setFiles] = useState<PendingFile[]>([]);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const wasWorking = useRef(false);
@@ -157,14 +167,23 @@ export function Workshop() {
   if (error) return <p className="text-body text-thread">{error}</p>;
   if (!data) return <p className="text-body text-ink-quiet">Loading…</p>;
 
+  const canSend = text.trim() !== '';
+
   async function send(e: React.FormEvent) {
     e.preventDefault();
-    if (!projectId || text.trim() === '') return;
+    if (!projectId || !canSend) return;
     setSending(true);
     setError(null);
+    setAttachNote(null);
     try {
-      await api.post(`/api/projects/${projectId}/workshop/message`, { text: text.trim() });
+      await api.post(`/api/projects/${projectId}/workshop/message`, {
+        text: text.trim(),
+        ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
+        ...(files.length ? { files: files.map((f) => ({ name: f.name, mime: f.mime, dataBase64: f.dataBase64 })) } : {}),
+      });
       setText('');
+      setImages([]);
+      setFiles([]);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "that didn't go through");
@@ -234,6 +253,19 @@ export function Workshop() {
                     {m.role === 'owner' ? 'You' : 'Selvedge'}
                   </p>
                   <p className="whitespace-pre-line text-body text-ink">{m.content}</p>
+                  {m.attachments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {m.attachments.map((a) => (
+                        <a key={a.id} href={`/api/projects/${projectId}/workshop/attachments/${a.id}`} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={`/api/projects/${projectId}/workshop/attachments/${a.id}`}
+                            alt="attached"
+                            className="h-16 w-16 rounded-inset border border-hairline object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ),
             )}
@@ -247,22 +279,41 @@ export function Workshop() {
             )}
             <div ref={threadEnd} />
           </div>
-          <form onSubmit={send} className="flex gap-2 border-t border-hairline p-3">
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              disabled={sending || data.working || !data.engine_on}
-              placeholder={data.working ? 'Working — one thing at a time…' : 'What should we build?'}
-              className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={sending || data.working || !data.engine_on || text.trim() === ''}
-              className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
-            >
-              {sending ? 'Sending…' : 'Do it'}
-            </button>
-          </form>
+          <div className="border-t border-hairline p-3">
+            <PendingChips images={images} onImagesChange={setImages} files={files} onFilesChange={setFiles} />
+            {attachNote && <p className="pb-2 text-meta text-thread">{attachNote}</p>}
+            <form onSubmit={send} className="flex gap-2">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onPaste={(e) => {
+                  const pasted = pastedImageFiles(e);
+                  if (pasted.length) {
+                    e.preventDefault();
+                    void addImages(pasted, images, setImages, setAttachNote);
+                  }
+                }}
+                disabled={sending || data.working || !data.engine_on}
+                placeholder={data.working ? 'Working — one thing at a time…' : 'What should we build?'}
+                className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
+              />
+              <AttachButtons
+                images={images}
+                onImagesChange={setImages}
+                files={files}
+                onFilesChange={setFiles}
+                disabled={sending || data.working || !data.engine_on}
+                onError={setAttachNote}
+              />
+              <button
+                type="submit"
+                disabled={sending || data.working || !data.engine_on || !canSend}
+                className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
+              >
+                {sending ? 'Sending…' : 'Do it'}
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* The app, live */}

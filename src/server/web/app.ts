@@ -77,6 +77,12 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   const beaconIngest = makePollerIngest(db);
   app.use(createErrorBeaconRouter({ db, ingest: beaconIngest }));
 
+  // Workshop messages can carry attached screenshots/files (base64 in the JSON
+  // body), which don't fit the default 100kb body limit. A dedicated parser on
+  // just this path, mounted before the general one below, covers that; the
+  // general parser sees the body already set and skips re-parsing it.
+  app.use('/api/projects/:projectId/workshop/message', express.json({ limit: '100mb' }));
+
   // Clerk keys are deploy-time configuration; a fresh service must still
   // boot (healthz green, webhooks accepted) before they exist, so an
   // unconfigured deploy degrades to a clear 503 on /api instead of a

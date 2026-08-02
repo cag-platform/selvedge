@@ -113,6 +113,13 @@
       "when": 1785200400000,
       "tag": "0015_preview_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785200500000,
+      "tag": "0016_message_attachments",
+      "breakpoints": true
     }
   ]
 }

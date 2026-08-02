@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, agentMessages, agentRuns } from '../../src/server/db/schema/index.js';
-import { runAgentTurn, type ExecuteInSandbox } from '../../src/server/build/agent.js';
+import { orgs, agentMessages, agentMessageAttachments, agentRuns } from '../../src/server/db/schema/index.js';
+import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
 import { getBuild, setBuild } from '../../src/server/build/store.js';
 
 const cfg = { claudeCodeOauthToken: 't', githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
@@ -60,7 +60,7 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       if (rows[0]) activitySnapshots.push(rows[0].content);
     };
 
-    const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {
+    const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {}, {
       execute: executor({ polls: [step1, step2, done], staged: true }),
       sleep,
     });
@@ -84,7 +84,7 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
   it('the second turn resumes the saved session — iteration, not starting over', async () => {
     await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_1' });
     const commands: string[] = [];
-    await runAgentTurn(db, orgId, 'loom', 'now darker', cfg, {
+    await runAgentTurn(db, orgId, 'loom', 'now darker', cfg, {}, {
       execute: executor({ polls: [[text('Darker.'), resultLine('sess_2'), '__EXIT:0'].join('\n')], onCommand: (c) => commands.push(c) }),
       sleep: noSleep,
     });
@@ -111,14 +111,14 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       }
       return { exitCode: 0, result: '' };
     };
-    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, { execute, sleep: noSleep });
+    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, {}, { execute, sleep: noSleep });
     expect(out.status).toBe('succeeded');
     expect(starts[0]).toContain('--resume');
     expect(starts[1]).not.toContain('--resume');
   });
 
   it('a failed turn is honest on the thread and recorded as failed — never a silent shrug', async () => {
-    const out = await runAgentTurn(db, orgId, 'loom', 'do the thing', cfg, {
+    const out = await runAgentTurn(db, orgId, 'loom', 'do the thing', cfg, {}, {
       execute: executor({ polls: ['boom\n__EXIT:1'] }),
       sleep: noSleep,
     });
@@ -135,12 +135,69 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       if (command.includes('git status')) return { exitCode: 0, result: '' };
       return { exitCode: 0, result: '' };
     };
-    const out = await runAgentTurn(db, orgId, 'loom', 'endless task', cfg, {
+    const out = await runAgentTurn(db, orgId, 'loom', 'endless task', cfg, {}, {
       execute: neverDone,
       sleep: noSleep,
       now: () => (clock += 16 * 60 * 1000), // two ticks blow past the 30-min ceiling
     });
     expect(out.status).toBe('failed');
     expect(out.reply).toMatch(/took too long/i);
+  });
+
+  it('writes attached screenshots and files into the sandbox, notes them in the CLI prompt, and stores the images for the thread', async () => {
+    const uploads: Array<{ path: string; bytes: number }> = [];
+    const commands: string[] = [];
+    const uploadFile: UploadToSandbox = async (absPath, data) => {
+      uploads.push({ path: absPath, bytes: data.length });
+    };
+    const out = await runAgentTurn(
+      db,
+      orgId,
+      'loom',
+      'match this mockup and use the sample data',
+      cfg,
+      {
+        images: [{ mime: 'image/png', dataBase64: Buffer.from('fake-png').toString('base64') }],
+        files: [{ name: 'sample.csv', dataBase64: Buffer.from('a,b\n1,2').toString('base64') }],
+      },
+      {
+        execute: executor({ polls: [[text('Done.'), resultLine('sess_a'), '__EXIT:0'].join('\n')], onCommand: (c) => commands.push(c) }),
+        uploadFile,
+        sleep: noSleep,
+      },
+    );
+    expect(out.status).toBe('succeeded');
+
+    // The screenshot landed outside the project (never lands in the app or a ship).
+    expect(uploads.some((u) => u.path.startsWith('/workspace/.selvedge/uploads/') && u.path.endsWith('.png'))).toBe(true);
+    // The plain file landed at the project root under its own name.
+    expect(uploads.some((u) => u.path === '/workspace/app/sample.csv')).toBe(true);
+
+    // The CLI prompt (what the nohup command actually ran) points the agent at both.
+    const startCmd = commands.find((c) => c.includes('nohup'))!;
+    expect(startCmd).toContain('.selvedge/uploads');
+    expect(startCmd).toContain('sample.csv');
+
+    // The image is persisted for the thread; the CSV is not (transient input only).
+    const owner = (await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'owner'))))[0]!;
+    const atts = await db.select().from(agentMessageAttachments).where(eq(agentMessageAttachments.agentMessageId, owner.id));
+    expect(atts).toHaveLength(1);
+    expect(atts[0]!.mime).toBe('image/png');
+  });
+
+  it('a bad attachment does not sink the turn — it is noted and the rest proceeds', async () => {
+    const uploadFile: UploadToSandbox = async (absPath) => {
+      if (absPath.endsWith('.zip')) throw new Error('disk full');
+    };
+    const out = await runAgentTurn(
+      db,
+      orgId,
+      'loom',
+      'import my old app',
+      cfg,
+      { files: [{ name: 'old-app.zip', mime: 'application/zip', dataBase64: Buffer.from('pk').toString('base64') }] },
+      { execute: executor({ polls: [[text('Done.'), resultLine('sess_b'), '__EXIT:0'].join('\n')] }), uploadFile, sleep: noSleep },
+    );
+    expect(out.status).toBe('succeeded');
   });
 });

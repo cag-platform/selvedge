@@ -56,6 +56,28 @@ export const agentMessages = pgTable(
   (t) => [index('agent_messages_org_project_idx').on(t.orgId, t.projectId)],
 );
 
+/**
+ * Bytes for an image the owner attached to a workshop message (a screenshot,
+ * a mockup) — kept separate from agent_messages so listing the thread never
+ * has to move base64 blobs around. Non-image files (docs, zips) are NOT
+ * stored here: they're transient input, written straight into the sandbox
+ * for that turn and never persisted (per Toile's design — the sandbox is the
+ * record of what was added, not the database).
+ */
+export const agentMessageAttachments = pgTable(
+  'agent_message_attachments',
+  {
+    id: text('id').primaryKey(), // ulid
+    orgId: text('org_id').notNull(),
+    projectId: text('project_id').notNull(),
+    agentMessageId: text('agent_message_id').notNull(),
+    mime: text('mime').notNull(),
+    dataBase64: text('data_base64').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('agent_message_attachments_message_idx').on(t.agentMessageId)],
+);
+
 /** One row per agent run — a build/fix turn, with its cost and outcome. */
 export const agentRuns = pgTable(
   'agent_runs',

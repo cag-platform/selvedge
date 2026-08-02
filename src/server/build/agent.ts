@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
+import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
-import { agentMessages, agentRuns } from '../db/schema/index.js';
+import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/index.js';
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
@@ -25,6 +26,15 @@ import { claudeCommand, parseResult, parseAssistantText, parseToolActivity } fro
  */
 
 export type ExecuteInSandbox = (command: string, timeoutSec: number) => Promise<{ exitCode: number; result?: string }>;
+
+/** Write a file's bytes into the sandbox at an absolute path (Daytona's fs.uploadFile). */
+export type UploadToSandbox = (absPath: string, data: Buffer) => Promise<void>;
+
+/** A screenshot or mockup: shown with the Read tool, never lands in the project. */
+export type AttachedImage = { mime: string; dataBase64: string };
+/** A doc, code file, or .zip: dropped straight into the project (zips are extracted). */
+export type AttachedFile = { name: string; mime?: string; dataBase64: string };
+export type TurnAttachments = { images?: AttachedImage[]; files?: AttachedFile[] };
 
 export type AgentTurnConfig = SandboxConfig & { model?: string };
 
@@ -67,30 +77,145 @@ function exitCodeOf(log: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/** Screenshots live outside the project so they never land in a checkpoint or ship. */
+const UPLOADS_DIR = '/workspace/.selvedge/uploads';
+
+function imageExt(mime: string): string {
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/gif') return 'gif';
+  return 'png';
+}
+
+/** Reduce an uploaded name to a safe basename (no path, no traversal). */
+function safeBasename(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? 'file';
+  const cleaned = base.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+  return cleaned.length ? cleaned : 'file';
+}
+
+function isZipFile(file: AttachedFile): boolean {
+  return /\.zip$/i.test(file.name) || file.mime === 'application/zip' || file.mime === 'application/x-zip-compressed';
+}
+
+/** Write attached screenshots into the sandbox and return their absolute paths. */
+async function writeAttachedImages(execute: ExecuteInSandbox, upload: UploadToSandbox, runId: string, images: AttachedImage[]): Promise<string[]> {
+  if (!images.length) return [];
+  await execute(`mkdir -p ${UPLOADS_DIR}`, 30).catch(() => undefined);
+  const paths: string[] = [];
+  for (let i = 0; i < images.length; i++) {
+    const p = `${UPLOADS_DIR}/${runId}-${i}.${imageExt(images[i]!.mime)}`;
+    await upload(p, Buffer.from(images[i]!.dataBase64, 'base64'));
+    paths.push(p);
+  }
+  return paths;
+}
+
+/**
+ * Drop user-added files into the project. Plain files land at the project
+ * root under a safe basename; .zip archives are extracted in place (the
+ * archive itself is staged in /tmp and removed). Returns a human summary of
+ * what was added, for the agent's prompt note. Never throws — a bad file
+ * degrades to a note that it failed, not a failed turn.
+ */
+async function writeAddedFiles(execute: ExecuteInSandbox, upload: UploadToSandbox, runId: string, files: AttachedFile[]): Promise<string[]> {
+  if (!files.length) return [];
+  await execute(`mkdir -p ${WORKDIR}`, 30).catch(() => undefined);
+  const added: string[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    const buf = Buffer.from(file.dataBase64, 'base64');
+    try {
+      if (isZipFile(file)) {
+        const tmp = `/tmp/selvedge-upload-${runId}-${i}.zip`;
+        await upload(tmp, buf);
+        const res = await execute(
+          `cd ${WORKDIR} && (unzip -o -q ${shellQuote(tmp)} -d ${WORKDIR} || python3 -m zipfile -e ${shellQuote(tmp)} ${WORKDIR}); rm -f ${shellQuote(tmp)}`,
+          180,
+        );
+        added.push(res.exitCode === 0 ? `${file.name} (extracted into the project)` : `${file.name} (upload failed to extract)`);
+      } else {
+        const name = safeBasename(file.name);
+        await upload(`${WORKDIR}/${name}`, buf);
+        added.push(name);
+      }
+    } catch (err) {
+      console.error(`could not write uploaded file ${file.name}:`, err);
+      added.push(`${file.name} (upload failed)`);
+    }
+  }
+  return added;
+}
+
+/** Point the agent at what the owner attached — screenshots (Read tool) and added files. */
+function withAttachmentNotes(prompt: string, imagePaths: string[], addedFiles: string[]): string {
+  let out = prompt;
+  if (imagePaths.length) {
+    const plural = imagePaths.length > 1;
+    out += `\n\nThe owner attached ${imagePaths.length} image${plural ? 's' : ''}; view ${plural ? 'them' : 'it'} with the Read tool to understand the request:\n${imagePaths.map((p) => `- ${p}`).join('\n')}`;
+  }
+  if (addedFiles.length) {
+    out += `\n\nThe owner added the following file(s) to the project at ${WORKDIR}; review and use them as appropriate:\n${addedFiles.map((f) => `- ${f}`).join('\n')}`;
+  }
+  return out;
+}
+
 export async function runAgentTurn(
   db: Db,
   orgId: string,
   projectId: string,
   ownerText: string,
   cfg: AgentTurnConfig,
-  deps: { execute?: ExecuteInSandbox; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+  attachments: TurnAttachments = {},
+  deps: { execute?: ExecuteInSandbox; uploadFile?: UploadToSandbox; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
 ): Promise<AgentTurnOutcome> {
   const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = deps.now ?? (() => Date.now());
 
   // The owner's message lands on the thread first — the conversation is the record.
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'owner', content: ownerText });
+  const ownerMessageId = ulid();
+  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, role: 'owner', content: ownerText });
+
+  // Image attachments are shown on the thread (bytes kept separate — see the
+  // table's own note); a persistence hiccup must not sink the turn, since the
+  // agent gets the images below regardless of whether the DB row landed.
+  if (attachments.images?.length) {
+    try {
+      await db
+        .insert(agentMessageAttachments)
+        .values(attachments.images.map((img) => ({ id: ulid(), orgId, projectId, agentMessageId: ownerMessageId, mime: img.mime, dataBase64: img.dataBase64 })));
+    } catch (err) {
+      console.error(`could not persist attachments for ${orgId}/${projectId}:`, err);
+    }
+  }
 
   const runId = ulid();
   const model = cfg.model ?? 'sonnet';
   await db.insert(agentRuns).values({ id: runId, orgId, projectId, prompt: ownerText, model, status: 'running', startedAt: new Date() });
 
+  // execute and uploadFile share one lazily-created sandbox — created on first
+  // use, never twice, and never at all when a test injects both.
+  let sandboxPromise: Promise<Sandbox> | null = null;
+  const getSandbox = (): Promise<Sandbox> => (sandboxPromise ??= ensureSandbox(db, orgId, projectId, cfg));
+
   const execute: ExecuteInSandbox =
     deps.execute ??
-    (await (async () => {
-      const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
-      return (command: string, timeoutSec: number) => sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
-    })());
+    (async (command: string, timeoutSec: number) => {
+      const sandbox = await getSandbox();
+      return sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+    });
+  const uploadFile: UploadToSandbox =
+    deps.uploadFile ??
+    (async (absPath: string, data: Buffer) => {
+      const sandbox = await getSandbox();
+      await sandbox.fs.uploadFile(data, absPath);
+    });
+
+  // Write what the owner attached BEFORE the turn starts, once — a retried
+  // attempt (stale-session case below) reuses the same files, never re-writes.
+  const imagePaths = await writeAttachedImages(execute, uploadFile, runId, attachments.images ?? []);
+  const addedFiles = await writeAddedFiles(execute, uploadFile, runId, attachments.files ?? []);
+  const cliPrompt = withAttachmentNotes(ownerText, imagePaths, addedFiles);
 
   // The live activity row: inserted once, updated in place as the log grows.
   const activityId = ulid();
@@ -112,7 +237,7 @@ export async function runAgentTurn(
     const suffix = ulid().toLowerCase();
     const log = `/tmp/selvedge-turn-${suffix}.log`;
     const pid = `/tmp/selvedge-turn-${suffix}.pid`;
-    await execute(startCommand(claudeCommand(ownerText, model, resumeSessionId), log, pid), 60);
+    await execute(startCommand(claudeCommand(cliPrompt, model, resumeSessionId), log, pid), 60);
 
     const startedAt = now();
     while (now() - startedAt < TURN_TIMEOUT_MS) {
