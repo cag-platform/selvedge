@@ -123,6 +123,17 @@ export function Workshop() {
   const [previewBusy, setPreviewBusy] = useState(false);
   const wasWorking = useRef(false);
   const threadEnd = useRef<HTMLDivElement>(null);
+  const composerForm = useRef<HTMLFormElement>(null);
+  const composerInput = useRef<HTMLTextAreaElement>(null);
+
+  // Grow with the paragraph, like Claude's own composer — one line for a
+  // short ask, several for a longer one, capped so it never eats the thread.
+  useEffect(() => {
+    const el = composerInput.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
 
   const load = useCallback(() => {
     if (!projectId) return Promise.resolve();
@@ -282,8 +293,9 @@ export function Workshop() {
           <div className="border-t border-hairline p-3">
             <PendingChips images={images} onImagesChange={setImages} files={files} onFilesChange={setFiles} />
             {attachNote && <p className="pb-2 text-meta text-thread">{attachNote}</p>}
-            <form onSubmit={send} className="flex gap-2">
-              <input
+            <form ref={composerForm} onSubmit={send} className="flex items-end gap-2">
+              <textarea
+                ref={composerInput}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onPaste={(e) => {
@@ -293,9 +305,17 @@ export function Workshop() {
                     void addImages(pasted, images, setImages, setAttachNote);
                   }
                 }}
+                onKeyDown={(e) => {
+                  // Enter sends; Shift+Enter starts a new line.
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    composerForm.current?.requestSubmit();
+                  }
+                }}
+                rows={1}
                 disabled={sending || data.working || !data.engine_on}
                 placeholder={data.working ? 'Working — one thing at a time…' : 'What should we build?'}
-                className="flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
+                className="max-h-56 min-h-[2.5rem] flex-1 resize-none overflow-y-auto rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
               />
               <AttachButtons
                 images={images}
