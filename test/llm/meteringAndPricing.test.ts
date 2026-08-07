@@ -14,7 +14,11 @@ describe('llm/pricing', () => {
   });
 
   it('prices unknown models at the fallback (most expensive) rate — never undercounts', () => {
-    expect(costUsd('claude-nonexistent-9', 1_000_000, 0)).toBeCloseTo(10.0);
+    // Asserted as a property, not a figure: the fallback moves whenever a more
+    // expensive model is priced, and pinning the number here just means this
+    // test has to be edited every time rather than checking anything.
+    const fallback = costUsd('claude-nonexistent-9', 1_000_000, 0);
+    expect(fallback).toBeGreaterThan(costUsd('claude-fable-5', 1_000_000, 0));
   });
 });
 
@@ -84,19 +88,32 @@ describe('llm/metering', () => {
 });
 
 describe('pricing — an unknown model must never look cheap', () => {
-  it('prices an unpriced model at the fallback, which is the most expensive row', () => {
-    const known = costUsd('claude-sonnet-5', 1_000_000, 0);
-    const unknown = costUsd('a-model-nobody-priced', 1_000_000, 0);
-    expect(unknown).toBeGreaterThan(known);
-    // Overstating a new provider's spend is the safe direction to be wrong in:
-    // it shows up as a cost surprise rather than as margin quietly leaking.
-    expect(unknown).toBeCloseTo(10);
+  /**
+   * The invariant the whole table rests on: the fallback is at least as
+   * expensive as everything in it. Overstating an unpriced model's spend shows
+   * up as a cost surprise; understating it is margin quietly leaking, which is
+   * the failure nobody notices. Guards against adding an expensive row and
+   * forgetting to raise the fallback under it.
+   */
+  it('never prices an unknown model below any model it does know', () => {
+    const unknown = costUsd('a-model-nobody-priced', 1_000_000, 1_000_000);
+    for (const model of ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5', 'gpt-5.6-sol', 'gpt-5.5', 'gpt-5-mini']) {
+      expect(unknown).toBeGreaterThanOrEqual(costUsd(model, 1_000_000, 1_000_000));
+    }
   });
 
   it('attributes each priced model to its provider', () => {
     expect(providerForModel('claude-opus-5')).toBe('anthropic');
     expect(providerForModel('claude-haiku-4-5')).toBe('anthropic');
+    expect(providerForModel('gpt-5.6-sol')).toBe('openai');
+    expect(providerForModel('gpt-5-mini')).toBe('openai');
     expect(providerForModel('nothing-priced-this')).toBe('unknown');
+  });
+
+  it('prices an OpenAI grader from its own rates, not the incumbent’s', () => {
+    // gpt-5.6-terra: $2/MTok in, $12/MTok out
+    expect(costUsd('gpt-5.6-terra', 1_000_000, 0)).toBeCloseTo(2.0);
+    expect(costUsd('gpt-5.6-terra', 0, 1_000_000)).toBeCloseTo(12.0);
   });
 });
 
