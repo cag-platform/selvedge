@@ -392,7 +392,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**917 tests across 120 files**, all green, under `test/` — mirroring
+**957 tests across 123 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 
