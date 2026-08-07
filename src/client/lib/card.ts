@@ -9,6 +9,7 @@ import type { EdgeStatus } from '../components/SelvedgeEdge.js';
 export type CardState =
   | 'proposed' | 'approved' | 'working' | 'blocked' | 'verifying' | 'done' | 'declined' | 'stopped' | 'failed';
 export type CardVerdict = 'verified' | 'probably' | 'inconclusive' | 'didnt_work' | 'stopped';
+export type GradedBy = 'independent' | 'same_model' | 'ungraded';
 export type RiskTier = 'sensitive' | 'ordinary' | 'cosmetic';
 export type GateLevel = 'hard' | 'normal' | 'frictionless';
 
@@ -26,6 +27,7 @@ export type WorkCardData = {
   stop: { capCents: number; checkpointAtFractions: number[] };
   state: CardState;
   verdict: CardVerdict | null;
+  gradedBy: GradedBy | null;
   spentCents: number;
   backupVerified: boolean;
   acts: CardAct[];
@@ -84,6 +86,18 @@ export function stateLabel(state: CardState, verdict: CardVerdict | null): strin
     return v[verdict];
   }
   return STATE_LABEL[state];
+}
+
+/**
+ * The provenance line under a finished card's verdict — the sentence the
+ * verifier exists to make true. Shown ONLY for an independent grade: a
+ * same-model grade or no grade says nothing rather than something weaker
+ * dressed as reassurance, and the verdict itself already carries the honest
+ * ceiling ("probably", not "verified") in those cases.
+ */
+export function graderNote(state: CardState, gradedBy: GradedBy | null): string | null {
+  if (state !== 'done' || gradedBy !== 'independent') return null;
+  return 'Checked by a different model than the one that wrote it.';
 }
 
 export function formatCents(cents: number): string {

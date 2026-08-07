@@ -38,6 +38,7 @@ export async function listLedger(db: Db, orgId: string, opts: { projectId?: stri
       stop: row.stop as never,
       state: row.state as never,
       verdict: row.verdict as never,
+      gradedBy: row.gradedBy as never,
       spentCents: row.spentCents,
       backupVerified: row.backupVerified,
       acts: row.acts as never,

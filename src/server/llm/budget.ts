@@ -69,6 +69,42 @@ export function dailyLlmBudgetUsd(plan?: string): number {
 export const SKETCH_PURPOSES: LlmPurpose[] = ['sketch'];
 
 /**
+ * The purposes that belong to the independent grader. Split out for the same
+ * reason Sketch is: `checkDailyBudget` filters by BLACKLIST, so any purpose not
+ * carved out here is silently swept into the daily brief's allowance — $0.25 a
+ * day on trial. Grading on luna costs a fraction of a cent, but "cheap" is not
+ * the invariant; "the brief cannot be starved by another surface" is.
+ */
+export const GRADE_PURPOSES: LlmPurpose[] = ['grade'];
+
+/**
+ * The grader's own daily allowance. Sized against real numbers: a grade on
+ * gpt-5.6-luna reads a bounded diff (~8k tokens in, a sentence out), roughly
+ * $0.002 — so even trial's dime buys ~50 grades a day, far more cards than a
+ * day produces. The generous ceiling exists for the day EVAL_MODEL points at
+ * something expensive, so that choice degrades grading rather than surprising
+ * anyone's bill.
+ */
+export const PLAN_DAILY_GRADE_BUDGET_USD: Record<string, number> = {
+  trial: 0.1,
+  care: 0.5,
+  studio: 2.0,
+};
+
+export const DEFAULT_DAILY_GRADE_BUDGET_USD = 0.5;
+
+export function dailyGradeBudgetUsd(plan?: string): number {
+  const raw = process.env.GRADE_DAILY_BUDGET_USD;
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    // Same rule as the watching's cap: malformed or negative never means "no limit".
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  if (plan && plan in PLAN_DAILY_GRADE_BUDGET_USD) return PLAN_DAILY_GRADE_BUDGET_USD[plan] as number;
+  return DEFAULT_DAILY_GRADE_BUDGET_USD;
+}
+
+/**
  * Sketch's own daily allowance, deliberately separate from the watching's.
  *
  * This is the split the note above calls for. Sketch is the chattiest surface
@@ -129,13 +165,22 @@ export type BudgetState = { over: boolean; spentUsd: number; capUsd: number };
  * verdict so callers can record *why* they degraded rather than leaving a
  * silent behaviour change.
  *
- * Sketch spend is excluded: this cap guards the watching, and the watching
- * must not go mechanical because someone spent the afternoon thinking.
+ * Sketch and grading spend are excluded: this cap guards the watching, and the
+ * watching must not go mechanical because someone spent the afternoon thinking
+ * — or because every finished card got independently graded.
  */
 export async function checkDailyBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
   const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
   const capUsd = dailyLlmBudgetUsd(org?.plan);
-  const spentUsd = await spendTodayUsd(db, orgId, now, { except: SKETCH_PURPOSES });
+  const spentUsd = await spendTodayUsd(db, orgId, now, { except: [...SKETCH_PURPOSES, ...GRADE_PURPOSES] });
+  return { over: spentUsd >= capUsd, spentUsd, capUsd };
+}
+
+/** The same gate for the grader, against its own allowance and its own spend. */
+export async function checkGradeBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
+  const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
+  const capUsd = dailyGradeBudgetUsd(org?.plan);
+  const spentUsd = await spendTodayUsd(db, orgId, now, { only: GRADE_PURPOSES });
   return { over: spentUsd >= capUsd, spentUsd, capUsd };
 }
 

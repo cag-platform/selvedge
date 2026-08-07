@@ -37,7 +37,7 @@ describe('buildTemplateRunChecks — the real deterministic check runner', () =>
     await createPack(db, 'org_1', makeTestPack({
       identity: { project_id: 'loom', name: 'Loom', owner_description: 'x', links: { live_url: 'https://loom.example' } },
     }));
-    const run = buildTemplateRunChecks(db, up);
+    const run = buildTemplateRunChecks(db, { deps: up });
     expect(computeVerdict(await run({ card: card() }))).toBe('probably');
   });
 
@@ -45,7 +45,7 @@ describe('buildTemplateRunChecks — the real deterministic check runner', () =>
     await createPack(db, 'org_1', makeTestPack({
       identity: { project_id: 'loom', name: 'Loom', owner_description: 'x', links: { live_url: 'https://loom.example' } },
     }));
-    const run = buildTemplateRunChecks(db, down);
+    const run = buildTemplateRunChecks(db, { deps: down });
     expect(computeVerdict(await run({ card: card() }))).toBe('didnt_work');
   });
 
@@ -53,7 +53,7 @@ describe('buildTemplateRunChecks — the real deterministic check runner', () =>
     await createPack(db, 'org_1', makeTestPack({
       identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' }, // no live_url
     }));
-    const run = buildTemplateRunChecks(db, up);
+    const run = buildTemplateRunChecks(db, { deps: up });
     expect(computeVerdict(await run({ card: card() }))).toBe('inconclusive');
   });
 });

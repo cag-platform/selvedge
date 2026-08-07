@@ -48,6 +48,7 @@ export function proposeCard(input: ProposeInput): Card {
     stop,
     state: 'proposed',
     verdict: null,
+    gradedBy: null,
     spentCents: 0,
     backupVerified: false,
     acts: [{ at: input.now, kind: 'proposed', detail: input.proposal }],

@@ -1,6 +1,10 @@
 import type { Db } from '../../db/client.js';
 import type { DriveDeps } from '../../cards/drive.js';
 import { buildTemplateRunChecks } from '../../verify/checkRunner.js';
+import { gradeAcceptance } from '../../verify/grader.js';
+import { buildGraderClient } from '../../llm/factory.js';
+import { evalModel } from '../../llm/config.js';
+import { providerForModel } from '../../llm/pricing.js';
 import { daytonaEngine } from './provider.js';
 
 /**
@@ -11,7 +15,10 @@ import { daytonaEngine } from './provider.js';
  *
  * Requires the Daytona key (the sandbox), the Claude Code auth token (the agent),
  * and a GitHub token (to clone the customer's repo and push the review branch).
- * The verify half uses the real template check runner, which needs no model.
+ * The verify half runs the template checks, plus — when OPENAI_API_KEY is set —
+ * the independent grader on the acceptance check. No grader key means judged
+ * checks run as could_not_run and verdicts cap at `probably`; grading is an
+ * enhancement to verification, never a prerequisite for it.
  *
  * AGENT_MODEL picks the model the agent AUTHORS with. It used to be read from
  * EVAL_MODEL, which was a plain bug: EVAL_MODEL is documented as the model that
@@ -45,8 +52,28 @@ export function buildBuildEngine(db: Db): DriveDeps | null {
     ...(agentModel ? { model: agentModel } : {}),
   });
 
+  // The independent grader — a client on a DIFFERENT provider than the agent
+  // that authored the change. Absent key → no makeJudge → judged acceptance
+  // checks run as could_not_run and the verdict caps at `probably`.
+  const grader = buildGraderClient();
+  const model = evalModel();
+
+  // Provenance is DERIVED, not asserted: the agent authors on Claude
+  // (anthropic), so a grader model priced to a different provider is
+  // independent; one priced to anthropic — someone pointed EVAL_MODEL at a
+  // Claude model — is disclosed as same_model, never dressed up. Only applied
+  // when the judge actually resolves a check; see VerifyDeps.graderProvenance.
+  const provenance = providerForModel(model) === 'anthropic' ? 'same_model' : 'independent';
+
   return {
     runner: { sandbox: engine.sandbox, agentStep: engine.agentStep },
-    verify: { runChecks: buildTemplateRunChecks(db) },
+    verify: {
+      runChecks: buildTemplateRunChecks(db, {
+        ...(grader
+          ? { makeJudge: (orgId: string) => (spec) => gradeAcceptance({ llm: grader, db, model }, orgId, spec) }
+          : {}),
+      }),
+      ...(grader ? { graderProvenance: provenance } : {}),
+    },
   };
 }

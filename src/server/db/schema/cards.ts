@@ -25,6 +25,14 @@ export const cards = pgTable(
     gate: text('gate').notNull(), // 'hard' | 'normal' | 'frictionless'
     state: text('state').notNull(), // CardState
     verdict: text('verdict'), // CardVerdict | null
+    /**
+     * Who graded the acceptance behind the verdict — 'independent' |
+     * 'same_model' | 'ungraded', null until the card completes. A column, not
+     * acts JSONB, because "how many cards were independently graded" is a
+     * query the product's central claim rests on. Derived, never assumed: the
+     * value comes from comparing the grader's provider to the author's.
+     */
+    gradedBy: text('graded_by'),
     estimate: jsonb('estimate').notNull(), // CostEstimate
     stop: jsonb('stop').notNull(), // StopPoint
     spentCents: integer('spent_cents').notNull().default(0),

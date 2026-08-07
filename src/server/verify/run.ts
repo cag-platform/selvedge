@@ -36,6 +36,15 @@ export type VerifyDeps = {
   /** Generate and run the checks. Real impl uses the evaluating model + sandbox. */
   runChecks: (ctx: VerifyContext) => Promise<CheckResult[]>;
   /**
+   * What a graded acceptance is worth when the grader DID grade: 'independent'
+   * when the grader's provider differs from the author's, 'same_model' when it
+   * doesn't — decided where both providers are known (the factory), disclosed
+   * here. Only applied when an acceptance check actually resolved to pass or
+   * fail; a grader that was configured but answered "can't tell" (or never ran)
+   * leaves the card 'ungraded'. Configuration is not provenance.
+   */
+  graderProvenance?: 'independent' | 'same_model';
+  /**
    * Ship the change and watch it in production (deploy → observe → roll back on
    * a confirmed break). Injected, host-specific. Present only when the change is
    * actually deployable; when absent, the pre-deploy verdict stands as-is.
@@ -77,10 +86,20 @@ export async function verifyCard(deps: VerifyDeps, card: Card): Promise<VerifyRe
     }
   }
 
+  // Graded means an acceptance check actually resolved to pass or fail — the
+  // only way that happens is a judge reading the diff. could_not_run (no
+  // grader, no evidence, over budget, or an honest "can't tell") is not a
+  // grade, whatever was configured.
+  const acceptanceJudged = report.results.some(
+    (r) => r.kind === 'acceptance' && (r.outcome === 'pass' || r.outcome === 'fail'),
+  );
+  const gradedBy = acceptanceJudged ? (deps.graderProvenance ?? 'ungraded') : 'ungraded';
+
   const done = await deps.apply({
     type: 'complete',
     at: deps.now().toISOString(),
     verdict: report.verdict,
+    gradedBy,
     summary: report.summary,
     results: report.results,
   });

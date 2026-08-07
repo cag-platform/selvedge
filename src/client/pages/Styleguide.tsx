@@ -25,6 +25,7 @@ const DEMO_CARDS: WorkCardData[] = [
     stop: { capCents: 5000, checkpointAtFractions: [0.4, 0.75] },
     state: 'proposed',
     verdict: null,
+    gradedBy: null,
     spentCents: 0,
     backupVerified: false,
     acts: [{ at: '2026-07-31T09:00:00Z', kind: 'proposed', detail: 'Proposed a coupon field.' }],
@@ -43,6 +44,7 @@ const DEMO_CARDS: WorkCardData[] = [
     stop: { capCents: 3000, checkpointAtFractions: [] },
     state: 'working',
     verdict: null,
+    gradedBy: null,
     spentCents: 800,
     backupVerified: true,
     acts: [
@@ -64,6 +66,7 @@ const DEMO_CARDS: WorkCardData[] = [
     stop: { capCents: 1500, checkpointAtFractions: [] },
     state: 'done',
     verdict: 'verified',
+    gradedBy: 'independent',
     spentCents: 520,
     backupVerified: false,
     acts: [{ at: '2026-07-31T08:00:00Z', kind: 'completed', detail: 'Done — verified.' }],

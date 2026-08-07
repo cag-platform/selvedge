@@ -26,7 +26,10 @@ export type CheckSpec = {
   how:
     | { via: 'http'; url: string; expectStatus?: number | null; keyword?: string | null }
     | { via: 'command'; command: string }
-    | { via: 'manual'; note: string };
+    | { via: 'manual'; note: string }
+    // An acceptance question a model answers from the actual diff. Emitted only
+    // when evidence exists; runs as could_not_run when no judge is configured.
+    | { via: 'judged'; ask: string; evidence: string };
 };
 
 export type GenerateInput = {
@@ -36,6 +39,12 @@ export type GenerateInput = {
   regressionKeyword?: string | null;
   /** The change the owner asked for, for the acceptance check (model judges it; the template can't). */
   requestText?: string | null;
+  /**
+   * The rendered diff of what actually changed (verify/evidence.ts). With it,
+   * the acceptance check becomes judgeable; without it the check stays manual —
+   * a grader with nothing to read must never be asked to guess.
+   */
+  evidence?: string | null;
 };
 
 /** Trim a request to a short, plain check name. */
@@ -67,21 +76,32 @@ export function generateChecks(input: GenerateInput): CheckSpec[] {
   }
 
   if (input.requestText && input.requestText.trim() !== '') {
-    specs.push({
-      kind: 'acceptance',
-      name: shortName(input.requestText),
-      how: { via: 'manual', note: `Confirm the change did what was asked: ${input.requestText.trim()}` },
-    });
+    const ask = input.requestText.trim();
+    specs.push(
+      input.evidence && input.evidence.trim() !== ''
+        ? { kind: 'acceptance', name: shortName(ask), how: { via: 'judged', ask, evidence: input.evidence } }
+        : { kind: 'acceptance', name: shortName(ask), how: { via: 'manual', note: `Confirm the change did what was asked: ${ask}` } },
+    );
   }
 
   return specs;
 }
+
+/** What a judge answers. `cannot_tell` is first-class — a judge must never guess. */
+export type JudgeAnswer = { outcome: 'pass' | 'fail' | 'cannot_tell'; detail: string | null };
 
 export type RunCheckDeps = {
   /** Run an HTTP check. Defaults to the monitor's probe. */
   http?: (c: { url: string; expectStatus?: number | null; keyword?: string | null }) => Promise<{ ok: boolean; detail: string | null }>;
   /** Run a command in the sandbox. Injected — absent means command checks can't run. */
   exec?: (command: string) => Promise<{ ok: boolean; detail: string | null }>;
+  /**
+   * Judge an acceptance question against the diff — the independent grader
+   * (verify/grader.ts, a DIFFERENT provider than authored the change). Absent
+   * means judged checks run as could_not_run: the deliberate inversion. A
+   * missing grader caps the verdict at `probably`; it never reads as a pass.
+   */
+  judge?: (spec: { ask: string; evidence: string }) => Promise<JudgeAnswer>;
 };
 
 async function defaultHttp(c: { url: string; expectStatus?: number | null; keyword?: string | null }): Promise<{ ok: boolean; detail: string | null }> {
@@ -101,6 +121,22 @@ export async function runCheckSpec(spec: CheckSpec, deps: RunCheckDeps = {}): Pr
 
   if (spec.how.via === 'manual') {
     return { ...base, outcome: 'could_not_run', detail: spec.how.note };
+  }
+
+  if (spec.how.via === 'judged') {
+    // No grader configured → could_not_run, and the verdict caps at `probably`.
+    // This is the inversion, stated rather than accidental: absence of a grader
+    // is absence of evidence, and absence of evidence is never a pass.
+    if (!deps.judge) return { ...base, outcome: 'could_not_run', detail: 'no independent grader is configured' };
+    try {
+      const answer = await deps.judge({ ask: spec.how.ask, evidence: spec.how.evidence });
+      // The judge's third answer maps to the checks' third outcome — an honest
+      // "can't tell" from the grader must never be rounded to pass OR fail.
+      const outcome = answer.outcome === 'cannot_tell' ? 'could_not_run' : answer.outcome;
+      return { ...base, outcome, ...(answer.detail ? { detail: answer.detail } : {}) };
+    } catch {
+      return { ...base, outcome: 'could_not_run', detail: 'the grader could not run' };
+    }
   }
 
   if (spec.how.via === 'http') {

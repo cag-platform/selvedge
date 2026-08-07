@@ -229,15 +229,20 @@ of success. The five values are `verified | probably | inconclusive |
 didnt_work | stopped`, and `stopped` comes only from the card machine, never
 from verification.
 
-**`verified` is currently unreachable, by construction.** `verify/checks.ts`
-generates the acceptance check with `how: { via: 'manual' }`, `runCheckSpec`
-short-circuits manual checks to `could_not_run`, and `computeVerdict` returns
-`verified` only when acceptance *passes*. So today's ceiling is `probably`.
-Nothing in `server/verify/` imports an LLM module at all — the second model that
-would supply the acceptance evidence does not exist yet. This is the honesty
-machinery behaving correctly (it will not claim success it cannot evidence)
-rather than a bug, but it is worth knowing before reading the verdict code and
-assuming a grader is wired somewhere.
+**The independent grader is what makes `verified` reachable.** `computeVerdict`
+returns `verified` only when the acceptance check *passes*, and the only thing
+that can pass it is `verify/grader.ts`: a model on a **different provider** than
+authored the change (`OpenAiLlmClient`, default `gpt-5.6-luna`), reading the
+diff from the `selvedge/<card id>` review branch the run pushed to GitHub
+(`verify/evidence.ts` — fetched at verify time because the run's sandbox is
+destroyed in a `finally` before verification runs). Without `OPENAI_API_KEY`,
+judged checks run as `could_not_run` and verdicts cap at `probably` — the
+deliberate inversion: a missing grader is absence of evidence, never a pass. The
+grader's own uncertainty is first-class (`cannot_tell` → `could_not_run`), its
+spend is metered under its own purpose and budget (`GRADE_PURPOSES` — carved out
+of the watching cap so grading can never starve the brief), and the card records
+provenance in `cards.graded_by`, derived rather than asserted: only an
+acceptance that actually resolved counts as graded.
 
 `verify/observe.ts` is the post-deploy window: probe the live app on a cadence
 for the duration of the watch, and roll back on a **confirmed** break. It reuses
@@ -392,7 +397,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**957 tests across 123 files**, all green, under `test/` — mirroring
+**980 tests across 124 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 

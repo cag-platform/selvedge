@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { SelvedgeEdge, StatusDot } from './SelvedgeEdge.js';
 import { Reveal } from './Brief.js';
-import { cardEdge, stateLabel, formatCents, formatRange, gateNote, type WorkCardData } from '../lib/card.js';
+import { cardEdge, stateLabel, formatCents, formatRange, gateNote, graderNote, type WorkCardData } from '../lib/card.js';
 
 /**
  * One work card, the owner's view of a change the loop is walking. The edge
@@ -46,6 +46,12 @@ export function WorkCard({ card, onChanged }: { card: WorkCardData; onChanged: (
       </div>
 
       <p className="mt-1.5 text-body text-ink-dim">{card.proposal}</p>
+
+      {/* The verifier's one sentence: shown only when the grade was genuinely
+          independent — silence otherwise, never a weaker claim dressed up. */}
+      {graderNote(card.state, card.gradedBy) && (
+        <p className="mt-1 text-meta text-ink-quiet">{graderNote(card.state, card.gradedBy)}</p>
+      )}
 
       {/* Estimate and the stop-point — always visible, the money is never buried. */}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-meta text-ink-dim">

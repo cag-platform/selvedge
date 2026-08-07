@@ -50,11 +50,14 @@ describe('card store — persistence moves state only through the machine', () =
     expect((await applyAction(db, 'org_1', 'card_1', { type: 'start_work', at: T })).ok).toBe(true);
     expect((await applyAction(db, 'org_1', 'card_1', { type: 'spend', at: T, cents: 300 })).ok).toBe(true);
     await applyAction(db, 'org_1', 'card_1', { type: 'begin_verify', at: T });
-    await applyAction(db, 'org_1', 'card_1', { type: 'complete', at: T, verdict: 'verified' });
+    await applyAction(db, 'org_1', 'card_1', { type: 'complete', at: T, verdict: 'verified', gradedBy: 'independent' });
 
     const done = await getCard(db, 'org_1', 'card_1');
     expect(done?.state).toBe('done');
     expect(done?.verdict).toBe('verified');
+    // Round-trips through the store's explicit .set() allowlist — the write
+    // path where a forgotten column silently never persists.
+    expect(done?.gradedBy).toBe('independent');
     expect(done?.spentCents).toBe(300);
   });
 

@@ -25,3 +25,19 @@ export function sketchModel(): string {
 export function llmEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY);
 }
+
+/**
+ * The model that GRADES a change — never the one that writes it. Reads
+ * EVAL_MODEL and only EVAL_MODEL, the mirror of agentModelFromEnv's guarantee
+ * (runner/daytona/factory.ts) that the author never reads the grader's knob.
+ * These two variables crossing is how a grader ends up grading its own work,
+ * which is the one failure the whole verifier exists to prevent.
+ *
+ * Default: gpt-5.6-luna — priced in config/model-pricing.json; a grade reads a
+ * bounded diff and answers in a sentence, which luna does for a fraction of a
+ * cent. The grader itself is gated on OPENAI_API_KEY being set (llm/factory.ts),
+ * so this default never causes a call on an unconfigured deploy.
+ */
+export function evalModel(): string {
+  return process.env.EVAL_MODEL ?? 'gpt-5.6-luna';
+}

@@ -11,6 +11,8 @@ import { verdictReport, type CheckResult } from './verdict.js';
  */
 export type VerifyCardDeps = {
   runChecks: (ctx: VerifyContext) => Promise<CheckResult[]>;
+  /** What a graded acceptance is worth — see VerifyDeps.graderProvenance. */
+  graderProvenance?: VerifyDeps['graderProvenance'];
   /** Ship and watch a passed change (deploy → observe → roll back on break). Optional. */
   shipAndObserve?: VerifyDeps['shipAndObserve'];
   now?: () => Date;
@@ -26,6 +28,7 @@ export async function verifyCardForOrg(db: Db, orgId: string, cardId: string, de
     {
       apply: (action) => applyAction(db, orgId, cardId, action),
       runChecks: deps.runChecks,
+      ...(deps.graderProvenance ? { graderProvenance: deps.graderProvenance } : {}),
       ...(deps.shipAndObserve ? { shipAndObserve: deps.shipAndObserve } : {}),
       now: deps.now ?? (() => new Date()),
     },

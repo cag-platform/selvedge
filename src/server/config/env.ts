@@ -40,16 +40,15 @@ export const FEATURES: FeatureSpec[] = [
   { key: 'app_databases', label: 'Neon (databases for apps you put online)', kind: 'feature', vars: ['NEON_API_KEY'], gives: 'creating a database for an app that declares one in its .env.example; without it, go-live says plainly that it cannot' },
   { key: 'push', label: 'Push notifications', kind: 'feature', vars: ['APNS_AUTH_KEY', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID'], gives: 'critical alerts on the owner’s phone; without it they still fold into the brief' },
   { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'GITHUB_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox, the Claude Code agent, and a GitHub token to clone the repo and push the review branch' },
-  // Reserved for the grader, and NOT yet wired to one. Until the independent
-  // acceptance check exists, setting this changes nothing: the acceptance check
-  // returns could_not_run and the verdict tops out at `probably`. It previously
-  // set the model the agent AUTHORED with (that knob is now AGENT_MODEL) —
-  // the precise opposite of what this line promises, which is why it moved.
-  { key: 'evaluator', label: 'Evaluating model (independent verdict)', kind: 'feature', vars: ['EVAL_MODEL'], gives: 'judges acceptance on a different model than authored the change, so it never grades its own work — not yet wired; unset, acceptance stays could_not_run and no change can reach `verified`' },
+  // Gated on the KEY, not the model name: EVAL_MODEL has a safe default
+  // (gpt-5.6-luna) and lives in OPTIONAL_VARS as a tuning knob. Listing it here
+  // would report `partial` for a deploy that set the key and sensibly left the
+  // model alone, which would be false.
+  { key: 'evaluator', label: 'Independent grader (the verified verdict)', kind: 'feature', vars: ['OPENAI_API_KEY'], gives: 'judges "did it do what was asked" on a different provider than authored the change, so a verdict never grades its own work; without it, verdicts top out at `probably` — never a false verified' },
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG'];
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

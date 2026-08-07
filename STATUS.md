@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **957 tests across 123
+and what's still only a plan. Written for a non-coder. **980 tests across 124
 files, all green.**
 
 ---
@@ -39,6 +39,7 @@ founder actually speaks.
 | **Today / brief** | Daily digest per org at local 7am, composed by the model when fuel is connected, mechanical when not. Repeats collapse ("…today (3 times)"). |
 | **Watching** | Health checks with two-failure debounce, deploy-state polling (Railway/Vercel), error-rate spikes, and correlation of a break to the change just before it. Putting an app online now **arms its health check** — until that was wired, the probe half watched nothing (deploy polling was unaffected). |
 | **Work** | Every ask becomes a card: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. |
+| **Independent verdict** | With `OPENAI_API_KEY` set, every finished card's "did it do what was asked" is judged **by a different model than wrote the change** (default `gpt-5.6-luna`), reading the actual diff from the card's review branch. This unlocks the `verified` verdict; without the key, verdicts honestly top out at "probably". The card says when it happened: *"Checked by a different model than the one that wrote it."* Grading runs on its own daily budget, so it can never starve the brief. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
 | **Sketch** | A cheap room to think an idea through before building. Structured replies make "ready" real data; one button hands the brief to the Workshop. Its own daily budget, so thinking can never starve the brief. |
@@ -111,14 +112,6 @@ names what did and did not happen rather than going quiet.
 
 ### Also scoped, not built
 
-- **The independent verdict.** Previously listed above as "built, waiting on a
-  key" — it is not built. `src/server/verify/` never calls a model at all. The
-  acceptance check is generated with `via: 'manual'` and short-circuits to
-  `could_not_run`, so **no change can currently reach the `verified` verdict**;
-  the honest ceiling today is `probably`. That is the machinery working as
-  designed — it refuses to claim success it can't evidence — but the second
-  model that would supply the evidence does not exist yet. `EVAL_MODEL` is
-  reserved for it and, until it ships, changes nothing.
 - **Model picker** (Claude / Codex / Kimi). The seam exists: `FUEL_PROVIDERS`
   already lists `anthropic | openai | gemini | kimi` with only Anthropic
   implemented, and Kimi speaks Anthropic's API format, so the same agent could run

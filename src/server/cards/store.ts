@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { cards } from '../db/schema/index.js';
-import type { Card, CardVerdict, CostEstimate, StopPoint, CardAct, CardState, RiskTier, GateLevel, CardTrigger } from './types.js';
+import type { Card, CardVerdict, GradedBy, CostEstimate, StopPoint, CardAct, CardState, RiskTier, GateLevel, CardTrigger } from './types.js';
 import { proposeCard, type ProposeInput } from './propose.js';
 import { advance, type CardAction, type AdvanceError } from './machine.js';
 
@@ -31,6 +31,8 @@ function rowToCard(row: CardRow): Card {
     stop: row.stop as StopPoint,
     state: row.state as CardState,
     verdict: (row.verdict as CardVerdict | null) ?? null,
+    // Pre-migration rows coalesce to null (no claim), like verdict does.
+    gradedBy: (row.gradedBy as GradedBy | null) ?? null,
     spentCents: row.spentCents,
     backupVerified: row.backupVerified,
     acts: row.acts as CardAct[],
@@ -51,6 +53,7 @@ function cardToValues(card: Card) {
     gate: card.gate,
     state: card.state,
     verdict: card.verdict,
+    gradedBy: card.gradedBy,
     estimate: card.estimate,
     stop: card.stop,
     spentCents: card.spentCents,
@@ -102,6 +105,7 @@ export async function applyAction(db: Db, orgId: string, cardId: string, action:
     .set({
       state: result.card.state,
       verdict: result.card.verdict,
+      gradedBy: result.card.gradedBy,
       spentCents: result.card.spentCents,
       backupVerified: result.card.backupVerified,
       acts: result.card.acts,

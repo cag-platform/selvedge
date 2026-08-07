@@ -52,6 +52,17 @@ export type CardState =
 /** The five-value verdict (Phase 4), declared here so the machine can carry it. */
 export type CardVerdict = 'verified' | 'probably' | 'inconclusive' | 'didnt_work' | 'stopped';
 
+/**
+ * Who graded the acceptance behind a verdict.
+ *   independent → a model on a DIFFERENT provider than authored the change
+ *                 read the diff and judged it. The claim the product makes.
+ *   same_model  → a grader ran, but on the author's own provider. Disclosed,
+ *                 never dressed up as independent.
+ *   ungraded    → no grader ran; the verdict rests on the deterministic checks
+ *                 alone, which is why it tops out at `probably`.
+ */
+export type GradedBy = 'independent' | 'same_model' | 'ungraded';
+
 /** A money range, in whole US cents to avoid float drift. Inclusive. */
 export type CostEstimate = {
   lowCents: number;
@@ -106,6 +117,8 @@ export type Card = {
   state: CardState;
   /** Set once the card reaches a verdict. */
   verdict: CardVerdict | null;
+  /** Who graded the acceptance behind it. Set with the verdict; null before. */
+  gradedBy: GradedBy | null;
   /** Spent so far against the cap, in cents. */
   spentCents: number;
   /** Whether a verified backup exists — required to approve a hard-gate card. */

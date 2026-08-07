@@ -134,3 +134,41 @@ describe('verifyCard — checks in, an honest verdict onto the card', () => {
     expect(ran).toBe(false);
   });
 });
+
+describe('graded_by — configuration is not provenance', () => {
+  it('an independently judged pass carries the provenance onto the card', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    const res = await verifyCard({ ...h.deps, graderProvenance: 'independent' }, h.getCard());
+    expect(res.card.verdict).toBe('verified');
+    expect(res.card.gradedBy).toBe('independent');
+  });
+
+  it('a judged FAIL is still a grade — provenance rides on the honest bad news too', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('fail')]);
+    const res = await verifyCard({ ...h.deps, graderProvenance: 'independent' }, h.getCard());
+    expect(res.card.verdict).toBe('didnt_work');
+    expect(res.card.gradedBy).toBe('independent');
+  });
+
+  it("a configured grader that couldn't grade leaves the card ungraded", async () => {
+    // The grader existed but the acceptance came back could_not_run — no
+    // evidence, over budget, or an honest can't-tell. Claiming independence
+    // for a grade that never happened would make the field decorative.
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('could_not_run')]);
+    const res = await verifyCard({ ...h.deps, graderProvenance: 'independent' }, h.getCard());
+    expect(res.card.verdict).toBe('probably');
+    expect(res.card.gradedBy).toBe('ungraded');
+  });
+
+  it('same_model provenance is disclosed as such, never upgraded', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    const res = await verifyCard({ ...h.deps, graderProvenance: 'same_model' }, h.getCard());
+    expect(res.card.gradedBy).toBe('same_model');
+  });
+
+  it('no provenance configured defaults to ungraded even on an acceptance pass', async () => {
+    const h = harness(verifyingCard(), async () => [smoke('pass'), acceptance('pass')]);
+    const res = await verifyCard(h.deps, h.getCard());
+    expect(res.card.gradedBy).toBe('ungraded');
+  });
+});

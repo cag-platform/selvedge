@@ -1,4 +1,4 @@
-import type { Card, CardAct, CardVerdict } from './types.js';
+import type { Card, CardAct, CardVerdict, GradedBy } from './types.js';
 
 /**
  * The card state machine — pure. Given a card and an action, it returns the next
@@ -26,7 +26,7 @@ export type CardAction =
   | { type: 'resume'; at: string }
   | { type: 'stop'; at: string; reason?: string }
   | { type: 'begin_verify'; at: string }
-  | { type: 'complete'; at: string; verdict: Exclude<CardVerdict, 'stopped'>; summary?: string; results?: unknown }
+  | { type: 'complete'; at: string; verdict: Exclude<CardVerdict, 'stopped'>; gradedBy?: GradedBy; summary?: string; results?: unknown }
   | { type: 'fail'; at: string; reason: string };
 
 export type AdvanceError =
@@ -131,14 +131,17 @@ export function advance(card: Card, action: CardAction): AdvanceResult {
 
     case 'complete': {
       if (card.state !== 'verifying') return { ok: false, error: 'wrong_state' };
+      // Provenance defaults to 'ungraded', never to a stronger claim: a caller
+      // that doesn't say who graded gets the weakest answer, not the best one.
+      const gradedBy = action.gradedBy ?? 'ungraded';
       const next = withAct(card, action.at, {
         at: action.at,
         kind: 'completed',
         // The honest verdict summary when verification supplied one, else a plain fallback.
         detail: action.summary ?? `Done — ${action.verdict}.`,
-        meta: { verdict: action.verdict, ...(action.results !== undefined ? { results: action.results } : {}) },
+        meta: { verdict: action.verdict, gradedBy, ...(action.results !== undefined ? { results: action.results } : {}) },
       });
-      return { ok: true, card: { ...next, state: 'done', verdict: action.verdict } };
+      return { ok: true, card: { ...next, state: 'done', verdict: action.verdict, gradedBy } };
     }
 
     case 'fail': {

@@ -6,7 +6,7 @@
  * and evals mechanically checkable.
  */
 
-export type LlmPurpose = 'fragment' | 'compose' | 'gist' | 'sketch';
+export type LlmPurpose = 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade';
 
 export type LlmRequest = {
   model: string;

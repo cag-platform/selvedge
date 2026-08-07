@@ -5,6 +5,7 @@ import type { ComposeLlmDeps } from '../digest/composeLlm.js';
 import type { AskDeps } from '../ask/answer.js';
 import type { SketchDeps } from '../sketch/converse.js';
 import { resolveFuel } from '../connectors/fuel/resolve.js';
+import { OpenAiLlmClient } from './openai.js';
 
 /**
  * The voice is powered per-org, at the moment of use, by that org's fuel
@@ -51,3 +52,24 @@ export async function buildSketchDeps(db: Db, orgId: string): Promise<SketchDeps
 export type ComposeDepsResolver = (orgId: string) => Promise<ComposeLlmDeps | undefined>;
 export type AskDepsResolver = (orgId: string) => Promise<AskDeps | undefined>;
 export type SketchDepsResolver = (orgId: string) => Promise<SketchDeps | undefined>;
+
+/**
+ * The grader's client — deliberately NOT resolveFuel, and platform-scoped
+ * rather than per-org.
+ *
+ * resolveFuel is Anthropic in every live case: BYO only builds an Anthropic
+ * client, and the managed fallback is Anthropic by construction. The agent
+ * authors on Claude. So a grader routed through fuel would grade its own
+ * lineage — the exact failure the verifier exists to prevent, and the reason
+ * OpenAiLlmClient exists at all. Platform key rather than the org's, because
+ * independent grading is part of what the product IS, not a feature an org
+ * unlocks by connecting a second credential.
+ *
+ * Undefined when OPENAI_API_KEY is unset: no grader, judged checks run as
+ * could_not_run, verdicts cap at `probably` — never a pass.
+ */
+export function buildGraderClient(): OpenAiLlmClient | undefined {
+  const key = process.env.OPENAI_API_KEY?.trim();
+  if (!key) return undefined;
+  return new OpenAiLlmClient(key);
+}
