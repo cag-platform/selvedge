@@ -17,6 +17,14 @@ export type LlmRequest = {
   schema: Record<string, unknown>;
 };
 
+/**
+ * Who served the call. Optional: a client that knows its own provider should
+ * say so, and metering falls back to looking the model id up in the pricing
+ * table when it doesn't. Kept optional deliberately — making it required would
+ * force every test fake to declare a provider it doesn't have an opinion about.
+ */
+export type LlmProvider = string;
+
 export type LlmSuccess = {
   ok: true;
   /** Parsed structured output. */
@@ -24,6 +32,7 @@ export type LlmSuccess = {
   tokensIn: number;
   tokensOut: number;
   model: string;
+  provider?: LlmProvider;
 };
 
 export type LlmFailure = {
@@ -33,6 +42,7 @@ export type LlmFailure = {
   tokensIn: number;
   tokensOut: number;
   model: string;
+  provider?: LlmProvider;
 };
 
 export type LlmResult = LlmSuccess | LlmFailure;

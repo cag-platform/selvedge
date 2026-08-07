@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, llmUsage } from '../../src/server/db/schema/index.js';
-import { costUsd } from '../../src/server/llm/pricing.js';
+import { costUsd, providerForModel } from '../../src/server/llm/pricing.js';
 import { recordUsage } from '../../src/server/llm/metering.js';
 import { FakeLlmClient, DownLlmClient } from '../../src/server/llm/fake.js';
 
@@ -57,6 +57,46 @@ describe('llm/metering', () => {
     const rows = await db.select().from(llmUsage);
     expect(rows[0]?.ok).toBe('refusal');
     expect(rows[0]?.costUsd).toBeCloseTo((500 * 10) / 1_000_000);
+  });
+
+  /**
+   * Model ids are not namespaced by provider, so without attribution a second
+   * provider's spend is indistinguishable from the incumbent's in the ledger.
+   */
+  it('takes the provider from the client when it says so', async () => {
+    await recordUsage(db, 'org_1', 'fragment', {
+      ok: true, json: {}, tokensIn: 1, tokensOut: 1, model: 'some-model', provider: 'openai',
+    });
+    expect((await db.select().from(llmUsage))[0]?.provider).toBe('openai');
+  });
+
+  it('falls back to the pricing table when the client is silent', async () => {
+    await recordUsage(db, 'org_1', 'fragment', { ok: true, json: {}, tokensIn: 1, tokensOut: 1, model: 'claude-sonnet-5' });
+    expect((await db.select().from(llmUsage))[0]?.provider).toBe('anthropic');
+  });
+
+  it('records an unpriced model as unknown rather than filing it under the incumbent', async () => {
+    // A misattributed row is a silent error; an unattributed one is a visible
+    // gap. Prefer the gap.
+    await recordUsage(db, 'org_1', 'fragment', { ok: true, json: {}, tokensIn: 1, tokensOut: 1, model: 'not-in-the-table' });
+    expect((await db.select().from(llmUsage))[0]?.provider).toBe('unknown');
+  });
+});
+
+describe('pricing — an unknown model must never look cheap', () => {
+  it('prices an unpriced model at the fallback, which is the most expensive row', () => {
+    const known = costUsd('claude-sonnet-5', 1_000_000, 0);
+    const unknown = costUsd('a-model-nobody-priced', 1_000_000, 0);
+    expect(unknown).toBeGreaterThan(known);
+    // Overstating a new provider's spend is the safe direction to be wrong in:
+    // it shows up as a cost surprise rather than as margin quietly leaking.
+    expect(unknown).toBeCloseTo(10);
+  });
+
+  it('attributes each priced model to its provider', () => {
+    expect(providerForModel('claude-opus-5')).toBe('anthropic');
+    expect(providerForModel('claude-haiku-4-5')).toBe('anthropic');
+    expect(providerForModel('nothing-priced-this')).toBe('unknown');
   });
 });
 

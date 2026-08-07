@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { LlmClient, LlmRequest, LlmResult } from './types.js';
 
 const TIMEOUT_MS = 60_000;
+/** Stamped on every result so spend attributes to a provider, not just a model id. */
+const PROVIDER = 'anthropic';
 
 /**
  * The one file that touches the network. Timeout + one retry (SDK-level,
@@ -54,10 +56,10 @@ export class AnthropicLlmClient implements LlmClient {
       const servedBy = response.model ?? req.model;
 
       if (response.stop_reason === 'refusal') {
-        return { ok: false, reason: 'refusal', tokensIn, tokensOut, model: servedBy };
+        return { ok: false, reason: 'refusal', tokensIn, tokensOut, model: servedBy, provider: PROVIDER };
       }
       if (response.stop_reason === 'max_tokens') {
-        return { ok: false, reason: 'max_tokens', tokensIn, tokensOut, model: servedBy };
+        return { ok: false, reason: 'max_tokens', tokensIn, tokensOut, model: servedBy, provider: PROVIDER };
       }
 
       const text = response.content
@@ -66,14 +68,14 @@ export class AnthropicLlmClient implements LlmClient {
         .join('');
 
       try {
-        return { ok: true, json: JSON.parse(text), tokensIn, tokensOut, model: servedBy };
+        return { ok: true, json: JSON.parse(text), tokensIn, tokensOut, model: servedBy, provider: PROVIDER };
       } catch {
-        return { ok: false, reason: 'invalid_json', tokensIn, tokensOut, model: servedBy };
+        return { ok: false, reason: 'invalid_json', tokensIn, tokensOut, model: servedBy, provider: PROVIDER };
       }
     } catch (err) {
       const reason =
         err instanceof Anthropic.APIError ? `api_error_${err.status ?? 'unknown'}` : 'network_or_timeout';
-      return { ok: false, reason, tokensIn: 0, tokensOut: 0, model: req.model };
+      return { ok: false, reason, tokensIn: 0, tokensOut: 0, model: req.model, provider: PROVIDER };
     }
   }
 }

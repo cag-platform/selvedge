@@ -11,8 +11,15 @@ export const llmUsage = pgTable(
   {
     id: text('id').primaryKey(), // ulid
     orgId: text('org_id').notNull(),
-    purpose: text('purpose').notNull(), // 'fragment' | 'compose' | 'gist'
+    purpose: text('purpose').notNull(), // 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade'
     model: text('model').notNull(),
+    /**
+     * Who served the call — 'anthropic' | 'openai' | ... | 'unknown'. Model ids
+     * are not namespaced by provider, so without this a second provider's spend
+     * is indistinguishable from the incumbent's. Defaults to 'anthropic'
+     * because every row written before this column existed was Anthropic's.
+     */
+    provider: text('provider').notNull().default('anthropic'),
     tokensIn: integer('tokens_in').notNull(),
     tokensOut: integer('tokens_out').notNull(),
     costUsd: doublePrecision('cost_usd').notNull(),

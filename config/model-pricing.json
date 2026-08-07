@@ -1,10 +1,12 @@
 {
-  "$comment": "USD per million tokens, from platform.claude.com pricing (cached 2026-06; sonnet-5 figures are the standard sticker, not the intro discount). The margin math in llm_usage uses this table — keep it current when Anthropic reprices or when NARRATE_MODEL/COMPOSE_MODEL change. Unknown models fall back to the most expensive row so cost is never silently undercounted.",
+  "$comment": "USD per million tokens. Anthropic figures from platform.claude.com pricing (cached 2026-08; sonnet-5 is the standard sticker, not the intro discount). Each row names its PROVIDER, because llm_usage attributes spend per provider and two providers can ship similarly-named models. The margin math reads this table — keep it current when a provider reprices or when NARRATE_MODEL/COMPOSE_MODEL/EVAL_MODEL change. An unknown model prices at the fallback, which is deliberately the most expensive row so cost is never silently undercounted; a new provider's models therefore OVERSTATE spend until their real rates are added here, which is the safe direction to be wrong in.",
+  "$openai": "OpenAI rows are deliberately absent rather than guessed. Add them from OpenAI's own pricing page before relying on grader cost figures — until then those calls bill at the fallback rate above their true cost.",
   "models": {
-    "claude-fable-5": { "input_per_mtok": 10.0, "output_per_mtok": 50.0 },
-    "claude-opus-4-8": { "input_per_mtok": 5.0, "output_per_mtok": 25.0 },
-    "claude-sonnet-5": { "input_per_mtok": 3.0, "output_per_mtok": 15.0 },
-    "claude-haiku-4-5": { "input_per_mtok": 1.0, "output_per_mtok": 5.0 }
+    "claude-fable-5": { "provider": "anthropic", "input_per_mtok": 10.0, "output_per_mtok": 50.0 },
+    "claude-opus-5": { "provider": "anthropic", "input_per_mtok": 5.0, "output_per_mtok": 25.0 },
+    "claude-opus-4-8": { "provider": "anthropic", "input_per_mtok": 5.0, "output_per_mtok": 25.0 },
+    "claude-sonnet-5": { "provider": "anthropic", "input_per_mtok": 3.0, "output_per_mtok": 15.0 },
+    "claude-haiku-4-5": { "provider": "anthropic", "input_per_mtok": 1.0, "output_per_mtok": 5.0 }
   },
-  "fallback": { "input_per_mtok": 10.0, "output_per_mtok": 50.0 }
+  "fallback": { "provider": "unknown", "input_per_mtok": 10.0, "output_per_mtok": 50.0 }
 }
