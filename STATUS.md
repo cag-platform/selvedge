@@ -37,7 +37,7 @@ founder actually speaks.
 | **Sign-in** | Clerk, email+password. A solo owner is a tenant of one — never asked to create an "organization". |
 | **Projects** | Create from an existing repo, or **create a brand-new private GitHub repo** in one step. New things start as a sandbox and land straight in the Workshop. |
 | **Today / brief** | Daily digest per org at local 7am, composed by the model when fuel is connected, mechanical when not. Repeats collapse ("…today (3 times)"). |
-| **Watching** | Health checks with two-failure debounce, deploy-state polling (Railway/Vercel), error-rate spikes, and correlation of a break to the change just before it. |
+| **Watching** | Health checks with two-failure debounce, deploy-state polling (Railway/Vercel), error-rate spikes, and correlation of a break to the change just before it. Putting an app online now **arms its health check** — until that was wired, the probe half watched nothing (deploy polling was unaffected). |
 | **Work** | Every ask becomes a card: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |

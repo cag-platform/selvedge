@@ -27,10 +27,28 @@ export type ProbeResult = {
 
 const TIMEOUT_MS = 10_000;
 
+/**
+ * Exhaustive on purpose. This used to end in a bare `return probeHttp(...)`,
+ * which meant an unrecognised kind silently ran as an HTTP GET — a new probe
+ * kind would have failed *open into the wrong probe* rather than failing to
+ * compile. The `never` guard makes adding a kind a compile error here, which is
+ * the only place that can decide what a kind actually does.
+ */
 export async function runCheck(check: HealthCheckSpec, now: () => number = () => Date.now()): Promise<ProbeResult> {
-  if (check.kind === 'tcp') return probeTcp(check.url, now);
-  if (check.kind === 'keyword') return probeHttp(check.url, null, check.keyword ?? null, now);
-  return probeHttp(check.url, check.expectedStatus ?? null, null, now);
+  switch (check.kind) {
+    case 'tcp':
+      return probeTcp(check.url, now);
+    case 'keyword':
+      return probeHttp(check.url, null, check.keyword ?? null, now);
+    case 'http':
+      return probeHttp(check.url, check.expectedStatus ?? null, null, now);
+    default: {
+      const unreachable: never = check.kind;
+      // Runtime belt as well as the compile-time brace: a row whose kind was
+      // written by an older/newer deploy must not be probed as something else.
+      return { up: false, latencyMs: 0, detail: `unknown check kind "${String(unreachable)}"` };
+    }
+  }
 }
 
 async function probeHttp(

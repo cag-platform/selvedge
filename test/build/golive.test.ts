@@ -6,6 +6,7 @@ import { createPack, getPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { goLive, needsDatabase, liveAppLimit, existingHostTarget, type GoLiveDeps } from '../../src/server/build/golive.js';
 import { DeployTimeoutError } from '../../src/server/connectors/railway/provision.js';
+import { listHealthChecksToPoll } from '../../src/server/monitor/wiring.js';
 
 /** Every network edge stubbed — what's under test is the decision-making. */
 function deps(over: Partial<GoLiveDeps> = {}): GoLiveDeps {
@@ -143,6 +144,47 @@ describe('goLive — one button, from a repo to a working address', () => {
     const out = await goLive(db, orgId, 'bare', deps());
     expect(out.outcome).toBe('not_possible');
     expect(out.message).toMatch(/no code connected/i);
+  });
+
+  /**
+   * The gap these cover: go-live wrote the host into topology (which starts the
+   * DEPLOY poller) and said "I'm watching it from now on", but nothing ever
+   * created a health_checks row — so the probe half of the watch polled an
+   * empty table forever. "Recorded" and "watched" were two different things.
+   */
+  it('arms the health watch on the new address, so the monitor has something to poll', async () => {
+    const out = await goLive(db, orgId, 'loom', deps());
+    expect(out.outcome).toBe('live');
+
+    const toPoll = await listHealthChecksToPoll(db);
+    expect(toPoll).toHaveLength(1);
+    expect(toPoll[0]!.spec.url).toBe('https://loom-production.up.railway.app');
+    expect(toPoll[0]!.spec.kind).toBe('http');
+    expect(toPoll[0]!.projectId).toBe('loom');
+    // Resolved to the repo, so a health event lands on the same timeline as the
+    // pushes and deploys it will be correlated against.
+    expect(toPoll[0]!.sourceAccountId).toBe('acme/loom');
+  });
+
+  it('arms the watch even when the first build times out — the message promises exactly that', async () => {
+    const out = await goLive(db, orgId, 'loom', deps({ awaitDeploy: async () => { throw new DeployTimeoutError('slow'); } }));
+    expect(out.outcome).toBe('still_building');
+    if (out.outcome !== 'still_building') return;
+    expect(out.message).toMatch(/watching it/i);
+    expect(await listHealthChecksToPoll(db)).toHaveLength(1);
+  });
+
+  it('going live twice watches the app once, not twice', async () => {
+    await goLive(db, orgId, 'loom', deps());
+    await goLive(db, orgId, 'loom', deps()); // already_live
+    expect(await listHealthChecksToPoll(db)).toHaveLength(1);
+  });
+
+  it('a failure to arm the watch does not fail the go-live it already completed', async () => {
+    const out = await goLive(db, orgId, 'loom', deps({ watch: async () => { throw new Error('checks table is having a day'); } }));
+    // The app IS online; refusing to say so because a follow-up write failed
+    // would be its own dishonesty.
+    expect(out.outcome).toBe('live');
   });
 });
 

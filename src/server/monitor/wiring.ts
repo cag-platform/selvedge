@@ -38,10 +38,28 @@ export function makePollerIngest(db: Db) {
  * source_account_id (its github repo, for event continuity) and carrying the
  * projectId so the ingest sink can place the event without source resolution.
  */
+const PROBE_KINDS: readonly ProbeKind[] = ['http', 'tcp', 'keyword'];
+
+/**
+ * The `kind` column is free text, so a row written by a different deploy can
+ * carry anything. Validate rather than cast: an unrecognised kind is dropped
+ * from the poll list with a log line, because probing it as the wrong kind
+ * would produce a confident, wrong up/down answer — the one output this
+ * product must never emit.
+ */
+function probeKindOf(kind: string): ProbeKind | null {
+  return (PROBE_KINDS as readonly string[]).includes(kind) ? (kind as ProbeKind) : null;
+}
+
 export async function listHealthChecksToPoll(db: Db): Promise<CheckToPoll[]> {
   const rows = await db.select().from(healthChecks).where(eq(healthChecks.enabled, true));
   const out: CheckToPoll[] = [];
   for (const row of rows) {
+    const kind = probeKindOf(row.kind);
+    if (!kind) {
+      console.error(`health check ${row.id} has an unknown kind "${row.kind}" — not polling it`);
+      continue;
+    }
     const pack = await getPack(db, row.orgId, row.projectId);
     // Prefer the github source for continuity; fall back to the project id.
     const sourceAccountId =
@@ -53,7 +71,7 @@ export async function listHealthChecksToPoll(db: Db): Promise<CheckToPoll[]> {
       projectId: row.projectId,
       spec: {
         id: row.id,
-        kind: row.kind as ProbeKind,
+        kind,
         url: row.url,
         expectedStatus: row.expectedStatus,
         keyword: row.keyword,
@@ -61,6 +79,52 @@ export async function listHealthChecksToPoll(db: Db): Promise<CheckToPoll[]> {
     });
   }
   return out;
+}
+
+/** The stable id of a project's own front-page check, so arming it twice is once. */
+export function liveUrlCheckId(orgId: string, projectId: string): string {
+  return `live:${orgId}:${projectId}`;
+}
+
+/**
+ * Arm the watch on a project's live address — the step that makes "I'm watching
+ * it from now on" true.
+ *
+ * Until this existed, nothing outside the tests ever created a health check, so
+ * `listHealthChecksToPoll` returned an empty list forever and the health monitor
+ * — correct, debounced and fully tested — polled nothing in production. Deploy
+ * state was watched (that rides on the pack's topology.sources); whether the app
+ * actually answers was not.
+ *
+ * Idempotent by construction: the id is derived from (org, project), so a
+ * re-run after a timeout, or a later domain change, updates the one row instead
+ * of accumulating duplicate probes against the same app.
+ */
+export async function ensureLiveUrlCheck(db: Db, orgId: string, projectId: string, url: string): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(healthChecks)
+    .values({
+      id: liveUrlCheckId(orgId, projectId),
+      orgId,
+      projectId,
+      kind: 'http',
+      url,
+      // No expected status: any 2xx counts as serving. A live app that answers
+      // 204 or redirects to a login page is up, and pretending otherwise would
+      // page the owner about nothing.
+      expectedStatus: null,
+      keyword: null,
+      intervalSec: 60,
+      enabled: true,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: healthChecks.id,
+      // Re-enable deliberately: going live again is the owner asking for it to
+      // be watched, even if a previous check was disabled.
+      set: { url, kind: 'http', enabled: true, updatedAt: now },
+    });
 }
 
 /** A single enabled health check for an org's project, for tests and seeding. */

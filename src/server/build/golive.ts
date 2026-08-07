@@ -14,6 +14,7 @@ import {
   waitForDeploy,
   DeployTimeoutError,
 } from '../connectors/railway/provision.js';
+import { ensureLiveUrlCheck } from '../monitor/wiring.js';
 import { resolveHostAccount, hostProjectOptions, whereItLives, type HostAccount } from './hostAccount.js';
 import { parseRailwayTarget, type RailwayTarget } from '../connectors/railway/client.js';
 import type { ContextPack } from '../../shared/types/pack.js';
@@ -27,10 +28,16 @@ import type { ContextPack } from '../../shared/types/pack.js';
  * address, and waits for the first build to actually land. They never make an
  * account, never copy a connection string, never open a dashboard.
  *
- * Everything is recorded in the pack's own topology, which means the deploy
- * poller and the health monitor start watching this app the moment it exists —
- * no separate wiring, because "what is this project made of" was already the
- * question topology.sources answers.
+ * The host is recorded in the pack's own topology, which is what starts the
+ * DEPLOY poller — no separate wiring, because "what is this project made of"
+ * was already the question topology.sources answers.
+ *
+ * The health monitor is NOT topology-driven and does not come along for free.
+ * It reads the `health_checks` table, and until this function armed one, nothing
+ * outside the tests ever wrote a row there — so the probe half of "I'm watching
+ * it" was silently doing nothing while the deploy half worked. That is why
+ * `watch()` is an explicit step below rather than an implication of the
+ * topology write.
  *
  * Idempotent by construction: a project that already has a host source reuses
  * it rather than creating a second service, so a retry after a timeout
@@ -115,6 +122,8 @@ export type GoLiveDeps = {
   domain?: (token: string, target: RailwayTarget) => Promise<string>;
   awaitDeploy?: (token: string, target: RailwayTarget) => Promise<void>;
   readFile?: (repoFullName: string, path: string) => Promise<string | null>;
+  /** Arm the health watch on the new address. Injected so go-live is testable without the checks table. */
+  watch?: (db: Db, orgId: string, projectId: string, url: string) => Promise<void>;
 };
 
 /**
@@ -131,6 +140,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
   const domain = deps.domain ?? ensureServiceDomain;
   const awaitDeploy = deps.awaitDeploy ?? waitForDeploy;
   const readFile = deps.readFile ?? readRepoFile;
+  const watch = deps.watch ?? ensureLiveUrlCheck;
 
   const pack = await getPack(db, orgId, projectId);
   if (!pack) return { outcome: 'not_possible', message: 'no such project' };
@@ -215,6 +225,14 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     await updateHumanSections(db, orgId, projectId, {
       identity: { ...pack.identity, links: { ...pack.identity.links, live_url: url } },
     });
+
+    // Arm the watch here, alongside the topology write and for the same reason:
+    // if the build times out below, the app is still correctly wired AND still
+    // watched. Recording the address without watching it would make the
+    // "I'm watching it from here" line in the timeout branch untrue.
+    await watch(db, orgId, projectId, url).catch((err) =>
+      console.error(`could not arm the health watch for ${projectId}:`, err),
+    );
 
     try {
       await awaitDeploy(account.token, target);
