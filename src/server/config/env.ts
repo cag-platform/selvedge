@@ -34,6 +34,10 @@ export const FEATURES: FeatureSpec[] = [
   { key: 'platform_voice', label: 'Platform voice (fallback fuel)', kind: 'feature', vars: ['ANTHROPIC_API_KEY'], gives: 'a shared model key for orgs that have not brought their own; without it, no-fuel orgs get the plain mechanical brief' },
   { key: 'github_app', label: 'GitHub App (watch repos)', kind: 'feature', vars: ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_APP_SLUG', 'GITHUB_WEBHOOK_SECRET'], gives: 'receiving code/build events and reading repos' },
   { key: 'github_oauth', label: 'GitHub OAuth (borrow-and-return)', kind: 'feature', vars: ['GITHUB_OAUTH_CLIENT_ID', 'GITHUB_OAUTH_CLIENT_SECRET', 'GITHUB_OAUTH_REDIRECT_URI'], gives: 'the in-app repo setup flow for migrations' },
+  { key: 'railway_oauth', label: 'Login with Railway', kind: 'feature', vars: ['RAILWAY_OAUTH_CLIENT_ID', 'RAILWAY_OAUTH_CLIENT_SECRET', 'RAILWAY_OAUTH_REDIRECT_URI'], gives: 'one-click hosting sign-in instead of hunting for a token; without it the paste-a-token path still works, but a pasted token never renews itself' },
+  // Distinct from the boot 'Database' feature above: that one is Selvedge's own
+  // Postgres, this one creates databases for the customer's apps at go-live.
+  { key: 'app_databases', label: 'Neon (databases for apps you put online)', kind: 'feature', vars: ['NEON_API_KEY'], gives: 'creating a database for an app that declares one in its .env.example; without it, go-live says plainly that it cannot' },
   { key: 'push', label: 'Push notifications', kind: 'feature', vars: ['APNS_AUTH_KEY', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID'], gives: 'critical alerts on the owner’s phone; without it they still fold into the brief' },
   { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'GITHUB_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox, the Claude Code agent, and a GitHub token to clone the repo and push the review branch' },
   // Reserved for the grader, and NOT yet wired to one. Until the independent

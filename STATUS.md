@@ -62,7 +62,7 @@ in the customer's repo.
 | **Preview proxy** (kills the Daytona interstitial) | `PREVIEW_DOMAIN` + wildcard DNS | Falls back to signed Daytona URLs, warning page included. |
 | **New repos land in your org** | `GITHUB_ORG=cag-platform` | Repos are created under the token's own user account. |
 | **Put it online** | Customer connects Railway; `NEON_API_KEY` for databases | The button says so plainly and explains why owning it is the good outcome. |
-| **Login with Railway** | Railway OAuth app + `RAILWAY_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | **Module built and tested; connect route and button NOT written yet.** |
+| **Login with Railway** | Railway OAuth app + `RAILWAY_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | Route and button are now written; without the keys the button says so and points at the paste-a-token field, which still works. |
 | **Push notifications** | APNs keys | Alerts still fold into the brief. |
 | **GitHub App events** | App id / key / slug / webhook secret | Repos can be worked on, but pushes and deploys don't flow into the brief. |
 

@@ -125,10 +125,69 @@ function Hosts() {
           </div>
         ))}
         {connectable.map((p) => (
-          <HostConnect key={p} provider={p} onConnected={() => void load()} />
+          <div key={p} className="space-y-2">
+            {p === 'railway' && <RailwayOneClick onConnected={() => void load()} />}
+            <HostConnect provider={p} onConnected={() => void load()} />
+          </div>
         ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * "Login with Railway" — one click instead of a token to hunt for.
+ *
+ * The popup keeps the whole flow in-app. When it closes we re-read the host
+ * list rather than trusting the popup to have succeeded: the callback may have
+ * been declined, and the connection list is the only thing that actually knows.
+ * If one-click isn't configured on the server, the button says so and the paste
+ * field below it still works — that path never depended on OAuth.
+ */
+function RailwayOneClick({ onConnected }: { onConnected: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const start = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const { authorize_url } = await api.post<{ authorize_url: string }>('/api/connectors/railway/start', {});
+      const popup = window.open(authorize_url, 'selvedge-railway', 'width=560,height=760');
+      if (!popup) {
+        setNote('Your browser blocked the popup. Allow popups for this site, or paste a token below.');
+        setBusy(false);
+        return;
+      }
+      const timer = window.setInterval(() => {
+        if (!popup.closed) return;
+        window.clearInterval(timer);
+        setBusy(false);
+        onConnected();
+      }, 500);
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "that didn't work");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-card border border-hairline bg-panel px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-body text-ink">Railway</p>
+          <p className="text-meta text-ink-quiet">Sign in once. It stays in your name, and you can revoke it any time.</p>
+        </div>
+        <button
+          onClick={() => void start()}
+          disabled={busy}
+          className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+        >
+          {busy ? 'Waiting for Railway…' : 'Login with Railway'}
+        </button>
+      </div>
+      {note && <p className="mt-2 text-meta text-thread">{note}</p>}
+    </div>
   );
 }
 

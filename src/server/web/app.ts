@@ -24,6 +24,7 @@ import { createDevicesRouter } from './routes/devices.js';
 import { createFuelRouter } from './routes/fuel.js';
 import { createHostsRouter } from './routes/hosts.js';
 import { createGithubSetupRouter } from './routes/githubSetup.js';
+import { createRailwaySetupRouter } from './routes/railwaySetup.js';
 import { createProtectionRouter } from './routes/protection.js';
 import { createConnectorsHealthRouter } from './routes/connectorsHealth.js';
 import { createAskRouter } from './routes/ask.js';
@@ -126,6 +127,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createFuelRouter(db));
   app.use(createHostsRouter(db));
   app.use(createGithubSetupRouter(db, { redirectUri: process.env.GITHUB_OAUTH_REDIRECT_URI }));
+  // "Login with Railway" — self-guarding: it answers with a plain 503 pointing
+  // at the paste-a-token path when the OAuth app isn't registered yet.
+  app.use(createRailwaySetupRouter(db));
   app.use(createProtectionRouter(db));
   app.use(createConnectorsHealthRouter(db));
   app.use(createAskRouter(db, (orgId) => buildAskDeps(db, orgId)));

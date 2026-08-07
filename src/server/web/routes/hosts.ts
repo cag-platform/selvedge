@@ -56,6 +56,19 @@ export function createHostsRouter(db: Db) {
         res.status(400).json({ error: 'provide a token' });
         return;
       }
+      // A credential row is keyed on (org, provider) and the write is an
+      // unconditional upsert, so pasting a token here would overwrite a
+      // one-click sign-in — silently swapping a refreshable token SET for a
+      // bare string that expires in an hour and cannot renew itself. Refuse,
+      // and say which connection is already in place.
+      const existing = (await listConnected(db, orgIdOf(req))).find((c) => c.provider === provider);
+      if (existing?.kind === 'subscription') {
+        res.status(409).json({
+          error: `You're already signed in to ${provider} with one click${existing.label ? ` (${existing.label})` : ''}. Disconnect that first if you'd rather use a pasted token — otherwise pasting one here would replace a connection that renews itself with one that expires.`,
+        });
+        return;
+      }
+
       const cleanLabel = typeof label === 'string' && label.length <= 80 ? label : undefined;
       const saved = await connectCredential(db, orgIdOf(req), provider, token.trim(), {
         kind: 'api_key',

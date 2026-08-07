@@ -65,6 +65,9 @@ describe('envReportLines — plain boot log, only the gaps', () => {
   it('lists only what is missing or partial', () => {
     const lines = envReportLines(validateEnv(bootOnly));
     expect(lines.join('\n')).toMatch(/Build engine/);
-    expect(lines.join('\n')).not.toMatch(/Database/); // fully configured → not listed
+    // Fully configured → not listed. Anchored on the label's own line rather
+    // than a bare substring, so an unrelated feature that happens to mention a
+    // database doesn't make this pass or fail by accident.
+    expect(lines.join('\n')).not.toMatch(/· Database:/);
   });
 });

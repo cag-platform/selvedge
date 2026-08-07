@@ -4,6 +4,7 @@ import { runDigestSchedule } from '../digest/schedule.js';
 import { buildComposeDeps } from '../llm/factory.js';
 import { buildPushSender } from '../push/factory.js';
 import { runStallSweep } from '../resolution/stallSweep.js';
+import { sweepOAuthStates } from '../connectors/oauthState.js';
 import { revalidateBaselines } from '../memory/revalidate.js';
 import { ensureCurrentPartitions } from '../db/partitions.js';
 import { pollHealth, newMonitorState } from '../monitor/poller.js';
@@ -56,6 +57,9 @@ export function startCronJobs(db: Db): void {
 
   cron.schedule('0 3 * * *', () => {
     runStallSweep(db).catch((err) => console.error('stall sweep failed:', err));
+    // Handshakes nobody came back from. Consumed states delete themselves; this
+    // is only for the owner who closed the popup.
+    sweepOAuthStates(db).catch((err) => console.error('oauth state sweep failed:', err));
     ensureCurrentPartitions(db).catch((err) => console.error('ensureCurrentPartitions failed:', err));
     // Anti-rot: keep learned baselines tracking reality (Ironclad 1).
     revalidateBaselines(db).catch((err) => console.error('revalidateBaselines failed:', err));
