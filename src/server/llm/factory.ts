@@ -3,7 +3,6 @@ import { DbNarrationLibrary } from '../narration/library.js';
 import type { NarrationDeps } from '../narration/dispatch.js';
 import type { ComposeLlmDeps } from '../digest/composeLlm.js';
 import type { AskDeps } from '../ask/answer.js';
-import type { SketchDeps } from '../sketch/converse.js';
 import { resolveFuel } from '../connectors/fuel/resolve.js';
 import { OpenAiLlmClient } from './openai.js';
 
@@ -42,16 +41,9 @@ export async function buildAskDeps(db: Db, orgId: string): Promise<AskDeps | und
   return { llm: fuel.client, db };
 }
 
-export async function buildSketchDeps(db: Db, orgId: string): Promise<SketchDeps | undefined> {
-  const fuel = await resolveFuel(db, orgId);
-  if (!fuel) return undefined;
-  return { llm: fuel.client, db };
-}
-
 /** The resolver shape the routes and the digest loop hold, so they build deps per-org at use time. */
 export type ComposeDepsResolver = (orgId: string) => Promise<ComposeLlmDeps | undefined>;
 export type AskDepsResolver = (orgId: string) => Promise<AskDeps | undefined>;
-export type SketchDepsResolver = (orgId: string) => Promise<SketchDeps | undefined>;
 
 /**
  * The grader's client — deliberately NOT resolveFuel, and platform-scoped

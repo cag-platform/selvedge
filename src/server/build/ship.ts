@@ -5,6 +5,7 @@ import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
 import type { ExecuteInSandbox } from './agent.js';
 import { pathSignals } from '../cards/triggers.js';
+import { HOST_TOPOLOGY_CONNECTORS } from '../connectors/registry.js';
 import { classifyRisk, gateFor } from '../cards/risk.js';
 import { observeDeploy, type ObserveResult } from '../verify/observe.js';
 import { runCheck } from '../monitor/probe.js';
@@ -44,7 +45,7 @@ function shellQuote(v: string): string {
 
 /** Roles that mean "something out there deploys this repo". */
 const HOST_ROLES = new Set(['production_host', 'preview_host']);
-const HOST_CONNECTORS = new Set(['railway', 'vercel', 'replit']);
+const HOST_CONNECTORS = HOST_TOPOLOGY_CONNECTORS;
 
 /**
  * What we can honestly say happens after the push.

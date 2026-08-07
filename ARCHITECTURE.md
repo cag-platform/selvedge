@@ -5,8 +5,9 @@ someone who needs to change it: where a thing lives, what it may talk to, and
 which properties must survive the change.
 
 Companion documents: **BUILD-BRIEF.md** (what gets built, in what order),
-**STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (the
-front door, scoped not built), `docs/routing-table.md` (the routing contract).
+**STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
+deferred acquisition channel, scoped not built), `docs/routing-table.md` (the
+routing contract).
 
 ---
 
@@ -211,11 +212,13 @@ with a conversational surface:
   precisely why the deploy poller and health monitor start watching the new app
   with no extra wiring.
 
-**Sketch** (`server/sketch`) is the cheap room next door: think an idea through
-with no sandbox anywhere near it, on its own daily budget so thinking can never
-starve tomorrow's brief. Its replies are structured, so "the idea is ready" is
-data rather than prose someone has to parse, and one button hands the brief to
-the Workshop.
+**Think it first** is the same agent run read-only: a `mode: 'plan'` message
+wraps the prompt in do-not-change-anything instructions, runs the CLI in plan
+permission mode, and never marks (or clears) staged work as shippable. It
+replaced the separate Sketch surface (removed Aug 2026; its tables and
+migration remain, per the never-rewrite-history rule) — one conversation in one
+room, at the cost of a plan turn pricing like an agent turn rather than a chat
+turn.
 
 ---
 
@@ -286,7 +289,7 @@ exist so writes never fall through to `events_default`.
 
 **Two cost ledgers, deliberately separate.** `agent_runs.cost_cents` is sandbox
 and agent work; `llm_usage.cost_usd` is model calls for narration, composition,
-ask and sketch. They measure different things — don't add them together
+ask and grading. They measure different things — don't add them together
 carelessly.
 
 `events.raw` is stored and **never read by any layer downstream of the connector
@@ -360,7 +363,9 @@ the first request. Everything else degrades, and the degradation is the point:
 cap does not error and does not silence the product — it drops the org to the
 deterministic path for the rest of the day, which is the *same* degradation the
 product already performs when a model is unreachable, so the failure mode is
-exercised by every other path's tests. Sketch has its own separate budget.
+exercised by every other path's tests. Grading has its own separate budget
+(as retired Sketch's spend did — historical `'sketch'` rows stay excluded from
+the watching cap so deploy day doesn't change what the cap counts).
 
 Fuel resolution (`llm/factory.ts`) is per-org **at the moment of use** — BYO key
 → managed platform key → off — never once at startup. "Voice on" is a per-org
@@ -380,7 +385,7 @@ fact, not a global env check.
 
 A single Vite-built SPA in `src/client`, served by the same Express process as
 static files with an SPA catch-all. Clerk guards the whole tree; pages are
-`Today`, `Work`, `TrackRecord`, `Workshop`, `Sketch`, `Connections`, `Projects`,
+`Today`, `Work`, `TrackRecord`, `Workshop`, `Connections`, `Projects`,
 `Tray`, `PackEditor`, `Admin`, `Styleguide`.
 
 There is **no streaming anywhere** — no SSE, no websockets except the preview's
@@ -397,7 +402,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**980 tests across 124 files**, all green, under `test/` — mirroring
+**954 tests across 122 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 
@@ -431,11 +436,10 @@ Design tradeoffs that are chosen, and should be changed only on purpose:
    Workshop.
 3. **One GitHub PAT** for the build engine, a stopgap until per-repo GitHub App
    tokens replace it.
-4. **`connector_credentials.provider` is free text**, with allow-lists in each
-   route file rather than one registry.
-5. **Sketch has no attachments** — the LLM seam carries one text string, no
-   images.
-6. **Auto-rollback posts twice** to the thread (the revert and the observer each
+4. **`connector_credentials.provider` is free text**; the per-surface
+   allow-lists derive from one table (`connectors/registry.ts`). Ids are
+   AES-GCM AAD components — add rows, never rename them.
+5. **Auto-rollback posts twice** to the thread (the revert and the observer each
    speak). Cosmetic.
 7. **Two cost ledgers** (§7) that must not be naively summed.
 
@@ -464,8 +468,8 @@ Places designed to be extended, so the extension is a swap rather than a rewrite
 - **Build engine** — `runner/daytona/factory.ts` is the single place live
   credentials are read; everything below it is injected, so an alternative
   sandbox provider is one factory.
-- **Read-only planning** — the plan capability is retained in `build/agent.ts`,
-  waiting for Sketch's "check this against the real code".
+- **Read-only planning** — wired: the Workshop's "think it first" checkbox
+  sends `mode: 'plan'` through to `build/agent.ts`.
 
 ---
 

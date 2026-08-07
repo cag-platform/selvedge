@@ -1,5 +1,11 @@
 # THE MIGRATION CENTER
 
+> **Status (Aug 2026): scoped, zero code, deliberately deferred.** An
+> acquisition channel to build after the core loop proves itself with live
+> customers — not the front door. The brief is the front door
+> (BUILD-BRIEF §"the brief is the product"). Nothing below is invalidated;
+> it just isn't next.
+
 **31 July 2026.** Design document. Framing per the founder: this is **leaving** — leaving
 Replit, Lovable, Base44, Bolt, v0 — and Selvedge is where you land. Grounded in three
 research passes over official docs, ToS, and APIs (citations in the research annex of

@@ -177,6 +177,9 @@ export function Workshop() {
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [attachNote, setAttachNote] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  // Per-message, resets to build after sending — thinking is a choice you make
+  // each time, never a mode you get stuck in.
+  const [planFirst, setPlanFirst] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const wasWorking = useRef(false);
@@ -247,12 +250,14 @@ export function Workshop() {
     try {
       await api.post(`/api/projects/${projectId}/workshop/message`, {
         text: text.trim(),
+        ...(planFirst ? { mode: 'plan' } : {}),
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
       });
       setText('');
       setImages([]);
       setFiles([]);
+      setPlanFirst(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "that didn't go through");
@@ -431,9 +436,21 @@ export function Workshop() {
                 disabled={sending || data.working || !data.engine_on || !canSend}
                 className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
               >
-                {sending ? 'Sending…' : 'Do it'}
+                {sending ? 'Sending…' : planFirst ? 'Think it through' : 'Do it'}
               </button>
             </form>
+            {/* Think first: the same agent, read-only — it explains what building
+                this would involve and changes nothing. One message at a time. */}
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-meta text-ink-quiet">
+              <input
+                type="checkbox"
+                checked={planFirst}
+                onChange={(e) => setPlanFirst(e.target.checked)}
+                disabled={sending || data.working || !data.engine_on}
+                className="accent-action-bright"
+              />
+              Think it through first — talk it over, build nothing yet
+            </label>
           </div>
         </section>
 

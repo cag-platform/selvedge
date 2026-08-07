@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **980 tests across 124
+and what's still only a plan. Written for a non-coder. **954 tests across 122
 files, all green.**
 
 ---
@@ -18,11 +18,13 @@ Three promises, in order of how much of the product they are:
 2. **The Workshop is the engine.** Say what you want in plain words; it gets
    built in a sandbox, previewed, and shipped deliberately — the safety gates
    bite at ship rather than while you're building.
-3. **The Migration Center is the front door.** *Leaving* — Replit, Lovable,
-   Bolt, v0, Base44 — and Selvedge is where you land. Their infrastructure ends
-   up in **their own name**, with Selvedge holding the keys as caretaker. They
-   can fire Selvedge and everything keeps running, which is exactly why they
-   won't.
+3. **The brief is the front door** (BUILD-BRIEF §"what not to build" — this
+   line previously promoted the Migration Center to front door; that was this
+   file drifting from the brief, not a decision). The Migration Center —
+   *leaving* Replit/Lovable/Bolt/v0 and landing here, infrastructure in **their
+   own name**, Selvedge as fireable caretaker — stays scoped and researched
+   (`MIGRATION-CENTER.md`) as an acquisition channel, built after the loop
+   proves itself with live customers.
 
 The competitive line: not replacing Cursor or Replit at writing code — making
 **health, status, and honest recovery** the thing that matters, in language a
@@ -42,7 +44,7 @@ founder actually speaks.
 | **Independent verdict** | With `OPENAI_API_KEY` set, every finished card's "did it do what was asked" is judged **by a different model than wrote the change** (default `gpt-5.6-luna`), reading the actual diff from the card's review branch. This unlocks the `verified` verdict; without the key, verdicts honestly top out at "probably". The card says when it happened: *"Checked by a different model than the one that wrote it."* Grading runs on its own daily budget, so it can never starve the brief. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
-| **Sketch** | A cheap room to think an idea through before building. Structured replies make "ready" real data; one button hands the brief to the Workshop. Its own daily budget, so thinking can never starve the brief. |
+| **Think it first** | A checkbox on the Workshop composer runs the same agent read-only: it explains in plain English what building the idea would involve, flags risks and cost, and changes nothing. Replaced the separate Sketch room — one conversation, one place, no hand-off. |
 | **Ledger / Record** | Every run's real cost in cents, verdicts, track record, learned baselines ("last time this cost about $6"). |
 | **Connections** | BYO model key, host tokens, Supabase token. AES-256-GCM vault, bound to org *and* provider. |
 | **Portability** | Export everything Selvedge knows as JSON. Being able to leave is what makes people stay. |
@@ -112,14 +114,15 @@ names what did and did not happen rather than going quiet.
 
 ### Also scoped, not built
 
-- **Model picker** (Claude / Codex / Kimi). The seam exists: `FUEL_PROVIDERS`
-  already lists `anthropic | openai | gemini | kimi` with only Anthropic
-  implemented, and Kimi speaks Anthropic's API format, so the same agent could run
-  on it through a different endpoint.
-- **"Check this against the real code"** in Sketch — the read-only plan capability
-  is retained in `agent.ts` waiting for it.
-- **Mobile app** — `cag-platform/Selvedge-mobile`, native SwiftUI, mirrors the old
-  watcher only. None of Workshop / Sketch / go-live is ported.
+- **Model picker** (Claude / Codex / Kimi). **Decided (Aug 2026): stays cut.**
+  OpenAI arrived in the codebase as the *grader* — where a different provider is
+  the feature — not as selectable fuel. The seam remains (`FUEL_PROVIDERS`
+  declares four, one live); offering the choice waits until one model works so
+  well the second is demand, not decoration.
+- **Mobile app** — `cag-platform/Selvedge-mobile`, native SwiftUI. **Scope decided
+  (Aug 2026): deliberately thin** — APNs push for the brief, a WidgetKit glance,
+  and a read-only brief view. The Workshop and go-live stay web-only; a phone is
+  where you hear the news, not where you steer the machine.
 - **True streaming** — no SSE anywhere; the Workshop fakes liveness by polling a
   log the sandbox writes. Adequate today.
 - **GitHub App per-repo tokens**, to replace the single-PAT stopgap.
@@ -136,17 +139,18 @@ names what did and did not happen rather than going quiet.
    a documented single-process tradeoff. A redeploy mid-upload means re-attaching.
 4. `agent_runs.cost_cents` and `llm_usage.cost_usd` are two separate ledgers
    (sandbox work vs model calls). Deliberate — don't add them together carelessly.
-5. Sketch has no attachments: the LLM seam carries one text string, no images.
-6. `connector_credentials.provider` is free text, with allow-lists in each route
-   file rather than one registry.
+5. `connector_credentials.provider` is free text; the per-surface allow-lists
+   now derive from one table (`connectors/registry.ts`). Provider id strings are
+   encryption-bound (AES-GCM AAD) and must never be renamed.
 
 ---
 
 ## What it costs to run
 
 - **Sandboxes** stop themselves after 15 idle minutes — walking away is free.
-- **Agent turns** ~$0.05–0.30; **Sketch turns** ~$0.02, on separate budgets so
-  thinking can never turn tomorrow's brief mechanical.
+- **Agent turns** ~$0.05–0.30 (a think-it-first turn runs the same agent
+  read-only, same price). **Grading** costs a fraction of a cent per card, on
+  its own budget so it can never turn tomorrow's brief mechanical.
 - **Hosting and databases** are the customer's own accounts and their own bill —
   zero hosting COGS by design, and Railway's template kickback (15–25% of ongoing
   usage) makes the freedom model revenue-positive rather than a cost centre.
@@ -155,13 +159,39 @@ names what did and did not happen rather than going quiet.
 
 ## The next three things
 
-1. **The Railway connect route + button**, so "Login with Railway" is reachable
-   and go-live works end to end. Needs a Railway OAuth app registered with the
-   redirect URI `https://tryselvedge.com/railway/callback`.
-2. **Neon claimable projects** — provision with no signup, hand over, they claim.
-3. **The Migration Center**, Replit first, all five stages.
+1. **Go live for real (Phase 0 gate).** Register the Railway OAuth app
+   (redirect `https://tryselvedge.com/railway/callback`), set the keys
+   (`PREVIEW_DOMAIN`, `GITHUB_ORG`, `NEON_API_KEY`, APNs), then: one project
+   created through the product, put online, broken on purpose, caught by the
+   watcher, rolled back — with a push landing on a real phone.
+2. **Switch on the independent grader (Phase 1 gate)** — the runbook below.
+3. **Neon claimable projects** — provision with no signup, hand over, they claim.
 
-Then the model picker.
+### Switching on the grader — the runbook
+
+1. **Sanity-check the key first**, no deploy needed:
+   `OPENAI_API_KEY=sk-... npx tsx scripts/grade-once.ts` — runs the real prompt
+   on the real client against two built-in fixtures. Expect the first to
+   `pass` and the second to `fail`; that disagreement-in-miniature is the
+   whole point.
+2. **Set `OPENAI_API_KEY` on the deploy.** Nothing else — `EVAL_MODEL`
+   defaults to `gpt-5.6-luna`. The boot log's `evaluator` feature flips on.
+3. **Run one card to done.** Expect: verdict **verified**, the card line
+   *"Checked by a different model than the one that wrote it."*,
+   `cards.graded_by = 'independent'`, and an `llm_usage` row with
+   `purpose='grade'`, `provider='openai'`.
+4. **Prove the inversion.** Unset the key, redeploy, run another card:
+   verdict **probably**, no grader line, `graded_by = 'ungraded'`. The absence
+   of a grader must never read as a pass.
+5. **The gate: manufacture a disagreement.** Ask for something with a strict
+   criterion the agent plausibly fudges — "remove the newsletter signup from
+   *every* page", or a two-part ask where one part is easy to skip. Claude's
+   own smoke/regression checks pass; the grader should fail (or cannot_tell)
+   the acceptance. If they never disagree after a few tries, set
+   `EVAL_MODEL=gpt-5.6-terra` — correlation, not agreement, is the failure
+   being hunted.
+
+Then the Migration Center, Replit first.
 
 ---
 

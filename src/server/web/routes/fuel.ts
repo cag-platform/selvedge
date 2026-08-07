@@ -4,6 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { connectCredential, listConnected, revokeCredential } from '../../connectors/credentials/store.js';
 import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { FUEL_PROVIDERS, type FuelProvider } from '../../connectors/fuel/resolve.js';
+import { LIVE_FUEL_PROVIDERS } from '../../connectors/registry.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
 import type { LlmClient } from '../../llm/types.js';
 
@@ -12,7 +13,7 @@ function orgIdOf(req: Request): string {
 }
 
 /** Providers we can actually build a client for today (a subset of the declared FUEL_PROVIDERS). */
-const LIVE_PROVIDERS: FuelProvider[] = ['anthropic'];
+const LIVE_PROVIDERS: FuelProvider[] = LIVE_FUEL_PROVIDERS;
 
 function isFuelProvider(v: unknown): v is FuelProvider {
   return typeof v === 'string' && (FUEL_PROVIDERS as readonly string[]).includes(v);

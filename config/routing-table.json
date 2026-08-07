@@ -288,10 +288,9 @@
       "id": "C7",
       "group": "C",
       "event_type": "runtime.error_rate_spike",
-      "label": "error-rate spike above baseline (when error connector exists)",
-      "notes": "v1 ships without an error connector; row reserved",
-      "v1_scope": false,
-      "reserved_reason": "waits on an error-rate connector, per the routing doc's own v1 scope note",
+      "label": "error-rate spike above baseline",
+      "notes": "live: the error beacon produces this and a template renders it",
+      "v1_scope": true,
       "tiers": {
         "sandbox": { "path": "SILENT", "delivery": "NONE" },
         "personal": { "path": "TEMPLATE", "delivery": "DIGEST" },

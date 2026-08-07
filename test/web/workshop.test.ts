@@ -138,6 +138,44 @@ describe('web/routes/workshop — the workshop surface', () => {
     expect(res.body.error).toMatch(/wasn't found/i);
   });
 
+  it("mode: 'plan' reaches the turn — the think-first path is wired end to end", async () => {
+    let seen: unknown = null;
+    const res = await request(
+      app({
+        runTurn: (async (_db, _org, _projectId, _text, _cfg, options) => {
+          seen = options;
+          return { runId: 'r', status: 'succeeded', costCents: 0, reply: 'ok', stagedChangesReady: false };
+        }) as WorkshopDeps['runTurn'],
+      }),
+    )
+      .post('/api/projects/loom/workshop/message')
+      .send({ text: 'should we add accounts?', mode: 'plan' });
+    expect(res.status).toBe(202);
+    expect(seen).toMatchObject({ mode: 'plan' });
+  });
+
+  it('omitted mode builds — thinking is opt-in per message, never a default', async () => {
+    let seen: unknown = null;
+    const res = await request(
+      app({
+        runTurn: (async (_db, _org, _projectId, _text, _cfg, options) => {
+          seen = options;
+          return { runId: 'r', status: 'succeeded', costCents: 0, reply: 'ok', stagedChangesReady: false };
+        }) as WorkshopDeps['runTurn'],
+      }),
+    )
+      .post('/api/projects/loom/workshop/message')
+      .send({ text: 'add accounts' });
+    expect(res.status).toBe(202);
+    expect(seen).toMatchObject({ mode: 'build' });
+  });
+
+  it('an unknown mode is a plain 400, before anything fires', async () => {
+    const res = await request(app()).post('/api/projects/loom/workshop/message').send({ text: 'x', mode: 'yolo' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/mode must be/i);
+  });
+
   it("a file staged for one project can't be spent on another project's message", async () => {
     const staged = await request(app())
       .post('/api/projects/loom/workshop/uploads')

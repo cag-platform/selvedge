@@ -6,7 +6,6 @@ import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
 import { TrackRecord } from './pages/TrackRecord.js';
 import { Workshop } from './pages/Workshop.js';
-import { Sketches, SketchThread } from './pages/Sketch.js';
 import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
@@ -68,8 +67,6 @@ function AuthedApp() {
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               <Route path="/projects/:projectId/workshop" element={<Workshop />} />
-              <Route path="/sketch" element={<Sketches />} />
-              <Route path="/sketch/:sketchId" element={<SketchThread />} />
               <Route path="/tray" element={<Tray />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />

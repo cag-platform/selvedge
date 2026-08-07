@@ -25,8 +25,10 @@ import { useCredential } from '../credentials/store.js';
  *      narration, mechanical brief), exactly as it does when the voice is off.
  */
 
-export const FUEL_PROVIDERS = ['anthropic', 'openai', 'gemini', 'kimi'] as const;
-export type FuelProvider = (typeof FUEL_PROVIDERS)[number];
+// The provider table lives in the registry; re-exported here so the fuel
+// seam's import surface is unchanged.
+export { FUEL_PROVIDERS, type FuelProvider } from '../registry.js';
+import { FUEL_PROVIDERS, type FuelProvider } from '../registry.js';
 
 export type ResolvedFuel = {
   client: LlmClient;

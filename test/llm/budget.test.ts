@@ -60,6 +60,27 @@ describe('llm/budget — a cap that actually stops', () => {
     await close();
   });
 
+  it('only/except scoping genuinely partitions spend — the sketch and grade carve-outs ride on this', async () => {
+    // One org, three purposes. The watching cap must see only its own spend;
+    // sketch and grade each see only theirs. If the scoping breaks, an
+    // afternoon of grading silently makes tomorrow's brief mechanical.
+    const purposes = [['narrate', 0.5], ['sketch', 2.0], ['grade', 4.0]] as const;
+    for (const [purpose, usd] of purposes) {
+      await db.insert(llmUsage).values({
+        id: ulid(), orgId, purpose, model: 'm', tokensIn: 1, tokensOut: 1, costUsd: usd, ok: 'true',
+      });
+    }
+    expect(await spendTodayUsd(db, orgId)).toBeCloseTo(6.5);
+    expect(await spendTodayUsd(db, orgId, new Date(), { only: ['grade'] })).toBeCloseTo(4.0);
+    expect(await spendTodayUsd(db, orgId, new Date(), { except: ['sketch', 'grade'] })).toBeCloseTo(0.5);
+    // The watching gate excludes both carve-outs: $0.50 of watching spend
+    // against the default $1 cap is under, despite $6 of carved-out spend
+    // sitting right beside it.
+    const state = await checkDailyBudget(db, orgId);
+    expect(state.spentUsd).toBeCloseTo(0.5);
+    expect(state.over).toBe(false);
+  });
+
   it('sums only today spend, and counts failed calls', async () => {
     await spend(db, 0.2);
     await spend(db, 0.3);

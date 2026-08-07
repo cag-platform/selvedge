@@ -10,7 +10,7 @@ import { makePollerIngest } from '../monitor/wiring.js';
 import { ingestEvent } from '../resolution/ingest.js';
 import { backfillRepoForOrg } from '../connectors/github/backfill.js';
 import { createNewRepo } from '../connectors/github/newRepo.js';
-import { buildAskDeps, buildComposeDeps, buildNarrationDeps, buildSketchDeps } from '../llm/factory.js';
+import { buildAskDeps, buildComposeDeps, buildNarrationDeps } from '../llm/factory.js';
 import { buildPushSender } from '../push/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
@@ -34,8 +34,7 @@ import { createPortabilityRouter } from './routes/portability.js';
 import { createBeaconRouter } from './routes/beacon.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createLedgerRouter } from './routes/ledger.js';
-import { createWorkshopRouter, startWorkshopTurn } from './routes/workshop.js';
-import { createSketchRouter } from './routes/sketch.js';
+import { createWorkshopRouter } from './routes/workshop.js';
 import { buildBuildEngine } from '../runner/daytona/factory.js';
 import { driveCard } from '../cards/drive.js';
 
@@ -133,13 +132,6 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createProtectionRouter(db));
   app.use(createConnectorsHealthRouter(db));
   app.use(createAskRouter(db, (orgId) => buildAskDeps(db, orgId)));
-  // Sketch: think an idea through cheaply, then hand the brief to the workshop.
-  app.use(
-    createSketchRouter(db, {
-      resolveDeps: (orgId) => buildSketchDeps(db, orgId),
-      handOff: (orgId, projectId, text) => startWorkshopTurn(db, orgId, projectId, text),
-    }),
-  );
   app.use(createTrustRouter(db));
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));

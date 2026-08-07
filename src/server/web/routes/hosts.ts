@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { connectCredential, listConnected, revokeCredential } from '../../connectors/credentials/store.js';
 import { vaultConfigured } from '../../connectors/credentials/crypto.js';
+import { HOST_CREDENTIAL_PROVIDERS, type HostProvider as RegistryHostProvider } from '../../connectors/registry.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -21,8 +22,8 @@ function orgIdOf(req: Request): string {
  * the connectors-health surface reports whether it's actually working.
  */
 
-const HOST_PROVIDERS = ['railway', 'vercel', 'supabase'] as const;
-type HostProvider = (typeof HOST_PROVIDERS)[number];
+const HOST_PROVIDERS = HOST_CREDENTIAL_PROVIDERS;
+type HostProvider = RegistryHostProvider;
 
 function isHostProvider(v: unknown): v is HostProvider {
   return typeof v === 'string' && (HOST_PROVIDERS as readonly string[]).includes(v);
