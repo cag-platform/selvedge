@@ -229,6 +229,16 @@ of success. The five values are `verified | probably | inconclusive |
 didnt_work | stopped`, and `stopped` comes only from the card machine, never
 from verification.
 
+**`verified` is currently unreachable, by construction.** `verify/checks.ts`
+generates the acceptance check with `how: { via: 'manual' }`, `runCheckSpec`
+short-circuits manual checks to `could_not_run`, and `computeVerdict` returns
+`verified` only when acceptance *passes*. So today's ceiling is `probably`.
+Nothing in `server/verify/` imports an LLM module at all — the second model that
+would supply the acceptance evidence does not exist yet. This is the honesty
+machinery behaving correctly (it will not claim success it cannot evidence)
+rather than a bug, but it is worth knowing before reading the verdict code and
+assuming a grader is wired somewhere.
+
 `verify/observe.ts` is the post-deploy window: probe the live app on a cadence
 for the duration of the watch, and roll back on a **confirmed** break. It reuses
 the monitor's two-failure debounce exactly — one failed probe never rolls
@@ -339,7 +349,7 @@ the first request. Everything else degrades, and the degradation is the point:
 | `DAYTONA_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` / `GITHUB_TOKEN` | No build engine. An approved card simply waits — no inert half-run, no surprise spend. |
 | `PREVIEW_DOMAIN` | Proxy inert; previews fall back to signed Daytona URLs. |
 | APNs keys | Push-routed narrations are stored and fold into the brief; nothing is sent. |
-| `EVAL_MODEL` | No independent second-model acceptance check. |
+| `EVAL_MODEL` | Nothing — reserved for a grader that doesn't exist yet (see §12). Setting it does not produce an independent check. |
 
 **The daily model-spend cap** (`llm/budget.ts`) is per-org and enforced. Over the
 cap does not error and does not silence the product — it drops the org to the

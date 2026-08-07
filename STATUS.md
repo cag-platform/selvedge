@@ -64,7 +64,6 @@ in the customer's repo.
 | **Put it online** | Customer connects Railway; `NEON_API_KEY` for databases | The button says so plainly and explains why owning it is the good outcome. |
 | **Login with Railway** | Railway OAuth app + `RAILWAY_OAUTH_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | **Module built and tested; connect route and button NOT written yet.** |
 | **Push notifications** | APNs keys | Alerts still fold into the brief. |
-| **Independent verdict** | `EVAL_MODEL` | No second-model check on "did it do what was asked". |
 | **GitHub App events** | App id / key / slug / webhook secret | Repos can be worked on, but pushes and deploys don't flow into the brief. |
 
 ---
@@ -112,6 +111,14 @@ names what did and did not happen rather than going quiet.
 
 ### Also scoped, not built
 
+- **The independent verdict.** Previously listed above as "built, waiting on a
+  key" — it is not built. `src/server/verify/` never calls a model at all. The
+  acceptance check is generated with `via: 'manual'` and short-circuits to
+  `could_not_run`, so **no change can currently reach the `verified` verdict**;
+  the honest ceiling today is `probably`. That is the machinery working as
+  designed — it refuses to claim success it can't evidence — but the second
+  model that would supply the evidence does not exist yet. `EVAL_MODEL` is
+  reserved for it and, until it ships, changes nothing.
 - **Model picker** (Claude / Codex / Kimi). The seam exists: `FUEL_PROVIDERS`
   already lists `anthropic | openai | gemini | kimi` with only Anthropic
   implemented, and Kimi speaks Anthropic's API format, so the same agent could run
