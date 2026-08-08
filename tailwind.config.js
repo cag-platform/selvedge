@@ -44,6 +44,9 @@ export default {
         lede: ['var(--text-lede)', { lineHeight: '1.6' }],
         headline: ['var(--text-headline)', { lineHeight: '1.35' }],
         display: ['var(--text-display)', { lineHeight: '1.3' }],
+        section: ['var(--text-section)', { lineHeight: '1.3' }],
+        'hero-sub': ['var(--text-hero-sub)', { lineHeight: '1.55' }],
+        hero: ['var(--text-hero)', { lineHeight: '1.12' }],
       },
       borderRadius: {
         pane: 'var(--radius-pane)',

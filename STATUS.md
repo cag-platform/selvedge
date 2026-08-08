@@ -36,6 +36,7 @@ founder actually speaks.
 
 | Area | What works |
 |---|---|
+| **Landing page** | What a stranger sees at tryselvedge.com: the decided words from EXPLAINER.md arranged around a sample brief that wears the real edge vocabulary (sage / brass / rust / can't-tell). Sign-in lives at `/sign-in`; a signed-in visit to `/` still lands on Today. |
 | **Sign-in** | Clerk, email+password. A solo owner is a tenant of one — never asked to create an "organization". |
 | **Projects** | Create from an existing repo, or **create a brand-new private GitHub repo** in one step. New things start as a sandbox and land straight in the Workshop. |
 | **Today / brief** | Daily digest per org at local 7am, composed by the model when fuel is connected, mechanical when not. Repeats collapse ("…today (3 times)"). |

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
@@ -12,6 +12,7 @@ import { Tray } from './pages/Tray.js';
 import { PackEditor } from './pages/PackEditor.js';
 import { Admin } from './pages/Admin.js';
 import { Styleguide } from './pages/Styleguide.js';
+import { Landing } from './pages/Landing.js';
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -44,15 +45,27 @@ function AuthedApp() {
   return (
     <>
       <SignedOut>
-        <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
-            <p className="max-w-sm text-body text-ink-dim">
-              A calm, plain-English watch over the software you ship. One morning brief; the important things, first.
-            </p>
-          </div>
-          <SignIn />
-        </div>
+        {/* Signed out, every path is the landing page except /sign-in, which
+            keeps the original centered Clerk card. A signed-in visit to these
+            same paths falls through to the app below — so "/" is the landing
+            for a stranger and Today for an owner. */}
+        <Routes>
+          <Route
+            path="/sign-in"
+            element={
+              <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
+                  <p className="max-w-sm text-body text-ink-dim">
+                    A calm, plain-English watch over the software you ship. One morning brief; the important things, first.
+                  </p>
+                </div>
+                <SignIn />
+              </div>
+            }
+          />
+          <Route path="*" element={<Landing />} />
+        </Routes>
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
@@ -62,6 +75,8 @@ function AuthedApp() {
             <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Today />} />
+              {/* The moment sign-in completes, this path is the app's — land on Today. */}
+              <Route path="/sign-in" element={<Navigate to="/" replace />} />
               <Route path="/work" element={<Work />} />
               <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
