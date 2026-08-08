@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { Pane, btnPrimary, eyebrowCls } from '../components/ui.js';
+import { Pane, eyebrowCls } from '../components/ui.js';
+import { walkthroughSteps } from '../lib/walkthrough.js';
 import { Brief, BriefEyebrow, BriefClose, BriefItem, Headline, Reveal } from '../components/Brief.js';
 import { StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
 import { ProjectRail, type ProjectCardData } from '../components/ProjectRail.js';
@@ -75,12 +76,20 @@ export function Today() {
   const [cards, setCards] = useState<WorkCardData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [fuelConnected, setFuelConnected] = useState(false);
 
   const load = () =>
     Promise.all([
       api.get<TodayResponse>('/api/today').then(setData),
       api.get<ProjectCardData[]>('/api/projects').then(setProjects),
       api.get<{ cards: WorkCardData[] }>('/api/cards').then((r) => setCards(r.cards)),
+      // Feeds the getting-started checklist only. A hiccup here must not
+      // blank the whole page the way the three loads above do — the page
+      // degrades to "fuel not connected", which is merely a pending step.
+      api
+        .get<{ connected: unknown[] }>('/api/fuel')
+        .then((r) => setFuelConnected(r.connected.length > 0))
+        .catch(() => setFuelConnected(false)),
     ]).catch((e: Error) => setError(e.message));
 
   useEffect(() => {
@@ -120,50 +129,60 @@ export function Today() {
     </section>
   );
 
-  // First run: nothing connected means there is nothing to watch — so no
-  // brief, and crucially NO compose button. Composing on an empty org would
-  // produce a real "A quiet night — nothing needs you." digest (idempotent
-  // for the day), a false all-clear for someone who has connected nothing —
-  // the exact output this product exists to never make. The guidance pane
-  // replaces both digest branches and disappears with the first project.
-  if (projects.length === 0) {
-    return (
-      <div className="animate-settle space-y-8">
-        <section aria-label="Getting started">
-          <p className={eyebrowCls}>Morning brief · {dateLine}</p>
-          <Pane className="mt-3 p-6">
-            <p className="text-body-lg text-ink">Nothing to watch yet.</p>
-            <p className="mt-1 max-w-xl text-body text-ink-dim">
-              Bring an app you already own — or start a new one — and the morning brief begins the day
-              it has something to watch. One plain-English note at 7am; the important things, first.
-            </p>
-            <Link to="/projects" className={`mt-4 inline-block ${btnPrimary}`}>
-              Add your first app
-            </Link>
-          </Pane>
-        </section>
-      </div>
-    );
-  }
-
+  // Until the first brief exists, the page is the getting-started walkthrough
+  // — a three-step checklist whose state is derived on every render (no
+  // first-run flag, nothing to dismiss). It carries the one safety rule from
+  // walkthrough.ts: compose is offered only once a project exists, because a
+  // brief composed about nothing would be a false all-clear. The moment a
+  // digest exists, this branch never renders again.
   if (!digest) {
+    const steps = walkthroughSteps({
+      hasProject: projects.length > 0,
+      ...(projects[0]?.name ? { firstProjectName: projects[0].name } : {}),
+      fuelConnected,
+    });
     return (
       <div className="animate-settle space-y-8">
         {attentionCards}
-        <Brief status="healthy">
-          <div>
-            <BriefEyebrow>Morning brief · {dateLine}</BriefEyebrow>
-            <Headline>Nothing composed yet today.</Headline>
-          </div>
-          <BriefItem kind="standing">The brief writes itself at your local 7:00am — or now, if you'd like.</BriefItem>
-          <button
-            onClick={() => void composeNow()}
-            disabled={composing}
-            className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
-          >
-            {composing ? 'Composing…' : "Compose today's brief now"}
-          </button>
-        </Brief>
+        <section aria-label="Getting started">
+          <p className={eyebrowCls}>Morning brief · {dateLine}</p>
+          <Pane className="mt-3 p-6">
+            <p className="text-body-lg text-ink">
+              {projects.length === 0 ? 'Nothing to watch yet — three steps and the watching begins.' : 'Almost there.'}
+            </p>
+            <ol className="mt-4 space-y-4">
+              {steps.map((step) => (
+                <li key={step.key} className="flex gap-3">
+                  <span
+                    aria-hidden
+                    className="mt-0.5 w-4 shrink-0 text-center text-body font-medium"
+                    style={{ color: step.done ? 'var(--healthy)' : 'var(--ink-quiet)' }}
+                  >
+                    {step.done ? '✓' : '·'}
+                  </span>
+                  <div>
+                    <p className={`text-body font-medium ${step.done ? 'text-ink-quiet' : 'text-ink'}`}>{step.title}</p>
+                    <p className="text-body text-ink-dim">{step.detail}</p>
+                    {!step.done && step.to && (
+                      <Link to={step.to} className="mt-1 inline-block text-body text-action-bright hover:underline">
+                        {step.key === 'project' ? 'Add an app →' : 'Connect a key →'}
+                      </Link>
+                    )}
+                    {step.offerCompose && (
+                      <button
+                        onClick={() => void composeNow()}
+                        disabled={composing}
+                        className="mt-2 rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+                      >
+                        {composing ? 'Composing…' : "Compose today's brief now"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Pane>
+        </section>
         <ProjectRail projects={projects} />
       </div>
     );

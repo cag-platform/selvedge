@@ -77,8 +77,8 @@ export function Landing() {
               English &mdash; the important things, first.
             </p>
             <div className="mt-8 flex items-center gap-4">
-              <Link to="/sign-in" className={btnPrimary}>
-                Sign in
+              <Link to="/sign-up" className={btnPrimary}>
+                Get started
               </Link>
               <span className="text-meta text-ink-quiet">Bring an app you already own.</span>
             </div>
@@ -170,8 +170,8 @@ export function Landing() {
             who don&rsquo;t have an engineer to call.
           </p>
           <div className="mt-8 flex items-center gap-4">
-            <Link to="/sign-in" className={`${btnPrimary} shrink-0 whitespace-nowrap`}>
-              Sign in
+            <Link to="/sign-up" className={`${btnPrimary} shrink-0 whitespace-nowrap`}>
+              Get started
             </Link>
             <span className="text-meta text-ink-quiet">
               Everything Selvedge knows about your app exports as one file &mdash; being able to leave is

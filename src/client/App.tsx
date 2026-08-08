@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { SignedIn, SignedOut, SignIn } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
@@ -60,7 +60,21 @@ function AuthedApp() {
                     A calm, plain-English watch over the software you ship. One morning brief; the important things, first.
                   </p>
                 </div>
-                <SignIn />
+                <SignIn signUpUrl="/sign-up" />
+              </div>
+            }
+          />
+          <Route
+            path="/sign-up"
+            element={
+              <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
+                  <p className="max-w-sm text-body text-ink-dim">
+                    Make an account, then bring an app you already own — the walkthrough takes it from there.
+                  </p>
+                </div>
+                <SignUp signInUrl="/sign-in" />
               </div>
             }
           />
@@ -75,8 +89,9 @@ function AuthedApp() {
             <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Today />} />
-              {/* The moment sign-in completes, this path is the app's — land on Today. */}
+              {/* The moment sign-in/up completes, these paths are the app's — land on Today. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
+              <Route path="/sign-up" element={<Navigate to="/" replace />} />
               <Route path="/work" element={<Work />} />
               <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />

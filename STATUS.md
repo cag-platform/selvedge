@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **958 tests across 122
+and what's still only a plan. Written for a non-coder. **965 tests across 123
 files, all green.**
 
 ---
@@ -36,7 +36,7 @@ founder actually speaks.
 
 | Area | What works |
 |---|---|
-| **Landing page** | What a stranger sees at tryselvedge.com: the decided words from EXPLAINER.md arranged around a sample brief that wears the real edge vocabulary (sage / brass / rust / can't-tell). Sign-in lives at `/sign-in`; a signed-in visit to `/` still lands on Today. |
+| **Landing page & sign-up** | What a stranger sees at tryselvedge.com: the decided words from EXPLAINER.md arranged around a sample brief that wears the real edge vocabulary. "Get started" leads to a real sign-up (`/sign-up`, cross-linked with `/sign-in`); a new account lands on a three-step getting-started checklist on Today — add an app, optionally connect a key, compose the first brief — with state derived from data, nothing to dismiss, gone once the first brief exists. Compose is never offered before a project exists. |
 | **Sign-in** | Clerk, email+password. A solo owner is a tenant of one — never asked to create an "organization". |
 | **Projects** | Create from an existing repo, or **create a brand-new private GitHub repo** in one step. New things start as a sandbox and land straight in the Workshop. |
 | **Today / brief** | Daily digest per org at local 7am, composed by the model when fuel is connected, mechanical when not. Repeats collapse ("…today (3 times)"). |
