@@ -71,6 +71,17 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
               ))}
               <option value="__manual__">Type a repo by name…</option>
             </select>
+            {repos.length === 0 && (
+              // The picker is empty until the GitHub App is installed — say
+              // so, and say the good part: installing IS the bulk import.
+              <span className="mt-1 block text-meta text-ink-quiet">
+                Already have apps on GitHub?{' '}
+                <a href="/api/connectors/github/install" className="text-action-bright hover:underline">
+                  Install the Selvedge GitHub App
+                </a>{' '}
+                and your repos appear here — each one becomes a project automatically.
+              </span>
+            )}
             {brandNew && (
               <span className="mt-1 block text-body text-ink-quiet">
                 A private repo named after the project, made for you on GitHub. It starts as a

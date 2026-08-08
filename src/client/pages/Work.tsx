@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { WorkCard } from '../components/WorkCard.js';
 import { needsOwner, type WorkCardData, type CardState } from '../lib/card.js';
@@ -44,11 +45,23 @@ export function Work() {
 
       {projects.length > 0 && <AskForChange projects={projects} onCreated={() => void load()} />}
 
-      {cards.length === 0 && (
-        <p className="text-body text-ink-quiet">
-          Nothing on the bench yet — ask for a change above, or I'll raise one the moment something breaks that I can fix.
-        </p>
-      )}
+      {cards.length === 0 &&
+        // The two sentences must match what's actually on screen: the ask
+        // form only renders once a project exists, so pointing "above" at
+        // zero projects would point at nothing.
+        (projects.length === 0 ? (
+          <p className="text-body text-ink-quiet">
+            Nothing on the bench yet —{' '}
+            <Link to="/projects" className="text-action-bright hover:underline">
+              add your first app
+            </Link>{' '}
+            and ask for a change in plain words.
+          </p>
+        ) : (
+          <p className="text-body text-ink-quiet">
+            Nothing on the bench yet — ask for a change above, or I'll raise one the moment something breaks that I can fix.
+          </p>
+        ))}
 
       {attention.length > 0 && (
         <Section label="Needs you">

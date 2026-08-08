@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
+import { Pane, btnPrimary, eyebrowCls } from '../components/ui.js';
 import { Brief, BriefEyebrow, BriefClose, BriefItem, Headline, Reveal } from '../components/Brief.js';
 import { StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
 import { ProjectRail, type ProjectCardData } from '../components/ProjectRail.js';
@@ -117,6 +119,32 @@ export function Today() {
       </div>
     </section>
   );
+
+  // First run: nothing connected means there is nothing to watch — so no
+  // brief, and crucially NO compose button. Composing on an empty org would
+  // produce a real "A quiet night — nothing needs you." digest (idempotent
+  // for the day), a false all-clear for someone who has connected nothing —
+  // the exact output this product exists to never make. The guidance pane
+  // replaces both digest branches and disappears with the first project.
+  if (projects.length === 0) {
+    return (
+      <div className="animate-settle space-y-8">
+        <section aria-label="Getting started">
+          <p className={eyebrowCls}>Morning brief · {dateLine}</p>
+          <Pane className="mt-3 p-6">
+            <p className="text-body-lg text-ink">Nothing to watch yet.</p>
+            <p className="mt-1 max-w-xl text-body text-ink-dim">
+              Bring an app you already own — or start a new one — and the morning brief begins the day
+              it has something to watch. One plain-English note at 7am; the important things, first.
+            </p>
+            <Link to="/projects" className={`mt-4 inline-block ${btnPrimary}`}>
+              Add your first app
+            </Link>
+          </Pane>
+        </section>
+      </div>
+    );
+  }
 
   if (!digest) {
     return (
