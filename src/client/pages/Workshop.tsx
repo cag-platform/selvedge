@@ -4,6 +4,8 @@ import { api } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from '../components/WorkshopAttach.js';
 import { btnPrimary } from '../components/ui.js';
+import { Reveal } from '../components/Brief.js';
+import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
 
 /**
  * The workshop — where a project gets fixed, changed, and iterated on, in plain
@@ -21,6 +23,9 @@ type Message = {
   content: string;
   at: string;
   attachments: Array<{ id: string; mime: string }>;
+  run_id?: string | null;
+  /** The flight record — present on activity rows once a turn has finished. */
+  meta?: RunRecordView | null;
 };
 type WorkshopData = {
   project: { id: string; name: string };
@@ -31,7 +36,18 @@ type WorkshopData = {
   staged_changes_ready: boolean;
   sandbox: 'attached' | 'none';
   thread: Message[];
-  runs: Array<{ id: string; status: string; cost_cents: number | null; commit: string | null; kind: 'ship' | 'turn'; at: string }>;
+  runs: Array<{
+    id: string;
+    status: string;
+    cost_cents: number | null;
+    commit: string | null;
+    kind: 'ship' | 'turn' | 'undo' | 'plan';
+    at: string;
+    model?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+    changed_paths?: string[] | null;
+  }>;
   cost: { today_cents: number; month_cents: number };
 };
 type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
@@ -355,9 +371,31 @@ export function Workshop() {
             {data.thread.map((m) =>
               m.role === 'activity' ? (
                 // The live work feed: what the agent is actually doing, line by
-                // line, updating in place while the turn runs.
+                // line, updating in place while the turn runs. Once the turn
+                // finishes, the flight record arrives on meta and the full
+                // drill-down opens below the feed's tail — every step with its
+                // outcome, past the 30-line display cap.
                 <div key={m.id} className="border-l-2 border-hairline pl-3">
                   <p className="whitespace-pre-line font-mono text-tech text-ink-quiet">{m.content}</p>
+                  {m.meta?.tools && m.meta.tools.length > 0 && (
+                    <div className="mt-1">
+                      <Reveal summary={`the full record · ${summarizeRecord(m.meta)}`}>
+                        {m.meta.tools.map((t) => (
+                          <div key={t.id}>{describeToolEvent(t)}</div>
+                        ))}
+                        {(() => {
+                          const run = data.runs.find((r) => r.id === m.meta?.run_id);
+                          if (!run) return null;
+                          const bits = [
+                            run.changed_paths?.length ? `files changed: ${run.changed_paths.join(', ')}` : null,
+                            run.cost_cents != null ? `cost ${formatCents(run.cost_cents)}` : null,
+                            run.model ? `model ${run.model}` : null,
+                          ].filter(Boolean);
+                          return bits.length ? <div className="mt-1 text-ink-quiet">{bits.join(' · ')}</div> : null;
+                        })()}
+                      </Reveal>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div key={m.id} className={m.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-3'}>

@@ -225,8 +225,23 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
           content: m.content,
           at: m.createdAt.toISOString(),
           attachments: attByMessage.get(m.id) ?? [],
+          run_id: m.runId,
+          // The flight record rides only activity rows — everything else's meta
+          // (ship receipts etc.) keeps its existing shape and stays server-side.
+          ...(m.role === 'activity' && m.meta ? { meta: m.meta } : {}),
         })),
-        runs: runs.map((r) => ({ id: r.id, status: r.status, cost_cents: r.costCents, commit: r.commitSha, kind: r.prompt.startsWith('ship:') ? 'ship' : 'turn', at: r.createdAt.toISOString() })),
+        runs: runs.map((r) => ({
+          id: r.id,
+          status: r.status,
+          cost_cents: r.costCents,
+          commit: r.commitSha,
+          kind: r.prompt.startsWith('ship:') ? 'ship' : r.prompt.startsWith('undo:') ? 'undo' : r.prompt.startsWith('plan:') ? 'plan' : 'turn',
+          at: r.createdAt.toISOString(),
+          model: r.model,
+          started_at: r.startedAt?.toISOString() ?? null,
+          finished_at: r.finishedAt?.toISOString() ?? null,
+          changed_paths: (r.changedPaths as string[] | null) ?? null,
+        })),
         cost: { today_cents: todayCents, month_cents: monthCents },
       });
     }),

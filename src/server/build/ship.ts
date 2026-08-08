@@ -133,7 +133,9 @@ export async function shipChanges(
   }
   const commit = (push.result ?? '').trim().split('\n').at(-1)?.slice(0, 40) ?? 'unknown';
 
-  // 3) The record and the undo lever.
+  // 3) The record and the undo lever. changedPaths is the exact file list the
+  // risk gate judged above — persisted so a shipped commit is auditable: what
+  // went out, and why it was (or wasn't) hard-gated.
   await db.insert(agentRuns).values({
     id: ulid(),
     orgId,
@@ -141,6 +143,7 @@ export async function shipChanges(
     prompt: `ship: ${summary}`,
     status: 'succeeded',
     commitSha: commit,
+    changedPaths: paths,
     startedAt: new Date(),
     finishedAt: new Date(),
   });
@@ -256,6 +259,17 @@ export async function rollbackShip(
     return { ok: false, message: `I couldn't cleanly undo that — ${(res.result ?? '').trim().slice(-200)}. Nothing was force-pushed; your history is untouched.` };
   }
 
+  // An undo is a decision too — it gets a run row like the ship it reverses,
+  // so the record shows both directions of the change.
+  await db.insert(agentRuns).values({
+    id: ulid(),
+    orgId,
+    projectId,
+    prompt: `undo: revert of ${commit.slice(0, 7)}`,
+    status: 'succeeded',
+    startedAt: new Date(),
+    finishedAt: new Date(),
+  });
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,

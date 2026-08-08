@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { entryEdge, outcomeLabel, formatCents, type LedgerEntryData, type LedgerSummaryData } from '../lib/ledger.js';
+import { Reveal } from '../components/Brief.js';
+import { describeAct, type ActView } from '../lib/replay.js';
 
 /**
  * The track record — what Selvedge has actually done, what it cost, and how it
@@ -77,6 +79,17 @@ function Stat({ n, text, label }: { n?: number; text?: string; label: string }) 
 function Row({ entry }: { entry: LedgerEntryData }) {
   const edge = entryEdge(entry);
   const when = new Date(entry.at);
+  // The drill-down: a finished card's acts, fetched on first expand. Before
+  // this, acts became unreachable the moment a card went terminal — the
+  // endpoint served them, the record page just never asked.
+  const [acts, setActs] = useState<ActView[] | null>(null);
+  const loadActs = () => {
+    if (acts !== null) return;
+    api
+      .get<{ card: { acts: ActView[] } }>(`/api/cards/${entry.cardId}`)
+      .then((r) => setActs(r.card.acts))
+      .catch(() => setActs([]));
+  };
   return (
     <div className="relative rounded-card border border-hairline bg-panel px-4 py-3 pl-5">
       <SelvedgeEdge status={edge} />
@@ -91,6 +104,21 @@ function Row({ entry }: { entry: LedgerEntryData }) {
         {entry.trigger === 'incident' ? 'I raised this' : 'you asked'} · {formatCents(entry.spentCents)}
         {Number.isNaN(when.getTime()) ? '' : ` · ${when.toLocaleDateString()}`}
       </p>
+      <div onClick={loadActs} className="mt-1">
+        <Reveal summary="history">
+          {acts === null ? (
+            <div className="text-ink-quiet">loading…</div>
+          ) : acts.length === 0 ? (
+            <div className="text-ink-quiet">no history recorded for this one</div>
+          ) : (
+            <ol className="space-y-0.5">
+              {acts.map((a, i) => (
+                <li key={i}>{describeAct(a)}</li>
+              ))}
+            </ol>
+          )}
+        </Reveal>
+      </div>
     </div>
   );
 }

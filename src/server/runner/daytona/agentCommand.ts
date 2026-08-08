@@ -1,5 +1,6 @@
 import type { Card } from '../../cards/types.js';
 import type { AgentStepResult } from '../types.js';
+import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from '../../../shared/types/toolEvent.js';
 
 /**
  * The pure parts of the agent step — everything that can be decided without a
@@ -196,13 +197,23 @@ export function parseAssistantText(stdout: string): string {
 }
 
 /**
- * Compact, owner-readable lines for what the agent is doing right now — one per
- * tool use, in plain words ("Editing src/App.tsx", "Running: npm test"). This is
- * the live activity feed: parsed incrementally from the stream-json log while
- * the turn runs, so the owner watches the work, not a spinner.
+ * The flight recorder's parser: every tool_use in the stream, as a structured
+ * ToolEvent — full-enough inputs (bounded per field), plus the OUTCOME from the
+ * paired tool_result, which no parser read before this existed. Whether an edit
+ * applied or a test passed lives in `type: "user"` events; ignoring them meant
+ * the record could show work but never whether the work worked.
+ *
+ * Bounded by construction: per-field input caps, a failed result's note capped,
+ * and at most MAX_TOOL_EVENTS events with a truncated flag — this is a durable
+ * jsonb record, not a log archive.
  */
-export function parseToolActivity(stdout: string): string[] {
-  const lines: string[] = [];
+export function parseToolEvents(stdout: string): { tools: ToolEvent[]; truncated: boolean } {
+  const tools: ToolEvent[] = [];
+  const byId = new Map<string, ToolEvent>();
+  let truncated = false;
+
+  const cap = (v: string, n: number) => (v.length > n ? `${v.slice(0, n - 1)}…` : v);
+
   for (const line of stdout.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed.startsWith('{')) continue;
@@ -212,40 +223,98 @@ export function parseToolActivity(stdout: string): string[] {
     } catch {
       continue;
     }
-    if (event.type !== 'assistant') continue;
-    const message = event.message as { content?: Array<Record<string, unknown>> } | undefined;
-    for (const block of message?.content ?? []) {
-      if (block.type !== 'tool_use') continue;
-      const name = typeof block.name === 'string' ? block.name : 'tool';
-      const input = (block.input ?? {}) as Record<string, unknown>;
-      const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : null);
-      const short = (v: string | null, n: number) => (v && v.length > n ? `${v.slice(0, n - 1)}…` : v ?? '');
-      const rel = (p: string | null) => (p ? p.replace(/^\/workspace\/app\//, '') : '');
-      switch (name) {
-        case 'Edit':
-        case 'Write':
-        case 'NotebookEdit':
-          lines.push(`Editing ${rel(str('file_path')) || 'a file'}`);
-          break;
-        case 'Read':
-          lines.push(`Reading ${rel(str('file_path')) || 'a file'}`);
-          break;
-        case 'Bash':
-          lines.push(`Running: ${short(str('command'), 70)}`);
-          break;
-        case 'Glob':
-        case 'Grep':
-          lines.push(`Searching for ${short(str('pattern'), 50)}`);
-          break;
-        case 'TodoWrite':
-          lines.push('Updating its plan');
-          break;
-        default:
-          lines.push(`Using ${name}`);
+
+    if (event.type === 'assistant') {
+      const message = event.message as { content?: Array<Record<string, unknown>> } | undefined;
+      for (const block of message?.content ?? []) {
+        if (block.type !== 'tool_use') continue;
+        if (tools.length >= MAX_TOOL_EVENTS) {
+          truncated = true;
+          continue;
+        }
+        const name = typeof block.name === 'string' ? block.name : 'tool';
+        const id = typeof block.id === 'string' ? block.id : `tool_${tools.length}`;
+        const rawInput = (block.input ?? {}) as Record<string, unknown>;
+        // Keep the inputs an owner (or a future analyst) would actually read;
+        // huge fields (old_string/new_string/content) ride bounded.
+        const input: Record<string, string> = {};
+        for (const key of ['file_path', 'command', 'pattern', 'description', 'url', 'old_string', 'new_string', 'content']) {
+          const v = rawInput[key];
+          if (typeof v === 'string' && v !== '') input[key] = cap(v, MAX_INPUT_CHARS);
+        }
+        const tool: ToolEvent = {
+          id,
+          name,
+          detail: describeToolUse(name, rawInput),
+          ...(Object.keys(input).length ? { input } : {}),
+        };
+        tools.push(tool);
+        byId.set(id, tool);
+      }
+    }
+
+    // tool_result blocks ride user events: the outcome half of the pair.
+    if (event.type === 'user') {
+      const message = event.message as { content?: Array<Record<string, unknown>> } | undefined;
+      for (const block of message?.content ?? []) {
+        if (block.type !== 'tool_result') continue;
+        const useId = typeof block.tool_use_id === 'string' ? block.tool_use_id : '';
+        const tool = byId.get(useId);
+        if (!tool) continue;
+        const failed = block.is_error === true;
+        tool.ok = !failed;
+        if (failed) {
+          const content = block.content;
+          const text =
+            typeof content === 'string'
+              ? content
+              : Array.isArray(content)
+                ? content
+                    .map((c) => (typeof (c as Record<string, unknown>).text === 'string' ? ((c as Record<string, unknown>).text as string) : ''))
+                    .join(' ')
+                : '';
+          if (text.trim() !== '') tool.note = cap(text.trim(), MAX_NOTE_CHARS);
+        }
       }
     }
   }
-  return lines;
+
+  return { tools, truncated };
+}
+
+/** The owner-readable line for one tool use — the live feed's vocabulary. */
+function describeToolUse(name: string, input: Record<string, unknown>): string {
+  const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : null);
+  const short = (v: string | null, n: number) => (v && v.length > n ? `${v.slice(0, n - 1)}…` : v ?? '');
+  const rel = (p: string | null) => (p ? p.replace(/^\/workspace\/app\//, '') : '');
+  switch (name) {
+    case 'Edit':
+    case 'Write':
+    case 'NotebookEdit':
+      return `Editing ${rel(str('file_path')) || 'a file'}`;
+    case 'Read':
+      return `Reading ${rel(str('file_path')) || 'a file'}`;
+    case 'Bash':
+      return `Running: ${short(str('command'), 70)}`;
+    case 'Glob':
+    case 'Grep':
+      return `Searching for ${short(str('pattern'), 50)}`;
+    case 'TodoWrite':
+      return 'Updating its plan';
+    default:
+      return `Using ${name}`;
+  }
+}
+
+/**
+ * Compact, owner-readable lines for what the agent is doing right now — one per
+ * tool use, in plain words ("Editing src/App.tsx", "Running: npm test"). This is
+ * the live activity feed: parsed incrementally from the stream-json log while
+ * the turn runs, so the owner watches the work, not a spinner. A projection of
+ * parseToolEvents, so the feed and the durable record can never disagree.
+ */
+export function parseToolActivity(stdout: string): string[] {
+  return parseToolEvents(stdout).tools.map((t) => t.detail);
 }
 
 /**

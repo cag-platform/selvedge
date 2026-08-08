@@ -23,6 +23,7 @@ function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: str
   return async (command: string) => {
     opts.onCommand?.(command);
     if (command.includes('git status')) return { exitCode: 0, result: opts.staged ? ' M src/app.ts' : '' };
+    if (command.includes('git diff --name-only')) return { exitCode: 0, result: opts.staged ? 'src/app.ts\n' : '' };
     if (command.includes('__STATE:')) {
       const i = Math.min(poll, opts.polls.length - 1);
       poll += 1;
@@ -78,6 +79,18 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
 
     const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
     expect(thread.map((m) => m.role)).toEqual(['owner', 'activity', 'agent']);
+
+    // The flight recorder: every thread row joined to the run, and the
+    // activity row's meta carrying the full structured record.
+    expect(thread.every((m) => m.runId === out.runId)).toBe(true);
+    const record = thread.find((m) => m.role === 'activity')!.meta as { run_id: string; tools: Array<{ name: string }>; truncated: boolean };
+    expect(record.run_id).toBe(out.runId);
+    expect(record.truncated).toBe(false);
+    expect(record.tools.map((t) => t.name)).toEqual(['Read', 'Edit', 'Bash']);
+
+    // The files the turn touched land on the run row — the change is traceable.
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, out.runId));
+    expect(run!.changedPaths).toEqual(['src/app.ts']);
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_1');
   });
 

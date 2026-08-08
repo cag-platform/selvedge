@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, resultToStep } from '../../src/server/runner/daytona/agentCommand.js';
+import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents, resultToStep } from '../../src/server/runner/daytona/agentCommand.js';
 import type { Card } from '../../src/server/cards/types.js';
 
 function card(overrides: Partial<Card> = {}): Card {
@@ -155,5 +155,65 @@ describe('resultToStep — real cost into the runner, one turn is done', () => {
     const step = resultToStep({ subtype: 'error_during_execution', totalCostUsd: 0.2, sessionId: null, isError: true });
     expect(step.spentCents).toBe(20);
     expect(step.note).toMatch(/reported a problem/i);
+  });
+});
+
+describe('parseToolEvents — the flight recorder: structured, bounded, outcome-aware', () => {
+  const use = (id: string, name: string, input: Record<string, unknown>) =>
+    JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const result = (tool_use_id: string, over: Record<string, unknown> = {}) =>
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id, ...over }] } });
+
+  it('captures the call AND its outcome — the pair no parser read before', () => {
+    const log = [
+      use('t1', 'Edit', { file_path: '/workspace/app/src/App.tsx', old_string: 'a', new_string: 'b' }),
+      result('t1'),
+      use('t2', 'Bash', { command: 'npm test' }),
+      result('t2', { is_error: true, content: 'FAIL src/App.test.tsx — expected 2, got 3' }),
+    ].join('\n');
+    const { tools, truncated } = parseToolEvents(log);
+    expect(truncated).toBe(false);
+    expect(tools).toHaveLength(2);
+    expect(tools[0]).toMatchObject({ id: 't1', name: 'Edit', detail: 'Editing src/App.tsx', ok: true });
+    expect(tools[0]!.input).toMatchObject({ file_path: '/workspace/app/src/App.tsx', old_string: 'a', new_string: 'b' });
+    expect(tools[1]).toMatchObject({ id: 't2', name: 'Bash', ok: false });
+    expect(tools[1]!.note).toMatch(/expected 2, got 3/);
+  });
+
+  it('a call with no result carries no verdict — absence is not success', () => {
+    const { tools } = parseToolEvents(use('t9', 'Read', { file_path: '/workspace/app/x.ts' }));
+    expect(tools[0]!.ok).toBeUndefined();
+    expect(tools[0]!.note).toBeUndefined();
+  });
+
+  it('bounds huge inputs per field and says nothing false about the rest', () => {
+    const big = 'x'.repeat(10_000);
+    const { tools } = parseToolEvents(use('t1', 'Write', { file_path: '/workspace/app/a.ts', content: big }));
+    expect(tools[0]!.input!.content!.length).toBeLessThanOrEqual(2000);
+    expect(tools[0]!.input!.content!.endsWith('…')).toBe(true);
+  });
+
+  it('caps the event count and admits the cut with truncated:true', () => {
+    const log = Array.from({ length: 210 }, (_, i) => use(`t${i}`, 'Read', { file_path: `/workspace/app/f${i}.ts` })).join('\n');
+    const { tools, truncated } = parseToolEvents(log);
+    expect(tools).toHaveLength(200);
+    expect(truncated).toBe(true);
+  });
+
+  it('a failed result note is bounded too', () => {
+    const { tools } = parseToolEvents(
+      [use('t1', 'Bash', { command: 'npm run build' }), result('t1', { is_error: true, content: 'e'.repeat(3000) })].join('\n'),
+    );
+    expect(tools[0]!.note!.length).toBeLessThanOrEqual(500);
+  });
+
+  it('parseToolActivity is a pure projection — the live feed and the record can never disagree', () => {
+    const log = [
+      use('t1', 'Edit', { file_path: '/workspace/app/src/App.tsx' }),
+      use('t2', 'Grep', { pattern: 'checkout' }),
+      use('t3', 'SomeMcpTool', { arg: 1 }),
+    ].join('\n');
+    expect(parseToolActivity(log)).toEqual(parseToolEvents(log).tools.map((t) => t.detail));
+    expect(parseToolActivity(log)).toEqual(['Editing src/App.tsx', 'Searching for checkout', 'Using SomeMcpTool']);
   });
 });

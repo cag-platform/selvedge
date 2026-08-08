@@ -97,6 +97,8 @@ describe('shipChanges — build freely, gate at ship', () => {
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.prompt).toBe('ship: dark header');
     expect(run!.commitSha).toBe(out.commit);
+    // The judged diff is the record: the exact files the risk gate saw.
+    expect(run!.changedPaths).toEqual(['src/app.tsx']);
     expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(false);
     // This project has no host wired, so the thread says pushed — not "live".
     // (The wording per case is covered by the shipReach tests above.)
@@ -229,6 +231,10 @@ describe('rollbackShip — a real revert, never a force-push', () => {
     expect(commands[0]).toContain("git revert --no-edit 'a1b2c3d'");
     const thread = await db.select().from(agentMessages).where(eq(agentMessages.orgId, 'org_1'));
     expect(thread[0]!.content).toMatch(/undone|reverted/i);
+    // An undo is a decision too — it lands in the run record like the ship did.
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, 'org_1'));
+    expect(run!.prompt).toBe('undo: revert of a1b2c3d');
+    expect(run!.status).toBe('succeeded');
   });
 
   it('refuses a nonsense commit id and is honest about a conflicted revert', async () => {

@@ -6,7 +6,8 @@ import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
-import { claudeCommand, parseResult, parseAssistantText, parseToolActivity } from '../runner/daytona/agentCommand.js';
+import { claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents } from '../runner/daytona/agentCommand.js';
+import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -229,9 +230,14 @@ export async function runAgentTurn(
   const sleep = deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = deps.now ?? (() => Date.now());
 
+  // The run id is minted before anything lands on the thread, so every message
+  // this turn writes — owner, activity, reply — carries it and the thread is
+  // joinable to the run it belongs to.
+  const runId = ulid();
+
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
-  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, role: 'owner', content: ownerText });
+  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, role: 'owner', content: ownerText, runId });
 
   // Image attachments are shown on the thread (bytes kept separate — see the
   // table's own note); a persistence hiccup must not sink the turn, since the
@@ -246,7 +252,6 @@ export async function runAgentTurn(
     }
   }
 
-  const runId = ulid();
   const model = cfg.model ?? 'sonnet';
   // The prompt column doubles as the run's kind marker (ship.ts writes
   // "ship: …"); a plan turn is tagged the same way so the workshop can tell
@@ -303,7 +308,7 @@ export async function runAgentTurn(
     if (lines.length === activityShown) return;
     const content = lines.slice(-30).join('\n');
     if (!activityInserted) {
-      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, role: 'activity', content });
+      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, role: 'activity', content, runId });
       activityInserted = true;
     } else {
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
@@ -341,9 +346,11 @@ export async function runAgentTurn(
   // log is replaced, or the turn under-reports. "Never a surprise bill" is
   // broken just as surely by an under-count as an over-count.
   let priorAttemptCostUsd = 0;
+  let priorAttemptTools: ToolEvent[] = [];
   if (log !== null && exitCodeOf(log) !== 0 && prior?.claudeSessionId) {
     priorAttemptCostUsd = parseResult(log)?.totalCostUsd ?? 0;
-    priorAttemptLines = parseToolActivity(log);
+    priorAttemptTools = parseToolEvents(log).tools;
+    priorAttemptLines = priorAttemptTools.map((t) => t.detail);
     await setBuild(db, orgId, projectId, { claudeSessionId: null });
     log = await attempt(null);
   }
@@ -357,9 +364,42 @@ export async function runAgentTurn(
   // A plan turn is thinking out loud, so it never marks work ready to ship —
   // and never CLEARS a real staged change that was already waiting, either.
   let stagedChangesReady = prior?.stagedChangesReady ?? false;
+  let changedPaths: string[] | null = null;
   if (succeeded && !planning) {
     const status = await execute(`cd ${WORKDIR} && git status --porcelain | head -5`, 30).catch(() => ({ exitCode: 1, result: '' }));
     stagedChangesReady = status.exitCode === 0 && (status.result ?? '').trim() !== '';
+    // The files this turn touched — the same union ship judges. Recorded on the
+    // run row so a change is traceable to the run that made it. Best-effort: a
+    // failed listing records nothing rather than something wrong.
+    if (stagedChangesReady) {
+      const diff = await execute(
+        `cd ${WORKDIR} && { git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u`,
+        60,
+      ).catch(() => null);
+      if (diff && diff.exitCode === 0) {
+        const paths = (diff.result ?? '').split('\n').map((p) => p.trim()).filter(Boolean);
+        if (paths.length) changedPaths = paths;
+      }
+    }
+  }
+
+  // The flight recorder: the run's full structured record onto the activity
+  // row's meta — every tool use with its outcome, bounded, joined to the run.
+  // The display content keeps its last-30 tail; this is the durable evidence
+  // that outlives the sandbox (whose copy of the log dies in minutes).
+  if (activityInserted && log !== null) {
+    const finalEvents = parseToolEvents(log);
+    const allTools = [...priorAttemptTools, ...finalEvents.tools];
+    const record: RunRecord = {
+      run_id: runId,
+      tools: allTools.slice(0, MAX_TOOL_EVENTS),
+      truncated: finalEvents.truncated || allTools.length > MAX_TOOL_EVENTS,
+    };
+    await db
+      .update(agentMessages)
+      .set({ meta: record })
+      .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)))
+      .catch(() => undefined); // the record is evidence, not a gate — never sink the turn
   }
 
   const reply = succeeded
@@ -368,10 +408,15 @@ export async function runAgentTurn(
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
       : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'agent', content: reply });
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'agent', content: reply, runId });
   await db
     .update(agentRuns)
-    .set({ status: succeeded ? 'succeeded' : 'failed', costCents, finishedAt: new Date() })
+    .set({
+      status: succeeded ? 'succeeded' : 'failed',
+      costCents,
+      finishedAt: new Date(),
+      ...(changedPaths ? { changedPaths } : {}),
+    })
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
   await setBuild(db, orgId, projectId, {
     ...(result?.sessionId ? { claudeSessionId: result.sessionId } : {}),

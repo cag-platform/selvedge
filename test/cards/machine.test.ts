@@ -104,6 +104,34 @@ describe('card machine — the cap actually stops', () => {
     const working = run(card(), [{ type: 'approve', at: T }, { type: 'start_work', at: T }]);
     expect(advance(working, { type: 'spend', at: T, cents: 0 }).ok).toBe(false);
   });
+
+  it("a spend with a note appends a 'worked' act — the work lands on the ledger's spine", () => {
+    const working = run(card(), [{ type: 'approve', at: T }, { type: 'start_work', at: T }]);
+    const r = advance(working, {
+      type: 'spend',
+      at: T,
+      cents: 50,
+      detail: 'Changed the checkout form. Pushed to branch selvedge/card_1 for your review.',
+      meta: { tools: [{ id: 't1', name: 'Edit', detail: 'Editing src/Checkout.tsx' }] },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const act = r.card.acts.at(-1)!;
+    expect(act.kind).toBe('worked');
+    expect(act.detail).toMatch(/checkout form/i);
+    expect(act.meta).toMatchObject({ tools: [{ name: 'Edit' }] });
+    expect(r.card.spentCents).toBe(50);
+    expect(r.card.state).toBe('working'); // an ordinary spend never changes state
+  });
+
+  it('a detail-less spend appends no act — exactly the pre-recorder shape', () => {
+    const working = run(card(), [{ type: 'approve', at: T }, { type: 'start_work', at: T }]);
+    const before = working.acts.length;
+    const r = advance(working, { type: 'spend', at: T, cents: 50 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.card.acts.length).toBe(before);
+  });
 });
 
 describe('card machine — staged checkpoints pause large work', () => {

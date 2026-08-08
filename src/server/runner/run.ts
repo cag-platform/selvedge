@@ -64,6 +64,7 @@ export async function runCard(deps: RunnerDeps, card: Card): Promise<RunResult> 
           at: deps.now().toISOString(),
           cents: result.spentCents,
           detail: result.note,
+          ...(result.tools?.length ? { meta: { tools: result.tools } } : {}),
         });
         if (!spent.ok) {
           // The only spend rejection from `working` is a bad amount; treat a

@@ -1,6 +1,7 @@
 import type { Card } from '../cards/types.js';
 import type { CardAction } from '../cards/machine.js';
 import type { ApplyResult } from '../cards/store.js';
+import type { ToolEvent } from '../../shared/types/toolEvent.js';
 
 /**
  * The agent runner's contract (BUILD-BRIEF Phase 3). The runner does the `work`
@@ -40,6 +41,8 @@ export type AgentStepResult = {
   done: boolean;
   /** A plain line describing what this step did, recorded on the card. */
   note?: string;
+  /** The step's structured tool record (flight recorder) — rides the spend act's meta. */
+  tools?: ToolEvent[];
 };
 
 export type RunnerDeps = {

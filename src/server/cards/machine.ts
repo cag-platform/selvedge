@@ -21,7 +21,7 @@ export type CardAction =
   | { type: 'approve'; at: string; backupVerified?: boolean }
   | { type: 'decline'; at: string; reason?: string }
   | { type: 'start_work'; at: string }
-  | { type: 'spend'; at: string; cents: number; detail?: string }
+  | { type: 'spend'; at: string; cents: number; detail?: string; meta?: Record<string, unknown> }
   | { type: 'block'; at: string; reason: string }
   | { type: 'resume'; at: string }
   | { type: 'stop'; at: string; reason?: string }
@@ -101,6 +101,20 @@ export function advance(card: Card, action: CardAction): AdvanceResult {
         return { ok: true, card: { ...next, state: 'blocked' } };
       }
 
+      // An ordinary spend with a note appends a 'worked' act — before this,
+      // the note was dropped and a ten-step card's history read as two
+      // constant lines. The acts are "the append-only spine of the ledger";
+      // the work belongs on the spine. A detail-less spend stays act-free,
+      // exactly as before.
+      if (action.detail && action.detail.trim() !== '') {
+        const next = withAct({ ...card, spentCents: newSpent }, action.at, {
+          at: action.at,
+          kind: 'worked',
+          detail: action.detail,
+          ...(action.meta ? { meta: action.meta } : {}),
+        });
+        return { ok: true, card: next };
+      }
       return { ok: true, card: { ...card, spentCents: newSpent, updatedAt: action.at } };
     }
 

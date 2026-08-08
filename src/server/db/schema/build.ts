@@ -47,10 +47,12 @@ export const agentMessages = pgTable(
     id: text('id').primaryKey(), // ulid
     orgId: text('org_id').notNull(),
     projectId: text('project_id').notNull(),
-    role: text('role').notNull(), // 'owner' | 'agent'
+    role: text('role').notNull(), // 'owner' | 'agent' | 'activity'
     content: text('content').notNull(),
     /** Structured activity (tool uses, diffs) for the streaming thread; null for plain text. */
     meta: jsonb('meta'),
+    /** The agent run this message belongs to — makes the thread and the runs joinable. Null on pre-recorder rows. */
+    runId: text('run_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('agent_messages_org_project_idx').on(t.orgId, t.projectId)],
@@ -93,6 +95,8 @@ export const agentRuns = pgTable(
     commitSha: text('commit_sha'),
     /** The five-value verdict when the run was verified; null otherwise. */
     verdict: text('verdict'),
+    /** The files this run touched (string[]); the diff the ship gate judged. Null on pre-recorder rows. */
+    changedPaths: jsonb('changed_paths'),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

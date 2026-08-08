@@ -3,7 +3,7 @@ import type { Db } from '../../db/client.js';
 import { getPack } from '../../packs/store.js';
 import type { Card } from '../../cards/types.js';
 import type { SandboxProvider, SandboxHandle, AgentContext, AgentStepResult } from '../types.js';
-import { WORKDIR, shellQuote, claudeCommand, buildAgentPrompt, parseResult, resultToStep } from './agentCommand.js';
+import { WORKDIR, shellQuote, claudeCommand, buildAgentPrompt, parseResult, parseToolEvents, resultToStep } from './agentCommand.js';
 
 /**
  * The live Daytona build engine — ported from Toile's server/sandbox + agent
@@ -137,7 +137,11 @@ export function daytonaEngine(db: Db, cfg: SandboxEnv): { sandbox: SandboxProvid
     const changed = pushed?.exitCode === 0 && !/nothing to commit/i.test(pushed?.result ?? '');
     const branchNote = changed ? ` Pushed to branch ${branch} for your review.` : ' No code change was needed.';
 
-    return { ...step, note: `${step.note}.${branchNote}` };
+    // The step's flight record: every tool use with its outcome, bounded.
+    // Rides the spend act's meta so a card's history shows the actual work,
+    // not just that money was spent.
+    const { tools } = parseToolEvents(res.result ?? '');
+    return { ...step, note: `${step.note}.${branchNote}`, ...(tools.length ? { tools } : {}) };
   }
 
   return { sandbox, agentStep };
