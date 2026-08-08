@@ -117,6 +117,68 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(starts[1]).not.toContain('--resume');
   });
 
+  it('a retried turn reports the cost of BOTH attempts — the failed one spent real money too', async () => {
+    await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_dead' });
+    const starts: string[] = [];
+    let phase = 0;
+    const execute: ExecuteInSandbox = async (command) => {
+      if (command.includes('nohup')) {
+        starts.push(command);
+        phase = starts.length;
+        return { exitCode: 0, result: '' };
+      }
+      if (command.includes('git status')) return { exitCode: 0, result: '' };
+      if (command.includes('__STATE:')) {
+        // Attempt 1 did work (7¢ of it) before the resume died; attempt 2 costs 5¢.
+        const body =
+          phase === 1
+            ? [toolUse('Read', { file_path: '/workspace/app/a.ts' }), resultLine('sess_dead', 0.07), '__EXIT:1'].join('\n')
+            : [text('Fresh, done.'), resultLine('sess_new', 0.05), '__EXIT:0'].join('\n');
+        return { exitCode: 0, result: `${body}\n__STATE:DONE` };
+      }
+      return { exitCode: 0, result: '' };
+    };
+    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, {}, { execute, sleep: noSleep });
+    expect(out.status).toBe('succeeded');
+    expect(out.costCents).toBe(12); // 7 + 5, not 5
+  });
+
+  it('the activity feed appends across a retry — never stalls, never rewinds', async () => {
+    await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_dead' });
+    let phase = 0;
+    const execute: ExecuteInSandbox = async (command) => {
+      if (command.includes('nohup')) {
+        phase += 1;
+        return { exitCode: 0, result: '' };
+      }
+      if (command.includes('git status')) return { exitCode: 0, result: '' };
+      if (command.includes('__STATE:')) {
+        // Attempt 1 shows three tool lines then dies; attempt 2's fresh log has
+        // only ONE line — fewer than already shown, the exact rewind case.
+        const body =
+          phase === 1
+            ? [
+                toolUse('Read', { file_path: '/workspace/app/a.ts' }),
+                toolUse('Read', { file_path: '/workspace/app/b.ts' }),
+                toolUse('Read', { file_path: '/workspace/app/c.ts' }),
+                '__EXIT:1',
+              ].join('\n')
+            : [toolUse('Edit', { file_path: '/workspace/app/d.ts' }), text('Done.'), resultLine('sess_new'), '__EXIT:0'].join('\n');
+        return { exitCode: 0, result: `${body}\n__STATE:DONE` };
+      }
+      return { exitCode: 0, result: '' };
+    };
+    const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, {}, { execute, sleep: noSleep });
+    expect(out.status).toBe('succeeded');
+
+    const rows = await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'activity')));
+    expect(rows).toHaveLength(1); // one feed, not one per attempt
+    // Attempt 1's work is still there, attempt 2's follows it — appended, not replaced.
+    expect(rows[0]!.content).toContain('Reading c.ts');
+    expect(rows[0]!.content).toContain('Editing d.ts');
+    expect(rows[0]!.content.indexOf('Reading c.ts')).toBeLessThan(rows[0]!.content.indexOf('Editing d.ts'));
+  });
+
   it('a failed turn is honest on the thread and recorded as failed — never a silent shrug', async () => {
     const out = await runAgentTurn(db, orgId, 'loom', 'do the thing', cfg, {}, {
       execute: executor({ polls: ['boom\n__EXIT:1'] }),

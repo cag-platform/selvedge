@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { borrowCreateReturn, type GithubOAuthOps, type RepoSetupReceipt } from '../../connectors/github/repoSetup.js';
 import { authorizeUrl, loadGithubOAuthConfig, realGithubOAuthOps } from '../../connectors/github/oauthOps.js';
+import { beginOAuthState, takeOAuthState } from '../../connectors/oauthState.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -18,8 +19,6 @@ export function repoNameFrom(appName: string): string {
   return slug.length >= 1 ? slug : 'my-app';
 }
 
-type PendingSetup = { orgId: string; repoName: string };
-
 /**
  * The borrow-and-return repo-setup flow (MIGRATION-CENTER §1), driven over
  * HTTP. `/start` sends the customer to GitHub for the one-time `repo` grant;
@@ -29,9 +28,13 @@ type PendingSetup = { orgId: string; repoName: string };
  * `ops` and `makeUrl` are injectable so the whole flow is testable without the
  * network; the mounted app uses the real GitHub adapter.
  *
- * Phase-1 simplification, shared with the existing install router and flagged
- * the same way: `state` carries the pending setup in-memory keyed by a random
- * id rather than a signed token. Sign it before this opens to other orgs.
+ * The handshake lives in the durable `oauth_states` store
+ * (connectors/oauthState.ts) — the same one the Railway flow uses: random
+ * 24-byte state, single-use delete-first consume, 15-minute TTL. It replaced
+ * an in-process Map keyed `setup_${counter++}`, which was guessable and died
+ * with the process — a consent screen open across a redeploy came back to a
+ * server that had never heard of it. The handshake's `verifier` slot (free
+ * text; Railway stores its PKCE verifier there) carries the repo name here.
  */
 export function createGithubSetupRouter(
   db: Db,
@@ -42,10 +45,6 @@ export function createGithubSetupRouter(
   } = {},
 ) {
   const router = Router();
-  const pending = new Map<string, PendingSetup>();
-
-  const makeState = (i: number) => `setup_${i}`; // deterministic; sign in production
-  let counter = 0;
 
   router.post(
     '/api/connectors/github/setup/start',
@@ -54,8 +53,7 @@ export function createGithubSetupRouter(
       const { appName } = req.body as { appName?: unknown };
       const repoName = repoNameFrom(typeof appName === 'string' ? appName : 'my-app');
 
-      const state = makeState(counter++);
-      pending.set(state, { orgId, repoName });
+      const state = await beginOAuthState(db, orgId, 'github_setup', repoName);
 
       const url = opts.makeUrl
         ? opts.makeUrl(state)
@@ -71,15 +69,18 @@ export function createGithubSetupRouter(
     asyncHandler(async (req, res) => {
       const code = typeof req.query.code === 'string' ? req.query.code : '';
       const state = typeof req.query.state === 'string' ? req.query.state : '';
-      const setup = pending.get(state);
+      // Single-use by construction: the row is deleted as it's read, so a
+      // replayed state — or one minted for a different provider — finds
+      // nothing, and an authorization code is never exchangeable twice.
+      const setup = code ? await takeOAuthState(db, state, 'github_setup') : null;
       if (!code || !setup) {
         res.status(400).json({ error: "that link didn't carry what I needed — please start again" });
         return;
       }
-      pending.delete(state); // one-time use
+      const repoName = setup.verifier ?? 'my-app';
 
       const ops = opts.ops ?? realGithubOAuthOps(loadGithubOAuthConfig());
-      const receipt: RepoSetupReceipt = await borrowCreateReturn(ops, code, setup.repoName);
+      const receipt: RepoSetupReceipt = await borrowCreateReturn(ops, code, repoName);
 
       // The plain-language line the customer sees. The technical register (the
       // acts, the repo full name) rides in the payload for the drill-down.

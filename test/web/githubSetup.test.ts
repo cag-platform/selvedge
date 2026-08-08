@@ -89,6 +89,31 @@ describe('web/routes/githubSetup — borrow-and-return over HTTP', () => {
     const second = await request(app).get(`/api/connectors/github/setup/callback?code=abc&state=${state}`);
     expect(second.status).toBe(400); // consumed
   });
+
+  it("rejects a state minted for a different provider's flow", async () => {
+    // A Railway handshake must not drive the GitHub callback — the store is
+    // shared, the provider scoping is what keeps the flows apart.
+    const { beginOAuthState } = await import('../../src/server/connectors/oauthState.js');
+    const railwayState = await beginOAuthState(db, orgId, 'railway', 'some-verifier');
+    const app = appWithOrg(orgId, createGithubSetupRouter(db, { ops: fakeOps() }));
+    const res = await request(app).get(`/api/connectors/github/setup/callback?code=abc&state=${railwayState}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('a handshake survives a restart — the callback can land on a fresh process', async () => {
+    // Two router instances over the same db stand in for "the process was
+    // redeployed while the consent screen was open" — exactly what the old
+    // in-memory Map could not survive.
+    const ops = fakeOps();
+    const first = appWithOrg(orgId, createGithubSetupRouter(db, { ops, makeUrl: (s) => `https://x?state=${s}` }));
+    const start = await request(first).post('/api/connectors/github/setup/start').send({ appName: 'durable' });
+    const state = start.body.state as string;
+
+    const second = appWithOrg(orgId, createGithubSetupRouter(db, { ops }));
+    const cb = await request(second).get(`/api/connectors/github/setup/callback?code=abc&state=${state}`);
+    expect(cb.status).toBe(200);
+    expect(cb.body.receipt.repo.fullName).toBe('alice/durable');
+  });
 });
 
 describe('repoNameFrom', () => {

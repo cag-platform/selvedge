@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **954 tests across 122
+and what's still only a plan. Written for a non-coder. **958 tests across 122
 files, all green.**
 
 ---

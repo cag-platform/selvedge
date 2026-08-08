@@ -288,14 +288,23 @@ export async function runAgentTurn(
   const cliPrompt = withAttachmentNotes(planning ? planWrap(ownerText) : ownerText, imagePaths, addedFiles);
 
   // The live activity row: inserted once, updated in place as the log grows.
+  // `inserted` and the shown count are tracked separately, and a retried
+  // attempt (fresh log file, so fewer lines than the first attempt showed)
+  // carries the first attempt's lines as a prefix — the feed only ever
+  // appends. Folding these into one counter was a real bug: the retry's
+  // shorter log stalled updates until it outgrew the old count, then the
+  // row's tail jumped — the owner watched the feed rewind.
   const activityId = ulid();
+  let activityInserted = false;
   let activityShown = 0;
+  let priorAttemptLines: string[] = [];
   const showActivity = async (log: string) => {
-    const lines = parseToolActivity(log);
+    const lines = [...priorAttemptLines, ...parseToolActivity(log)];
     if (lines.length === activityShown) return;
     const content = lines.slice(-30).join('\n');
-    if (activityShown === 0) {
+    if (!activityInserted) {
       await db.insert(agentMessages).values({ id: activityId, orgId, projectId, role: 'activity', content });
+      activityInserted = true;
     } else {
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
     }
@@ -328,7 +337,13 @@ export async function runAgentTurn(
 
   // A stale session (sandbox was recreated; the session file died with it)
   // fails the resume. Retry once fresh instead of failing the owner's turn.
+  // The failed attempt still spent real money — harvest its cost before the
+  // log is replaced, or the turn under-reports. "Never a surprise bill" is
+  // broken just as surely by an under-count as an over-count.
+  let priorAttemptCostUsd = 0;
   if (log !== null && exitCodeOf(log) !== 0 && prior?.claudeSessionId) {
+    priorAttemptCostUsd = parseResult(log)?.totalCostUsd ?? 0;
+    priorAttemptLines = parseToolActivity(log);
     await setBuild(db, orgId, projectId, { claudeSessionId: null });
     log = await attempt(null);
   }
@@ -336,7 +351,7 @@ export async function runAgentTurn(
   const result = log !== null ? parseResult(log) : null;
   const narrative = log !== null ? parseAssistantText(log) : '';
   const succeeded = log !== null && exitCodeOf(log) === 0 && result !== null && !result.isError;
-  const costCents = Math.max(0, Math.round((result?.totalCostUsd ?? 0) * 100));
+  const costCents = Math.max(0, Math.round((priorAttemptCostUsd + (result?.totalCostUsd ?? 0)) * 100));
 
   // Does the sandbox now hold uncommitted changes — i.e. something to ship?
   // A plan turn is thinking out loud, so it never marks work ready to ship —
