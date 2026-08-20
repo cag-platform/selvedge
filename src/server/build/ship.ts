@@ -10,6 +10,8 @@ import { classifyRisk, gateFor } from '../cards/risk.js';
 import { observeDeploy, type ObserveResult } from '../verify/observe.js';
 import { runCheck } from '../monitor/probe.js';
 import { getPack } from '../packs/store.js';
+import { ensureWorkshopThread } from '../threads/store.js';
+import { stampedCommitMessage } from '../provenance/trailer.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 
 /**
@@ -29,6 +31,12 @@ import type { ContextPack } from '../../shared/types/pack.js';
  *   3. Records the ship on the thread and in the runs, with the commit id, and
  *      arms the undo: a rollback is a real `git revert` of exactly that commit,
  *      pushed the same way.
+ *   4. STAMPS the commit with the thread it came from — `Selvedge-Session: <id>`
+ *      as a git trailer (provenance/trailer.ts). The record already knew which
+ *      conversation asked for the change; the stamp puts that join in the repo
+ *      itself, where git log can read it and where it survives Selvedge. It is
+ *      evidence, never a gate: a ship whose thread can't be resolved still
+ *      ships, unstamped.
  *
  * Execution is injectable so the whole flow is tested without Daytona.
  */
@@ -82,7 +90,7 @@ export async function shipChanges(
   orgId: string,
   projectId: string,
   cfg: SandboxConfig,
-  opts: { backupConfirmed?: boolean; summary?: string } = {},
+  opts: { backupConfirmed?: boolean; summary?: string; threadId?: string } = {},
   deps: { execute?: ExecuteInSandbox } = {},
 ): Promise<ShipOutcome> {
   const build = await getBuild(db, orgId, projectId);
@@ -116,13 +124,15 @@ export async function shipChanges(
     };
   }
 
-  // 2) Commit and push — the owner's own shipping path.
+  // 2) Commit and push — the owner's own shipping path, with the session stamp
+  // riding along in the commit message.
   const summary = (opts.summary ?? 'changes from the workshop').slice(0, 120);
+  const threadId = opts.threadId ?? (await ensureWorkshopThread(db, orgId, projectId).then((t) => t.id).catch(() => null));
   const push = await execute(
     [
       `cd ${WORKDIR}`,
       'git add -A',
-      `git commit -q -m ${shellQuote(`Selvedge: ${summary}`)}`,
+      `git commit -q -m ${shellQuote(stampedCommitMessage(`Selvedge: ${summary}`, threadId))}`,
       `git push origin ${shellQuote(build.branch)}`,
       'git rev-parse HEAD',
     ].join(' && '),
@@ -140,6 +150,7 @@ export async function shipChanges(
     id: ulid(),
     orgId,
     projectId,
+    threadId,
     prompt: `ship: ${summary}`,
     status: 'succeeded',
     commitSha: commit,
@@ -155,6 +166,7 @@ export async function shipChanges(
     id: ulid(),
     orgId,
     projectId,
+    threadId,
     role: 'agent',
     content: line,
     meta: { ship: { commit, reach } },
@@ -192,8 +204,11 @@ export async function observeAfterShip(
     now?: () => number;
     windowMs?: number;
     intervalMs?: number;
+    /** The conversation to speak into; defaults to the project's workshop thread. */
+    threadId?: string;
   } = {},
 ): Promise<ObserveResult> {
+  const threadId = deps.threadId ?? (await ensureWorkshopThread(db, orgId, projectId).then((t) => t.id).catch(() => null));
   let undoOk = false;
   let undoMessage = '';
   const observed = await observeDeploy({
@@ -214,6 +229,7 @@ export async function observeAfterShip(
       id: ulid(),
       orgId,
       projectId,
+      threadId,
       role: 'agent',
       // Never claim "undone" unless the revert actually applied.
       content: undoOk
@@ -225,6 +241,7 @@ export async function observeAfterShip(
       id: ulid(),
       orgId,
       projectId,
+      threadId,
       role: 'agent',
       content: `Watched the live app for ${Math.round((deps.windowMs ?? OBSERVE_WINDOW_MS) / 60000)} minutes after that ship — it's standing. All good.`,
     });
@@ -239,11 +256,12 @@ export async function rollbackShip(
   projectId: string,
   cfg: SandboxConfig,
   commit: string,
-  deps: { execute?: ExecuteInSandbox } = {},
+  deps: { execute?: ExecuteInSandbox; threadId?: string } = {},
 ): Promise<{ ok: boolean; message: string }> {
   if (!/^[0-9a-f]{7,40}$/i.test(commit)) return { ok: false, message: "That doesn't look like a commit I shipped." };
 
   const build = await getBuild(db, orgId, projectId);
+  const threadId = deps.threadId ?? (await ensureWorkshopThread(db, orgId, projectId).then((t) => t.id).catch(() => null));
   const execute: ExecuteInSandbox =
     deps.execute ??
     (await (async () => {
@@ -265,6 +283,7 @@ export async function rollbackShip(
     id: ulid(),
     orgId,
     projectId,
+    threadId,
     prompt: `undo: revert of ${commit.slice(0, 7)}`,
     status: 'succeeded',
     startedAt: new Date(),
@@ -274,6 +293,7 @@ export async function rollbackShip(
     id: ulid(),
     orgId,
     projectId,
+    threadId,
     role: 'agent',
     content: `Undone — I reverted that ship (${commit.slice(0, 7)}) and pushed the revert. Your host is rolling back to the previous version now.`,
   });

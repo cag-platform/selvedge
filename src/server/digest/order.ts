@@ -1,3 +1,4 @@
+import { withTimesSuffix } from '../../shared/repeats.js';
 import type { ContextPack, StakesTier } from '../../shared/types/pack.js';
 import type { GatheredNarration } from './gather.js';
 
@@ -46,12 +47,6 @@ export function collapseRepeats(items: NarrationWithPack[]): NarrationWithPack[]
   return [...byKey.values()].map(({ item, count }) =>
     count > 1 && item.fragment ? { ...item, fragment: withTimesSuffix(item.fragment, count) } : item,
   );
-}
-
-/** "…landed today." + 3 → "…landed today (3 times)." — plain, inside the sentence. */
-function withTimesSuffix(fragment: string, count: number): string {
-  const suffix = ` (${count} times)`;
-  return fragment.endsWith('.') ? `${fragment.slice(0, -1)}${suffix}.` : `${fragment}${suffix}`;
 }
 
 /** digest-composer §3: milestone (A4) first, then live_critical ships, then the rest. */

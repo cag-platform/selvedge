@@ -1,0 +1,34 @@
+import { pgTable, text, timestamp, index } from 'drizzle-orm/pg-core';
+
+/**
+ * A conversation inside a project. The unit of work: what the rail lists, what
+ * the composer writes into, what a handoff carries across when the agent
+ * changes mid-task.
+ *
+ * `kind` is the real fork — 'workshop' runs a coding agent in the project's
+ * sandbox and can ship; 'general' is direct model calls with no sandbox and
+ * nothing to ship. `agent` and `model` are the thread's CURRENT settings, not
+ * its history: a thread that switched builders mid-way records the switch on
+ * its own timeline (and, for a workshop thread, the handoff payload's real
+ * token count and cost), while this column simply says who is answering now.
+ *
+ * Threads are archived, never deleted — the record is the product.
+ */
+export const threads = pgTable(
+  'threads',
+  {
+    id: text('id').primaryKey(), // ulid; legacy rows carry the derived id migration 0022 minted
+    orgId: text('org_id').notNull(),
+    projectId: text('project_id').notNull(),
+    /** 'workshop' | 'general' — see shared/types/thread.ts. */
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    /** An id from the agent registry (shared/agents.ts). */
+    agent: text('agent').notNull(),
+    /** The model alias behind that agent, when it has one; null means the agent's default. */
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [index('threads_org_project_idx').on(t.orgId, t.projectId)],
+);

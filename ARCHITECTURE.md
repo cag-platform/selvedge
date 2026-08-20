@@ -5,7 +5,8 @@ someone who needs to change it: where a thing lives, what it may talk to, and
 which properties must survive the change.
 
 Companion documents: **BUILD-BRIEF.md** (what gets built, in what order),
-**STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
+**INBOX-LOOP-BRIEF.md** (the Inbox and the Loop — the phased plan that extends
+it), **STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
 deferred acquisition channel, scoped not built), `docs/routing-table.md` (the
 routing contract).
 
@@ -203,7 +204,12 @@ with a conversational surface:
   changed*, not from the conversation: an innocent-sounding ask that ended up
   editing checkout code is still gated. Then commit, push to the project's
   branch, record the commit, and arm undo as a real `git revert` of exactly that
-  commit.
+  commit. The commit carries a git trailer — `Selvedge-Session: <thread id>`
+  (`provenance/trailer.ts`, pure and dependency-free so both layer 5 and layer 3
+  may import it) — which puts the change→conversation join in the repository
+  itself, where `git log` can read it and where it outlives Selvedge. It is
+  evidence, never a gate: a ship whose thread can't be resolved still ships,
+  unstamped.
 - `golive.ts` — "put it online": create the database if needed, create the host
   service from the repo, set variables, mint a web address, wait for the first
   build to land. Idempotent by construction — a project that already has a host
@@ -263,7 +269,7 @@ from the real cost of the ones before it.
 
 ## 7. Data model
 
-Postgres, 23 tables, Drizzle schema in `server/db/schema/`, 18 forward-only
+Postgres, 25 tables, Drizzle schema in `server/db/schema/`, 23 forward-only
 migrations in `server/db/migrations/`.
 
 | Group | Tables |
@@ -271,14 +277,26 @@ migrations in `server/db/migrations/`.
 | Tenancy | `orgs` |
 | Timeline | `events` (partitioned), `narrations`, `digests`, `narration_library`, `narration_library_uses` |
 | Understanding | `packs` |
-| Work | `cards`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `sketches`, `sketch_messages` |
+| Work | `cards`, `threads`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `sketches`, `sketch_messages` |
 | Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state` |
 | Accounting & trust | `llm_usage`, `trust_incidents`, `feedback`, `devices` |
 
-Three properties worth knowing before you add a table:
+Four properties worth knowing before you add a table:
 
 **Every table carries `org_id`, and a test fails the build if a new one forgets.**
 Tenancy is not a convention here, it is enforced by the suite.
+
+**A project has many conversations, and every message names its own.** `threads`
+is the unit of work — `kind` is `workshop` (runs a coding agent in the project's
+sandbox, can ship) or `general` (direct model calls, no sandbox, nothing to
+ship) — and `agent_messages.thread_id` / `agent_runs.thread_id` attach the
+record to it. Migration 0022 turned each project's single pre-existing
+conversation into its thread #1, with a *derived* id (`thread_ || md5(org:project)`)
+so the backfill is re-runnable and every legacy row maps to exactly one thread;
+threads minted since carry ulids. The columns are nullable — a background writer
+losing its thread must not lose the owner's message — so the contract is
+enforced structurally instead (`test/threads/contract.test.ts`): every insert
+into a threaded table must name a thread, or the build fails.
 
 **`events` is physically partitioned by month on `occurred_at`.** drizzle-kit
 cannot express `PARTITION BY` declaratively, so that migration is hand-augmented
@@ -402,7 +420,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**977 tests across 124 files**, all green, under `test/` — mirroring
+**1,033 tests across 131 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 
@@ -470,6 +488,21 @@ Places designed to be extended, so the extension is a swap rather than a rewrite
   sandbox provider is one factory.
 - **Read-only planning** — wired: the Workshop's "think it first" checkbox
   sends `mode: 'plan'` through to `build/agent.ts`.
+- **Which agent does the work** — `shared/agents.ts` is one table (the
+  `connectors/registry.ts` pattern): id, mono chip, which thread kinds it can
+  run, whose fuel it burns, an honest cost note, and whether it is `live`.
+  Declared-but-not-live is deliberate — the seam can be honest about the roadmap
+  without a picker offering something that fails on first use. Ids are stored in
+  `threads.agent`, so they may be added and never renamed.
+- **Handing work between agents** — `handoff/compose.ts` is pure: pack + thread +
+  target agent → the text that starts the next agent where the last one stopped.
+  No database, no network, no model call, so it is exhaustively testable and
+  cannot invent. It reuses the digest composer's skeleton (select → collapse
+  repeats → sections → render, code deciding and prose only rendering), and
+  literally shares its repeat-collapsing rule via `shared/repeats.ts`. Bounded
+  absolutely, so a year-long thread hands over for the price of a week-old one;
+  what it drops it says out loud. It leaves out the standing agent rules (those
+  ride on every turn already) and the code (the repository is the truth).
 
 ---
 

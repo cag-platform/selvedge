@@ -17,6 +17,15 @@ status-colored seam down the left of the brief and every project card.
 The acceptance bar: *a stranger reads the whole stack's health from the
 edges alone.*
 
+## The workbench (Phase 1)
+
+Nothing in this file is revoked by the Inbox. `INBOX-LOOP-BRIEF.md` §6 records
+what holds unchanged (the token system, colour rationing, the edge vocabulary,
+the glass budget, the accessibility floor) and the few rules that bend for a
+surface people work in for hours rather than read for a minute: a second
+density register, textual liveness, and a non-colour system for agent identity
+(mono chips — status colour is spoken for and must never be borrowed).
+
 ## Tokens
 
 `src/client/styles/tokens.css` is the single source of truth. The Tailwind

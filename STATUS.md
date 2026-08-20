@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **977 tests across 124
+and what's still only a plan. Written for a non-coder. **1,033 tests across 131
 files, all green.**
 
 ---
@@ -116,11 +116,14 @@ names what did and did not happen rather than going quiet.
 
 ### Also scoped, not built
 
-- **Model picker** (Claude / Codex / Kimi). **Decided (Aug 2026): stays cut.**
-  OpenAI arrived in the codebase as the *grader* — where a different provider is
-  the feature — not as selectable fuel. The seam remains (`FUEL_PROVIDERS`
-  declares four, one live); offering the choice waits until one model works so
-  well the second is demand, not decoration.
+- **Model picker** (Claude / Codex / Kimi). Was cut in Aug 2026 — OpenAI arrived
+  as the *grader*, where a different provider is the feature, not as selectable
+  fuel. **Reopened by INBOX-LOOP-BRIEF.md**, on a different argument: not "a
+  second model as decoration" but *switching builders mid-task without
+  re-explaining*, which is the thing the handoff seam now makes possible.
+  Phase 1 puts Codex in the same sandbox beside Claude Code and exposes both
+  chat models as fuel; the registry (`shared/agents.ts`) already declares all
+  four with only Claude Code live.
 - **Mobile app** — `cag-platform/Selvedge-mobile`, native SwiftUI. **Scope decided
   (Aug 2026): deliberately thin** — APNs push for the brief, a WidgetKit glance,
   and a read-only brief view. The Workshop and go-live stay web-only; a phone is
@@ -159,6 +162,28 @@ names what did and did not happen rather than going quiet.
 
 ---
 
+## Groundwork under the floor (Aug 2026)
+
+Phase 0 of INBOX-LOOP-BRIEF.md is in, and by design **nothing looks different**.
+Three load-bearing pieces, laid before the room is built on them:
+
+- **Every ship now stamps its commit** with the conversation it came from —
+  `Selvedge-Session: <thread id>`, a real git trailer. Selvedge always knew
+  which conversation asked for a change; now the repository knows too, which is
+  what will let a future brief say "Tuesday's errors began after the change from
+  Monday's session" and mean it.
+- **A project can hold many conversations.** The `threads` table exists, and the
+  Workshop conversation each project already had became its thread #1 — same
+  history, same place, now with a name it can be listed under. Nothing in the
+  product offers a second thread yet; the Inbox does that.
+- **The handoff is written and tested.** Given a project and a conversation, a
+  pure function composes what a *different* agent would need to pick the work up
+  — what the app is, what breaking it costs, what's been done, where it stands,
+  and the ask itself. On a thread with real history it costs under a tenth of
+  what pasting the conversation would.
+
+---
+
 ## The next three things
 
 1. **Go live for real (Phase 0 gate).** Register the Railway OAuth app
@@ -193,7 +218,9 @@ names what did and did not happen rather than going quiet.
    `EVAL_MODEL=gpt-5.6-terra` — correlation, not agreement, is the failure
    being hunted.
 
-Then the Migration Center, Replit first.
+Then **the Inbox** (INBOX-LOOP-BRIEF.md Phase 1) — threads per project, general
+chat beside coding chat, and switching builders mid-task without repeating
+yourself — and after it, the Migration Center, Replit first.
 
 ---
 

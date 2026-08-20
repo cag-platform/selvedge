@@ -6,6 +6,8 @@ import { shipChanges, rollbackShip, observeAfterShip, shipReach, shipMessageFor 
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { setBuild, getBuild } from '../../src/server/build/store.js';
+import { ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
+import { parseSessionTrailer } from '../../src/server/provenance/trailer.js';
 import type { ExecuteInSandbox } from '../../src/server/build/agent.js';
 import { pathSignals } from '../../src/server/cards/triggers.js';
 import { classifyRisk } from '../../src/server/cards/risk.js';
@@ -242,5 +244,74 @@ describe('rollbackShip — a real revert, never a force-push', () => {
     const out = await rollbackShip(db, 'org_1', 'loom', cfg, 'abcdef1', { execute: async () => ({ exitCode: 1, result: 'CONFLICT' }) });
     expect(out.ok).toBe(false);
     expect(out.message).toMatch(/history is untouched/i);
+  });
+});
+
+
+/**
+ * THE STAMP. Selvedge has always known which conversation asked for a change,
+ * and always known which commit went out; what it has never had is that join
+ * written somewhere that outlives its own database. Phase 4 reads it to say
+ * "Tuesday's errors began after the change from Monday's session" — and a join
+ * inferred from timestamps could not say that honestly.
+ */
+describe('shipChanges — the commit carries the conversation it came from', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1', stagedChangesReady: true, repoFullName: 'acme/loom' });
+  });
+  afterEach(async () => close());
+
+  /** The message a commit command carries, unquoted. */
+  function commitMessageIn(commands: string[]): string {
+    const commit = commands.find((c) => c.includes('git commit'))!;
+    const quoted = /git commit -q -m '((?:[^']|'\\'')*)'/.exec(commit);
+    return (quoted?.[1] ?? '').replace(/'\\''/g, "'");
+  }
+
+  it('stamps the ship with the thread it came from, in a trailer git will carry along', async () => {
+    const commands: string[] = [];
+    const out = await shipChanges(db, orgId, 'loom', cfg, { summary: 'dark header' }, { execute: executor({ paths: ['src/app.tsx'], onCommand: (c) => commands.push(c) }) });
+    expect(out.outcome).toBe('shipped');
+
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    const message = commitMessageIn(commands);
+    expect(message.split('\n')[0]).toBe('Selvedge: dark header'); // the subject people read is untouched
+    expect(parseSessionTrailer(message)).toBe(thread.id);
+  });
+
+  it('records the ship in the same conversation the commit names — both sides of the join agree', async () => {
+    await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    const [message] = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(run!.threadId).toBe(thread.id);
+    expect(message!.threadId).toBe(thread.id);
+    // The ship joined the project's existing conversation rather than opening a new one.
+    expect(await listThreads(db, orgId, 'loom')).toHaveLength(1);
+  });
+
+  it('ships from the thread it was told to ship from', async () => {
+    const commands: string[] = [];
+    await shipChanges(db, orgId, 'loom', cfg, { threadId: 'thread_explicit' }, { execute: executor({ paths: ['src/app.tsx'], onCommand: (c) => commands.push(c) }) });
+    expect(parseSessionTrailer(commitMessageIn(commands))).toBe('thread_explicit');
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.threadId).toBe('thread_explicit');
+  });
+
+  it('an undo speaks into the same conversation as the ship it reverses', async () => {
+    await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    const out = await rollbackShip(db, orgId, 'loom', cfg, 'a1b2c3d', { execute: async () => ({ exitCode: 0, result: '' }) });
+    expect(out.ok).toBe(true);
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(messages.every((m) => m.threadId === thread.id)).toBe(true);
   });
 });

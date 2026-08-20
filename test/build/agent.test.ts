@@ -4,6 +4,7 @@ import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentMessageAttachments, agentRuns } from '../../src/server/db/schema/index.js';
 import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
 import { getBuild, setBuild } from '../../src/server/build/store.js';
+import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
 
 const cfg = { claudeCodeOauthToken: 't', githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 
@@ -315,5 +316,66 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       { execute: executor({ polls: [[text('Done.'), resultLine('sess_b'), '__EXIT:0'].join('\n')] }), uploadFile, sleep: noSleep },
     );
     expect(out.status).toBe('succeeded');
+  });
+});
+
+
+/**
+ * A turn writes four rows — the owner's message, the live activity row, the
+ * reply, and the run. All four belong to ONE conversation; a row that lands
+ * without a thread is a row that will never be read again once a project holds
+ * more than one.
+ */
+describe('runAgentTurn — every row lands in one conversation', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  const done = [text('Done.'), resultLine('sess_1'), '__EXIT:0'].join('\n');
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => close());
+
+  it('opens the project workshop thread on the first turn and writes everything into it', async () => {
+    await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {}, {
+      execute: executor({ polls: [done], staged: true }),
+      sleep: noSleep,
+    });
+
+    const threads = await listThreads(db, orgId, 'loom');
+    expect(threads).toHaveLength(1);
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+    expect(messages.every((m) => m.threadId === threads[0]!.id)).toBe(true);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.threadId).toBe(threads[0]!.id);
+  });
+
+  it('a second turn continues the same conversation rather than opening another', async () => {
+    const run = () =>
+      runAgentTurn(db, orgId, 'loom', 'again', cfg, {}, { execute: executor({ polls: [done] }), sleep: noSleep });
+    await run();
+    await run();
+    expect(await listThreads(db, orgId, 'loom')).toHaveLength(1);
+  });
+
+  it('writes into the thread it was given, when it was given one', async () => {
+    const workshop = await ensureWorkshopThread(db, orgId, 'loom');
+    const other = await createThread(db, orgId, 'loom', { kind: 'workshop', title: 'A second piece of work' });
+    await runAgentTurn(db, orgId, 'loom', 'in that thread please', cfg, { threadId: other.id }, {
+      execute: executor({ polls: [done] }),
+      sleep: noSleep,
+    });
+
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(messages.every((m) => m.threadId === other.id)).toBe(true);
+    // ...and the project's first conversation is untouched by it.
+    expect(workshop.id).not.toBe(other.id);
+    expect(messages.some((m) => m.threadId === workshop.id)).toBe(false);
   });
 });

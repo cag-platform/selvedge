@@ -15,4 +15,5 @@ export * from './narrationLibrary.js';
 export * from './feedback.js';
 export * from './trustIncidents.js';
 export * from './build.js';
+export * from './threads.js';
 export * from './sketch.js';

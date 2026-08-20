@@ -6,6 +6,7 @@ import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
+import { ensureWorkshopThread } from '../threads/store.js';
 import { claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents } from '../runner/daytona/agentCommand.js';
 import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
 
@@ -53,6 +54,12 @@ export type TurnOptions = {
    * For going back and forth on an idea before committing to a build.
    */
   mode?: 'build' | 'plan';
+  /**
+   * Which conversation this turn belongs to. Omitted means the project's
+   * workshop thread — the one migration 0022 backfilled, so a turn asked for
+   * the old way still lands in the history it belongs to.
+   */
+  threadId?: string;
 };
 
 export type AgentTurnConfig = SandboxConfig & { model?: string };
@@ -235,9 +242,13 @@ export async function runAgentTurn(
   // joinable to the run it belongs to.
   const runId = ulid();
 
+  // Which conversation this turn is part of. Every row this turn writes carries
+  // it, so the thread reads back whole even once a project holds several.
+  const threadId = options.threadId ?? (await ensureWorkshopThread(db, orgId, projectId, cfg.model)).id;
+
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
-  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, role: 'owner', content: ownerText, runId });
+  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
 
   // Image attachments are shown on the thread (bytes kept separate — see the
   // table's own note); a persistence hiccup must not sink the turn, since the
@@ -257,7 +268,7 @@ export async function runAgentTurn(
   // "ship: …"); a plan turn is tagged the same way so the workshop can tell
   // thinking apart from building without another column.
   const runPrompt = options.mode === 'plan' ? `plan: ${ownerText}` : ownerText;
-  await db.insert(agentRuns).values({ id: runId, orgId, projectId, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
+  await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
@@ -308,7 +319,7 @@ export async function runAgentTurn(
     if (lines.length === activityShown) return;
     const content = lines.slice(-30).join('\n');
     if (!activityInserted) {
-      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, role: 'activity', content, runId });
+      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content, runId });
       activityInserted = true;
     } else {
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
@@ -408,7 +419,7 @@ export async function runAgentTurn(
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
       : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'agent', content: reply, runId });
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
   await db
     .update(agentRuns)
     .set({

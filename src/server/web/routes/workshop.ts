@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
 import { getBuild } from '../../build/store.js';
+import { ensureWorkshopThread } from '../../threads/store.js';
 import { runAgentTurn, type AgentTurnConfig, type AttachedImage, type AttachedFile } from '../../build/agent.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
@@ -310,12 +311,16 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       // silent shrug.
       void runTurn(db, orgId, projectId, text, resolved.cfg, { images: images.images, files, mode }).catch(async (err) => {
         console.error(`workshop turn failed to start for ${orgId}/${projectId}:`, err);
+        const threadId = await ensureWorkshopThread(db, orgId, projectId)
+          .then((t) => t.id)
+          .catch(() => null);
         await db
           .insert(agentMessages)
           .values({
             id: ulid(),
             orgId,
             projectId,
+            threadId,
             role: 'agent',
             content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
           })
