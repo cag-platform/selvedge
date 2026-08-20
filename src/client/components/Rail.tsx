@@ -18,12 +18,16 @@ import { railOrder, whenShort, type InboxData, type ThreadRow } from '../lib/inb
 export function Rail({
   data,
   activeThreadId,
+  activeProjectId,
   onOpen,
+  onOpenProject,
   onNewThread,
 }: {
   data: InboxData | null;
   activeThreadId: string | null;
+  activeProjectId: string | null;
   onOpen: (thread: ThreadRow) => void;
+  onOpenProject: (projectId: string) => void;
   onNewThread: (projectId: string) => void;
 }) {
   if (!data) return <p className="p-work text-body text-ink-quiet">Loading…</p>;
@@ -50,13 +54,24 @@ export function Rail({
 
         {railOrder(data.projects).map((project) => (
           <section key={project.id} className="mb-work">
-            <div className="relative flex items-center justify-between rounded-inset px-work-tight py-work-tight">
+            <div
+              className={`relative flex items-center justify-between rounded-inset px-work-tight py-work-tight ${
+                project.id === activeProjectId ? 'bg-panel-soft' : ''
+              }`}
+            >
               <SelvedgeEdge status={project.status} />
-              <div className="min-w-0 pl-work">
+              {/* The project's own name opens its history — what happened here,
+                  which is a different question from what is being said in any
+                  one conversation. */}
+              <button
+                onClick={() => onOpenProject(project.id)}
+                title={`What happened to ${project.name}`}
+                className="min-w-0 flex-1 pl-work text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              >
                 <p className="truncate text-body font-medium text-ink">{project.name}</p>
                 {/* Colour is never the only signal: the health line says it in words. */}
                 <p className="truncate text-meta text-ink-quiet">{project.health}</p>
-              </div>
+              </button>
               <button
                 onClick={() => onNewThread(project.id)}
                 title="New thread here (Cmd+N)"

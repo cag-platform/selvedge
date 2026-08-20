@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { WorkCard } from './WorkCard.js';
+import { TimelineTab } from './TimelineTab.js';
 import { btnPrimary } from './ui.js';
 import type { WorkCardData } from '../lib/card.js';
 import type { ThreadData } from '../lib/inbox.js';
@@ -20,7 +21,7 @@ import type { ContextPack } from '../../shared/types/pack.js';
  * conversation matters more than the panel.
  */
 
-type Tab = 'work' | 'preview' | 'pack';
+type Tab = 'work' | 'preview' | 'timeline' | 'pack';
 type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
 
 function PreviewTab({ data, onReload }: { data: ThreadData; onReload: () => void }) {
@@ -160,11 +161,22 @@ function PackTab({ projectId }: { projectId: string }) {
   );
 }
 
-export function ContextPanel({ data, onReload, onClose }: { data: ThreadData; onReload: () => void; onClose: () => void }) {
+export function ContextPanel({
+  data,
+  onReload,
+  onClose,
+  onOpenThread,
+}: {
+  data: ThreadData;
+  onReload: () => void;
+  onClose: () => void;
+  onOpenThread: (threadId: string) => void;
+}) {
   const [tab, setTab] = useState<Tab>(data.thread.kind === 'workshop' ? 'preview' : 'work');
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: 'work', label: 'Work' },
     ...(data.thread.kind === 'workshop' ? ([{ id: 'preview', label: 'Preview' }] as Array<{ id: Tab; label: string }>) : []),
+    { id: 'timeline', label: 'History' },
     { id: 'pack', label: 'Pack' },
   ];
 
@@ -192,6 +204,7 @@ export function ContextPanel({ data, onReload, onClose }: { data: ThreadData; on
       <div className="flex-1 overflow-y-auto p-work">
         {tab === 'work' && <WorkTab projectId={data.project.id} />}
         {tab === 'preview' && <PreviewTab data={data} onReload={onReload} />}
+        {tab === 'timeline' && <TimelineTab projectId={data.project.id} onOpenThread={onOpenThread} />}
         {tab === 'pack' && <PackTab projectId={data.project.id} />}
       </div>
     </aside>

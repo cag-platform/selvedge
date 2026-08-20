@@ -286,6 +286,17 @@ anything back. The mirror image of the false-calm rule: as reluctant to cry "it
 broke" as to cry "it's fine". Probe, rollback, clock and sleep are all injected,
 so the window is fully testable without a network or real time.
 
+**The timeline** (`server/timeline`) is the same honesty machinery pointed at
+history: one plain sentence per thing that happened to a project — asks, work
+started, ships, undos, handovers, verdicts, and what the watching saw — each
+with the four-value edge and its evidence one click beneath. It is a pure
+projection: `entries.ts` holds nothing but functions from a row that already
+exists to a sentence, so the timeline cannot say more than the record, and a
+narration that said nothing produces no line rather than an invented one.
+Search beside it runs full-text and containment together — stemming for word
+forms, containment for the half-words people type — over messages, cards and
+narrations, scoped to one project and one org.
+
 `trust/` records Selvedge's own misses; `ledger/` is the read-side view of the
 cards table (**the cards table *is* the ledger** — nothing is stored twice), and
 `ledger/costs.ts` closes the flywheel: the estimate for a new change is learned
@@ -455,7 +466,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**1,084 tests across 136 files**, all green, under `test/` — mirroring
+**1,116 tests across 140 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 

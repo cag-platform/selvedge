@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **1,084 tests across 136
+and what's still only a plan. Written for a non-coder. **1,116 tests across 140
 files, all green.**
 
 ---
@@ -46,12 +46,13 @@ founder actually speaks.
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
 | **The Inbox** | The place to work: `/inbox` is one three-pane workbench — projects and their conversations on the left (with the morning brief pinned at the top), the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
 | **Switching agents mid-task** | Tap the chip in the composer, pick, keep typing. A chat thread just changes the model behind it, history intact. A workshop thread composes a **handoff** — what the project is, what's been done, where the work stands, and the ask — and starts the new builder with it, so nothing is re-explained. The thread records the switch in one line with the real size of what was handed over and what carrying it cost: *⇄ continued with Codex — handoff 1.8k tokens, about $0.004*. |
+| **The record, visible** | Every project has a **history**: one scrollable list of what happened to it — what you asked for, work starting, ships, undos, handovers between agents, verdicts, and what the watching saw — each in one plain sentence with its status edge and the evidence one click beneath. Click a project in the rail to read its own history, or open **History** beside a conversation. **Search inside a project** finds what was said in any thread, any ask, and anything the watching reported. And the line under it is true: this is the same history your JSON export carries, in the same words. |
 | **The flight record** | Every run keeps a durable, structured record of what the agent actually did — each tool step with its outcome (did the edit apply, did the test pass), the files changed, the cost, the model — bounded, and joined to the thread. "The full record" opens under the activity feed; ships record the exact diff the risk gate judged; undos get their own row; a finished card's history is one click on Record. The raw log dies with the sandbox in minutes — this is the evidence that outlives it. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
 | **Think it first** | A checkbox on the Workshop composer runs the same agent read-only: it explains in plain English what building the idea would involve, flags risks and cost, and changes nothing. Replaced the separate Sketch room — one conversation, one place, no hand-off. |
 | **Ledger / Record** | Every run's real cost in cents, verdicts, track record, learned baselines ("last time this cost about $6"). |
 | **Connections** | BYO model key, host tokens, Supabase token. AES-256-GCM vault, bound to org *and* provider. |
-| **Portability** | Export everything Selvedge knows as JSON. Being able to leave is what makes people stay. |
+| **Portability** | Export everything Selvedge knows as JSON — the project packs, the learned meanings, and now the timeline: what happened to each project, in the same sentences the product shows you. Being able to leave is what makes people stay. |
 
 **Agent standing rules (new).** The building agent now knows who it's building
 for on every turn: no terminal, doesn't read code, never hand over a command
@@ -236,9 +237,10 @@ Then **dogfood the Inbox** (INBOX-LOOP-BRIEF.md §3's gate): run a real day
 inside it — plan in a general thread, build in a workshop thread, switch
 builders at least once mid-task without re-explaining anything, and check that
 every message, switch and cost is visible in the record. That day is also the
-first real test of Codex's CLI. After it: **the Loop** (a local companion that
-reads terminal sessions in, and a pack-serving MCP that hands context out), and
-then the Migration Center, Replit first.
+first real test of Codex's CLI, and the first real read of a project's history
+with months rather than fixtures behind it. After it: **the Loop** (a local
+companion that reads terminal sessions in, and a pack-serving MCP that hands
+context out), and then the Migration Center, Replit first.
 
 ---
 

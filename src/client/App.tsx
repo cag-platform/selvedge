@@ -94,6 +94,8 @@ function AuthedApp() {
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
               <Route path="/sign-up" element={<Navigate to="/" replace />} />
               <Route path="/inbox" element={<Inbox />} />
+              {/* Static segment first: a project's history is not a thread id. */}
+              <Route path="/inbox/project/:projectId" element={<Inbox />} />
               <Route path="/inbox/:threadId" element={<Inbox />} />
               <Route path="/work" element={<Work />} />
               <Route path="/record" element={<TrackRecord />} />

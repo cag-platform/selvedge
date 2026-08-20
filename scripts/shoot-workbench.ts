@@ -18,6 +18,10 @@ import { chromium } from 'playwright';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const openSwitcher = process.argv.includes('--switcher');
+/** Which context tab to photograph: the panel opens on Preview for a workshop thread. */
+const tab = process.argv.find((a) => a.startsWith('--tab='))?.slice('--tab='.length);
+/** Photograph a project's own history instead of a thread. */
+const projectView = process.argv.includes('--project');
 const out = args[0] ?? path.resolve(here, '../workbench.png');
 const URL_ = 'http://localhost:5199/harness.html';
 
@@ -68,6 +72,14 @@ async function main() {
 
   await page.goto(URL_, { waitUntil: 'networkidle' });
   await page.waitForSelector('nav[aria-label="Projects and threads"]');
+  if (projectView) {
+    await page.click('nav[aria-label="Projects and threads"] button[title^="What happened"]');
+    await page.waitForTimeout(800);
+  }
+  if (tab) {
+    await page.click(`aside[aria-label="Context"] button:text-is("${tab}")`);
+    await page.waitForTimeout(800);
+  }
   if (openSwitcher) {
     // The tantamount interaction, photographed: tap the chip, the list opens
     // in place, and every entry says what it costs before you pick it.

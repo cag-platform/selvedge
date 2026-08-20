@@ -39,6 +39,10 @@ surface people work in for hours rather than read for a minute. As built:
   which arrives and leaves with `--settle` and does not animate while present.
 - **The glass budget holds.** The three panes are solid `--panel` on flat
   paper; the nav keeps its blur, and nothing new was added.
+- **History is a reading surface inside a working one.** The timeline keeps the
+  airy register (`--space-read`) while the panel's chrome around it stays
+  compact — and it still does not borrow Fraunces: the project-history headline
+  is Inter Tight, because the note's voice belongs to the brief.
 - **The screenshot check is runnable**: `npx tsx scripts/shoot-workbench.ts`
   renders the real components against fixed data (six projects, thirty
   threads) and fails on any console error — `--switcher` photographs the

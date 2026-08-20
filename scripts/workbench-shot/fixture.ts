@@ -89,3 +89,70 @@ export function threadFixture() {
 }
 
 export const cardsFixture = { cards: [] };
+
+/** A fortnight of a project's life, as the timeline serves it. */
+export function timelineFixture() {
+  const at = (days: number, hours = 0) => new Date(Date.UTC(2026, 7, 20 - days, 12 - hours)).toISOString();
+  return {
+    project: { id: 'p0', name: 'Loom' },
+    days: 14,
+    entries: [
+      {
+        id: 'event:n1',
+        at: at(0, 3),
+        kind: 'event',
+        sentence: 'Checkout started failing just after last night\'s change.',
+        status: 'needs',
+        evidence: ['error rate 14% over 10 minutes', 'runtime.error_spike · high confidence'],
+        ref: { event_id: 'e1' },
+      },
+      {
+        id: 'switch:s1',
+        at: at(0, 6),
+        kind: 'switch',
+        sentence: 'The work passed from Claude Code to Codex mid-thread, carrying what had happened so far.',
+        status: 'working',
+        evidence: ['⇄ continued with Codex — handoff 1.8k tokens, about $0.004'],
+        ref: { thread_id: 'p0t0' },
+      },
+      {
+        id: 'run:r0',
+        at: at(1),
+        kind: 'ship',
+        sentence: 'Shipped: guest checkout',
+        status: 'working',
+        evidence: ['2 files changed, including src/checkout/Cart.tsx, src/lib/validation.ts.', 'Commit a1b2c3d.'],
+        ref: { run_id: 'r0', thread_id: 'p0t0', commit: 'a1b2c3d' },
+      },
+      {
+        id: 'verdict:c1',
+        at: at(1, 2),
+        kind: 'verdict',
+        sentence: 'guest checkout — it did what you asked, and a different model than wrote it checked.',
+        status: 'healthy',
+        evidence: ['Cost $3.20.', 'Checked by a different model than the one that wrote it.'],
+        ref: { card_id: 'c1' },
+      },
+      {
+        id: 'ask:c1',
+        at: at(4),
+        kind: 'ask',
+        sentence: 'You asked for: guest checkout',
+        status: 'healthy',
+        evidence: ['Let people buy without making an account.', 'sensitive change, needs a confirmed backup before it can ship'],
+        ref: { card_id: 'c1' },
+      },
+      {
+        id: 'thread:p0t0',
+        at: at(6),
+        kind: 'thread',
+        sentence: 'A piece of work started: Checkout rework',
+        status: 'working',
+        evidence: ['Builds in the project sandbox.'],
+        ref: { thread_id: 'p0t0' },
+      },
+    ],
+  };
+}
+
+export const searchFixture = { query: '', hits: [] };

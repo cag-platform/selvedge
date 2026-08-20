@@ -461,3 +461,35 @@ yet proven:
   a pick with the composer never blocked.
 - **The timeline tab is Phase 2**, so the context panel carries Work, Preview
   and Pack and does not pretend otherwise.
+
+### Phase 2 — Visible Memory: **built** (Aug 2026)
+
+- **Per-project timeline.** `server/timeline` merges the record that already
+  existed — cards (the ledger), runs, narrations, threads, handovers — into one
+  list, newest first, each entry a single plain sentence with the product's
+  four-value edge and its evidence behind a Reveal. It is a pure projection:
+  the sentence builders take rows and return prose, no model is called, and a
+  narration that said nothing produces no line rather than an invented one.
+  Ordinary turns are left out on purpose — a conversation is not history.
+- **Two places to read it**, because "what happened here?" is asked two ways:
+  the **History** tab in the context panel (beside the conversation), and a
+  project's own history in the middle pane, reached by clicking the project in
+  the rail — which is also the only way a project with no conversations at all
+  could show its past.
+- **Search within a project.** Full-text and containment together, over
+  messages, asks and what the watching said: stemming finds "shipped" from
+  "shipping", containment finds "checkout" from "check", and each covers the
+  other's blind spot. GIN indexes in migration 0024; a wildcard typed into the
+  box is text, not a pattern.
+- **Export, now honestly claimed.** The brief said "export unchanged, now
+  visible" — but the export carried packs and the learned library only, so the
+  line the UI wanted to print would have been false. The bundle now carries the
+  timeline too (additive, still version `1`, ignored on import because history
+  is a record and re-seeding it into another org would be manufacturing a
+  past). The UI says it plainly: *this is your record — the same history your
+  export carries, in the same words.*
+
+**Gate:** met in the tests that matter — a fortnight of a project's life
+(ask → ship → handover → break) reads back in order from the timeline alone,
+with exactly one needs-you edge in it, and three months of a busy project stays
+one bounded, fast list. The screenshot check covers both surfaces.

@@ -5,6 +5,7 @@ import { Rail } from '../components/Rail.js';
 import { ThreadPane } from '../components/ThreadPane.js';
 import { ContextPanel } from '../components/ContextPanel.js';
 import { Palette } from '../components/Palette.js';
+import { TimelineTab } from '../components/TimelineTab.js';
 import { allThreads, type InboxData, type ThreadData } from '../lib/inbox.js';
 
 /**
@@ -30,7 +31,7 @@ const NARROW = 1280;
 const PHONE = 768;
 
 export function Inbox() {
-  const { threadId } = useParams();
+  const { threadId, projectId } = useParams();
   const navigate = useNavigate();
   const [inbox, setInbox] = useState<InboxData | null>(null);
   const [thread, setThread] = useState<ThreadData | null>(null);
@@ -88,14 +89,24 @@ export function Inbox() {
   // Landing on /inbox with nothing chosen opens the most recent conversation —
   // the one you were last in, in practice.
   useEffect(() => {
-    if (threadId || threads.length === 0) return;
+    if (threadId || projectId || threads.length === 0) return;
     const newest = [...threads].sort((a, b) => b.last_at.localeCompare(a.last_at))[0];
     if (newest) navigate(`/inbox/${newest.id}`, { replace: true });
-  }, [threadId, threads, navigate]);
+  }, [threadId, projectId, threads, navigate]);
 
   const open = useCallback(
     (id: string) => {
       navigate(`/inbox/${id}`);
+      setView('thread');
+    },
+    [navigate],
+  );
+
+  /** A project's own history, in the middle pane — the question the rail's
+   *  project row asks, which no single conversation can answer. */
+  const openProject = useCallback(
+    (id: string) => {
+      navigate(`/inbox/project/${id}`);
       setView('thread');
     },
     [navigate],
@@ -134,8 +145,8 @@ export function Inbox() {
       }
       if (meta && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        const projectId = thread?.project.id ?? inbox?.projects[0]?.id;
-        if (projectId) setNewThread({ projectId, kind: 'workshop' });
+        const target = projectId ?? thread?.project.id ?? inbox?.projects[0]?.id;
+        if (target) setNewThread({ projectId: target, kind: 'workshop' });
         return;
       }
       if (e.key === 'Escape') {
@@ -160,7 +171,7 @@ export function Inbox() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [inbox, newThread, open, paletteOpen, switcherOpen, thread, threadId, threads]);
+  }, [inbox, newThread, open, paletteOpen, projectId, switcherOpen, thread, threadId, threads]);
 
   if (error && !inbox) return <p className="p-work text-body text-thread">{error}</p>;
 
@@ -176,8 +187,10 @@ export function Inbox() {
           <Rail
             data={inbox}
             activeThreadId={threadId ?? null}
+            activeProjectId={projectId ?? null}
             onOpen={(t) => open(t.id)}
-            onNewThread={(projectId) => setNewThread({ projectId, kind: 'workshop' })}
+            onOpenProject={openProject}
+            onNewThread={(id) => setNewThread({ projectId: id, kind: 'workshop' })}
           />
         </div>
       )}
@@ -210,7 +223,14 @@ export function Inbox() {
             />
           )}
 
-          {thread ? (
+          {projectId ? (
+            <ProjectHistory
+              projectId={projectId}
+              name={inbox?.projects.find((p) => p.id === projectId)?.name ?? projectId}
+              onOpenThread={open}
+              onNewThread={() => setNewThread({ projectId, kind: 'workshop' })}
+            />
+          ) : thread ? (
             <ThreadPane
               data={thread}
               onReload={() => {
@@ -231,13 +251,18 @@ export function Inbox() {
         </main>
       )}
 
-      {showContext && thread && (
+      {showContext && thread && !projectId && (
         <div className={`${phone ? 'w-full' : 'w-context shrink-0'} border-l border-hairline bg-panel`}>
-          <ContextPanel data={thread} onReload={() => void loadThread()} onClose={() => (phone ? setView('thread') : setContextOpen(false))} />
+          <ContextPanel
+            data={thread}
+            onReload={() => void loadThread()}
+            onClose={() => (phone ? setView('thread') : setContextOpen(false))}
+            onOpenThread={open}
+          />
         </div>
       )}
 
-      {!phone && !contextOpen && thread && (
+      {!phone && !contextOpen && thread && !projectId && (
         <button
           onClick={() => setContextOpen(true)}
           className="border-l border-hairline px-work-tight text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
@@ -301,6 +326,42 @@ function NewThreadBar({
       <button onClick={onCancel} className="ml-auto text-meta text-ink-quiet hover:text-ink-dim">
         Cancel
       </button>
+    </div>
+  );
+}
+
+/**
+ * One project's history, given the room to be read. The context panel's
+ * History tab answers "what happened here?" beside a conversation; this is the
+ * same list with the reading register's air around it, for when that question
+ * IS the task — including for a project with no conversations at all, whose
+ * history would otherwise have nowhere to appear.
+ */
+function ProjectHistory({
+  projectId,
+  name,
+  onOpenThread,
+  onNewThread,
+}: {
+  projectId: string;
+  name: string;
+  onOpenThread: (threadId: string) => void;
+  onNewThread: () => void;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-read py-read">
+      <header className="mb-read flex flex-wrap items-baseline justify-between gap-work">
+        <div>
+          <p className="text-label font-body uppercase tracking-widest text-ink-quiet">What happened</p>
+          {/* Inter, not Fraunces: the note's voice belongs to the brief, and
+              the workbench keeps it that way even on a reading surface. */}
+          <h1 className="text-headline font-medium text-ink">{name}</h1>
+        </div>
+        <button onClick={onNewThread} className="text-meta text-action-bright hover:underline">
+          Start something here
+        </button>
+      </header>
+      <TimelineTab projectId={projectId} onOpenThread={onOpenThread} />
     </div>
   );
 }
