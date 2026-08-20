@@ -35,6 +35,7 @@ import { createBeaconRouter } from './routes/beacon.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createLedgerRouter } from './routes/ledger.js';
 import { createWorkshopRouter } from './routes/workshop.js';
+import { createThreadsRouter } from './routes/threads.js';
 import { buildBuildEngine } from '../runner/daytona/factory.js';
 import { driveCard } from '../cards/drive.js';
 
@@ -149,6 +150,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createCardsRouter(db, onRunnable ? { onRunnable } : {}));
   app.use(createLedgerRouter(db));
   app.use(createWorkshopRouter(db));
+  // The Inbox: the rail, a thread, and what you do inside one. Project-scoped
+  // work (ship, preview, go-live, attachments) stays on the workshop router.
+  app.use(createThreadsRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

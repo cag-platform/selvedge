@@ -182,18 +182,44 @@ work — not a guess about how it will go. States `declined`, `stopped`, `done`,
 When a card becomes runnable and the build engine is configured, `cards/drive.ts`
 composes the back half: run, and *only if the run finished the work*, verify.
 
+**The Inbox** (`server/threads`, `server/chat`, `web/routes/threads.ts`) is where
+that engine is now driven from. A project holds many **threads**; a thread is
+`workshop` (a coding agent in the project's sandbox, can ship) or `general`
+(direct model calls, no sandbox, nothing to ship). Three pieces:
+
+- `threads/store.ts` — the one reader and writer of a project's conversations,
+  org-scoped by (orgId, threadId).
+- `threads/switch.ts` — changing who answers. A general thread carries its own
+  history, so nothing is handed over; a workshop thread composes a handoff
+  (`handoff/compose.ts`), parks it on the thread as one mono system line stating
+  the payload's real size and what carrying it costs at the incoming agent's
+  published input rate, and the next turn spends it. Marked spent only once a
+  turn has actually taken it, so a failed start never eats the handover.
+- `chat/turn.ts` — a general thread's turn, on the existing LLM seam
+  (structured output, one `reply` string), metered as purpose `chat` against
+  the thread, and gated by the thinking-side budget so an afternoon of chat can
+  never turn tomorrow's brief mechanical.
+
 **The Workshop** (`server/build`, `web/routes/workshop.ts`) is the same engine
 with a conversational surface:
 
 - `sandbox.ts` — one persistent Daytona sandbox per project, created with native
   idle auto-stop at **15 minutes**. A stopped sandbox bills only storage; the
   next use resumes it. Never one sandbox per change.
-- `agent.ts` — one turn: the Claude Code CLI runs backgrounded inside the
-  sandbox writing stream-json to a log; this loop polls the log, parses tool
+- `agent.ts` — one turn: the builder's CLI runs backgrounded inside the
+  sandbox writing JSON events to a log; this loop polls the log, parses tool
   activity, and updates a live `activity` row in place, so the owner watches
-  real work rather than a spinner. `--resume` carries the conversation across
+  real work rather than a spinner. Resume carries the conversation across
   turns; a stale resume is retried once fresh. Every turn's real cost is
-  recorded in cents.
+  recorded in cents. **Which builder runs is a parameter**: `runner/agents/driver.ts`
+  is the seam — one command and three parsers per agent, everything else shared,
+  because two copies of that polling loop would drift and the drifting one is
+  the one nobody dogfoods. Claude Code and Codex share one sandbox and one
+  checkout (that is what makes a mid-task switch worth anything) and keep
+  separate CLI sessions (resuming the other's would hand an agent someone
+  else's transcript). Codex reports tokens rather than dollars, so its turns
+  are priced from `llm/pricing.ts`; a turn that reports no usage says so on the
+  thread rather than showing a confident zero.
 - Attachments — screenshots ride inline as base64 (≤6MB, ≤4 per message); docs,
   code and zips are streamed to local disk by multer, referenced by id, then
   streamed disk → sandbox, so a several-hundred-MB export never sits whole in
@@ -403,15 +429,24 @@ fact, not a global env check.
 
 A single Vite-built SPA in `src/client`, served by the same Express process as
 static files with an SPA catch-all. Clerk guards the whole tree; pages are
-`Today`, `Work`, `TrackRecord`, `Workshop`, `Connections`, `Projects`,
+`Today`, `Inbox`, `Work`, `TrackRecord`, `Connections`, `Projects`,
 `Tray`, `PackEditor`, `Admin`, `Styleguide`.
+
+**The Inbox is the workbench**: one persistent three-pane layout (rail →
+thread → context) that replaced the Workshop page. `/projects/:id/workshop`
+still resolves — it redirects into that project's workshop thread, because a
+link that used to work and now 404s is a small betrayal. Its density is a
+second setting of the same cloth: `--space-work*` tokens beside the reading
+register's, no new colours, and no type below the AA-passing sizes. Agent
+identity is deliberately non-colour (mono chips, `shared/agents.ts`), because
+`--thread` red means "this needs you" and nothing else.
 
 There is **no streaming anywhere** — no SSE, no websockets except the preview's
 HMR passthrough. The Workshop's liveness is polling against a log the sandbox
 writes. That is adequate today and is a known, deliberate simplification.
 
-Two client conventions worth preserving: the Workshop is the only wide layout
-(two panes: conversation + preview) while every other page keeps the calm
+Two client conventions worth preserving: the Inbox is the only full-bleed
+layout (three panes, its own scrolling) while every other page keeps the calm
 single-column measure; and first sign-in from any browser teaches the org its
 timezone so the brief lands at the owner's real 7am without a settings visit —
 auto-detect never overrides an explicit choice, and the server enforces that too.
@@ -420,7 +455,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**1,033 tests across 131 files**, all green, under `test/` — mirroring
+**1,084 tests across 136 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 

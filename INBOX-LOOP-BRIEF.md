@@ -408,3 +408,56 @@ Kept here so the plan and its execution stay in one place.
   picker entry that would fail on first use.
 - **No visible product change**, as the gate requires: the Workshop looks and
   behaves exactly as it did, writing into the thread it always had.
+
+### Phase 1 — The Inbox: **built** (Aug 2026)
+
+The room, and the machinery under it. What landed, and what is honestly not
+yet proven:
+
+- **Threads per project, on a real surface.** `/inbox` is one persistent
+  three-pane workbench — rail (projects with their edges, threads
+  newest-first, the brief pinned), thread (the conversation, the activity
+  feed, the ship controls, the composer), context (work cards, the live
+  preview, the pack). The Workshop page is gone; `/projects/:id/workshop`
+  redirects into that project's workshop thread, so no old link breaks.
+- **General threads.** A second kind of conversation with no sandbox anywhere
+  near it: direct model calls on the existing LLM seam, metered as purpose
+  `chat` against the thread, on the thinking side of the budget split that
+  retired Sketch left behind — an afternoon of thinking can never turn
+  tomorrow morning's brief mechanical. OpenAI is now live fuel beside
+  Anthropic (the client already existed as the grader's), so a chat thread
+  runs on whichever the owner connected, and says plainly when neither is.
+- **The switcher.** In the composer, on the chip, on Cmd+J: tap, pick, keep
+  typing — no modal, no page change, no confirmation, focus back in the input.
+  A general switch carries the history as it is. A workshop switch composes
+  the Phase 0 handoff, parks it on the thread as one mono line —
+  `⇄ continued with Codex — handoff 1.8k tokens, about $0.004` — and the next
+  turn starts the new agent with it. The number is the payload's measured
+  size; the price is what carrying it costs at the incoming agent's published
+  input rate, and when that rate isn't in the pricing table the line says the
+  size and stops rather than quoting a figure nobody can stand behind.
+- **Codex in the same sandbox.** `runner/agents/driver.ts` makes "which
+  builder" a parameter: one command and three parsers per agent, everything
+  else — the polling loop, the live feed, the flight record, the cost
+  accounting — shared. Both builders work the same checkout and keep separate
+  CLI sessions.
+- **Keyboard.** Cmd+K jump, Cmd+J switch, Cmd+N new thread (Tab toggles
+  build/talk), j/k through the rail, Esc closes. All of it listed in the
+  palette, none of it the only path to anything.
+
+**Honestly not done, and not claimed:**
+
+- **The Codex CLI is unverified against the live tool.** Its event stream is
+  undocumented and has changed shape between versions; the parsers accept the
+  shapes seen in the wild, refuse to guess at anything else, and fail a turn
+  they cannot read rather than passing it. It is listed with the other
+  built-but-unverified integrations in STATUS.md until someone runs it with a
+  real key.
+- **The dogfood gate (§3) has not been run.** It needs a live sandbox, a real
+  project and a working day — a person, not a test suite. The three
+  look-specific checks in §6.9 have been run: the rail's edges carry health at
+  six projects and thirty threads with red appearing only on the one that
+  needs you (`npx tsx scripts/shoot-workbench.ts`), and switching is a tap and
+  a pick with the composer never blocked.
+- **The timeline tab is Phase 2**, so the context panel carries Work, Preview
+  and Pack and does not pretend otherwise.

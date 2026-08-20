@@ -10,7 +10,8 @@ import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
 import { getBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
-import { runAgentTurn, type AgentTurnConfig, type AttachedImage, type AttachedFile } from '../../build/agent.js';
+import { runAgentTurn, type AttachedImage, type AttachedFile } from '../../build/agent.js';
+import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
@@ -89,21 +90,13 @@ function validateFileRefs(files: unknown): { error: string } | { ids: string[] }
   return { ids };
 }
 
-function engineEnv(): { claudeCodeOauthToken: string; githubToken: string } | null {
-  const claude = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  const github = process.env.GITHUB_TOKEN?.trim();
-  const daytona = process.env.DAYTONA_API_KEY?.trim();
-  if (!claude || !github || !daytona) return null;
-  return { claudeCodeOauthToken: claude, githubToken: github };
-}
-
 export type WorkshopDeps = {
   /** Injected for tests; defaults to the real agent turn. */
   runTurn?: typeof runAgentTurn;
   /** Injected for tests; defaults to the real provisioning flow. */
   goLive?: typeof goLive;
   preview?: (db: Db, orgId: string, projectId: string, cfg: SandboxConfig) => Promise<PreviewStatus>;
-  env?: () => { claudeCodeOauthToken: string; githubToken: string } | null;
+  env?: () => EngineEnv | null;
 };
 
 export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
@@ -113,19 +106,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   const env = deps.env ?? engineEnv;
 
   /** The pack's GitHub source + engine creds, or a plain reason why not. */
-  async function configFor(orgId: string, projectId: string): Promise<{ cfg: AgentTurnConfig; liveUrl: string | null } | { error: string; status: number }> {
-    const pack = await getPack(db, orgId, projectId);
-    if (!pack) return { error: 'no such project', status: 404 };
-    const creds = env();
-    if (!creds) {
-      return { status: 409, error: "The workshop isn't switched on yet — the build engine's credentials aren't configured." };
-    }
-    const source = pack.topology.sources.find((s) => s.connector === 'github');
-    if (!source) {
-      return { status: 409, error: "This project has no connected code source yet, so there's nothing for me to work on." };
-    }
-    return { cfg: { ...creds, repoFullName: source.resource_id, branch: 'main' }, liveUrl: pack.identity.links?.live_url ?? null };
-  }
+  const configFor = (orgId: string, projectId: string) => resolveEngineConfig(db, orgId, projectId, env);
 
   async function activeRun(orgId: string, projectId: string) {
     const cutoff = new Date(Date.now() - STUCK_RUN_MS);

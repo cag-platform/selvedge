@@ -46,6 +46,7 @@ export async function clearSandbox(db: Db, orgId: string, projectId: string): Pr
   await setBuild(db, orgId, projectId, {
     sandboxId: null,
     claudeSessionId: null,
+    codexSessionId: null,
     stagedChangesReady: false,
     previewUrl: null,
     previewToken: null,

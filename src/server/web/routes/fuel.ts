@@ -6,6 +6,7 @@ import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { FUEL_PROVIDERS, type FuelProvider } from '../../connectors/fuel/resolve.js';
 import { LIVE_FUEL_PROVIDERS } from '../../connectors/registry.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
+import { OpenAiLlmClient } from '../../llm/openai.js';
 import type { LlmClient } from '../../llm/types.js';
 
 function orgIdOf(req: Request): string {
@@ -26,11 +27,18 @@ function isFuelProvider(v: unknown): v is FuelProvider {
  */
 export type FuelVerifier = (provider: FuelProvider, key: string) => Promise<boolean>;
 
+/** The cheapest model each live provider will answer a ping on — the check costs a fraction of a cent. */
+const PING_MODEL: Partial<Record<FuelProvider, string>> = {
+  anthropic: 'claude-haiku-4-5-20251001',
+  openai: 'gpt-5.6-luna',
+};
+
 const realVerifier: FuelVerifier = async (provider, key) => {
-  if (provider !== 'anthropic') return false;
-  const client: LlmClient = new AnthropicLlmClient(key);
+  const model = PING_MODEL[provider];
+  if (!model) return false;
+  const client: LlmClient = provider === 'openai' ? new OpenAiLlmClient(key) : new AnthropicLlmClient(key);
   const res = await client.complete({
-    model: 'claude-haiku-4-5-20251001', // cheapest model — the check costs a fraction of a cent
+    model,
     system: 'Reply in the required format.',
     userContent: 'ping',
     maxTokens: 16,

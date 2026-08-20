@@ -39,3 +39,16 @@ export function costUsd(model: string, tokensIn: number, tokensOut: number): num
 export function providerForModel(model: string): string {
   return rateFor(model).provider;
 }
+
+/**
+ * Is this model's real rate known, or would it price at the fallback?
+ *
+ * Callers that QUOTE a cost to the owner ask this first. The fallback is
+ * deliberately the most expensive row, which is the right way to be wrong when
+ * counting spend after the fact — and the wrong way to be wrong when telling
+ * someone what something will cost. An unpriced model gets no quote instead of
+ * an invented one.
+ */
+export function isPricedModel(model: string): boolean {
+  return model in table().models;
+}

@@ -5,7 +5,8 @@ import { Nav } from './components/Nav.js';
 import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
 import { TrackRecord } from './pages/TrackRecord.js';
-import { Workshop } from './pages/Workshop.js';
+import { Inbox } from './pages/Inbox.js';
+import { WorkshopRedirect } from './pages/WorkshopRedirect.js';
 import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
 import { Tray } from './pages/Tray.js';
@@ -39,9 +40,9 @@ function AutoTimezone() {
 }
 
 function AuthedApp() {
-  // The workshop's two-pane layout (conversation + live preview) needs room;
-  // every other page keeps the calm single-column measure.
-  const wide = useLocation().pathname.endsWith('/workshop');
+  // The Inbox is the workbench: three panes, full bleed, its own scrolling.
+  // Every other page keeps the calm single-column measure it always had.
+  const workbench = useLocation().pathname.startsWith('/inbox');
   return (
     <>
       <SignedOut>
@@ -85,18 +86,21 @@ function AuthedApp() {
         <AutoTimezone />
         <div className="min-h-screen">
           <Nav />
-          <main className={`mx-auto ${wide ? 'max-w-6xl' : 'max-w-3xl'} px-4 py-8`}>
+          <main className={workbench ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Today />} />
               {/* The moment sign-in/up completes, these paths are the app's — land on Today. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
               <Route path="/sign-up" element={<Navigate to="/" replace />} />
+              <Route path="/inbox" element={<Inbox />} />
+              <Route path="/inbox/:threadId" element={<Inbox />} />
               <Route path="/work" element={<Work />} />
               <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
-              <Route path="/projects/:projectId/workshop" element={<Workshop />} />
+              {/* The workshop is a thread now — old links land in the conversation they meant. */}
+              <Route path="/projects/:projectId/workshop" element={<WorkshopRedirect />} />
               <Route path="/tray" element={<Tray />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />

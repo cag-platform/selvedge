@@ -22,6 +22,9 @@ export const projectBuild = pgTable(
     sandboxId: text('sandbox_id'),
     /** The Claude Code session id, for --resume so iteration continues the conversation. */
     claudeSessionId: text('claude_session_id'),
+    /** The Codex CLI session id, for the same reason. Separate column because they are separate conversations
+     *  inside the same sandbox: switching builders must not resume the other one's session. */
+    codexSessionId: text('codex_session_id'),
     /** The GitHub repo the sandbox works in, and the branch. */
     repoFullName: text('repo_full_name'),
     branch: text('branch').notNull().default('main'),
@@ -50,7 +53,7 @@ export const agentMessages = pgTable(
     /** The thread this message belongs to. Null only on rows written before threads existed
      *  that migration 0022 somehow missed; every writer names a thread. */
     threadId: text('thread_id'),
-    role: text('role').notNull(), // 'owner' | 'agent' | 'activity'
+    role: text('role').notNull(), // 'owner' | 'agent' | 'activity' | 'switch'
     content: text('content').notNull(),
     /** Structured activity (tool uses, diffs) for the streaming thread; null for plain text. */
     meta: jsonb('meta'),
@@ -98,6 +101,8 @@ export const agentRuns = pgTable(
      *  git trailer, so commit -> session resolves from either side. */
     threadId: text('thread_id'),
     prompt: text('prompt').notNull(),
+    /** WHICH agent did the work (shared/agents.ts id). Null only on rows written before there was a choice. */
+    agent: text('agent'),
     model: text('model'),
     status: text('status').notNull().default('queued'), // queued | running | succeeded | failed | cancelled
     /** What the run cost, in whole US cents (Selvedge's money convention). */

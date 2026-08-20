@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **1,033 tests across 131
+and what's still only a plan. Written for a non-coder. **1,084 tests across 136
 files, all green.**
 
 ---
@@ -44,6 +44,8 @@ founder actually speaks.
 | **Work** | Every ask becomes a card: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. |
 | **Independent verdict** | With `OPENAI_API_KEY` set, every finished card's "did it do what was asked" is judged **by a different model than wrote the change** (default `gpt-5.6-luna`), reading the actual diff from the card's review branch. This unlocks the `verified` verdict; without the key, verdicts honestly top out at "probably". The card says when it happened: *"Checked by a different model than the one that wrote it."* Grading runs on its own daily budget, so it can never starve the brief. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
+| **The Inbox** | The place to work: `/inbox` is one three-pane workbench — projects and their conversations on the left (with the morning brief pinned at the top), the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
+| **Switching agents mid-task** | Tap the chip in the composer, pick, keep typing. A chat thread just changes the model behind it, history intact. A workshop thread composes a **handoff** — what the project is, what's been done, where the work stands, and the ask — and starts the new builder with it, so nothing is re-explained. The thread records the switch in one line with the real size of what was handed over and what carrying it cost: *⇄ continued with Codex — handoff 1.8k tokens, about $0.004*. |
 | **The flight record** | Every run keeps a durable, structured record of what the agent actually did — each tool step with its outcome (did the edit apply, did the test pass), the files changed, the cost, the model — bounded, and joined to the thread. "The full record" opens under the activity feed; ships record the exact diff the risk gate judged; undos get their own row; a finished card's history is one click on Record. The raw log dies with the sandbox in minutes — this is the evidence that outlives it. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
 | **Think it first** | A checkbox on the Workshop composer runs the same agent read-only: it explains in plain English what building the idea would involve, flags risks and cost, and changes nothing. Replaced the separate Sketch room — one conversation, one place, no hand-off. |
@@ -78,6 +80,12 @@ in the customer's repo.
 Written to published docs and unit-tested; no call made against the real service
 from this environment:
 
+- **Codex as the second builder** — the CLI's install, its command, and its
+  JSON event stream (session id, outcome, token usage, tool activity). The
+  stream is undocumented and has changed shape between versions, so the parsers
+  accept the shapes seen in the wild and **fail a turn they cannot read rather
+  than passing it**. The rest of the path — the switch, the handoff, the record,
+  the pricing — is tested end to end with the CLI's output stubbed.
 - **Railway provisioning** — create service, set variables, mint domain, wait for
   deploy. Ported from Toile's working implementation, both schema-drift fallbacks
   included.
@@ -118,12 +126,11 @@ names what did and did not happen rather than going quiet.
 
 - **Model picker** (Claude / Codex / Kimi). Was cut in Aug 2026 — OpenAI arrived
   as the *grader*, where a different provider is the feature, not as selectable
-  fuel. **Reopened by INBOX-LOOP-BRIEF.md**, on a different argument: not "a
-  second model as decoration" but *switching builders mid-task without
-  re-explaining*, which is the thing the handoff seam now makes possible.
-  Phase 1 puts Codex in the same sandbox beside Claude Code and exposes both
-  chat models as fuel; the registry (`shared/agents.ts`) already declares all
-  four with only Claude Code live.
+  fuel. **Reopened and built** (INBOX-LOOP-BRIEF.md Phase 1) on a different
+  argument: not "a second model as decoration" but *switching builders mid-task
+  without re-explaining*. Codex now installs into the same sandbox beside
+  Claude Code, and OpenAI is live fuel for chat threads. Kimi and Gemini stay
+  declared and not built.
 - **Mobile app** — `cag-platform/Selvedge-mobile`, native SwiftUI. **Scope decided
   (Aug 2026): deliberately thin** — APNs push for the brief, a WidgetKit glance,
   and a read-only brief view. The Workshop and go-live stay web-only; a phone is
@@ -162,7 +169,7 @@ names what did and did not happen rather than going quiet.
 
 ---
 
-## Groundwork under the floor (Aug 2026)
+## What landed with the Inbox (Aug 2026)
 
 Phase 0 of INBOX-LOOP-BRIEF.md is in, and by design **nothing looks different**.
 Three load-bearing pieces, laid before the room is built on them:
@@ -181,6 +188,13 @@ Three load-bearing pieces, laid before the room is built on them:
   — what the app is, what breaking it costs, what's been done, where it stands,
   and the ask itself. On a thread with real history it costs under a tenth of
   what pasting the conversation would.
+
+Then the room itself: the Inbox and the switcher above, general threads beside
+coding ones, and Codex in the same sandbox. Two things are deliberately NOT
+claimed. The Codex CLI has not been run against the real tool from here (it's
+in the unverified list). And the dogfood gate — a whole working day inside
+Selvedge, switching builders mid-task without re-explaining anything — needs a
+person and a live sandbox; the machinery is tested, the day hasn't been had.
 
 ---
 
@@ -218,9 +232,13 @@ Three load-bearing pieces, laid before the room is built on them:
    `EVAL_MODEL=gpt-5.6-terra` — correlation, not agreement, is the failure
    being hunted.
 
-Then **the Inbox** (INBOX-LOOP-BRIEF.md Phase 1) — threads per project, general
-chat beside coding chat, and switching builders mid-task without repeating
-yourself — and after it, the Migration Center, Replit first.
+Then **dogfood the Inbox** (INBOX-LOOP-BRIEF.md §3's gate): run a real day
+inside it — plan in a general thread, build in a workshop thread, switch
+builders at least once mid-task without re-explaining anything, and check that
+every message, switch and cost is visible in the record. That day is also the
+first real test of Codex's CLI. After it: **the Loop** (a local companion that
+reads terminal sessions in, and a pack-serving MCP that hands context out), and
+then the Migration Center, Replit first.
 
 ---
 

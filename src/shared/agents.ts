@@ -36,6 +36,14 @@ export type AgentDescriptor = {
   /** Whose fuel it burns — what the ledger attributes the spend to. */
   provider: 'anthropic' | 'openai';
   /**
+   * The model id used to PRICE context carried to this agent (a handoff), from
+   * config/model-pricing.json. Not necessarily the model it runs: a CLI agent
+   * picks its own and reports what the turn really cost, which is what the run
+   * row records. This is only for quoting the size of a handover honestly at
+   * the moment it happens.
+   */
+  pricingModel: string;
+  /**
    * The one honest line the switcher shows before you pick. Comparative where a
    * number would be a guess: what it costs depends on the turn, and a precise
    * figure we can't stand behind is worse than an honest comparison.
@@ -52,6 +60,7 @@ const AGENT_TABLE = {
     name: 'Claude Code',
     kinds: ['workshop'],
     provider: 'anthropic',
+    pricingModel: 'claude-sonnet-5',
     costNote: "builds in your project's sandbox — about $0.05–0.30 a turn",
     live: true,
   },
@@ -61,6 +70,7 @@ const AGENT_TABLE = {
     name: 'Codex',
     kinds: ['workshop'],
     provider: 'openai',
+    pricingModel: 'gpt-5.6-terra',
     costNote: 'builds in the same sandbox, on your OpenAI key — about $0.05–0.30 a turn',
     live: false,
   },
@@ -70,6 +80,7 @@ const AGENT_TABLE = {
     name: 'Claude',
     kinds: ['general'],
     provider: 'anthropic',
+    pricingModel: 'claude-sonnet-5',
     costNote: 'plain chat on your own model key — a fraction of what a build turn costs',
     live: false,
   },
@@ -79,6 +90,7 @@ const AGENT_TABLE = {
     name: 'GPT',
     kinds: ['general'],
     provider: 'openai',
+    pricingModel: 'gpt-5.6-terra',
     costNote: 'plain chat on your own OpenAI key — a fraction of what a build turn costs',
     live: false,
   },
