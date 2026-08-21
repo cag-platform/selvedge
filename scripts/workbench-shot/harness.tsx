@@ -6,6 +6,8 @@ import { cardsFixture, decisionFixture, inboxFixture, searchFixture, threadFixtu
 
 /** ?decision=stale|current|none — the shot's most important state is the stale one. */
 const decision = new URLSearchParams(window.location.search).get('decision') ?? 'none';
+/** ?fail=create — make thread creation refuse, to prove a refusal is visible. */
+const failCreate = new URLSearchParams(window.location.search).get('fail') === 'create';
 
 /**
  * The workbench, rendered against fixed data and nothing else — no server, no
@@ -25,6 +27,9 @@ const ROUTES: Array<[RegExp, unknown]> = [
 
 window.fetch = (async (input: RequestInfo | URL) => {
   const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+  if (failCreate && /\/threads$/.test(url)) {
+    return new Response(JSON.stringify({ error: "The workshop isn't switched on here yet." }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+  }
   const hit = ROUTES.find(([pattern]) => pattern.test(url));
   return new Response(JSON.stringify(hit ? hit[1] : {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }) as typeof fetch;
