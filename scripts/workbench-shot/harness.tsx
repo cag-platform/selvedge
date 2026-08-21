@@ -2,7 +2,10 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Inbox } from '../../src/client/pages/Inbox.js';
 import '../../src/client/index.css';
-import { cardsFixture, inboxFixture, searchFixture, threadFixture, timelineFixture } from './fixture.js';
+import { cardsFixture, decisionFixture, inboxFixture, searchFixture, threadFixture, timelineFixture } from './fixture.js';
+
+/** ?decision=stale|current|none — the shot's most important state is the stale one. */
+const decision = new URLSearchParams(window.location.search).get('decision') ?? 'none';
 
 /**
  * The workbench, rendered against fixed data and nothing else — no server, no
@@ -11,6 +14,8 @@ import { cardsFixture, inboxFixture, searchFixture, threadFixture, timelineFixtu
  */
 const ROUTES: Array<[RegExp, unknown]> = [
   [/\/api\/inbox$/, inboxFixture()],
+  // Before the threads route, which would otherwise swallow it.
+  [/\/decision$/, decision === 'none' ? { brief: null } : decisionFixture(decision === 'stale')],
   [/\/timeline/, timelineFixture()],
   [/\/search/, searchFixture],
   [/\/api\/threads\//, threadFixture()],

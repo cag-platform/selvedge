@@ -12,8 +12,11 @@ import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.j
 import { runAgentTurn } from '../../build/agent.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
-import { createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
+import { createSubjectThread, createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
+import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
+import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
+import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, type AgentId } from '../../../shared/agents.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 import { listUnsortedEvents } from '../../resolution/unsortedTray.js';
@@ -77,8 +80,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     '/api/inbox',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
-      const [packs, threadRows, org] = await Promise.all([
+      const [packs, subjectRows, threadRows, org] = await Promise.all([
         listPacks(db, orgId),
+        listSubjects(db, orgId),
         db.select().from(threads).where(eq(threads.orgId, orgId)),
         db.select({ timezone: orgs.timezone }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1),
       ]);
@@ -100,11 +104,13 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const workingThreads = new Set(running.map((r) => r.threadId).filter(Boolean));
 
       const byProject = new Map<string, typeof threadRows>();
+      const bySubject = new Map<string, typeof threadRows>();
       for (const t of threadRows) {
         if (t.archivedAt) continue;
-        const list = byProject.get(t.projectId) ?? [];
-        list.push(t);
-        byProject.set(t.projectId, list);
+        const bucket = t.projectId ? byProject : t.subjectId ? bySubject : null;
+        const key = t.projectId ?? t.subjectId;
+        if (!bucket || !key) continue; // filed nowhere: not a thing the rail can show
+        bucket.set(key, [...(bucket.get(key) ?? []), t]);
       }
 
       const projects = packs.map((pack) => {
@@ -138,8 +144,28 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // The tray's count is a quiet line on the rail, not a destination.
       const unsorted = await listUnsortedEvents(db, orgId).catch(() => []);
 
+      // Subjects sit below the projects: conversations that belong to a topic
+      // rather than to a codebase. They carry no status, because there is
+      // nothing about a subject to be right or wrong about.
+      const subjectList = subjectRows.map((subject) => ({
+        id: subject.id,
+        name: subject.name,
+        threads: (bySubject.get(subject.id) ?? [])
+          .map((t) => ({
+            id: t.id,
+            kind: t.kind,
+            title: t.title,
+            agent: t.agent,
+            chip: agentById(t.agent)?.chip ?? t.agent.slice(0, 2).toUpperCase(),
+            working: workingThreads.has(t.id),
+            last_at: lastByThread.get(t.id) ?? t.createdAt.toISOString(),
+          }))
+          .sort((a, b) => String(b.last_at).localeCompare(String(a.last_at))),
+      }));
+
       res.json({
         projects,
+        subjects: subjectList,
         brief: digest ? { date: digest.date, headline: digest.headline } : null,
         unsorted_count: unsorted.length,
         engine_on: env() !== null,
@@ -158,8 +184,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
       const [pack, build, messages, runs, running] = await Promise.all([
-        getPack(db, orgId, thread.projectId),
-        getBuild(db, orgId, thread.projectId),
+        thread.projectId ? getPack(db, orgId, thread.projectId) : null,
+        thread.projectId ? getBuild(db, orgId, thread.projectId) : null,
         db
           .select()
           .from(agentMessages)
@@ -171,8 +197,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.threadId, thread.id)))
           .orderBy(desc(agentRuns.createdAt))
           .limit(20),
-        activeRun(orgId, thread.projectId),
+        thread.projectId ? activeRun(orgId, thread.projectId) : null,
       ]);
+      const subjectName = thread.subjectId ? (await getSubject(db, orgId, thread.subjectId))?.name ?? null : null;
 
       // What this CONVERSATION has cost: sandbox turns in cents, model calls in
       // dollars. The two ledgers stay separate (they measure different things)
@@ -222,7 +249,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           created_at: thread.createdAt.toISOString(),
           archived: thread.archivedAt !== null,
         },
-        project: { id: thread.projectId, name: pack?.identity.name ?? thread.projectId },
+        // A thread belongs to a project or to a subject; the pane says which.
+        project: thread.projectId ? { id: thread.projectId, name: pack?.identity.name ?? thread.projectId } : null,
+        subject: thread.subjectId ? { id: thread.subjectId, name: subjectName ?? thread.subjectId } : null,
         live_url: pack?.identity.links?.live_url ?? null,
         engine_on: env() !== null,
         working: running !== null,
@@ -283,6 +312,33 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       }
       const title = typeof body.title === 'string' && body.title.trim() !== '' ? body.title.trim().slice(0, 120) : kind === 'workshop' ? DEFAULT_WORKSHOP_TITLE : DEFAULT_GENERAL_TITLE;
       const thread = await createThread(db, orgId, projectId, { kind, title, ...(agent ? { agent: agent as AgentId } : {}) });
+      res.status(201).json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent } });
+    }),
+  );
+
+  /** Start a conversation under a subject — no project, no sandbox, nothing to ship. */
+  router.post(
+    '/api/subjects/:subjectId/threads',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const subject = await getSubject(db, orgId, req.params.subjectId ?? '');
+      if (!subject) {
+        res.status(404).json({ error: 'no such subject' });
+        return;
+      }
+      const body = (req.body ?? {}) as { title?: unknown; agent?: unknown };
+      const agent = typeof body.agent === 'string' ? body.agent : undefined;
+      if (agent !== undefined) {
+        const descriptor = agentById(agent);
+        if (!descriptor || !descriptor.kinds.includes('general')) {
+          res.status(400).json({ error: "That agent can't hold a plain conversation." });
+          return;
+        }
+      }
+      const thread = await createSubjectThread(db, orgId, subject.id, {
+        ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title.trim().slice(0, 120) } : {}),
+        ...(agent ? { agent: agent as AgentId } : {}),
+      });
       res.status(201).json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent } });
     }),
   );
@@ -365,6 +421,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(400).json({ error: "mode must be 'build' or 'plan'" });
         return;
       }
+      if (!thread.projectId) {
+        res.status(409).json({ error: "This conversation isn't about a project, so there's nothing here to build in." });
+        return;
+      }
       const resolved = await configFor(db, orgId, thread.projectId, env);
       if ('error' in resolved) {
         res.status(resolved.status).json({ error: resolved.error });
@@ -375,6 +435,23 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
 
+      // THE STALE-DECISION GUARD. A building thread paired to a decision brief
+      // must not act on one that has fallen behind the thinking it came from:
+      // that is the failure this feature was warned about, and the only way it
+      // becomes a confidently wrong verdict later. The owner can still proceed —
+      // it is their decision — but only deliberately, and the thread records
+      // that they did.
+      const brief = await briefForThread(db, orgId, thread.id).catch(() => null);
+      const paired = brief && brief.buildingThreadId === thread.id ? await withFreshness(db, orgId, brief) : null;
+      const acknowledged = (req.body as { acknowledge_stale?: unknown })?.acknowledge_stale === true;
+      if (paired && paired.freshness.state === 'stale' && !acknowledged) {
+        res.status(409).json({
+          error: `${paired.freshness.note} Refresh the decision, or send again to build from it as it stands.`,
+          stale_decision: { brief_id: paired.brief.id, behind: paired.freshness.behind, thinking_thread_id: paired.brief.thinkingThreadId },
+        });
+        return;
+      }
+
       // A handover parked by a switch is spent here, on the first message after
       // it — marked spent only once the turn has actually been handed it, so a
       // failed start never silently eats the handover.
@@ -382,13 +459,52 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const build = await getBuild(db, orgId, thread.projectId);
       const agent = thread.agent as AgentId;
 
+      // The decision opens the work: on the FIRST turn the builder is handed
+      // what was decided (and, when it has fallen behind, told so in the same
+      // breath). Later turns don't repeat it — the agent's own session carries
+      // it — but the guard above still runs on every one of them.
+      const [priorRun] = paired
+        ? await db.select({ id: agentRuns.id }).from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.threadId, thread.id))).limit(1)
+        : [];
+      const decisionPreamble =
+        paired && !priorRun
+          ? [paired.freshness.state === 'stale' ? staleWarningFor(paired.freshness) : null, briefAsText(paired.brief)].filter(Boolean).join('\n\n')
+          : null;
+      if (paired && paired.freshness.state === 'stale' && acknowledged) {
+        // On the record: this turn was built from a decision the thinking had
+        // already moved past. Nothing reading this thread later can mistake it
+        // for work that matched the current decision.
+        await db
+          .insert(agentMessages)
+          .values({
+            id: ulid(),
+            orgId,
+            projectId: thread.projectId,
+            threadId: thread.id,
+            role: 'switch',
+            content: `⇄ built from the decision as it stood — ${paired.freshness.behind} later message${paired.freshness.behind === 1 ? '' : 's'} in the thinking were not part of it.`,
+            meta: { decision: { brief_id: paired.brief.id, freshness: paired.freshness, acknowledged: true } },
+          })
+          .catch(() => undefined);
+      }
+
+      const projectId = thread.projectId;
       void runTurn(
         db,
         orgId,
-        thread.projectId,
+        projectId,
         text,
         { ...resolved.cfg, agent, ...(thread.model && agent === 'claude-code' ? { model: thread.model } : {}) },
-        { mode, threadId: thread.id, ...(handoff ? { handoff: handoff.text } : {}) },
+        {
+          mode,
+          threadId: thread.id,
+          // One seam for "start this agent with this context", whether the
+          // context is a handover from another agent or the decision this work
+          // exists to carry out.
+          ...(handoff || decisionPreamble
+            ? { handoff: [decisionPreamble, handoff?.text].filter(Boolean).join('\n\n---\n\n') }
+            : {}),
+        },
       ).catch(async (err) => {
         console.error(`thread turn failed to start for ${orgId}/${thread.id}:`, err);
         await db

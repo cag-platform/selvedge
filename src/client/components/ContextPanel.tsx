@@ -24,7 +24,7 @@ import type { ContextPack } from '../../shared/types/pack.js';
 type Tab = 'work' | 'preview' | 'timeline' | 'pack';
 type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
 
-function PreviewTab({ data, onReload }: { data: ThreadData; onReload: () => void }) {
+function PreviewTab({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -172,6 +172,9 @@ export function ContextPanel({
   onClose: () => void;
   onOpenThread: (threadId: string) => void;
 }) {
+  // A subject's thread has no project behind it, so it has no work cards, no
+  // app to preview and no pack — the panel simply isn't shown for one.
+  const project = data.project;
   const [tab, setTab] = useState<Tab>(data.thread.kind === 'workshop' ? 'preview' : 'work');
   const tabs: Array<{ id: Tab; label: string }> = [
     { id: 'work', label: 'Work' },
@@ -179,6 +182,7 @@ export function ContextPanel({
     { id: 'timeline', label: 'History' },
     { id: 'pack', label: 'Pack' },
   ];
+  if (!project) return null;
 
   return (
     <aside aria-label="Context" className="flex h-full flex-col">
@@ -202,10 +206,10 @@ export function ContextPanel({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-work">
-        {tab === 'work' && <WorkTab projectId={data.project.id} />}
-        {tab === 'preview' && <PreviewTab data={data} onReload={onReload} />}
-        {tab === 'timeline' && <TimelineTab projectId={data.project.id} onOpenThread={onOpenThread} />}
-        {tab === 'pack' && <PackTab projectId={data.project.id} />}
+        {tab === 'work' && <WorkTab projectId={project.id} />}
+        {tab === 'preview' && <PreviewTab data={{ ...data, project }} onReload={onReload} />}
+        {tab === 'timeline' && <TimelineTab projectId={project.id} onOpenThread={onOpenThread} />}
+        {tab === 'pack' && <PackTab projectId={project.id} />}
       </div>
     </aside>
   );

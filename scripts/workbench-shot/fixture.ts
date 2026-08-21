@@ -163,3 +163,36 @@ export function timelineFixture() {
 }
 
 export const searchFixture = { query: '', hits: [] };
+
+/**
+ * A decision brief on the building side of a pair, in both states — because the
+ * one worth looking at is the stale one. If a decision that has fallen behind
+ * the conversation reads as calmly as a current one, the design has undone the
+ * feature.
+ */
+export function decisionFixture(stale: boolean) {
+  return {
+    brief: {
+      id: 'd1',
+      title: 'One-page checkout',
+      decision: 'Put the whole checkout on one page, keeping the address step separate for people who have a saved address.',
+      why: 'Three pages is where people drop out, and the address step is the only part anyone re-reads.',
+      constraints: ['do not touch the payment step', 'saved baskets must survive it'],
+      openQuestions: ['what happens to a basket saved mid-checkout?'],
+      projectId: 'p0',
+      thinkingThreadId: 'p0t2',
+      buildingThreadId: 'p0t0',
+      editedByHuman: false,
+      evidenceThrough: '2026-08-20T09:20:00Z',
+      evidenceMessages: 12,
+    },
+    freshness: stale
+      ? {
+          state: 'stale',
+          behind: 3,
+          note: '3 things have been said in the thinking since this was written — it may no longer be what you decided.',
+        }
+      : { state: 'current', behind: 0, note: 'This is written from the whole conversation as it stands.' },
+    thinkingMessages: stale ? 15 : 12,
+  };
+}

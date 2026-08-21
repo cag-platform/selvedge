@@ -22,8 +22,10 @@ const openSwitcher = process.argv.includes('--switcher');
 const tab = process.argv.find((a) => a.startsWith('--tab='))?.slice('--tab='.length);
 /** Photograph a project's own history instead of a thread. */
 const projectView = process.argv.includes('--project');
+/** Photograph the thread with a decision brief above it: --decision=stale|current. */
+const decision = process.argv.find((a) => a.startsWith('--decision='))?.slice('--decision='.length);
 const out = args[0] ?? path.resolve(here, '../workbench.png');
-const URL_ = 'http://localhost:5199/harness.html';
+const URL_ = `http://localhost:5199/harness.html${decision ? `?decision=${decision}` : ''}`;
 
 async function main() {
   // Its own process group, so stopping it stops the whole tree — a vite left

@@ -128,9 +128,14 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
     return { ok: true, thread, changed: true, line, handoff: null };
   }
 
+  // A workshop thread always has a project — that is what a sandbox is built
+  // from — but the column is nullable now, so say so rather than assume it.
+  const projectId = thread.projectId;
+  if (!projectId) return { ok: true, thread, changed: true, line: null, handoff: null };
+
   const [pack, build, messages, runs] = await Promise.all([
-    getPack(db, orgId, thread.projectId).catch(() => null),
-    getBuild(db, orgId, thread.projectId).catch(() => null),
+    getPack(db, orgId, projectId).catch(() => null),
+    getBuild(db, orgId, projectId).catch(() => null),
     db
       .select({ role: agentMessages.role, content: agentMessages.content })
       .from(agentMessages)

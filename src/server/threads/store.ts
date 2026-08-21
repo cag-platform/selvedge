@@ -3,7 +3,7 @@ import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { threads } from '../db/schema/index.js';
 import { agentById, defaultAgentFor, isAgentId, type AgentId } from '../../shared/agents.js';
-import { DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../shared/types/thread.js';
+import { DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../shared/types/thread.js';
 
 /**
  * The thread store — the one reader and writer of a project's conversations.
@@ -35,6 +35,33 @@ export async function createThread(db: Db, orgId: string, projectId: string, fie
       kind: fields.kind,
       title: fields.title?.trim() || DEFAULT_WORKSHOP_TITLE,
       agent: fields.agent ?? defaultAgentFor(fields.kind),
+      model: fields.model ?? null,
+    })
+    .returning();
+  return row!;
+}
+
+/**
+ * A conversation about a SUBJECT rather than a project — no repo, no sandbox,
+ * nothing to ship. Always `general`: there is nothing here for a builder to
+ * build in, and offering one would be a lie about what this thread can do.
+ */
+export async function createSubjectThread(
+  db: Db,
+  orgId: string,
+  subjectId: string,
+  fields: { title?: string; agent?: AgentId; model?: string | null } = {},
+): Promise<Thread> {
+  const [row] = await db
+    .insert(threads)
+    .values({
+      id: ulid(),
+      orgId,
+      projectId: null,
+      subjectId,
+      kind: 'general',
+      title: fields.title?.trim() || DEFAULT_GENERAL_TITLE,
+      agent: fields.agent ?? defaultAgentFor('general'),
       model: fields.model ?? null,
     })
     .returning();

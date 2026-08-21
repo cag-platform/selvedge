@@ -22,6 +22,8 @@ export function Rail({
   onOpen,
   onOpenProject,
   onNewThread,
+  onNewSubjectThread,
+  onNewSubject,
 }: {
   data: InboxData | null;
   activeThreadId: string | null;
@@ -29,6 +31,8 @@ export function Rail({
   onOpen: (thread: ThreadRow) => void;
   onOpenProject: (projectId: string) => void;
   onNewThread: (projectId: string) => void;
+  onNewSubjectThread: (subjectId: string) => void;
+  onNewSubject: () => void;
 }) {
   if (!data) return <p className="p-work text-body text-ink-quiet">Loading…</p>;
 
@@ -106,6 +110,52 @@ export function Rail({
             </ul>
           </section>
         ))}
+
+        {/* Subjects: conversations that belong to a topic rather than a
+            codebase. No edge, because there is nothing here that could be
+            healthy or broken — a status on a subject would be a claim about
+            nothing. */}
+        {(data.subjects ?? []).length > 0 && (
+          <p className="mb-work-tight mt-work px-work-tight text-label font-body uppercase tracking-widest text-ink-quiet">Subjects</p>
+        )}
+        {(data.subjects ?? []).map((subject) => (
+          <section key={subject.id} className="mb-work">
+            <div className="flex items-center justify-between rounded-inset px-work-tight py-work-tight">
+              <p className="min-w-0 flex-1 truncate pl-work text-body font-medium text-ink">{subject.name}</p>
+              <button
+                onClick={() => onNewSubjectThread(subject.id)}
+                title={`New conversation about ${subject.name}`}
+                className="ml-work shrink-0 rounded-inset px-work-tight text-meta text-ink-quiet hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              >
+                +
+              </button>
+            </div>
+            <ul className="mt-work-tight">
+              {subject.threads.map((thread) => (
+                <li key={thread.id}>
+                  <button
+                    onClick={() => onOpen(thread)}
+                    aria-current={thread.id === activeThreadId ? 'true' : undefined}
+                    className={`flex min-h-row-work w-full items-center gap-work px-work-tight py-work-tight text-left transition-colors duration-settle ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
+                      thread.id === activeThreadId ? 'rounded-inset bg-panel-soft' : 'hover:bg-panel-soft'
+                    }`}
+                  >
+                    <AgentChip agent={thread.agent} working={thread.working} />
+                    <span className="min-w-0 flex-1 truncate text-body text-ink">{thread.title}</span>
+                    <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(thread.last_at)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+
+        <button
+          onClick={onNewSubject}
+          className="mt-work w-full rounded-inset px-work-tight py-work-tight text-left text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+        >
+          + a subject — somewhere for work that isn't a codebase
+        </button>
       </div>
 
       <div className="border-t border-hairline p-work text-meta text-ink-quiet">

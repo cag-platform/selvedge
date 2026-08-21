@@ -19,7 +19,13 @@ export const threads = pgTable(
   {
     id: text('id').primaryKey(), // ulid; legacy rows carry the derived id migration 0022 minted
     orgId: text('org_id').notNull(),
-    projectId: text('project_id').notNull(),
+    /**
+     * The project this conversation is about — null when it belongs to a
+     * SUBJECT instead (subjects.ts). Exactly one of the two is set; a thread
+     * with neither would be a conversation about nothing, filed nowhere.
+     */
+    projectId: text('project_id'),
+    subjectId: text('subject_id'),
     /** 'workshop' | 'general' — see shared/types/thread.ts. */
     kind: text('kind').notNull(),
     title: text('title').notNull(),
@@ -30,5 +36,8 @@ export const threads = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
   },
-  (t) => [index('threads_org_project_idx').on(t.orgId, t.projectId)],
+  (t) => [
+    index('threads_org_project_idx').on(t.orgId, t.projectId),
+    index('threads_org_subject_idx').on(t.orgId, t.subjectId),
+  ],
 );

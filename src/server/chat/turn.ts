@@ -156,7 +156,10 @@ export async function runChatTurn(
     .map((m) => `${m.role === 'owner' ? 'Owner' : 'Selvedge'}: ${clip(m.content, MAX_MESSAGE_CHARS)}`)
     .join('\n\n');
 
-  const project = await projectContext(db, orgId, thread.projectId);
+  // A thread under a SUBJECT is about no project, so there is no project
+  // context to give — and the system prompt's "say what you can't see" rule
+  // covers the difference honestly.
+  const project = thread.projectId ? await projectContext(db, orgId, thread.projectId) : null;
   const model = chatModel(provider);
   const result = await deps.client.complete({
     model,

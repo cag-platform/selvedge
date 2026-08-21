@@ -112,6 +112,34 @@ export function Inbox() {
     [navigate],
   );
 
+  /** A conversation under a subject: no project, no sandbox, nothing to ship. */
+  const createSubjectThread = useCallback(
+    async (subjectId: string) => {
+      try {
+        const res = await api.post<{ thread: { id: string } }>(`/api/subjects/${subjectId}/threads`, {});
+        await loadInbox();
+        navigate(`/inbox/${res.thread.id}`);
+        setView('thread');
+        setTimeout(() => composerRef.current?.focus(), 0);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "that didn't go through");
+      }
+    },
+    [loadInbox, navigate],
+  );
+
+  /** Make somewhere to put work that isn't a codebase. */
+  const createSubject = useCallback(async () => {
+    const name = window.prompt('What is this subject? (a name is enough)');
+    if (!name?.trim()) return;
+    try {
+      await api.post('/api/subjects', { name: name.trim() });
+      await loadInbox();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "that didn't go through");
+    }
+  }, [loadInbox]);
+
   const createThread = useCallback(
     async (projectId: string, kind: 'workshop' | 'general') => {
       try {
@@ -145,7 +173,7 @@ export function Inbox() {
       }
       if (meta && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        const target = projectId ?? thread?.project.id ?? inbox?.projects[0]?.id;
+        const target = projectId ?? thread?.project?.id ?? inbox?.projects[0]?.id;
         if (target) setNewThread({ projectId: target, kind: 'workshop' });
         return;
       }
@@ -191,6 +219,8 @@ export function Inbox() {
             onOpen={(t) => open(t.id)}
             onOpenProject={openProject}
             onNewThread={(id) => setNewThread({ projectId: id, kind: 'workshop' })}
+            onNewSubjectThread={(id) => void createSubjectThread(id)}
+            onNewSubject={() => void createSubject()}
           />
         </div>
       )}
@@ -237,6 +267,7 @@ export function Inbox() {
                 void loadThread();
                 void loadInbox();
               }}
+              onOpenThread={open}
               switcherOpen={switcherOpen}
               onSwitcherOpenChange={setSwitcherOpen}
               composerRef={composerRef}

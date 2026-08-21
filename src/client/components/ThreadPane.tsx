@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../lib/api.js';
+import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
 import { Reveal } from './Brief.js';
 import { AgentChip } from './AgentChip.js';
 import { AgentSwitcher } from './AgentSwitcher.js';
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from './WorkshopAttach.js';
+import { DecisionCard } from './DecisionCard.js';
+import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 
 /**
@@ -22,7 +24,7 @@ import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
  * bar that guesses — content moves, chrome does not.
  */
 
-function ShipControls({ data, onDone }: { data: ThreadData; onDone: () => void }) {
+function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: string; name: string } }; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [needsBackup, setNeedsBackup] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
@@ -137,9 +139,9 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
       {message.attachments.length > 0 && (
         <div className="mt-work-tight flex flex-wrap gap-work-tight">
           {message.attachments.map((a) => (
-            <a key={a.id} href={`/api/projects/${data.project.id}/workshop/attachments/${a.id}`} target="_blank" rel="noopener noreferrer">
+            <a key={a.id} href={`/api/projects/${data.project?.id}/workshop/attachments/${a.id}`} target="_blank" rel="noopener noreferrer">
               <img
-                src={`/api/projects/${data.project.id}/workshop/attachments/${a.id}`}
+                src={`/api/projects/${data.project?.id}/workshop/attachments/${a.id}`}
                 alt="attached"
                 className="h-16 w-16 rounded-inset border border-hairline object-cover"
               />
@@ -154,12 +156,14 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
 export function ThreadPane({
   data,
   onReload,
+  onOpenThread,
   switcherOpen,
   onSwitcherOpenChange,
   composerRef,
 }: {
   data: ThreadData;
   onReload: () => void;
+  onOpenThread: (threadId: string) => void;
   switcherOpen: boolean;
   onSwitcherOpenChange: (open: boolean) => void;
   composerRef: React.RefObject<HTMLTextAreaElement>;
@@ -174,6 +178,9 @@ export function ThreadPane({
   const [warming, setWarming] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState(data.thread.title);
+  // The building thread's refusal: set when the server declined a turn because
+  // the decision behind this thread has fallen behind the thinking.
+  const [staleRefusal, setStaleRefusal] = useState<{ refusal: StaleRefusal; message: string } | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
 
@@ -200,8 +207,13 @@ export function ThreadPane({
     if (data.working) setWarming(false);
   }, [data.working]);
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
+  /**
+   * `acknowledgeStale` is only ever true because a person pressed the second
+   * button, having read what they were overriding. It is never carried over
+   * from a previous send, and never defaulted on.
+   */
+  async function send(e: React.FormEvent | null, acknowledgeStale = false) {
+    e?.preventDefault();
     const body = text.trim();
     if (body === '' || uploading) return;
     setSending(true);
@@ -212,15 +224,22 @@ export function ThreadPane({
         ...(workshop && planFirst ? { mode: 'plan' } : {}),
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
+        ...(acknowledgeStale ? { acknowledge_stale: true } : {}),
       });
       setText('');
       setImages([]);
       setFiles([]);
       setPlanFirst(false);
+      setStaleRefusal(null);
       setWarming(res.warming);
       onReload();
     } catch (err) {
-      setNote(err instanceof Error ? err.message : "that didn't go through");
+      // A stale decision is a refusal with a way through, not a dead end: keep
+      // what was typed, say what is behind, and let the owner choose. The
+      // message is NOT sent by the act of being told.
+      const refusal = err instanceof ApiError && err.status === 409 ? staleRefusalOf(err.body) : null;
+      if (refusal) setStaleRefusal({ refusal, message: err instanceof Error ? err.message : '' });
+      else setNote(err instanceof Error ? err.message : "that didn't go through");
     } finally {
       setSending(false);
     }
@@ -269,7 +288,8 @@ export function ThreadPane({
             </button>
           )}
           <p className="truncate text-meta text-ink-quiet">
-            {data.project.name} · {workshop ? 'builds in the sandbox' : 'chat, nothing is built here'}
+            {data.project?.name ?? data.subject?.name ?? 'unfiled'} ·{' '}
+            {workshop ? 'builds in the sandbox' : data.project ? 'chat, nothing is built here' : 'a conversation about a subject, not a codebase'}
           </p>
         </div>
         <p className="font-mono text-tech text-ink-quiet">
@@ -277,6 +297,15 @@ export function ThreadPane({
           {workshop && (data.sandbox === 'attached' ? ' · workshop warm' : ' · workshop cold')}
         </p>
       </header>
+
+      <DecisionCard
+        threadId={data.thread.id}
+        kind={data.thread.kind}
+        hasConversation={data.messages.some((m) => m.role === 'owner' || m.role === 'agent')}
+        onOpenThread={onOpenThread}
+        onReload={onReload}
+        reloadKey={data.messages.length}
+      />
 
       <div className="flex-1 space-y-work-loose overflow-y-auto px-work-loose py-work">
         {data.messages.length === 0 && (
@@ -303,12 +332,37 @@ export function ThreadPane({
         <div ref={end} />
       </div>
 
-      {workshop && data.staged_changes_ready && <ShipControls data={data} onDone={onReload} />}
+      {workshop && data.project && data.staged_changes_ready && (
+        <ShipControls data={{ ...data, project: data.project }} onDone={onReload} />
+      )}
 
       <div className="border-t border-hairline px-work-loose py-work">
         <PendingChips images={images} onImagesChange={setImages} files={files} onFilesChange={setFiles} />
+        {staleRefusal && (
+          <div className="mb-work-tight space-y-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2">
+            <p className="text-body font-medium text-thread">{staleRefusal.message}</p>
+            <div className="flex flex-wrap items-center gap-work">
+              <button
+                onClick={() => onOpenThread(staleRefusal.refusal.thinking_thread_id)}
+                className="rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
+              >
+                Go and refresh the decision
+              </button>
+              {/* The override is available, plainly worded, and never the
+                  default: it is one press, and the thread records that it
+                  happened. */}
+              <button
+                disabled={sending}
+                onClick={() => void send(null, true)}
+                className="text-meta text-ink-quiet underline hover:text-ink-dim disabled:opacity-50"
+              >
+                Build from it as it stands
+              </button>
+            </div>
+          </div>
+        )}
         {note && <p className="mb-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2 text-body font-medium text-thread">{note}</p>}
-        <form ref={form} onSubmit={send} className="flex items-end gap-work">
+        <form ref={form} onSubmit={(e) => void send(e)} className="flex items-end gap-work">
           <AgentSwitcher
             kind={data.thread.kind}
             agent={data.thread.agent}
@@ -341,7 +395,7 @@ export function ThreadPane({
             placeholder={workshop ? 'What should we build?' : 'What are you thinking about?'}
             className="max-h-56 min-h-[2.5rem] flex-1 resize-none overflow-y-auto rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60"
           />
-          {workshop && (
+          {workshop && data.project && (
             <AttachButtons
               images={images}
               onImagesChange={setImages}

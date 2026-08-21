@@ -49,7 +49,8 @@ export const agentMessages = pgTable(
   {
     id: text('id').primaryKey(), // ulid
     orgId: text('org_id').notNull(),
-    projectId: text('project_id').notNull(),
+    /** Null for a message in a subject's thread, which is about no project at all. */
+    projectId: text('project_id'),
     /** The thread this message belongs to. Null only on rows written before threads existed
      *  that migration 0022 somehow missed; every writer names a thread. */
     threadId: text('thread_id'),

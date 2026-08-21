@@ -25,8 +25,16 @@ export type ProjectRow = {
   threads: ThreadRow[];
 };
 
+/** A subject: conversations that belong to a topic rather than to a codebase. */
+export type SubjectRow = {
+  id: string;
+  name: string;
+  threads: ThreadRow[];
+};
+
 export type InboxData = {
   projects: ProjectRow[];
+  subjects: SubjectRow[];
   brief: { date: string; headline: string } | null;
   unsorted_count: number;
   engine_on: boolean;
@@ -56,7 +64,9 @@ export type ThreadRun = {
 
 export type ThreadData = {
   thread: { id: string; kind: 'workshop' | 'general'; title: string; agent: string; model: string | null; created_at: string; archived: boolean };
-  project: { id: string; name: string };
+  /** One of these is set: a thread is about a project, or about a subject. */
+  project: { id: string; name: string } | null;
+  subject: { id: string; name: string } | null;
   live_url: string | null;
   engine_on: boolean;
   working: boolean;
@@ -70,7 +80,12 @@ export type ThreadData = {
 
 /** Every thread in the rail, flattened with its project — what the palette searches. */
 export function allThreads(data: InboxData | null): Array<ThreadRow & { projectId: string; projectName: string }> {
-  return (data?.projects ?? []).flatMap((p) => p.threads.map((t) => ({ ...t, projectId: p.id, projectName: p.name })));
+  return [
+    ...(data?.projects ?? []).flatMap((p) => p.threads.map((t) => ({ ...t, projectId: p.id, projectName: p.name }))),
+    // Subject threads are jumpable too — they are conversations like any other,
+    // and the palette should not pretend they aren't there.
+    ...(data?.subjects ?? []).flatMap((s) => s.threads.map((t) => ({ ...t, projectId: s.id, projectName: s.name }))),
+  ];
 }
 
 /**
