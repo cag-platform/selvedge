@@ -219,6 +219,36 @@ that engine is now driven from. A project holds many **threads**; a thread is
   (structured output, one `reply` string), metered as purpose `chat` against
   the thread, and gated by the thinking-side budget so an afternoon of chat can
   never turn tomorrow's brief mechanical.
+- `threads/subjects.ts` — a **subject** is somewhere to put work that isn't a
+  codebase, so `threads.project_id` is nullable and exactly one of project or
+  subject is set. A subject has a name and threads and nothing else: no stakes,
+  no topology, no edge, no health line. A status on a subject would be a claim
+  about a thing there is nothing to know about.
+
+**Paired threads** (`server/decisions`) sit between two threads: think in a
+general one, extract a **decision brief**, build in a workshop thread paired to
+it. The whole feature is its evidence-dating, and the layering says so:
+
+- `decisions/freshness.ts` is pure and blunt. A brief records what it was made
+  from (`evidence_through`, `evidence_messages`); ANY newer message in the
+  thinking makes it stale. Deciding which messages *mattered* is exactly the
+  judgement that gets this wrong.
+- `decisions/store.ts` exposes no way to read a brief without its dating —
+  `withFreshness` is the only reader, and the client type has no shape a bare
+  brief fits in. An undated brief is the object the feature exists to prevent:
+  a settled-sounding statement whose settledness nobody checked.
+- The message path (`web/routes/threads.ts`) consults it before every turn and
+  **refuses** — 409, saying what is behind and by how much — until a person
+  acknowledges. That acknowledgement is recorded on the thread.
+
+**Consumer-history import** (`server/import/consumer`) reads the export ZIP
+ChatGPT, Claude or Gemini already gives you and files old chats as general
+threads. Not a connector: live capture of consumer chat apps stays refused. The
+parsers are pure and return `unreadable` items with reasons, which the route
+returns beside the success count — a success count on its own is the same shape
+of lie as a confidently wrong all-clear. Provenance is columns
+(`imported_from`, `import_source_id`, uniquely indexed so a re-import cannot
+double a history), never prose.
 
 **The Workshop** (`server/build`, `web/routes/workshop.ts`) is the same engine
 with a conversational surface:
@@ -344,6 +374,17 @@ guess, and a log they cannot read is REPORTED as `unreadable` with its reason �
 which surfaces on the timeline and leads the next morning's brief. A companion
 that silently skipped what it couldn't parse would leave an owner believing they
 had a complete record when they didn't.
+
+Four readers, two of them honestly labelled: Claude Code and Codex were written
+against real logs; **Cursor and Gemini CLI are unverified** — written against
+those formats as understood, not proved against a log this codebase has seen.
+They are shipped labelled rather than shipped silent, and what is engineered is
+the guess failing safely: no throw on any input, no session invented without the
+tool's own id, every unreadable log reported. Because "you had a quiet week" and
+"your root is wrong" are indistinguishable from the inside, `--dry-run` prints
+where it looked when it finds nothing, and every root is overridable per tool in
+`~/.selvedge/config.json` (null turns a reader off). Cursor's IDE chat lives in
+a SQLite workspace database the companion deliberately does not open.
 
 **`selvedge context`** is the same binary as an MCP server (stdio), mounted by
 any agent anywhere. Three read-only tools — `get_project_context`,

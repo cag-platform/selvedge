@@ -90,9 +90,22 @@ describe('web/routes/companion — the door a machine knocks on', () => {
   it('refuses a summary that is not one', async () => {
     const bad = async (body: unknown) => (await request(app()).post('/api/companion/sessions').set(auth()).send(body as object)).status;
     expect(await bad({})).toBe(400);
-    expect(await bad({ agent: 'cursor', session_id: 'x', outcome: 'ended' })).toBe(400);
+    // An agent nobody has written a reader for. `cursor` and `gemini-cli` ARE
+    // legal now — unverified readers, but legal — so the illegal example has to
+    // be something genuinely outside the table, or the test stops testing.
+    expect(await bad({ agent: 'notepad', session_id: 'x', outcome: 'ended' })).toBe(400);
     expect(await bad({ agent: 'codex', outcome: 'ended' })).toBe(400);
     expect(await bad({ agent: 'codex', session_id: 'x', outcome: 'vanished' })).toBe(400);
+  });
+
+  it('takes a session from an unverified reader like any other — a labelled reader is still a real one', async () => {
+    for (const agent of ['cursor', 'gemini-cli']) {
+      const res = await request(app())
+        .post('/api/companion/sessions')
+        .set(auth())
+        .send({ agent, session_id: `s-${agent}`, outcome: 'unreadable', detail: 'the log never said which session it was' });
+      expect(res.status).toBe(202);
+    }
   });
 
   it('serves the project context an agent mounts it for', async () => {

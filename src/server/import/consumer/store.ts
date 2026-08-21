@@ -87,12 +87,15 @@ export async function fileConversations(
       importSourceId: convo.sourceId,
     });
 
-    const rows: Array<typeof agentMessages.$inferInsert> = [
+    // Built without the thread and given it once, at the insert. The thread
+    // contract (test/threads/contract.test.ts) reads the `.values()` call
+    // itself, and it is right to: a row assembled somewhere else and inserted
+    // here is exactly how a message ends up filed under no conversation.
+    const rows: Array<Omit<typeof agentMessages.$inferInsert, 'threadId'>> = [
       {
         id: ulid(),
         orgId,
         projectId: target.projectId ?? null,
-        threadId,
         role: 'switch',
         content: provenanceLine(vendor, convo),
         createdAt: startedAt,
@@ -111,7 +114,6 @@ export async function fileConversations(
         id: ulid(),
         orgId,
         projectId: target.projectId ?? null,
-        threadId,
         role: message.role,
         content: message.content,
         createdAt: new Date(clock),
@@ -119,7 +121,7 @@ export async function fileConversations(
       });
     }
 
-    await db.insert(agentMessages).values(rows);
+    await db.insert(agentMessages).values(rows.map((row) => ({ ...row, threadId })));
     threadIds.push(threadId);
   }
 
