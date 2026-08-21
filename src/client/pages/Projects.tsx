@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
+import { ImportHistory } from '../components/ImportHistory.js';
 
 function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => void }) {
   const [repos, setRepos] = useState<Array<{ full_name: string }>>([]);
@@ -152,7 +153,16 @@ function MemoryBanner() {
   useEffect(() => {
     api.get<StackMemory>('/api/memory').then(setMem).catch(() => setMem(null));
   }, []);
-  if (!mem || mem.apps === 0) return null;
+  // Nothing watched yet means no memory to boast about and nothing to export —
+  // but an old history can still come in, and a subject is somewhere to put it.
+  if (!mem || mem.apps === 0) {
+    return (
+      <Pane className="mb-6 p-5">
+        <p className="text-body text-ink-quiet">Nothing has been watched long enough to have a memory yet.</p>
+        <ImportHistory />
+      </Pane>
+    );
+  }
 
   const exportContext = async () => {
     const bundle = await api.get<unknown>('/api/export');
@@ -170,10 +180,13 @@ function MemoryBanner() {
       <p className="text-body text-ink">{mem.summary}</p>
       <button
         onClick={() => void exportContext()}
-        className="mt-3 text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+        className="mt-3 block text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
       >
         Export my context →
       </button>
+      {/* The mirror of the export, and the same argument: what you said
+          elsewhere is yours, so it can come in as easily as it can go out. */}
+      <ImportHistory />
     </Pane>
   );
 }

@@ -35,6 +35,15 @@ export const threads = pgTable(
     model: text('model'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /**
+     * Provenance for a thread that came out of somebody else's product
+     * ('chatgpt' | 'claude' | 'gemini'), with that product's own id for it.
+     * Null on everything said to Selvedge itself. The pair is uniquely indexed,
+     * so importing the same export twice cannot double the history — the
+     * database enforces that, not the importer's memory.
+     */
+    importedFrom: text('imported_from'),
+    importSourceId: text('import_source_id'),
   },
   (t) => [
     index('threads_org_project_idx').on(t.orgId, t.projectId),

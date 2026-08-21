@@ -38,6 +38,7 @@ import { createWorkshopRouter } from './routes/workshop.js';
 import { createThreadsRouter } from './routes/threads.js';
 import { createTimelineRouter } from './routes/timeline.js';
 import { createSubjectsRouter } from './routes/subjects.js';
+import { createImportHistoryRouter } from './routes/importHistory.js';
 import { createDecisionsRouter } from './routes/decisions.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createCompanionKeysRouter } from './routes/companionKeys.js';
@@ -167,6 +168,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createTimelineRouter(db));
   app.use(createSubjectsRouter(db));
   app.use(createDecisionsRouter(db));
+  app.use(createImportHistoryRouter(db));
   app.use(createCompanionKeysRouter(db));
 
   app.use(express.static(clientDir));
