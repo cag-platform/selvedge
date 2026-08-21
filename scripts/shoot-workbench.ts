@@ -22,10 +22,13 @@ const openSwitcher = process.argv.includes('--switcher');
 const tab = process.argv.find((a) => a.startsWith('--tab='))?.slice('--tab='.length);
 /** Photograph a project's own history instead of a thread. */
 const projectView = process.argv.includes('--project');
+/** Drive the new-thread flow and photograph what a refusal looks like. */
+const failCreate = process.argv.includes('--fail-create');
 /** Photograph the thread with a decision brief above it: --decision=stale|current. */
 const decision = process.argv.find((a) => a.startsWith('--decision='))?.slice('--decision='.length);
 const out = args[0] ?? path.resolve(here, '../workbench.png');
-const URL_ = `http://localhost:5199/harness.html${decision ? `?decision=${decision}` : ''}`;
+const params = [decision ? `decision=${decision}` : '', failCreate ? 'fail=create' : ''].filter(Boolean).join('&');
+const URL_ = `http://localhost:5199/harness.html${params ? `?${params}` : ''}`;
 
 async function main() {
   // Its own process group, so stopping it stops the whole tree — a vite left
@@ -76,6 +79,13 @@ async function main() {
   await page.waitForSelector('nav[aria-label="Projects and threads"]');
   if (projectView) {
     await page.click('nav[aria-label="Projects and threads"] button[title^="What happened"]');
+    await page.waitForTimeout(800);
+  }
+  if (failCreate) {
+    // Press + on the first project, then take the offered option.
+    await page.click('nav[aria-label="Projects and threads"] button[title^="New thread here"]');
+    await page.waitForTimeout(300);
+    await page.click('button:text-is("Build something")');
     await page.waitForTimeout(800);
   }
   if (tab) {

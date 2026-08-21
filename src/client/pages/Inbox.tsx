@@ -142,8 +142,11 @@ export function Inbox() {
 
   const createThread = useCallback(
     async (projectId: string, kind: 'workshop' | 'general') => {
+      setError(null);
       try {
-        const res = await api.post<{ thread: { id: string } }>(`/api/projects/${projectId}/threads`, { kind });
+        // Encoded: a project id is not guaranteed to be URL-safe, and an
+        // unencoded one fails as a 404 that looks like "nothing happened".
+        const res = await api.post<{ thread: { id: string } }>(`/api/projects/${encodeURIComponent(projectId)}/threads`, { kind });
         await loadInbox();
         open(res.thread.id);
         // Straight into typing — a new thread is one tap and a sentence.
@@ -201,6 +204,12 @@ export function Inbox() {
     return () => document.removeEventListener('keydown', onKey);
   }, [inbox, newThread, open, paletteOpen, projectId, switcherOpen, thread, threadId, threads]);
 
+  // A first-load failure is the whole screen; anything after it is a banner
+  // over the working one. What must never happen — and did — is an error with
+  // nowhere to appear: `setError` on a failed action wrote to state that only
+  // rendered while `inbox` was null, so once the rail had loaded, a refused
+  // action produced SILENCE. A button that does nothing and says nothing is
+  // the interface version of the one output this product can't have.
   if (error && !inbox) return <p className="p-work text-body text-thread">{error}</p>;
 
   const phone = width < PHONE;
@@ -209,7 +218,16 @@ export function Inbox() {
   const showContext = (!phone && contextOpen) || (phone && view === 'context');
 
   return (
-    <div className="animate-settle flex h-[calc(100vh-var(--nav-height))] overflow-hidden">
+    <div className="animate-settle flex h-[calc(100vh-var(--nav-height))] flex-col overflow-hidden">
+      {error && (
+        <div className="flex items-center gap-work border-b-2 border-thread bg-panel-soft px-work-loose py-work-tight">
+          <p className="flex-1 text-body font-medium text-thread">{error}</p>
+          <button onClick={() => setError(null)} className="text-meta text-ink-quiet hover:text-ink-dim">
+            Dismiss
+          </button>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       {showRail && (
         <div className={`${phone ? 'w-full' : 'w-rail shrink-0'} border-r border-hairline bg-panel`}>
           <Rail
@@ -302,6 +320,7 @@ export function Inbox() {
           <span className="[writing-mode:vertical-rl]">Context</span>
         </button>
       )}
+      </div>
 
       <Palette data={inbox} open={paletteOpen} onClose={() => setPaletteOpen(false)} onOpenThread={open} />
     </div>
