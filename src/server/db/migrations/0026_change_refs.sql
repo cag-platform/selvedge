@@ -1,0 +1,13 @@
+-- Fusion needs to get from a break to the session that produced the change
+-- before it, and the road runs through the commit. The commits live in the
+-- event's `raw` payload — which nothing downstream of the connector layer may
+-- read, deliberately and by long-standing rule.
+--
+-- So the connector extracts them into a structured field on the way past: the
+-- commit shas, and any Selvedge-Session trailers stamped on their messages.
+-- This is the "structured, non-raw field on the envelope" the normalizer's own
+-- comment says this kind of question would need.
+--
+-- Nullable: every event written before this, and every event that isn't a
+-- change, simply has none — and Fusion's rule is that no refs means no story.
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "change_refs" jsonb;

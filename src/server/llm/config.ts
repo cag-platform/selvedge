@@ -31,3 +31,15 @@ export function llmEnabled(): boolean {
 export function evalModel(): string {
   return process.env.EVAL_MODEL ?? 'gpt-5.6-luna';
 }
+
+/**
+ * The model behind a general thread. Sonnet-class on either provider: a
+ * thinking conversation wants a good model, not the strongest and most
+ * expensive one — the brief's composition call is where fable earns its price.
+ * Both ids are priced in config/model-pricing.json, so a chat turn's spend is
+ * counted rather than estimated at the fallback rate.
+ */
+export function chatModel(provider: 'anthropic' | 'openai'): string {
+  if (provider === 'openai') return process.env.CHAT_MODEL_OPENAI ?? 'gpt-5.6-terra';
+  return process.env.CHAT_MODEL ?? 'claude-sonnet-5';
+}

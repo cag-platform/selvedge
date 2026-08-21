@@ -15,4 +15,8 @@ export * from './narrationLibrary.js';
 export * from './feedback.js';
 export * from './trustIncidents.js';
 export * from './build.js';
+export * from './threads.js';
+export * from './companion.js';
+export * from './subjects.js';
+export * from './decisions.js';
 export * from './sketch.js';

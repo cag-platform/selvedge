@@ -20,6 +20,7 @@ export async function recordUsage(
   purpose: LlmPurpose,
   result: LlmResult,
   eventId?: string,
+  threadId?: string,
 ): Promise<void> {
   await db.insert(llmUsage).values({
     id: ulid(),
@@ -31,6 +32,9 @@ export async function recordUsage(
     tokensOut: result.tokensOut,
     costUsd: costUsd(result.model, result.tokensIn, result.tokensOut),
     eventId: eventId ?? null,
+    // The conversation this call belongs to, when it belongs to one — so a
+    // thread can show what it has cost without a second ledger.
+    threadId: threadId ?? null,
     ok: result.ok ? 'true' : result.reason,
   });
 }

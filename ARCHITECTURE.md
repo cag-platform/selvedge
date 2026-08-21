@@ -5,7 +5,9 @@ someone who needs to change it: where a thing lives, what it may talk to, and
 which properties must survive the change.
 
 Companion documents: **BUILD-BRIEF.md** (what gets built, in what order),
-**STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
+**docs/companion.md** (the local companion: what it sends, and what it never does),
+**INBOX-LOOP-BRIEF.md** (the Inbox and the Loop — the phased plan that extends
+it), **STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
 deferred acquisition channel, scoped not built), `docs/routing-table.md` (the
 routing contract).
 
@@ -115,9 +117,28 @@ source ──▶ normalize ──▶ ingestEvent ──▶ route ──▶ narra
 2. **Resolves the project** (`resolveProject.ts`) from the pack's
    `topology.sources`, then **refines the event type** (`refineEventType.ts`)
    using pack context a connector can't see on its own.
-3. **Correlates** — for a break event, lines it up against the change that
-   shipped just before it on the same timeline (`correlate.ts`). No change in
-   the window means no culprit is invented.
+3. **Correlates, then FUSES** — for a break event, lines it up against the
+   change that shipped just before it on the same timeline (`correlate.ts`), and
+   then asks who did that work (`fusion/`). The road runs through the commit:
+   `Selvedge-Session` trailers stamped by ship, `agent_runs.commit_sha` for
+   Selvedge's own ships, and the companion's commit↔session mapping for work
+   done in a terminal. The result is the sentence the product exists to be able
+   to say — *"This began after the change from Monday's Codex session (the
+   guest-checkout work)"* — which appears in the brief and on the break's
+   timeline entry, with the conversation and the diff one click away.
+
+   Three rules make it safe to print. No change in the window means no culprit
+   is invented. No session named on the commits means no sentence at all — the
+   correlation line stands alone rather than reaching for a plausible session.
+   And more than one candidate is NAMED as several and resolved to none: *"began
+   after changes from … — I can't tell which"* is a correct and shippable
+   output. Both guards were deliberately broken once to prove the tests catch
+   them.
+
+   The commits reach Fusion on a structured envelope field (`change_refs`),
+   filled by the connector, because nothing downstream of the connector layer
+   may read `raw` — the boundary the normalizer's own comment anticipated
+   needing.
 4. **Routes** (`routing/route.ts`) — pure. Finds the row for the event type in
    `config/routing-table.json` (**35 rows**, groups A–G), reads the decision for
    the project's stakes tier, then applies five global modifiers: known-flaky
@@ -181,18 +202,74 @@ work — not a guess about how it will go. States `declined`, `stopped`, `done`,
 When a card becomes runnable and the build engine is configured, `cards/drive.ts`
 composes the back half: run, and *only if the run finished the work*, verify.
 
+**The Inbox** (`server/threads`, `server/chat`, `web/routes/threads.ts`) is where
+that engine is now driven from. A project holds many **threads**; a thread is
+`workshop` (a coding agent in the project's sandbox, can ship) or `general`
+(direct model calls, no sandbox, nothing to ship). Three pieces:
+
+- `threads/store.ts` — the one reader and writer of a project's conversations,
+  org-scoped by (orgId, threadId).
+- `threads/switch.ts` — changing who answers. A general thread carries its own
+  history, so nothing is handed over; a workshop thread composes a handoff
+  (`handoff/compose.ts`), parks it on the thread as one mono system line stating
+  the payload's real size and what carrying it costs at the incoming agent's
+  published input rate, and the next turn spends it. Marked spent only once a
+  turn has actually taken it, so a failed start never eats the handover.
+- `chat/turn.ts` — a general thread's turn, on the existing LLM seam
+  (structured output, one `reply` string), metered as purpose `chat` against
+  the thread, and gated by the thinking-side budget so an afternoon of chat can
+  never turn tomorrow's brief mechanical.
+- `threads/subjects.ts` — a **subject** is somewhere to put work that isn't a
+  codebase, so `threads.project_id` is nullable and exactly one of project or
+  subject is set. A subject has a name and threads and nothing else: no stakes,
+  no topology, no edge, no health line. A status on a subject would be a claim
+  about a thing there is nothing to know about.
+
+**Paired threads** (`server/decisions`) sit between two threads: think in a
+general one, extract a **decision brief**, build in a workshop thread paired to
+it. The whole feature is its evidence-dating, and the layering says so:
+
+- `decisions/freshness.ts` is pure and blunt. A brief records what it was made
+  from (`evidence_through`, `evidence_messages`); ANY newer message in the
+  thinking makes it stale. Deciding which messages *mattered* is exactly the
+  judgement that gets this wrong.
+- `decisions/store.ts` exposes no way to read a brief without its dating —
+  `withFreshness` is the only reader, and the client type has no shape a bare
+  brief fits in. An undated brief is the object the feature exists to prevent:
+  a settled-sounding statement whose settledness nobody checked.
+- The message path (`web/routes/threads.ts`) consults it before every turn and
+  **refuses** — 409, saying what is behind and by how much — until a person
+  acknowledges. That acknowledgement is recorded on the thread.
+
+**Consumer-history import** (`server/import/consumer`) reads the export ZIP
+ChatGPT, Claude or Gemini already gives you and files old chats as general
+threads. Not a connector: live capture of consumer chat apps stays refused. The
+parsers are pure and return `unreadable` items with reasons, which the route
+returns beside the success count — a success count on its own is the same shape
+of lie as a confidently wrong all-clear. Provenance is columns
+(`imported_from`, `import_source_id`, uniquely indexed so a re-import cannot
+double a history), never prose.
+
 **The Workshop** (`server/build`, `web/routes/workshop.ts`) is the same engine
 with a conversational surface:
 
 - `sandbox.ts` — one persistent Daytona sandbox per project, created with native
   idle auto-stop at **15 minutes**. A stopped sandbox bills only storage; the
   next use resumes it. Never one sandbox per change.
-- `agent.ts` — one turn: the Claude Code CLI runs backgrounded inside the
-  sandbox writing stream-json to a log; this loop polls the log, parses tool
+- `agent.ts` — one turn: the builder's CLI runs backgrounded inside the
+  sandbox writing JSON events to a log; this loop polls the log, parses tool
   activity, and updates a live `activity` row in place, so the owner watches
-  real work rather than a spinner. `--resume` carries the conversation across
+  real work rather than a spinner. Resume carries the conversation across
   turns; a stale resume is retried once fresh. Every turn's real cost is
-  recorded in cents.
+  recorded in cents. **Which builder runs is a parameter**: `runner/agents/driver.ts`
+  is the seam — one command and three parsers per agent, everything else shared,
+  because two copies of that polling loop would drift and the drifting one is
+  the one nobody dogfoods. Claude Code and Codex share one sandbox and one
+  checkout (that is what makes a mid-task switch worth anything) and keep
+  separate CLI sessions (resuming the other's would hand an agent someone
+  else's transcript). Codex reports tokens rather than dollars, so its turns
+  are priced from `llm/pricing.ts`; a turn that reports no usage says so on the
+  thread rather than showing a confident zero.
 - Attachments — screenshots ride inline as base64 (≤6MB, ≤4 per message); docs,
   code and zips are streamed to local disk by multer, referenced by id, then
   streamed disk → sandbox, so a several-hundred-MB export never sits whole in
@@ -203,7 +280,12 @@ with a conversational surface:
   changed*, not from the conversation: an innocent-sounding ask that ended up
   editing checkout code is still gated. Then commit, push to the project's
   branch, record the commit, and arm undo as a real `git revert` of exactly that
-  commit.
+  commit. The commit carries a git trailer — `Selvedge-Session: <thread id>`
+  (`provenance/trailer.ts`, pure and dependency-free so both layer 5 and layer 3
+  may import it) — which puts the change→conversation join in the repository
+  itself, where `git log` can read it and where it outlives Selvedge. It is
+  evidence, never a gate: a ship whose thread can't be resolved still ships,
+  unstamped.
 - `golive.ts` — "put it online": create the database if needed, create the host
   service from the repo, set variables, mint a web address, wait for the first
   build to land. Idempotent by construction — a project that already has a host
@@ -254,6 +336,17 @@ anything back. The mirror image of the false-calm rule: as reluctant to cry "it
 broke" as to cry "it's fine". Probe, rollback, clock and sleep are all injected,
 so the window is fully testable without a network or real time.
 
+**The timeline** (`server/timeline`) is the same honesty machinery pointed at
+history: one plain sentence per thing that happened to a project — asks, work
+started, ships, undos, handovers, verdicts, and what the watching saw — each
+with the four-value edge and its evidence one click beneath. It is a pure
+projection: `entries.ts` holds nothing but functions from a row that already
+exists to a sentence, so the timeline cannot say more than the record, and a
+narration that said nothing produces no line rather than an invented one.
+Search beside it runs full-text and containment together — stemming for word
+forms, containment for the half-words people type — over messages, cards and
+narrations, scoped to one project and one org.
+
 `trust/` records Selvedge's own misses; `ledger/` is the read-side view of the
 cards table (**the cards table *is* the ledger** — nothing is stored twice), and
 `ledger/costs.ts` closes the flywheel: the estimate for a new change is learned
@@ -261,9 +354,63 @@ from the real cost of the ones before it.
 
 ---
 
+## 6b. The loop — work done elsewhere, and context served everywhere
+
+Two halves of one seam, shipped together, because either alone is half a
+product: a daemon without the MCP is an archive, and an MCP without the daemon
+serves a stale pack.
+
+**The companion** (`src/cli`, shipped as the `selvedge` bin) runs on the owner's
+own machine. `selvedge watch` tails Claude Code and Codex session logs, and on a
+session going quiet sends a SUMMARY — intent, files touched, tool counts,
+outcome, the commit that landed while it was open, cost — to
+`POST /api/companion/sessions`. Raw code and transcripts never leave: the wire
+format (`shared/types/session.ts`) has nowhere to put them, both sides validate
+against the same pure checker, and `--dry-run` prints exactly what would be sent
+so the claim is inspectable rather than merely stated.
+
+The parsers are written for logs nobody documents: they never throw, never
+guess, and a log they cannot read is REPORTED as `unreadable` with its reason —
+which surfaces on the timeline and leads the next morning's brief. A companion
+that silently skipped what it couldn't parse would leave an owner believing they
+had a complete record when they didn't.
+
+Four readers, two of them honestly labelled: Claude Code and Codex were written
+against real logs; **Cursor and Gemini CLI are unverified** — written against
+those formats as understood, not proved against a log this codebase has seen.
+They are shipped labelled rather than shipped silent, and what is engineered is
+the guess failing safely: no throw on any input, no session invented without the
+tool's own id, every unreadable log reported. Because "you had a quiet week" and
+"your root is wrong" are indistinguishable from the inside, `--dry-run` prints
+where it looked when it finds nothing, and every root is overridable per tool in
+`~/.selvedge/config.json` (null turns a reader off). Cursor's IDE chat lives in
+a SQLite workspace database the companion deliberately does not open.
+
+**`selvedge context`** is the same binary as an MCP server (stdio), mounted by
+any agent anywhere. Three read-only tools — `get_project_context`,
+`get_recent_changes`, `get_open_issues` — served from
+`server/companion/context.ts`, which composes the same pack the brief and the
+Workshop already use and reuses the handoff's project block, so an agent
+mounting the MCP and an agent taking over a thread are told the same things in
+the same words. Read-only is a decision, not a v1 limit: an agent that could
+write memory would let any tool in any repo edit what Selvedge believes, and the
+pack's whole value is that it is grounded in what happened.
+
+**Auth** is a bearer key per machine (`companion_tokens`, hashed like the error
+beacon), because nothing on this path has a browser or a person behind it. The
+companion router mounts BEFORE the Clerk org guard and scopes everything to the
+key's org.
+
+**Observed is not verified.** `external_sessions` rows are marked wherever they
+appear — on the timeline, in the brief, in the MCP's answers — with the same
+sentence: Selvedge did not run this work, did not gate it, and has not checked
+whether it held up. Nothing on this path may ever produce a verdict.
+
+---
+
 ## 7. Data model
 
-Postgres, 23 tables, Drizzle schema in `server/db/schema/`, 18 forward-only
+Postgres, 27 tables, Drizzle schema in `server/db/schema/`, 26 forward-only
 migrations in `server/db/migrations/`.
 
 | Group | Tables |
@@ -271,14 +418,26 @@ migrations in `server/db/migrations/`.
 | Tenancy | `orgs` |
 | Timeline | `events` (partitioned), `narrations`, `digests`, `narration_library`, `narration_library_uses` |
 | Understanding | `packs` |
-| Work | `cards`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `sketches`, `sketch_messages` |
-| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state` |
+| Work | `cards`, `threads`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `external_sessions`, `sketches`, `sketch_messages` |
+| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state`, `companion_tokens` |
 | Accounting & trust | `llm_usage`, `trust_incidents`, `feedback`, `devices` |
 
-Three properties worth knowing before you add a table:
+Four properties worth knowing before you add a table:
 
 **Every table carries `org_id`, and a test fails the build if a new one forgets.**
 Tenancy is not a convention here, it is enforced by the suite.
+
+**A project has many conversations, and every message names its own.** `threads`
+is the unit of work — `kind` is `workshop` (runs a coding agent in the project's
+sandbox, can ship) or `general` (direct model calls, no sandbox, nothing to
+ship) — and `agent_messages.thread_id` / `agent_runs.thread_id` attach the
+record to it. Migration 0022 turned each project's single pre-existing
+conversation into its thread #1, with a *derived* id (`thread_ || md5(org:project)`)
+so the backfill is re-runnable and every legacy row maps to exactly one thread;
+threads minted since carry ulids. The columns are nullable — a background writer
+losing its thread must not lose the owner's message — so the contract is
+enforced structurally instead (`test/threads/contract.test.ts`): every insert
+into a threaded table must name a thread, or the build fails.
 
 **`events` is physically partitioned by month on `occurred_at`.** drizzle-kit
 cannot express `PARTITION BY` declaratively, so that migration is hand-augmented
@@ -385,15 +544,24 @@ fact, not a global env check.
 
 A single Vite-built SPA in `src/client`, served by the same Express process as
 static files with an SPA catch-all. Clerk guards the whole tree; pages are
-`Today`, `Work`, `TrackRecord`, `Workshop`, `Connections`, `Projects`,
+`Today`, `Inbox`, `Work`, `TrackRecord`, `Connections`, `Projects`,
 `Tray`, `PackEditor`, `Admin`, `Styleguide`.
+
+**The Inbox is the workbench**: one persistent three-pane layout (rail →
+thread → context) that replaced the Workshop page. `/projects/:id/workshop`
+still resolves — it redirects into that project's workshop thread, because a
+link that used to work and now 404s is a small betrayal. Its density is a
+second setting of the same cloth: `--space-work*` tokens beside the reading
+register's, no new colours, and no type below the AA-passing sizes. Agent
+identity is deliberately non-colour (mono chips, `shared/agents.ts`), because
+`--thread` red means "this needs you" and nothing else.
 
 There is **no streaming anywhere** — no SSE, no websockets except the preview's
 HMR passthrough. The Workshop's liveness is polling against a log the sandbox
 writes. That is adequate today and is a known, deliberate simplification.
 
-Two client conventions worth preserving: the Workshop is the only wide layout
-(two panes: conversation + preview) while every other page keeps the calm
+Two client conventions worth preserving: the Inbox is the only full-bleed
+layout (three panes, its own scrolling) while every other page keeps the calm
 single-column measure; and first sign-in from any browser teaches the org its
 timezone so the brief lands at the owner's real 7am without a settings visit —
 auto-detect never overrides an explicit choice, and the server enforces that too.
@@ -402,7 +570,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**977 tests across 124 files**, all green, under `test/` — mirroring
+**1,199 tests across 151 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 
@@ -470,6 +638,21 @@ Places designed to be extended, so the extension is a swap rather than a rewrite
   sandbox provider is one factory.
 - **Read-only planning** — wired: the Workshop's "think it first" checkbox
   sends `mode: 'plan'` through to `build/agent.ts`.
+- **Which agent does the work** — `shared/agents.ts` is one table (the
+  `connectors/registry.ts` pattern): id, mono chip, which thread kinds it can
+  run, whose fuel it burns, an honest cost note, and whether it is `live`.
+  Declared-but-not-live is deliberate — the seam can be honest about the roadmap
+  without a picker offering something that fails on first use. Ids are stored in
+  `threads.agent`, so they may be added and never renamed.
+- **Handing work between agents** — `handoff/compose.ts` is pure: pack + thread +
+  target agent → the text that starts the next agent where the last one stopped.
+  No database, no network, no model call, so it is exhaustively testable and
+  cannot invent. It reuses the digest composer's skeleton (select → collapse
+  repeats → sections → render, code deciding and prose only rendering), and
+  literally shares its repeat-collapsing rule via `shared/repeats.ts`. Bounded
+  absolutely, so a year-long thread hands over for the price of a week-old one;
+  what it drops it says out loud. It leaves out the standing agent rules (those
+  ride on every turn already) and the code (the repository is the truth).
 
 ---
 

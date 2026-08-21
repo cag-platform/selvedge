@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, narrations, narrationLibrary } from '../../src/server/db/schema/index.js';
+import { cards, orgs, narrations, narrationLibrary } from '../../src/server/db/schema/index.js';
+import { eq } from 'drizzle-orm';
 import { createPack, getPack } from '../../src/server/packs/store.js';
 import { createMemoryRouter } from '../../src/server/web/routes/memory.js';
 import { createPortabilityRouter } from '../../src/server/web/routes/portability.js';
@@ -75,6 +76,41 @@ describe('web/routes/portability', () => {
     expect(imported.body.restored).toBe(1);
 
     expect(await getPack(db, 'org_2', 'loom')).not.toBeNull();
+  });
+
+  it('carries the history the timeline shows — the same record, in the file', async () => {
+    // The timeline tells the owner on screen that what they are reading is
+    // theirs to take. That claim has to be true in the export, not only in the
+    // copy, so this is the test that keeps the two honest with each other.
+    await db.insert(cards).values({
+      id: 'c1',
+      orgId,
+      projectId: 'loom',
+      trigger: 'request',
+      title: 'guest checkout',
+      proposal: 'Let people buy without an account.',
+      risk: 'ordinary',
+      gate: 'normal',
+      state: 'done',
+      verdict: 'verified',
+      estimate: {},
+      stop: {},
+      acts: [],
+    });
+
+    const exported = await request(appWithOrg(orgId, createPortabilityRouter(db))).get('/api/export');
+    const sentences = (exported.body.timeline ?? []).map((e: { sentence: string }) => e.sentence).join('\n');
+    expect(sentences).toContain('guest checkout');
+    expect(exported.body.timeline.every((e: { project_id: string }) => e.project_id === 'loom')).toBe(true);
+
+    // ...and it stays version 1: the field is additive, so a bundle exported
+    // before it existed still imports, and history is never re-seeded into
+    // another org — importing a past would be manufacturing one.
+    expect(exported.body.selvedge_export_version).toBe('1');
+    await db.insert(orgs).values({ orgId: 'org_3' });
+    const imported = await request(appWithOrg('org_3', createPortabilityRouter(db))).post('/api/import').send(exported.body);
+    expect(imported.status).toBe(200);
+    expect(await db.select().from(cards).where(eq(cards.orgId, 'org_3'))).toEqual([]);
   });
 
   it('400s on a body that is not a bundle', async () => {

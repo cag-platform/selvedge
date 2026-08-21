@@ -4,6 +4,7 @@ import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentMessageAttachments, agentRuns } from '../../src/server/db/schema/index.js';
 import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
 import { getBuild, setBuild } from '../../src/server/build/store.js';
+import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
 
 const cfg = { claudeCodeOauthToken: 't', githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 
@@ -315,5 +316,173 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       { execute: executor({ polls: [[text('Done.'), resultLine('sess_b'), '__EXIT:0'].join('\n')] }), uploadFile, sleep: noSleep },
     );
     expect(out.status).toBe('succeeded');
+  });
+});
+
+
+/**
+ * A turn writes four rows — the owner's message, the live activity row, the
+ * reply, and the run. All four belong to ONE conversation; a row that lands
+ * without a thread is a row that will never be read again once a project holds
+ * more than one.
+ */
+describe('runAgentTurn — every row lands in one conversation', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  const done = [text('Done.'), resultLine('sess_1'), '__EXIT:0'].join('\n');
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => close());
+
+  it('opens the project workshop thread on the first turn and writes everything into it', async () => {
+    await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {}, {
+      execute: executor({ polls: [done], staged: true }),
+      sleep: noSleep,
+    });
+
+    const threads = await listThreads(db, orgId, 'loom');
+    expect(threads).toHaveLength(1);
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+    expect(messages.every((m) => m.threadId === threads[0]!.id)).toBe(true);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.threadId).toBe(threads[0]!.id);
+  });
+
+  it('a second turn continues the same conversation rather than opening another', async () => {
+    const run = () =>
+      runAgentTurn(db, orgId, 'loom', 'again', cfg, {}, { execute: executor({ polls: [done] }), sleep: noSleep });
+    await run();
+    await run();
+    expect(await listThreads(db, orgId, 'loom')).toHaveLength(1);
+  });
+
+  it('writes into the thread it was given, when it was given one', async () => {
+    const workshop = await ensureWorkshopThread(db, orgId, 'loom');
+    const other = await createThread(db, orgId, 'loom', { kind: 'workshop', title: 'A second piece of work' });
+    await runAgentTurn(db, orgId, 'loom', 'in that thread please', cfg, { threadId: other.id }, {
+      execute: executor({ polls: [done] }),
+      sleep: noSleep,
+    });
+
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(messages.every((m) => m.threadId === other.id)).toBe(true);
+    // ...and the project's first conversation is untouched by it.
+    expect(workshop.id).not.toBe(other.id);
+    expect(messages.some((m) => m.threadId === workshop.id)).toBe(false);
+  });
+});
+
+
+/**
+ * THE SECOND BUILDER. Same sandbox, same checkout, same thread — a different
+ * CLI. The orchestration (poll, stream, record, price, resume) is shared by
+ * construction; what these tests hold is that the agent-specific half is
+ * actually used, that the two builders never inherit each other's session, and
+ * that an agent this deployment has no fuel for says so instead of silently
+ * becoming the other one.
+ */
+describe('runAgentTurn — building with Codex', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+  const codexCfg = { ...cfg, agent: 'codex' as const, openaiApiKey: 'sk-test' };
+
+  const codexLog = [
+    JSON.stringify({ type: 'thread.started', thread_id: 'th_9' }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'npm test', exit_code: 0 } }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'I made the header dark.' } }),
+    JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1200, output_tokens: 300 } }),
+    '__EXIT:0',
+  ].join('\n');
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => close());
+
+  it('runs the Codex CLI, records who did the work, and prices the turn from its tokens', async () => {
+    const commands: string[] = [];
+    const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', codexCfg, {}, {
+      execute: executor({ polls: [codexLog], staged: true, onCommand: (c) => commands.push(c) }),
+      sleep: noSleep,
+    });
+
+    expect(out.status).toBe('succeeded');
+    expect(out.agent).toBe('codex');
+    expect(out.reply).toContain('I made the header dark.');
+    expect(commands.some((c) => c.includes('codex exec'))).toBe(true);
+    expect(commands.some((c) => c.includes('@openai/codex'))).toBe(true); // installs itself if the image lacks it
+    expect(commands.some((c) => c.includes('claude -p'))).toBe(false);
+
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.agent).toBe('codex');
+    // 1200 in + 300 out on the priced model, in whole cents.
+    expect(run!.costCents).toBe(1);
+  });
+
+  it("keeps the two builders' sessions apart inside the one sandbox", async () => {
+    await setBuild(db, orgId, 'loom', { claudeSessionId: 'claude_sess' });
+    await runAgentTurn(db, orgId, 'loom', 'again', codexCfg, {}, { execute: executor({ polls: [codexLog] }), sleep: noSleep });
+
+    const build = await getBuild(db, orgId, 'loom');
+    expect(build!.codexSessionId).toBe('th_9');
+    // Claude's session is untouched: switching back must not resume the wrong conversation.
+    expect(build!.claudeSessionId).toBe('claude_sess');
+  });
+
+  it('starts the turn with the handover when the thread just changed hands', async () => {
+    const commands: string[] = [];
+    await runAgentTurn(
+      db,
+      orgId,
+      'loom',
+      'now finish the checkout',
+      codexCfg,
+      { handoff: 'THE PROJECT\n- Loom — a curtain shop.' },
+      { execute: executor({ polls: [codexLog], onCommand: (c) => commands.push(c) }), sleep: noSleep },
+    );
+    const start = commands.find((c) => c.includes('codex exec'))!;
+    expect(start).toContain('Loom — a curtain shop.');
+    expect(start).toContain('now finish the checkout');
+  });
+
+  it('an agent with no fuel here is refused in plain words, not silently swapped', async () => {
+    const commands: string[] = [];
+    const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', { ...cfg, agent: 'codex' }, {}, {
+      execute: executor({ polls: [codexLog], onCommand: (c) => commands.push(c) }),
+      sleep: noSleep,
+    });
+
+    expect(out.status).toBe('failed');
+    expect(out.reply).toMatch(/isn't switched on here yet/i);
+    expect(commands).toHaveLength(0); // nothing ran, nothing was spent
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    // The owner's message is still on the record, with the honest answer under it.
+    expect(messages.map((m) => m.role)).toEqual(['owner', 'agent']);
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
+    expect(run!.status).toBe('failed');
+  });
+
+  it('says so when Codex reports no usage, instead of showing a free turn', async () => {
+    const noUsage = [
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Done.' } }),
+      JSON.stringify({ type: 'turn.completed' }),
+      '__EXIT:0',
+    ].join('\n');
+    const out = await runAgentTurn(db, orgId, 'loom', 'x', codexCfg, {}, { execute: executor({ polls: [noUsage] }), sleep: noSleep });
+    expect(out.status).toBe('succeeded');
+    expect(out.costCents).toBe(0);
+    expect(out.reply).toMatch(/didn't report what that turn cost/i);
   });
 });

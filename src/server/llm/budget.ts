@@ -62,11 +62,15 @@ export function dailyLlmBudgetUsd(plan?: string): number {
 }
 
 /**
- * The purposes that belong to Sketch rather than to the watching. Kept as a
- * list so the split stays one edit if thinking-side work grows a second
- * purpose.
+ * The purposes that belong to THINKING rather than to the watching — retired
+ * Sketch's spend, and now the Inbox's general threads. Kept as a list because
+ * the split was always going to grow a second purpose, and this is it: chat is
+ * the same kind of spend Sketch was (many turns, growing context, started by
+ * the owner), so it inherits the same side of the line and the same allowance.
+ * Historical 'sketch' rows stay excluded from the watching cap, so switching
+ * this on doesn't change what yesterday's cap counted.
  */
-export const SKETCH_PURPOSES: LlmPurpose[] = ['sketch'];
+export const THINKING_PURPOSES: LlmPurpose[] = ['sketch', 'chat'];
 
 /**
  * The purposes that belong to the independent grader. Split out for the same
@@ -105,7 +109,8 @@ export function dailyGradeBudgetUsd(plan?: string): number {
 }
 
 /**
- * Sketch's own daily allowance, deliberately separate from the watching's.
+ * The thinking side's own daily allowance, deliberately separate from the
+ * watching's.
  *
  * This is the split the note above calls for. Sketch is the chattiest surface
  * in the product — many turns, growing context — and the daily brief is the
@@ -117,23 +122,23 @@ export function dailyGradeBudgetUsd(plan?: string): number {
  * Sized against real numbers: a Sketch turn on sonnet costs roughly $0.02, so
  * these buy about 25 / 100 / 400 turns a day.
  */
-export const PLAN_DAILY_SKETCH_BUDGET_USD: Record<string, number> = {
+export const PLAN_DAILY_THINKING_BUDGET_USD: Record<string, number> = {
   trial: 0.5,
   care: 2.0,
   studio: 8.0,
 };
 
-export const DEFAULT_DAILY_SKETCH_BUDGET_USD = 2.0;
+export const DEFAULT_DAILY_THINKING_BUDGET_USD = 2.0;
 
-export function dailySketchBudgetUsd(plan?: string): number {
-  const raw = process.env.SKETCH_DAILY_BUDGET_USD;
+export function dailyThinkingBudgetUsd(plan?: string): number {
+  const raw = process.env.THINKING_DAILY_BUDGET_USD ?? process.env.SKETCH_DAILY_BUDGET_USD;
   if (raw !== undefined) {
     const parsed = Number(raw);
     // Same rule as the watching's cap: malformed or negative never means "no limit".
     if (Number.isFinite(parsed) && parsed >= 0) return parsed;
   }
-  if (plan && plan in PLAN_DAILY_SKETCH_BUDGET_USD) return PLAN_DAILY_SKETCH_BUDGET_USD[plan] as number;
-  return DEFAULT_DAILY_SKETCH_BUDGET_USD;
+  if (plan && plan in PLAN_DAILY_THINKING_BUDGET_USD) return PLAN_DAILY_THINKING_BUDGET_USD[plan] as number;
+  return DEFAULT_DAILY_THINKING_BUDGET_USD;
 }
 
 /**
@@ -172,7 +177,7 @@ export type BudgetState = { over: boolean; spentUsd: number; capUsd: number };
 export async function checkDailyBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
   const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
   const capUsd = dailyLlmBudgetUsd(org?.plan);
-  const spentUsd = await spendTodayUsd(db, orgId, now, { except: [...SKETCH_PURPOSES, ...GRADE_PURPOSES] });
+  const spentUsd = await spendTodayUsd(db, orgId, now, { except: [...THINKING_PURPOSES, ...GRADE_PURPOSES] });
   return { over: spentUsd >= capUsd, spentUsd, capUsd };
 }
 
@@ -184,10 +189,10 @@ export async function checkGradeBudget(db: Db, orgId: string, now: Date = new Da
   return { over: spentUsd >= capUsd, spentUsd, capUsd };
 }
 
-/** The same gate for Sketch, against Sketch's own allowance and its own spend. */
-export async function checkSketchBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
+/** The same gate for the thinking side, against its own allowance and its own spend. */
+export async function checkThinkingBudget(db: Db, orgId: string, now: Date = new Date()): Promise<BudgetState> {
   const [org] = await db.select({ plan: orgs.plan }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
-  const capUsd = dailySketchBudgetUsd(org?.plan);
-  const spentUsd = await spendTodayUsd(db, orgId, now, { only: SKETCH_PURPOSES });
+  const capUsd = dailyThinkingBudgetUsd(org?.plan);
+  const spentUsd = await spendTodayUsd(db, orgId, now, { only: THINKING_PURPOSES });
   return { over: spentUsd >= capUsd, spentUsd, capUsd };
 }

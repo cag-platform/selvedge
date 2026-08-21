@@ -1,6 +1,7 @@
 import type { Db } from '../../db/client.js';
 import type { LlmClient } from '../../llm/types.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
+import { OpenAiLlmClient } from '../../llm/openai.js';
 import { useCredential } from '../credentials/store.js';
 
 /**
@@ -42,10 +43,14 @@ function clientFor(provider: FuelProvider, apiKey: string): LlmClient | null {
   switch (provider) {
     case 'anthropic':
       return new AnthropicLlmClient(apiKey);
+    // Wired for the Inbox's general threads: a chat thread can run on GPT with
+    // the org's own key. The client itself already existed — it is the grader's
+    // — which is why this is one line rather than a provider port.
+    case 'openai':
+      return new OpenAiLlmClient(apiKey);
     // Declared so the seam and the connect UI are honest about the roadmap,
     // but not yet built — return null rather than a client that would fail on
     // first use. Wired one at a time on real demand (§25.4).
-    case 'openai':
     case 'gemini':
     case 'kimi':
       return null;
@@ -77,5 +82,29 @@ export async function resolveFuel(db: Db, orgId: string): Promise<ResolvedFuel |
   }
 
   // 3. Off.
+  return null;
+}
+
+/**
+ * Resolve ONE named provider's client, for a surface where the provider is the
+ * choice rather than an implementation detail — a general thread running on the
+ * model the owner picked for it.
+ *
+ * Same order as resolveFuel (BYO, then the platform key), and the same honest
+ * null: a provider the org hasn't connected and the platform can't cover is not
+ * available, and the caller says so plainly rather than quietly answering as
+ * somebody else.
+ */
+export async function resolveFuelFor(db: Db, orgId: string, provider: FuelProvider): Promise<ResolvedFuel | null> {
+  const secret = await useCredential(db, orgId, provider);
+  if (secret) {
+    const client = clientFor(provider, secret);
+    if (client) return { client, provider, source: 'byo' };
+  }
+  const platformKey = provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : provider === 'openai' ? process.env.OPENAI_API_KEY : undefined;
+  if (platformKey) {
+    const client = clientFor(provider, platformKey);
+    if (client) return { client, provider, source: 'managed' };
+  }
   return null;
 }

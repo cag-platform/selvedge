@@ -15,7 +15,7 @@ import {
 describe('connectors/registry — one table, four derived surfaces', () => {
   it('fuel: four declared, anthropic first (BYO resolution order), only anthropic live', () => {
     expect(FUEL_PROVIDERS).toEqual(['anthropic', 'openai', 'gemini', 'kimi']);
-    expect(LIVE_FUEL_PROVIDERS).toEqual(['anthropic']);
+    expect(LIVE_FUEL_PROVIDERS).toEqual(['anthropic', 'openai']);
   });
 
   it('hosts: the named asymmetry holds — supabase takes a credential but is not a deploy target; replit the reverse', () => {

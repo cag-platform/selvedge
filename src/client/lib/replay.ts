@@ -31,7 +31,7 @@ export function describeToolEvent(e: ToolEventView): string {
 /** The record's one-line summary for the Reveal label's vicinity. */
 export function summarizeRecord(record: RunRecordView): string {
   const failed = record.tools.filter((t) => t.ok === false).length;
-  const parts = [`${record.tools.length} steps`];
+  const parts = [`${record.tools.length} step${record.tools.length === 1 ? '' : 's'}`];
   if (failed > 0) parts.push(`${failed} hit problems`);
   if (record.truncated) parts.push('record truncated');
   return parts.join(' · ');
@@ -44,6 +44,6 @@ export function describeAct(act: ActView): string {
   const tools = Array.isArray((act.meta as { tools?: unknown[] } | undefined)?.tools)
     ? ((act.meta as { tools: unknown[] }).tools.length as number)
     : 0;
-  const suffix = tools > 0 ? ` · ${tools} steps` : '';
+  const suffix = tools > 0 ? ` · ${tools} step${tools === 1 ? '' : 's'}` : '';
   return `${act.kind} — ${act.detail}${suffix}`;
 }

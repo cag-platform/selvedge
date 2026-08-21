@@ -14,6 +14,7 @@ import { narrateDispatch, type NarrationDeps } from '../narration/dispatch.js';
 import { classifyRow } from '../narration/classify.js';
 import { extractSignature } from './knownFlaky.js';
 import { correlateChange, isBreakEvent, CORRELATION_WINDOW_MS, type Correlation } from './correlate.js';
+import { fusionForChange } from '../fusion/resolve.js';
 import { proposeIncidentCard } from '../cards/incident.js';
 import { recordFalseAllClearIfContradicted } from '../trust/tripwire.js';
 import type { PushSender } from '../push/types.js';
@@ -43,6 +44,7 @@ async function insertEvent(db: Db, id: string, receivedAt: Date, projectId: stri
       receivedAt,
       severityHint: event.severity_hint,
       raw: event.raw,
+      changeRefs: event.change_refs ?? null,
       dedupeKey: event.dedupe_key,
     })
     .onConflictDoNothing({ target: [events.orgId, events.dedupeKey, events.occurredAt] })
@@ -135,6 +137,16 @@ async function routeNarrateAndPersist(
     // Today surface can show "started right after…" as a lead — never woven into
     // the verdict sentence, because it's correlation, not confirmed cause.
     const correlation = await correlationFor(db, orgId, projectId, event.event_type, new Date(event.occurred_at));
+    // Fusion: from the correlated change to the WORK behind it — the thread or
+    // the terminal session whose commit this was. Null far more often than not,
+    // and that is the point: no session named on the commits, no story. A
+    // failure here must never sink an ingest, so it degrades to no sentence.
+    const fusion = correlation
+      ? await fusionForChange(db, orgId, correlation.changeEventId, new Date(event.occurred_at)).catch((err) => {
+          console.error(`fusion failed for ${orgId}/${projectId}:`, err);
+          return null;
+        })
+      : null;
     await db.insert(narrations).values({
       id: narrationId,
       orgId,
@@ -150,7 +162,13 @@ async function routeNarrateAndPersist(
       technicalDetail: dispatched.output.technicalDetail ?? null,
       verdict: dispatched.output.verdict ?? null,
       confidence: dispatched.meta.confidence ?? null,
-      meta: { modifiers: decision.modifiers, row_id: decision.row_id, ...dispatched.meta, ...(correlation ? { correlation } : {}) },
+      meta: {
+        modifiers: decision.modifiers,
+        row_id: decision.row_id,
+        ...dispatched.meta,
+        ...(correlation ? { correlation } : {}),
+        ...(fusion ? { fusion } : {}),
+      },
     });
 
     // The unforgivable-error tripwire (Ironclad 2): if this narration is a

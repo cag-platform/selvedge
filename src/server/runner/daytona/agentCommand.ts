@@ -12,7 +12,7 @@ import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from
 
 /** The sandbox working directory (matches the Toile clone target). */
 export const WORKDIR = '/workspace/app';
-const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
+export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
 
 /** Shell-single-quote a value safely (Toile's shellQuote). */
 export function shellQuote(value: string): string {

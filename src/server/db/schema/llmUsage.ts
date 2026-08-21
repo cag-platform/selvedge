@@ -11,7 +11,7 @@ export const llmUsage = pgTable(
   {
     id: text('id').primaryKey(), // ulid
     orgId: text('org_id').notNull(),
-    purpose: text('purpose').notNull(), // 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade'
+    purpose: text('purpose').notNull(), // 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade' | 'chat'
     model: text('model').notNull(),
     /**
      * Who served the call — 'anthropic' | 'openai' | ... | 'unknown'. Model ids
@@ -24,6 +24,8 @@ export const llmUsage = pgTable(
     tokensOut: integer('tokens_out').notNull(),
     costUsd: doublePrecision('cost_usd').notNull(),
     eventId: text('event_id'), // the event this fragment narrated, when applicable
+    /** The thread this call belongs to, when it belongs to one (a general thread's turn). */
+    threadId: text('thread_id'),
     ok: text('ok').notNull().default('true'), // 'true' | failure reason
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

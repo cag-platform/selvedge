@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { fuelLabel, keyHint } from '../lib/fuel.js';
+import { CompanionKeys } from '../components/CompanionKeys.js';
 
 /**
  * Connections — where the owner turns on the voice by connecting their own
@@ -65,6 +66,8 @@ export function Connections() {
       )}
 
       <Hosts />
+
+      <CompanionKeys />
     </div>
   );
 }

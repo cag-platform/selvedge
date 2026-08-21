@@ -17,6 +17,37 @@ status-colored seam down the left of the brief and every project card.
 The acceptance bar: *a stranger reads the whole stack's health from the
 edges alone.*
 
+## The workbench (Phase 1, built)
+
+Nothing in this file is revoked by the Inbox. `INBOX-LOOP-BRIEF.md` §6 records
+what holds unchanged (the token system, colour rationing, the edge vocabulary,
+the glass budget, the accessibility floor) and the few rules that bend for a
+surface people work in for hours rather than read for a minute. As built:
+
+- **A second density register, in tokens.** `--space-work`, `--space-work-tight`,
+  `--space-work-loose`, `--row-work`, `--rail-width`, `--context-width`,
+  `--nav-height` sit beside the reading register's values. No new colours, and
+  no type below the AA-passing sizes — padding shrinks, legibility does not.
+- **Fraunces appears once in the workbench**: the pinned brief headline on the
+  rail. Thread rows, titles and panel headers are Inter Tight; costs, dates,
+  activity lines, agent chips and the switch line are mono.
+- **Agent identity is text.** Mono chips (`CC`, `CX`, `CL`, `GPT`) on a
+  `--panel` field with a hairline border — `src/client/components/AgentChip.tsx`,
+  fed by `src/shared/agents.ts`. No logos, no brand colours, ever.
+- **Liveness is textual.** The activity line updates while an agent works;
+  the only chrome that changes is one static dot on the working thread's chip,
+  which arrives and leaves with `--settle` and does not animate while present.
+- **The glass budget holds.** The three panes are solid `--panel` on flat
+  paper; the nav keeps its blur, and nothing new was added.
+- **History is a reading surface inside a working one.** The timeline keeps the
+  airy register (`--space-read`) while the panel's chrome around it stays
+  compact — and it still does not borrow Fraunces: the project-history headline
+  is Inter Tight, because the note's voice belongs to the brief.
+- **The screenshot check is runnable**: `npx tsx scripts/shoot-workbench.ts`
+  renders the real components against fixed data (six projects, thirty
+  threads) and fails on any console error — `--switcher` photographs the
+  picker open.
+
 ## Tokens
 
 `src/client/styles/tokens.css` is the single source of truth. The Tailwind

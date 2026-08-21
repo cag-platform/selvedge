@@ -6,7 +6,17 @@
  * and evals mechanically checkable.
  */
 
-export type LlmPurpose = 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade';
+/**
+ * What a model call was FOR. Load-bearing for the ledger and for the budget
+ * split: purposes are what `checkDailyBudget` filters on, so a new one that
+ * nobody carves out is silently swept into the daily brief's allowance.
+ *
+ * 'chat' is a general thread's turn — the Inbox's plain conversation, no
+ * sandbox, nothing to ship. It inherits retired Sketch's side of the split for
+ * exactly Sketch's reason: it is the chattiest surface in the product, and an
+ * afternoon of thinking must never turn tomorrow morning's brief mechanical.
+ */
+export type LlmPurpose = 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade' | 'chat';
 
 export type LlmRequest = {
   model: string;

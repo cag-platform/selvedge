@@ -13,24 +13,46 @@ const MIGRATIONS_DIR = path.resolve(process.cwd(), 'src/server/db/migrations');
  * network, no external Postgres required, real SQL semantics (JSONB,
  * partitioning, unique constraints).
  */
-export async function createTestDb() {
-  const client = new PGlite();
-  const files = readdirSync(MIGRATIONS_DIR)
+function migrationFiles(): string[] {
+  return readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort();
+}
 
-  for (const file of files) {
-    const sql = readFileSync(path.join(MIGRATIONS_DIR, file), 'utf-8');
-    const statements = sql.split('--> statement-breakpoint');
-    for (const statement of statements) {
-      const trimmed = statement.trim();
-      if (trimmed.length === 0) continue;
-      await client.exec(trimmed);
-    }
+/** Apply one migration file, statement by statement, exactly as the migrator does. */
+export async function applyMigration(client: PGlite, tag: string): Promise<void> {
+  const file = migrationFiles().find((f) => f.startsWith(tag));
+  if (!file) throw new Error(`no migration file starting with ${tag}`);
+  const sql = readFileSync(path.join(MIGRATIONS_DIR, file), 'utf-8');
+  for (const statement of sql.split('--> statement-breakpoint')) {
+    const trimmed = statement.trim();
+    if (trimmed.length === 0) continue;
+    await client.exec(trimmed);
   }
+}
 
+async function build(upToTag: string | null) {
+  const client = new PGlite();
+  for (const file of migrationFiles()) {
+    await applyMigration(client, file.replace(/\.sql$/, ''));
+    if (upToTag && file.startsWith(upToTag)) break;
+  }
   const db = drizzle(client, { schema });
   return { db, client, close: () => client.close() };
+}
+
+export async function createTestDb() {
+  return build(null);
+}
+
+/**
+ * The database as it stood at an earlier migration — for testing what a
+ * migration does to data that is already there. Without this, a backfill is
+ * only ever exercised against an empty database, which is the one case where
+ * it cannot be wrong.
+ */
+export async function createTestDbAt(tag: string) {
+  return build(tag);
 }
 
 export type TestDb = Awaited<ReturnType<typeof createTestDb>>['db'];

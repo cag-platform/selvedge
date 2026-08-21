@@ -35,6 +35,13 @@ import { createBeaconRouter } from './routes/beacon.js';
 import { createCardsRouter } from './routes/cards.js';
 import { createLedgerRouter } from './routes/ledger.js';
 import { createWorkshopRouter } from './routes/workshop.js';
+import { createThreadsRouter } from './routes/threads.js';
+import { createTimelineRouter } from './routes/timeline.js';
+import { createSubjectsRouter } from './routes/subjects.js';
+import { createImportHistoryRouter } from './routes/importHistory.js';
+import { createDecisionsRouter } from './routes/decisions.js';
+import { createCompanionRouter } from './routes/companion.js';
+import { createCompanionKeysRouter } from './routes/companionKeys.js';
 import { buildBuildEngine } from '../runner/daytona/factory.js';
 import { driveCard } from '../cards/drive.js';
 
@@ -107,6 +114,11 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     app.use(createGithubInstallRouter({ db }));
   }
 
+  // The companion's door — a bearer key issued to one machine, not a person
+  // with a session, so it is mounted ahead of the Clerk org guard and does its
+  // own scoping.
+  app.use(createCompanionRouter(db));
+
   app.use('/api', ensureOrg(db));
   app.use(
     createPacksRouter(db, {
@@ -149,6 +161,15 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createCardsRouter(db, onRunnable ? { onRunnable } : {}));
   app.use(createLedgerRouter(db));
   app.use(createWorkshopRouter(db));
+  // The Inbox: the rail, a thread, and what you do inside one. Project-scoped
+  // work (ship, preview, go-live, attachments) stays on the workshop router.
+  app.use(createThreadsRouter(db));
+  // Visible memory: one project's history, and search inside it.
+  app.use(createTimelineRouter(db));
+  app.use(createSubjectsRouter(db));
+  app.use(createDecisionsRouter(db));
+  app.use(createImportHistoryRouter(db));
+  app.use(createCompanionKeysRouter(db));
 
   app.use(express.static(clientDir));
   app.get('*', (_req, res) => {

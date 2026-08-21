@@ -49,11 +49,13 @@ export type AskDepsResolver = (orgId: string) => Promise<AskDeps | undefined>;
  * The grader's client — deliberately NOT resolveFuel, and platform-scoped
  * rather than per-org.
  *
- * resolveFuel is Anthropic in every live case: BYO only builds an Anthropic
- * client, and the managed fallback is Anthropic by construction. The agent
- * authors on Claude. So a grader routed through fuel would grade its own
- * lineage — the exact failure the verifier exists to prevent, and the reason
- * OpenAiLlmClient exists at all. Platform key rather than the org's, because
+ * The agent authors on Claude Code, always. A grader routed through the org's
+ * fuel would therefore be graded-by-the-author's-lineage whenever that fuel is
+ * Anthropic — the exact failure the verifier exists to prevent, and the reason
+ * OpenAiLlmClient exists at all. Since the Inbox, an org may also connect an
+ * OpenAI key as chat fuel; that makes the point sharper rather than weaker,
+ * because "whichever provider happens to be connected" is not a property you
+ * can build independence on. Platform key rather than the org's, because
  * independent grading is part of what the product IS, not a feature an org
  * unlocks by connecting a second credential.
  *

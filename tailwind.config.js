@@ -48,6 +48,22 @@ export default {
         'hero-sub': ['var(--text-hero-sub)', { lineHeight: '1.55' }],
         hero: ['var(--text-hero)', { lineHeight: '1.12' }],
       },
+      spacing: {
+        read: 'var(--space-read)',
+        work: 'var(--space-work)',
+        'work-tight': 'var(--space-work-tight)',
+        'work-loose': 'var(--space-work-loose)',
+      },
+      height: {
+        'row-work': 'var(--row-work)',
+      },
+      minHeight: {
+        'row-work': 'var(--row-work)',
+      },
+      width: {
+        rail: 'var(--rail-width)',
+        context: 'var(--context-width)',
+      },
       borderRadius: {
         pane: 'var(--radius-pane)',
         card: 'var(--radius-card)',

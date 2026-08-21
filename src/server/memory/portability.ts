@@ -1,6 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { narrations, narrationLibrary, packs } from '../db/schema/index.js';
+import { projectTimeline } from '../timeline/store.js';
+import type { TimelineEntry } from '../timeline/entries.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { assertValidPack } from '../packs/validate.js';
 import type { NarrationOutput } from '../narration/types.js';
@@ -14,7 +16,22 @@ export type ExportBundle = {
   packs: ContextPack[];
   /** The graduated meanings this org has actually seen — the learned dictionary. */
   learned_library: Array<{ fingerprint: string; plain: string }>;
+  /**
+   * What happened, per project — the same history the timeline shows, in the
+   * same sentences. Added when the timeline landed, because the product now
+   * tells owners on screen that what they are reading is theirs to take; a
+   * claim like that has to be true in the file, not only in the copy.
+   *
+   * Additive and optional on purpose: the export version stays "1", a bundle
+   * written before this exists still imports, and import IGNORES this section.
+   * History is a record of what happened, not state to restore — re-seeding it
+   * into another org would be manufacturing a past.
+   */
+  timeline?: Array<TimelineEntry & { project_id: string }>;
 };
+
+/** Per project, so one busy project can't crowd every other one out of the file. */
+const TIMELINE_PER_PROJECT = 500;
 
 /**
  * The full, portable context (Ironclad 1, part C). Being able to *leave*
@@ -40,12 +57,20 @@ export async function exportBundle(db: Db, orgId: string, now: Date = new Date()
     .filter((l) => l.status === 'graduated')
     .map((l) => ({ fingerprint: l.fingerprint, plain: (l.phrasing as NarrationOutput).fragment }));
 
+  const timeline: Array<TimelineEntry & { project_id: string }> = [];
+  for (const pack of packList) {
+    const projectId = pack.identity.project_id;
+    const entries = await projectTimeline(db, orgId, projectId, { limit: TIMELINE_PER_PROJECT }).catch(() => []);
+    for (const entry of entries) timeline.push({ ...entry, project_id: projectId });
+  }
+
   return {
     selvedge_export_version: EXPORT_VERSION,
     exported_at: now.toISOString(),
     org_id: orgId,
     packs: packList,
     learned_library: learned,
+    timeline,
   };
 }
 

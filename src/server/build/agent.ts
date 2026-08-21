@@ -6,7 +6,9 @@ import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
-import { claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents } from '../runner/daytona/agentCommand.js';
+import { ensureWorkshopThread } from '../threads/store.js';
+import { driverFor } from '../runner/agents/driver.js';
+import { agentById, type AgentId } from '../../shared/agents.js';
 import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
 
 /**
@@ -53,12 +55,32 @@ export type TurnOptions = {
    * For going back and forth on an idea before committing to a build.
    */
   mode?: 'build' | 'plan';
+  /**
+   * Which conversation this turn belongs to. Omitted means the project's
+   * workshop thread — the one migration 0022 backfilled, so a turn asked for
+   * the old way still lands in the history it belongs to.
+   */
+  threadId?: string;
+  /**
+   * A handoff payload (handoff/compose.ts) to start this turn with — set on the
+   * first turn after the thread changed builders, so the incoming agent begins
+   * where the last one stopped instead of cold.
+   */
+  handoff?: string;
 };
 
-export type AgentTurnConfig = SandboxConfig & { model?: string };
+export type AgentTurnConfig = SandboxConfig & {
+  model?: string;
+  /** Which builder runs this turn. Defaults to Claude Code, the only one there used to be. */
+  agent?: AgentId;
+  /** Codex's fuel. Absent means Codex can't run here, and the thread is told so plainly. */
+  openaiApiKey?: string;
+};
 
 export type AgentTurnOutcome = {
   runId: string;
+  /** Which builder ran it. */
+  agent: AgentId;
   status: 'succeeded' | 'failed';
   costCents: number;
   /** The agent's reply for the chat thread. */
@@ -235,9 +257,28 @@ export async function runAgentTurn(
   // joinable to the run it belongs to.
   const runId = ulid();
 
+  // Which conversation this turn is part of. Every row this turn writes carries
+  // it, so the thread reads back whole even once a project holds several.
+  const threadId = options.threadId ?? (await ensureWorkshopThread(db, orgId, projectId, cfg.model)).id;
+
+  // Which builder is running this turn, and can it run here at all? An agent
+  // this deployment has no fuel for is said plainly on the thread — never a
+  // silent fallback to a different one, which would make the switcher a lie.
+  const agent: AgentId = cfg.agent ?? 'claude-code';
+  const driver = driverFor(agent, { openaiApiKey: cfg.openaiApiKey });
+  if (!driver) {
+    const name = agentById(agent)?.name ?? agent;
+    const reply = `${name} isn't switched on here yet — there's no key for it, so I can't run your message through it. Switch this thread back to Claude Code and I'll pick it up.`;
+    const failedRunId = ulid();
+    await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId });
+    return { runId: failedRunId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+  }
+
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
-  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, role: 'owner', content: ownerText, runId });
+  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
 
   // Image attachments are shown on the thread (bytes kept separate — see the
   // table's own note); a persistence hiccup must not sink the turn, since the
@@ -257,7 +298,7 @@ export async function runAgentTurn(
   // "ship: …"); a plan turn is tagged the same way so the workshop can tell
   // thinking apart from building without another column.
   const runPrompt = options.mode === 'plan' ? `plan: ${ownerText}` : ownerText;
-  await db.insert(agentRuns).values({ id: runId, orgId, projectId, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
+  await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
@@ -290,7 +331,10 @@ export async function runAgentTurn(
   const imagePaths = await writeAttachedImages(execute, uploadFile, runId, options.images ?? []);
   const addedFiles = await writeAddedFiles(execute, uploadFile, uploadLocalFile, runId, options.files ?? []);
   const planning = options.mode === 'plan';
-  const cliPrompt = withAttachmentNotes(planning ? planWrap(ownerText) : ownerText, imagePaths, addedFiles);
+  const withNotes = withAttachmentNotes(planning ? planWrap(ownerText) : ownerText, imagePaths, addedFiles);
+  // The handover, when there is one, goes at the head: what the project is,
+  // what has happened, where the work stands — then the ask itself.
+  const cliPrompt = options.handoff ? `${options.handoff}\n\n---\n\n${withNotes}` : withNotes;
 
   // The live activity row: inserted once, updated in place as the log grows.
   // `inserted` and the shown count are tracked separately, and a retried
@@ -304,11 +348,11 @@ export async function runAgentTurn(
   let activityShown = 0;
   let priorAttemptLines: string[] = [];
   const showActivity = async (log: string) => {
-    const lines = [...priorAttemptLines, ...parseToolActivity(log)];
+    const lines = [...priorAttemptLines, ...driver.events(log).tools.map((t) => t.detail)];
     if (lines.length === activityShown) return;
     const content = lines.slice(-30).join('\n');
     if (!activityInserted) {
-      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, role: 'activity', content, runId });
+      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content, runId });
       activityInserted = true;
     } else {
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
@@ -317,11 +361,19 @@ export async function runAgentTurn(
   };
 
   /** Run one attempt to completion, streaming activity. Returns the full log, or null on timeout. */
+  let setupDone = false;
   const attempt = async (resumeSessionId: string | null): Promise<string | null> => {
+    // Install the CLI if this agent needs it. Once per turn, best-effort: a
+    // failure here surfaces as the turn failing to produce a result, with the
+    // CLI's own words, rather than as an exception nobody sees.
+    if (driver.setupCommand && !setupDone) {
+      setupDone = true;
+      await execute(driver.setupCommand, 300).catch(() => undefined);
+    }
     const suffix = ulid().toLowerCase();
     const log = `/tmp/selvedge-turn-${suffix}.log`;
     const pid = `/tmp/selvedge-turn-${suffix}.pid`;
-    await execute(startCommand(claudeCommand(cliPrompt, model, resumeSessionId, planning ? 'plan' : 'build'), log, pid), 60);
+    await execute(startCommand(driver.command(cliPrompt, { model, resumeSessionId, mode: planning ? 'plan' : 'build' }), log, pid), 60);
 
     const startedAt = now();
     while (now() - startedAt < TURN_TIMEOUT_MS) {
@@ -338,7 +390,10 @@ export async function runAgentTurn(
   };
 
   const prior = await getBuild(db, orgId, projectId);
-  let log = await attempt(prior?.claudeSessionId ?? null);
+  // Each builder has its own session inside the shared sandbox: resuming the
+  // other one's would hand this agent someone else's transcript.
+  const priorSessionId = agent === 'codex' ? (prior?.codexSessionId ?? null) : (prior?.claudeSessionId ?? null);
+  let log = await attempt(priorSessionId);
 
   // A stale session (sandbox was recreated; the session file died with it)
   // fails the resume. Retry once fresh instead of failing the owner's turn.
@@ -347,18 +402,18 @@ export async function runAgentTurn(
   // broken just as surely by an under-count as an over-count.
   let priorAttemptCostUsd = 0;
   let priorAttemptTools: ToolEvent[] = [];
-  if (log !== null && exitCodeOf(log) !== 0 && prior?.claudeSessionId) {
-    priorAttemptCostUsd = parseResult(log)?.totalCostUsd ?? 0;
-    priorAttemptTools = parseToolEvents(log).tools;
+  if (log !== null && exitCodeOf(log) !== 0 && priorSessionId) {
+    priorAttemptCostUsd = driver.result(log).costUsd;
+    priorAttemptTools = driver.events(log).tools;
     priorAttemptLines = priorAttemptTools.map((t) => t.detail);
-    await setBuild(db, orgId, projectId, { claudeSessionId: null });
+    await setBuild(db, orgId, projectId, agent === 'codex' ? { codexSessionId: null } : { claudeSessionId: null });
     log = await attempt(null);
   }
 
-  const result = log !== null ? parseResult(log) : null;
-  const narrative = log !== null ? parseAssistantText(log) : '';
+  const result = log !== null ? driver.result(log) : null;
+  const narrative = log !== null ? driver.text(log) : '';
   const succeeded = log !== null && exitCodeOf(log) === 0 && result !== null && !result.isError;
-  const costCents = Math.max(0, Math.round((priorAttemptCostUsd + (result?.totalCostUsd ?? 0)) * 100));
+  const costCents = Math.max(0, Math.round((priorAttemptCostUsd + (result?.costUsd ?? 0)) * 100));
 
   // Does the sandbox now hold uncommitted changes — i.e. something to ship?
   // A plan turn is thinking out loud, so it never marks work ready to ship —
@@ -388,7 +443,7 @@ export async function runAgentTurn(
   // The display content keeps its last-30 tail; this is the durable evidence
   // that outlives the sandbox (whose copy of the log dies in minutes).
   if (activityInserted && log !== null) {
-    const finalEvents = parseToolEvents(log);
+    const finalEvents = driver.events(log);
     const allTools = [...priorAttemptTools, ...finalEvents.tools];
     const record: RunRecord = {
       run_id: runId,
@@ -402,13 +457,16 @@ export async function runAgentTurn(
       .catch(() => undefined); // the record is evidence, not a gate — never sink the turn
   }
 
+  // An agent that doesn't report what a turn used leaves a zero in the cost
+  // watch. Saying so is the difference between an unknown and a free turn.
+  const costNote = succeeded && result && !result.costReported ? `\n\n(${agentById(agent)?.name ?? agent} didn't report what that turn cost, so it isn't in the cost watch below.)` : '';
   const reply = succeeded
-    ? narrative || (planning ? 'Here is how I would approach it.' : 'Done — take a look at the preview.')
+    ? (narrative || (planning ? 'Here is how I would approach it.' : 'Done — take a look at the preview.')) + costNote
     : log === null
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
       : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'agent', content: reply, runId });
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
   await db
     .update(agentRuns)
     .set({
@@ -419,9 +477,9 @@ export async function runAgentTurn(
     })
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
   await setBuild(db, orgId, projectId, {
-    ...(result?.sessionId ? { claudeSessionId: result.sessionId } : {}),
+    ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
     stagedChangesReady,
   });
 
-  return { runId, status: succeeded ? 'succeeded' : 'failed', costCents, reply, stagedChangesReady };
+  return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents, reply, stagedChangesReady };
 }

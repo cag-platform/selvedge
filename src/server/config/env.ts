@@ -45,10 +45,14 @@ export const FEATURES: FeatureSpec[] = [
   // would report `partial` for a deploy that set the key and sensibly left the
   // model alone, which would be false.
   { key: 'evaluator', label: 'Independent grader (the verified verdict)', kind: 'feature', vars: ['OPENAI_API_KEY'], gives: 'judges "did it do what was asked" on a different provider than authored the change, so a verdict never grades its own work; without it, verdicts top out at `probably` — never a false verified' },
+  // The same key, a second job: the Inbox's second builder. Separate row
+  // because they are separate promises — grading independence does not depend
+  // on Codex existing, and Codex not running does not weaken a verdict.
+  { key: 'codex', label: 'Codex, the second builder', kind: 'feature', vars: ['OPENAI_API_KEY', 'DAYTONA_API_KEY'], gives: 'lets a workshop thread switch builders mid-task — Codex runs in the same sandbox and starts from the handoff; without it the switcher says plainly that Codex is not switched on here' },
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG'];
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

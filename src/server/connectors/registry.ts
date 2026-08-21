@@ -36,7 +36,11 @@ type ProviderFlags = {
 /** Order matters for fuel: BYO resolution tries providers in declaration order. */
 const PROVIDERS = {
   anthropic: { fuel: true, fuelLive: true },
-  openai: { fuel: true },
+  // Live as of the Inbox: a general thread can run on GPT, so an org may now
+  // connect an OpenAI key as fuel. The GRADER still does not use it — grading
+  // is platform-scoped by construction (llm/factory.ts) precisely so a
+  // customer's own key can never end up marking its own homework.
+  openai: { fuel: true, fuelLive: true },
   gemini: { fuel: true },
   kimi: { fuel: true },
   railway: { hostCredential: true, hostTopology: true },

@@ -17,7 +17,7 @@ export function Nav() {
         WebkitBackdropFilter: 'var(--glass-blur)',
       }}
     >
-      <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+      <div className="mx-auto flex h-[var(--nav-height)] max-w-6xl items-center justify-between px-4">
         <div className="flex items-center gap-1">
           <NavLink to="/" end aria-label="Selvedge — Today" className="mr-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright">
             <SelvedgeLockup tone="chalk" className="h-7 w-auto" />
@@ -25,6 +25,9 @@ export function Nav() {
           <nav aria-label="Primary" className="flex items-center gap-1">
             <NavLink to="/" end className={linkClass}>
               Today
+            </NavLink>
+            <NavLink to="/inbox" className={linkClass}>
+              Inbox
             </NavLink>
             <NavLink to="/work" className={linkClass}>
               Work

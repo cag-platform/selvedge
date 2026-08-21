@@ -2,6 +2,7 @@ import { ulid } from 'ulid';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessages, orgs } from '../db/schema/index.js';
+import { ensureWorkshopThread } from '../threads/store.js';
 import { getPack, listPacks, updateHumanSections, updateMachineSections } from '../packs/store.js';
 import { createNeonDatabase, neonConfigured } from '../connectors/neon/client.js';
 import {
@@ -110,7 +111,13 @@ export async function readRepoFile(repoFullName: string, path: string): Promise<
 }
 
 async function say(db: Db, orgId: string, projectId: string, content: string): Promise<void> {
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, role: 'agent', content }).catch(() => undefined);
+  // Go-live narrates into the project's workshop thread — the conversation the
+  // owner pressed the button from. A thread lookup that fails must not silence
+  // the line: an unattached message is still readable, a missing one isn't.
+  const threadId = await ensureWorkshopThread(db, orgId, projectId)
+    .then((t) => t.id)
+    .catch(() => null);
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content }).catch(() => undefined);
 }
 
 export type GoLiveDeps = {

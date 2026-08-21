@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **977 tests across 124
+and what's still only a plan. Written for a non-coder. **1,272 tests across 159
 files, all green.**
 
 ---
@@ -44,12 +44,21 @@ founder actually speaks.
 | **Work** | Every ask becomes a card: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. |
 | **Independent verdict** | With `OPENAI_API_KEY` set, every finished card's "did it do what was asked" is judged **by a different model than wrote the change** (default `gpt-5.6-luna`), reading the actual diff from the card's review branch. This unlocks the `verified` verdict; without the key, verdicts honestly top out at "probably". The card says when it happened: *"Checked by a different model than the one that wrote it."* Grading runs on its own daily budget, so it can never starve the brief. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
+| **The Inbox** | The place to work: `/inbox` is one three-pane workbench — projects and their conversations on the left (with the morning brief pinned at the top), the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
+| **Switching agents mid-task** | Tap the chip in the composer, pick, keep typing. A chat thread just changes the model behind it, history intact. A workshop thread composes a **handoff** — what the project is, what's been done, where the work stands, and the ask — and starts the new builder with it, so nothing is re-explained. The thread records the switch in one line with the real size of what was handed over and what carrying it cost: *⇄ continued with Codex — handoff 1.8k tokens, about $0.004*. |
+| **Break → the work behind it** | When something breaks, Selvedge doesn't just say a change landed first — it says *whose work* that change was: *"This began after the change from Monday's Codex session (let people check out as a guest)."* It gets there through the commit: a session stamp Selvedge's own ships write into the commit message, or the commit the companion saw land while a terminal session was open. The conversation and the diff are one click away, in the brief and on the project's history. And when two changes could equally be behind it, it names both and says plainly that it can't tell which — a coin toss dressed as an answer is the one thing it won't do. |
+| **The record, visible** | Every project has a **history**: one scrollable list of what happened to it — what you asked for, work starting, ships, undos, handovers between agents, verdicts, and what the watching saw — each in one plain sentence with its status edge and the evidence one click beneath. Click a project in the rail to read its own history, or open **History** beside a conversation. **Search inside a project** finds what was said in any thread, any ask, and anything the watching reported. And the line under it is true: this is the same history your JSON export carries, in the same words. |
+| **Decide, then build** | A conversation can become a **decision** — a short written note of what was decided, why, what it must not break, and what is still open — and that decision opens a second thread that builds it. The two stay paired: each shows the other. The part that matters is that the decision **knows how old it is**. It records exactly what it was written from, and the moment anything is said in the thinking afterwards it says so, in red, on both sides. If you try to build from one that's fallen behind, Selvedge stops and tells you what's changed; you can refresh it, or say you know and go ahead — and the thread records that you did. Open questions travel to the builder with an instruction not to answer them itself. |
+| **Subjects** | Somewhere to put work that isn't a codebase — pricing, hiring, an old chat log. A subject is a name with conversations under it and nothing else: no health, no edge, no watching. There's nothing there to monitor, so it never looks as though there were. |
+| **Bring in an old history** | Upload the export ZIP that ChatGPT, Claude or Gemini already gives you and those chats become ordinary conversations here — searchable, part of the record, every one marked as imported because none of it was said to Selvedge. Nothing is connected and nothing keeps reading: it happens once, from a file you chose. Whatever couldn't be read is listed with a reason, beside the count of what came in — and so is what the format itself can't carry (Google's export records what you asked Gemini, not what Gemini answered). Importing the same file twice can't double your history. |
+| **The loop** | Work you do in your own terminal doesn't vanish. A small program on your machine (`selvedge watch`) reads your Claude Code and Codex sessions — and, marked plainly as unproven, Cursor and Gemini CLI and sends Selvedge a **summary** of each one — what you asked for, which files it touched, how it ended, the commit that landed, what it cost. Never the conversation, never your code; `selvedge watch --dry-run` prints exactly what would be sent. Those sessions turn up on the project's history and in the next morning's brief, always marked as **observed from outside** — Selvedge didn't run that work and doesn't claim to have checked it. And a session it *couldn't* read is said out loud rather than quietly skipped. |
+| **Context, served anywhere** | The same program is an MCP server (`selvedge context`) that any agent can mount — Claude Code, Codex, anything that speaks MCP. Three read-only tools hand over what this project is, what changed lately, and what's open, so a fresh session anywhere starts knowing the project instead of asking you again. Read-only on purpose: agents consume context here, they never edit what Selvedge believes. Set up under **Connections → Your machines**; the how is in `docs/companion.md`. |
 | **The flight record** | Every run keeps a durable, structured record of what the agent actually did — each tool step with its outcome (did the edit apply, did the test pass), the files changed, the cost, the model — bounded, and joined to the thread. "The full record" opens under the activity feed; ships record the exact diff the risk gate judged; undos get their own row; a finished card's history is one click on Record. The raw log dies with the sandbox in minutes — this is the evidence that outlives it. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
 | **Think it first** | A checkbox on the Workshop composer runs the same agent read-only: it explains in plain English what building the idea would involve, flags risks and cost, and changes nothing. Replaced the separate Sketch room — one conversation, one place, no hand-off. |
 | **Ledger / Record** | Every run's real cost in cents, verdicts, track record, learned baselines ("last time this cost about $6"). |
 | **Connections** | BYO model key, host tokens, Supabase token. AES-256-GCM vault, bound to org *and* provider. |
-| **Portability** | Export everything Selvedge knows as JSON. Being able to leave is what makes people stay. |
+| **Portability** | Export everything Selvedge knows as JSON — the project packs, the learned meanings, and now the timeline: what happened to each project, in the same sentences the product shows you. Being able to leave is what makes people stay. |
 
 **Agent standing rules (new).** The building agent now knows who it's building
 for on every turn: no terminal, doesn't read code, never hand over a command
@@ -78,6 +87,33 @@ in the customer's repo.
 Written to published docs and unit-tested; no call made against the real service
 from this environment:
 
+- **The companion's log parsers** — Claude Code's and Codex's session files are
+  read from fixtures that match the shapes seen in the wild, not from the live
+  tools on a real machine. The failure mode is deliberately loud: a log the
+  parser doesn't recognise is reported as unreadable and leads the next brief,
+  rather than being skipped. The rest of the loop — ingest, storage, the
+  timeline, the brief line, the MCP — is tested end to end over real HTTP.
+- **The Cursor and Gemini CLI readers go further than that, and say so.** They
+  were written against those formats *as understood* — no log from either tool
+  has been seen by this codebase, not even a fixture copied from a real one.
+  They are shipped labelled unverified in `docs/companion.md`, in the code and
+  in the type. What is tested is that the guess fails safely: they never throw,
+  never invent a session id, and report every log they can't read. Because
+  finding nothing looks identical to a quiet week, `selvedge watch --dry-run`
+  prints where it looked, and each tool's directory can be corrected — or
+  turned off — in `~/.selvedge/config.json`.
+- **The consumer-history import** — the ChatGPT, Claude and Gemini export
+  parsers are tested against the documented shapes of those archives, not
+  against an export downloaded from a real account. Anything a parser can't
+  read is reported with a reason rather than dropped, so a format that has
+  moved shows up as "I couldn't read these" instead of a short list that looks
+  complete.
+- **Codex as the second builder** — the CLI's install, its command, and its
+  JSON event stream (session id, outcome, token usage, tool activity). The
+  stream is undocumented and has changed shape between versions, so the parsers
+  accept the shapes seen in the wild and **fail a turn they cannot read rather
+  than passing it**. The rest of the path — the switch, the handoff, the record,
+  the pricing — is tested end to end with the CLI's output stubbed.
 - **Railway provisioning** — create service, set variables, mint domain, wait for
   deploy. Ported from Toile's working implementation, both schema-drift fallbacks
   included.
@@ -116,11 +152,13 @@ names what did and did not happen rather than going quiet.
 
 ### Also scoped, not built
 
-- **Model picker** (Claude / Codex / Kimi). **Decided (Aug 2026): stays cut.**
-  OpenAI arrived in the codebase as the *grader* — where a different provider is
-  the feature — not as selectable fuel. The seam remains (`FUEL_PROVIDERS`
-  declares four, one live); offering the choice waits until one model works so
-  well the second is demand, not decoration.
+- **Model picker** (Claude / Codex / Kimi). Was cut in Aug 2026 — OpenAI arrived
+  as the *grader*, where a different provider is the feature, not as selectable
+  fuel. **Reopened and built** (INBOX-LOOP-BRIEF.md Phase 1) on a different
+  argument: not "a second model as decoration" but *switching builders mid-task
+  without re-explaining*. Codex now installs into the same sandbox beside
+  Claude Code, and OpenAI is live fuel for chat threads. Kimi and Gemini stay
+  declared and not built.
 - **Mobile app** — `cag-platform/Selvedge-mobile`, native SwiftUI. **Scope decided
   (Aug 2026): deliberately thin** — APNs push for the brief, a WidgetKit glance,
   and a read-only brief view. The Workshop and go-live stay web-only; a phone is
@@ -159,6 +197,50 @@ names what did and did not happen rather than going quiet.
 
 ---
 
+## What landed with the Inbox (Aug 2026)
+
+Phase 0 of INBOX-LOOP-BRIEF.md is in, and by design **nothing looks different**.
+Three load-bearing pieces, laid before the room is built on them:
+
+- **Every ship now stamps its commit** with the conversation it came from —
+  `Selvedge-Session: <thread id>`, a real git trailer. Selvedge always knew
+  which conversation asked for a change; now the repository knows too, which is
+  what will let a future brief say "Tuesday's errors began after the change from
+  Monday's session" and mean it.
+- **A project can hold many conversations.** The `threads` table exists, and the
+  Workshop conversation each project already had became its thread #1 — same
+  history, same place, now with a name it can be listed under. Nothing in the
+  product offers a second thread yet; the Inbox does that.
+- **The handoff is written and tested.** Given a project and a conversation, a
+  pure function composes what a *different* agent would need to pick the work up
+  — what the app is, what breaking it costs, what's been done, where it stands,
+  and the ask itself. On a thread with real history it costs under a tenth of
+  what pasting the conversation would.
+
+Then the room itself: the Inbox and the switcher above, general threads beside
+coding ones, and Codex in the same sandbox. Two things are deliberately NOT
+claimed. The Codex CLI has not been run against the real tool from here (it's
+in the unverified list). And the dogfood gate — a whole working day inside
+Selvedge, switching builders mid-task without re-explaining anything — needs a
+person and a live sandbox; the machinery is tested, the day hasn't been had.
+
+### And then the gated things, built early on request
+
+Paired threads, subjects, the history import and the Cursor/Gemini CLI readers
+were all held behind evidence in INBOX-LOOP-BRIEF.md §8, and were built anyway
+at the owner's direction so they can be tried. That is worth writing down
+rather than smoothing over: they are in the product before the evidence that
+was supposed to justify them.
+
+One part of §8 was not waived. It says the decision brief's stale-brief problem
+"must be solved with evidence-dating before it ships" — that is a rule about
+never printing something false, so it is the feature's spine rather than a
+guard bolted beside it. A decision records what it was written from; anything
+said afterwards makes it stale, loudly, on both sides; and the building thread
+refuses to run on a stale one until a person says they know.
+
+---
+
 ## The next three things
 
 1. **Go live for real (Phase 0 gate).** Register the Railway OAuth app
@@ -193,7 +275,18 @@ names what did and did not happen rather than going quiet.
    `EVAL_MODEL=gpt-5.6-terra` — correlation, not agreement, is the failure
    being hunted.
 
-Then the Migration Center, Replit first.
+Then **dogfood the Inbox and the Loop** (INBOX-LOOP-BRIEF.md §3 and §5's
+gates): run a real day inside it — plan in a general thread, build in a workshop thread, switch
+builders at least once mid-task without re-explaining anything, and check that
+every message, switch and cost is visible in the record. That day is also the
+first real test of Codex's CLI, and the first real read of a project's history
+with months rather than fixtures behind it. After it: **the Loop** (a local
+companion that reads terminal sessions in, and a pack-serving MCP that hands
+context out) — both now built, so what remains for them is the day itself:
+install the companion, work a day in the terminal, and check that the next
+morning's brief narrates it correctly. Then **Fusion** (Phase 4: break → the
+change before it → the session that produced it, in one plain sentence), and
+after that the Migration Center, Replit first.
 
 ---
 
