@@ -3,6 +3,8 @@ import path from 'node:path';
 import type { CompanionApi } from './api.js';
 import { parseClaudeSession } from './sessions/claude.js';
 import { parseCodexSession } from './sessions/codex.js';
+import { parseCursorSession } from './sessions/cursor.js';
+import { parseGeminiCliSession } from './sessions/geminiCli.js';
 import { toSummary } from './sessions/parse.js';
 import { findSessionFiles, looksFinished, type Roots, type SessionFile } from './sessions/discover.js';
 import { alreadySent, loadState, saveState, type WatchState } from './state.js';
@@ -57,7 +59,21 @@ export async function summarise(file: SessionFile, deps: WatchDeps): Promise<Ses
     };
   }
 
-  const parsed = file.agent === 'claude-code' ? parseClaudeSession(text, file.idHint) : parseCodexSession(text, file.idHint);
+  // One parser per tool, and every one of them returns a reason rather than
+  // throwing — so an unverified reader failing on a format that moved becomes
+  // a reported `unreadable`, not a crashed pass that loses the whole night.
+  const PARSERS = {
+    'claude-code': parseClaudeSession,
+    codex: parseCodexSession,
+    cursor: parseCursorSession,
+    'gemini-cli': parseGeminiCliSession,
+  } as const;
+  let parsed;
+  try {
+    parsed = PARSERS[file.agent](text, file.idHint);
+  } catch (err) {
+    parsed = { ok: false as const, reason: `the reader for ${file.agent} failed on this log: ${err instanceof Error ? err.message : 'unknown error'}` };
+  }
   if (!parsed.ok) {
     return {
       agent: file.agent,

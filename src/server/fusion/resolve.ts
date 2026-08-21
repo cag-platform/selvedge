@@ -2,6 +2,7 @@ import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentRuns, events, externalSessions, threads } from '../db/schema/index.js';
 import { agentById } from '../../shared/agents.js';
+import { sessionAgentName } from '../../shared/types/session.js';
 import type { ChangeRefs } from '../../shared/types/event.js';
 import { composeFusion, type Fusion, type SessionAttribution } from './attribute.js';
 
@@ -121,5 +122,5 @@ export async function fusionForChange(
   const refs = await changeRefsFor(db, orgId, changeEventId);
   if (!refs) return null;
   const attributions = await attributionsFor(db, orgId, refs);
-  return composeFusion(attributions, breakAt, (id) => agentById(id)?.name ?? id);
+  return composeFusion(attributions, breakAt, (id) => agentById(id)?.name ?? sessionAgentName(id));
 }

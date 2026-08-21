@@ -11,7 +11,14 @@
  * field can't be defended on those terms, it doesn't belong.
  */
 
-export type SessionAgent = 'claude-code' | 'codex';
+/**
+ * Which tool the session ran in. `cursor` and `gemini-cli` are read by
+ * UNVERIFIED parsers — written against the formats as understood, not proved
+ * against logs this codebase has seen — which is why they land here as first-
+ * class agents rather than as a guess dressed as a fact: an unreadable session
+ * from either is reported as unreadable, out loud, like any other.
+ */
+export type SessionAgent = 'claude-code' | 'codex' | 'cursor' | 'gemini-cli';
 
 /**
  * How a session ended, as far as anyone can tell from outside:
@@ -44,13 +51,31 @@ export type SessionSummary = {
   detail?: string;
 };
 
+/**
+ * What a person calls each tool. The agent REGISTRY (shared/agents.ts) covers
+ * the agents Selvedge can run; these are tools it can only read about
+ * afterwards, and without this a fused sentence says "the gemini-cli session"
+ * rather than "the Gemini CLI session".
+ */
+export const SESSION_AGENT_NAMES: Record<SessionAgent, string> = {
+  'claude-code': 'Claude Code',
+  codex: 'Codex',
+  cursor: 'Cursor',
+  'gemini-cli': 'Gemini CLI',
+};
+
+/** The tool's name, from either table, falling back to the raw id rather than to a guess. */
+export function sessionAgentName(id: string): string {
+  return SESSION_AGENT_NAMES[id as SessionAgent] ?? id;
+}
+
 /** Bounds — a summary that grows without limit stops being a summary. */
 export const MAX_INTENT_CHARS = 500;
 export const MAX_FILES = 200;
 export const MAX_TOOL_KINDS = 50;
 export const MAX_DETAIL_CHARS = 500;
 
-const AGENTS: readonly string[] = ['claude-code', 'codex'];
+const AGENTS: readonly string[] = ['claude-code', 'codex', 'cursor', 'gemini-cli'];
 const OUTCOMES: readonly string[] = ['shipped', 'ended', 'abandoned', 'error', 'unreadable'];
 
 export type SummaryCheck = { ok: true; value: SessionSummary } | { ok: false; error: string };

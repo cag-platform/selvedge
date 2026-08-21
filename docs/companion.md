@@ -3,10 +3,11 @@
 One small program that runs on your own machine and closes the loop in both
 directions:
 
-- **In** — it reads the coding sessions you run in your terminal (Claude Code,
-  Codex) and sends Selvedge a **summary** of each finished one, so a day spent
-  in the terminal shows up in tomorrow's brief and on the project's history
-  instead of vanishing.
+- **In** — it reads the coding sessions you run in your terminal (Claude Code
+  and Codex, and — with the caveat below — Cursor and Gemini CLI) and sends
+  Selvedge a **summary** of each finished one, so a day spent in the terminal
+  shows up in tomorrow's brief and on the project's history instead of
+  vanishing.
 - **Out** — it serves your project's context to any agent that mounts it as an
   MCP server, so a fresh session anywhere starts knowing what the project is,
   what breaking it costs, what changed lately, and what is open.
@@ -104,6 +105,51 @@ they say which projects exist rather than guessing at one.
 **Nothing writes.** An agent consumes context here; it never edits what Selvedge
 believes about a project. The pack's whole value is that it is grounded in what
 actually happened.
+
+---
+
+## Which tools it reads, and how much to trust each
+
+| Tool | Where it looks | Status |
+|---|---|---|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | **Verified** — written against real logs |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl` | **Verified** — written against real logs |
+| Cursor | `~/.cursor/sessions/**/*.json(l)` | **Unverified** |
+| Gemini CLI | `~/.gemini/tmp/**/logs.json`, `**/chats/*.json` | **Unverified** |
+
+**Unverified** means exactly what it says: those two readers were written
+against the formats as understood, not proved against a log this codebase has
+seen. They may find nothing, or find less than there was.
+
+What they will not do is fail quietly. A log a reader can't understand comes
+back as `unreadable` with a reason and is reported, the same as any other — so
+the failure of an unverified reader shows up in the brief as "I couldn't read
+four Cursor sessions", never as a week in which nothing happened.
+
+Cursor's IDE chat lives in a SQLite workspace database. The companion does not
+open it, and won't: reading another editor's internal state file on your machine
+isn't something to do on a guess. Only the agent CLI's own session directory is
+read.
+
+### If it finds nothing
+
+`selvedge watch --dry-run` finding nothing has two causes that look identical —
+you didn't use the tools, or a path above is wrong — so when it comes back
+empty it prints where it looked. If a path is wrong, point it somewhere else in
+`~/.selvedge/config.json`:
+
+```json
+{
+  "api": "https://tryselvedge.com",
+  "token": "slv_…",
+  "roots": {
+    "cursor": "/Users/you/somewhere/else",
+    "gemini": null
+  }
+}
+```
+
+A root set to `null` turns that reader off entirely.
 
 ---
 

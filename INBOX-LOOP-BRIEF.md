@@ -580,3 +580,80 @@ reports the session, the push lands through the real normalizer, the health
 failure goes through the real ingest — and the next brief traces it back in
 plain English, unprompted. Then the ambiguous case: two sessions, two commits,
 one push, and the brief names both and refuses to choose.
+
+### Phase 5 — Gated items: **built on request** (Aug 2026)
+
+Built at the owner's explicit direction rather than on the evidence gate §8
+sets out. That is the owner's call and it is recorded as one: the fused
+timeline had not yet been proved loved in use when this was built. The gate
+that was NOT waived is the correctness one — §8 says the stale-brief problem
+"must be solved with evidence-dating before it ships", and that is a rule
+about not printing something false, so it is built into the feature rather
+than bolted beside it.
+
+**Paired threads + decision brief.** Think in a general thread, extract a
+decision from it, build in a workshop thread paired to that decision.
+
+- **Evidence-dating is the feature, not a safeguard on it.** A brief records
+  `evidence_through` and `evidence_messages` — exactly what it was made from.
+  `freshnessOf` is deliberately blunt: ANY message in the thinking newer than
+  that makes the brief stale. Not "any substantive message"; deciding which
+  ones mattered is precisely the judgement that gets this wrong, and the cost
+  of bluntness is a re-extraction nobody needed.
+- **No path hands out an undated brief.** `withFreshness` is the only reader,
+  and the client type has no shape a bare brief fits in. A settled-sounding
+  statement whose settledness nobody checked is the object §8 warned about.
+- **The building thread REFUSES to run on a stale decision** — 409, saying what
+  is behind and by how much — until a person says they know. Acknowledging is
+  one press, plainly worded, never a default, and the thread records that it
+  happened. Broken once on purpose; `test/web/decisions.test.ts` caught it.
+- **The builder gets the brief on its first turn**, open questions included and
+  told not to settle them, with the staleness warning attached when it applies.
+- **A human edit replaces the words and never re-dates the evidence.** Typing
+  is not new evidence.
+- **Red, deliberately.** A stale decision wears `--thread`, the app's rationed
+  colour, because a decision that has moved out from under you is exactly the
+  thing that needs you. Screenshot-checked in both states.
+
+**Subjects.** `threads.project_id` and `agent_messages.project_id` become
+nullable so a conversation can belong to a subject instead of a codebase. A
+subject has a name and threads, and nothing else: no stakes, no topology, no
+edge, no health line. A status on a subject would be a claim about nothing.
+
+**Consumer-history import.** The export ZIP each vendor already gives you, read
+once, filed as general threads under a project or a subject. Still not a
+connector — live capture of consumer chat apps stays refused (§9).
+
+- ChatGPT stores a node GRAPH; we walk the branch that survived. Stitching all
+  branches together in timestamp order produces a transcript that never
+  happened.
+- Claude has two message shapes in the wild; the newer content blocks win.
+- Gemini's Takeout is an activity LOG, not a transcript — it records what you
+  asked and not what Gemini answered, with no conversation ids. Each prompt
+  comes in alone, and the response says so as a limitation of the format.
+- **What can't be read is reported**, item by item with a reason, in the same
+  sentence as the success count. "1,204 imported" with 300 silently dropped is
+  the same shape of lie as a confidently wrong all-clear.
+- An imported thread can never pass for one held here: `imported_from` /
+  `import_source_id` are columns, and a switch line at the top of every one
+  says where it came from. The (org, vendor, source_id) index is unique, so a
+  re-import cannot double a history — proved by breaking the in-code check.
+
+**Cursor + Gemini CLI readers.** Built, and shipped marked **unverified** in
+`docs/companion.md`, in the code, and in the type: written against those
+formats as understood, not proved against a log this codebase has seen. §8
+gated them on the verified readers surviving a few tool updates, which has not
+happened yet, so the honest move is to ship them labelled rather than to ship
+them silent.
+
+- What is tested is not that a guessed format parses "correctly" — that would
+  be a test of the guess. It is that the guess fails SAFELY: no throw on any
+  input, no session invented without the tool's own id, and every unreadable
+  log reported with a reason rather than skipped.
+- `selvedge watch --dry-run` finding nothing prints where it looked, because
+  "you had a quiet week" and "your root is wrong" are indistinguishable
+  otherwise. Roots are overridable per tool in `~/.selvedge/config.json`; null
+  turns a reader off.
+- Cursor's IDE chat lives in a SQLite workspace database, which the companion
+  does not open and won't — reading another editor's internal state file on
+  someone's laptop is not a thing to do on a guess.

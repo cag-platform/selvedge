@@ -2,6 +2,7 @@ import { and, desc, eq, gte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentRuns, cards, externalSessions, narrations, threads } from '../db/schema/index.js';
 import { agentById } from '../../shared/agents.js';
+import { sessionAgentName } from '../../shared/types/session.js';
 import type { CardState, CardVerdict } from '../cards/types.js';
 import {
   askEntry,
@@ -138,7 +139,7 @@ export async function projectTimeline(
     entries.push(
       switchEntry(
         { id: row.id, threadId: row.threadId, content: row.content, createdAt: row.createdAt, meta: row.meta as never },
-        (agent) => agentById(agent)?.name ?? agent,
+        (agent) => agentById(agent)?.name ?? sessionAgentName(agent),
       ),
     );
   }

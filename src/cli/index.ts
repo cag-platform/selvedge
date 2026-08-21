@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { CompanionApi } from './api.js';
-import { loadConfig, saveConfig, CONFIG_PATH, DEFAULT_API } from './config.js';
+import { loadConfig, rootsFrom, saveConfig, CONFIG_PATH, DEFAULT_API } from './config.js';
 import { dryRun, watchOnce } from './watch.js';
+import { defaultRoots, type Roots } from './sessions/discover.js';
 import { runContextServer } from './mcp.js';
 import { findSessionFiles, looksFinished } from './sessions/discover.js';
 
@@ -90,10 +91,19 @@ async function main(): Promise<number> {
 
   if (command === 'watch') {
     const api = new CompanionApi(config);
+    const roots = rootsFrom(defaultRoots(), config.roots) as Roots;
     if (has(argv, 'dry-run')) {
-      const summaries = await dryRun({ api });
+      const summaries = await dryRun({ api, roots });
       console.log(JSON.stringify(summaries, null, 2));
       console.log(`\n${summaries.length} finished session(s). Nothing was sent.`);
+      // Finding nothing has two causes that look identical from here — the tools
+      // weren't used, or a root is wrong — so say where it looked rather than
+      // letting an empty result read as "you had a quiet week".
+      if (summaries.length === 0) {
+        console.log('\nIt looked in:');
+        for (const [tool, dir] of Object.entries(roots)) console.log(`  ${tool}: ${dir ?? '(off)'}`);
+        console.log('The Cursor and Gemini CLI readers are unverified — if a path above is wrong, set "roots" in ~/.selvedge/config.json.');
+      }
       return 0;
     }
     if (!config.token) {
@@ -105,7 +115,7 @@ async function main(): Promise<number> {
     const interval = Math.max(15, Number(flag(argv, 'interval') ?? 60)) * 1000;
 
     const pass = async () => {
-      const result = await watchOnce({ api, log });
+      const result = await watchOnce({ api, roots, log });
       log(
         `looked at ${result.considered} log(s): sent ${result.sent}` +
           `${result.unreadable ? `, ${result.unreadable} unreadable (reported)` : ''}` +
