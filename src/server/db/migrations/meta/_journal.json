@@ -183,6 +183,13 @@
       "when": 1787000300000,
       "tag": "0025_companion",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787000400000,
+      "tag": "0026_change_refs",
+      "breakpoints": true
     }
   ]
 }

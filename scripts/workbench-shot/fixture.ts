@@ -95,16 +95,23 @@ export function timelineFixture() {
   const at = (days: number, hours = 0) => new Date(Date.UTC(2026, 7, 20 - days, 12 - hours)).toISOString();
   return {
     project: { id: 'p0', name: 'Loom' },
+    repo_url: 'https://github.com/acme/loom',
     days: 14,
     entries: [
       {
         id: 'event:n1',
         at: at(0, 3),
         kind: 'event',
-        sentence: 'Checkout started failing just after last night\'s change.',
+        // The fused sentence: the break, and the work it came after.
+        sentence:
+          "Checkout started failing just after last night's change. This began after the change from yesterday's Codex session (let people check out as a guest).",
         status: 'needs',
-        evidence: ['error rate 14% over 10 minutes', 'runtime.error_spike · high confidence'],
-        ref: { event_id: 'e1' },
+        evidence: [
+          'error rate 14% over 10 minutes',
+          'This started about an hour after new code landed on your main branch — worth checking first.',
+          'runtime.error_spike · high confidence',
+        ],
+        ref: { event_id: 'e1', commit: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' },
       },
       {
         id: 'switch:s1',

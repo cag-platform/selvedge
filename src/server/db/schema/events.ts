@@ -27,6 +27,12 @@ export const events = pgTable(
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     severityHint: text('severity_hint').notNull(), // 'info' | 'warn' | 'error'
     raw: jsonb('raw').notNull(),
+    /**
+     * What a change carried — commit shas, and any Selvedge-Session trailers on
+     * them. Extracted by the connector, because `raw` is off-limits downstream,
+     * and read by Fusion to answer "which session produced this change?".
+     */
+    changeRefs: jsonb('change_refs'),
     dedupeKey: text('dedupe_key').notNull(),
   },
   (table) => [

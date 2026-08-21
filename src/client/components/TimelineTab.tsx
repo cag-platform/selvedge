@@ -39,6 +39,7 @@ type Hit = {
 
 export function TimelineTab({ projectId, onOpenThread }: { projectId: string; onOpenThread: (threadId: string) => void }) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [repoUrl, setRepoUrl] = useState<string | null>(null);
   const [days, setDays] = useState(14);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<Hit[] | null>(null);
@@ -47,8 +48,11 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
   const load = useCallback(() => {
     setEntries(null);
     api
-      .get<{ entries: Entry[] }>(`/api/projects/${encodeURIComponent(projectId)}/timeline?days=${days}`)
-      .then((r) => setEntries(r.entries))
+      .get<{ entries: Entry[]; repo_url: string | null }>(`/api/projects/${encodeURIComponent(projectId)}/timeline?days=${days}`)
+      .then((r) => {
+        setEntries(r.entries);
+        setRepoUrl(r.repo_url);
+      })
       .catch((e: Error) => setError(e.message));
   }, [projectId, days]);
 
@@ -142,11 +146,24 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
                     ))}
                   </Reveal>
                 )}
-                {entry.ref.thread_id && (
-                  <button onClick={() => onOpenThread(entry.ref.thread_id!)} className="mt-work-tight text-meta text-action-bright hover:underline">
-                    Open the conversation
-                  </button>
-                )}
+                <div className="mt-work-tight flex flex-wrap gap-work">
+                  {entry.ref.thread_id && (
+                    <button onClick={() => onOpenThread(entry.ref.thread_id!)} className="text-meta text-action-bright hover:underline">
+                      Open the conversation
+                    </button>
+                  )}
+                  {/* The change itself, when the entry knows which commit it was. */}
+                  {entry.ref.commit && repoUrl && (
+                    <a
+                      href={`${repoUrl.replace(/\/+$/, '')}/commit/${entry.ref.commit}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-meta text-action-bright hover:underline"
+                    >
+                      See the change
+                    </a>
+                  )}
+                </div>
               </li>
             ))}
           </ol>

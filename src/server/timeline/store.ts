@@ -154,6 +154,7 @@ export async function projectTimeline(
       verdict: row.verdict,
       confidence: row.confidence,
       kind: row.kind,
+      meta: row.meta as never,
     });
     if (entry) entries.push(entry);
   }

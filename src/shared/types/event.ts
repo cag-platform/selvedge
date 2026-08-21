@@ -18,6 +18,22 @@ export type ConnectorKind =
 
 export type SeverityHint = 'info' | 'warn' | 'error';
 
+/**
+ * What a change event carried, extracted by the connector that could read the
+ * payload — because nothing downstream of the connector may read `raw`, and
+ * Fusion needs the commits to answer "which session produced this?".
+ *
+ * `sessions` are Selvedge-Session trailer values parsed from the commit
+ * messages (provenance/trailer.ts): a commit that Selvedge itself shipped says
+ * which conversation asked for it, in the repo, where it survives everything.
+ * Commits from anywhere else simply carry none, and the join falls back to the
+ * companion's commit↔session mapping.
+ */
+export type ChangeRefs = {
+  commits: string[];
+  sessions: string[];
+};
+
 export type SelvedgeEvent = {
   id: string; // ulid
   org_id: string;
@@ -29,6 +45,8 @@ export type SelvedgeEvent = {
   received_at: string; // ISO
   severity_hint: SeverityHint;
   raw: unknown; // original payload, stored, never read downstream
+  /** Set by connectors for change events; the structured, downstream-readable half of `raw`. */
+  change_refs?: ChangeRefs | null;
   dedupe_key: string; // idempotency across webhook retries
 };
 

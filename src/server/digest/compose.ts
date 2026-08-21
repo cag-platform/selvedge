@@ -49,7 +49,19 @@ export async function composeDigestForOrg(
   ]);
 
   const packById = new Map(packs.map((p) => [p.identity.project_id, p]));
-  const withPack: NarrationWithPack[] = narrationRows.map((n) => ({ ...n, pack: n.projectId ? packById.get(n.projectId) ?? null : null }));
+  // Fusion rides INTO the brief by joining the fragment here rather than by
+  // being written into the stored narration: the narration is what was said at
+  // the moment it happened (and what a push carried), while the brief is where
+  // "and here is the work it came from" belongs. One place, so the mechanical
+  // rendering and the composed one can never disagree about it.
+  const withPack: NarrationWithPack[] = narrationRows.map((n) => {
+    const fused = (n.meta as { fusion?: { sentence?: string } } | null)?.fusion?.sentence;
+    return {
+      ...n,
+      ...(fused && n.fragment ? { fragment: `${n.fragment} ${fused}` } : {}),
+      pack: n.projectId ? packById.get(n.projectId) ?? null : null,
+    };
+  });
 
   // Identical repeats collapse to one line with a plain count — three "new
   // work landed" narrations are one fact that happened three times, not three

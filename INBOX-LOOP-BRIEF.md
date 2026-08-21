@@ -541,3 +541,42 @@ session, marked as observed. What a test cannot do is spend the day: the gate as
 written ("work a full day in the terminal, never opening Selvedge") still needs
 a person, a terminal and a morning — and it is also the first real run of both
 log parsers against the live tools, which remain unverified from here.
+
+### Phase 4 — Fusion: **built** (Aug 2026)
+
+The sentence the product was built to be able to say, and the rules that keep it
+worth printing.
+
+- **The join.** Correlation already gets from a break to the change before it;
+  `server/fusion` gets from that change to the work behind it, through the
+  commit. Three roads, in descending order of certainty: the `Selvedge-Session`
+  trailer Phase 0 stamps into Selvedge's own ships (the commit says so itself,
+  in the repo, and survives rebases and Selvedge); `agent_runs.commit_sha` for a
+  ship whose message was later rewritten; and the companion's commit↔session
+  mapping for work done in a terminal. There is deliberately no fourth road:
+  a time-window guess would manufacture attributions, which is the failure this
+  feature has to be incapable of.
+- **The envelope, not the payload.** Commits reach Fusion on a new structured
+  `change_refs` field filled by the connector — because nothing downstream of
+  the connector may read `raw`, a rule the normalizer's own comment anticipated
+  would need exactly this.
+- **The sentence.** *"This began after the change from Monday's Codex session
+  (let people check out as a guest)."* It appears in the brief and on the
+  break's timeline entry, with the conversation to open and the commit to read
+  beside it. Work done here is named by the thread the owner named it; work
+  observed from outside stays marked as observed. On a same-day break the gap
+  replaces the weekday ("the Codex session, three hours earlier"), because
+  "Monday's" says nothing when the break was Monday too.
+- **Honesty holds, and was broken once to prove it.** No session named on the
+  commits → no sentence, and correlation's own line stands alone. Several
+  candidates → all of them named, none of them picked. The wording never
+  hardens past "began after": a commit landed and then something broke, which is
+  a lead worth following, not a cause. Both guards were deliberately inverted
+  and the suite caught each.
+
+**Gate: manufactured, and met.** `test/integration/fusion.test.ts` breaks a test
+project on purpose from a Codex session Selvedge never ran — the companion
+reports the session, the push lands through the real normalizer, the health
+failure goes through the real ingest — and the next brief traces it back in
+plain English, unprompted. Then the ambiguous case: two sessions, two commits,
+one push, and the brief names both and refuses to choose.

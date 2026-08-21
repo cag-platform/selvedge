@@ -1,4 +1,5 @@
-import type { NewSelvedgeEvent } from '../../../shared/types/event.js';
+import type { ChangeRefs, NewSelvedgeEvent } from '../../../shared/types/event.js';
+import { parseSessionTrailer } from '../../provenance/trailer.js';
 import type { CreateOrDeletePayload, PullRequestPayload, PushPayload, WorkflowRunPayload } from './payloadTypes.js';
 
 /**
@@ -18,6 +19,27 @@ const LARGE_MERGE_COMMIT_THRESHOLD = 10;
 function defaultBranchRef(repo: { default_branch: string }): string {
   return `refs/heads/${repo.default_branch}`;
 }
+
+/**
+ * The commits a push carried, and the sessions stamped on them — the one thing
+ * downstream needs out of a payload it is not allowed to read. The trailer is
+ * how a commit says which conversation asked for it (provenance/trailer.ts);
+ * commits from anywhere else carry none, which is not a problem: Fusion's rule
+ * is that no session means no story, never a guessed one.
+ */
+function changeRefsOf(payload: PushPayload): ChangeRefs {
+  const commits: string[] = [];
+  const sessions: string[] = [];
+  for (const commit of payload.commits.slice(0, MAX_TRACKED_COMMITS)) {
+    if (typeof commit.id === 'string' && commit.id) commits.push(commit.id);
+    const session = typeof commit.message === 'string' ? parseSessionTrailer(commit.message) : null;
+    if (session && !sessions.includes(session)) sessions.push(session);
+  }
+  return { commits, sessions };
+}
+
+/** A push carrying more than this is a merge of history, not a change to attribute. */
+const MAX_TRACKED_COMMITS = 50;
 
 export function normalizePush(orgId: string, payload: PushPayload): NewSelvedgeEvent | null {
   const { ref, before, after, commits, repository } = payload;
@@ -39,6 +61,7 @@ export function normalizePush(orgId: string, payload: PushPayload): NewSelvedgeE
     occurred_at: new Date(occurredAt).toISOString(),
     severity_hint: 'info',
     raw: payload,
+    change_refs: changeRefsOf(payload),
     dedupe_key: `github:push:${repository.full_name}:${before}:${after}`,
   };
 }

@@ -230,6 +230,15 @@ export type NarrationRow = {
   verdict: string | null;
   confidence: string | null;
   kind: string | null;
+  /** The correlation and, when the commits named one, the work behind it. */
+  meta?: {
+    correlation?: { plain?: string };
+    fusion?: {
+      sentence?: string;
+      ambiguous?: boolean;
+      attributions?: Array<{ kind?: string; threadId?: string; commit?: string | null }>;
+    };
+  } | null;
 };
 
 /** What the watching saw: a deploy, a break, a fix — in the words the brief used. */
@@ -237,17 +246,32 @@ export function eventEntry(row: NarrationRow): TimelineEntry | null {
   if (!row.fragment) return null; // a silent narration said nothing; the timeline says nothing either
   const status: TimelineStatus =
     row.verdict === 'users_affected' ? 'needs' : row.verdict === 'users_fine' ? 'healthy' : row.verdict === 'cannot_tell' ? 'unknown' : 'working';
+  // The fused sentence joins the entry itself, not its evidence: "this began
+  // after the change from Monday's Codex session" is the point of the line, not
+  // a footnote to it. The correlation stays in the evidence beneath, where it
+  // has always been.
+  const fused = row.meta?.fusion?.sentence;
+  const attributions = row.meta?.fusion?.attributions ?? [];
+  const only = !row.meta?.fusion?.ambiguous && attributions.length === 1 ? attributions[0] : null;
   return {
     id: `event:${row.id}`,
     at: row.occurredAt.toISOString(),
     kind: 'event',
-    sentence: trim(row.fragment, 220),
+    sentence: `${trim(row.fragment, 220)}${fused ? ` ${fused}` : ''}`,
     status,
     evidence: [
       ...(row.technicalDetail ? [row.technicalDetail] : []),
+      ...(row.meta?.correlation?.plain ? [row.meta.correlation.plain] : []),
       `${row.eventType}${row.confidence ? ` · ${row.confidence} confidence` : ''}`,
     ],
-    ref: { event_id: row.eventId },
+    // When the sentence names ONE session, the entry carries the way to it:
+    // the conversation to open and the commit to read. Named several, it links
+    // to none of them — sending someone to one of three suspects would be the
+    // pick the sentence just refused to make.
+    ref: {
+      event_id: row.eventId,
+      ...(only ? { ...(only.threadId ? { thread_id: only.threadId } : {}), ...(only.commit ? { commit: only.commit } : {}) } : {}),
+    },
   };
 }
 

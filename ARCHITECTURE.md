@@ -117,9 +117,28 @@ source ──▶ normalize ──▶ ingestEvent ──▶ route ──▶ narra
 2. **Resolves the project** (`resolveProject.ts`) from the pack's
    `topology.sources`, then **refines the event type** (`refineEventType.ts`)
    using pack context a connector can't see on its own.
-3. **Correlates** — for a break event, lines it up against the change that
-   shipped just before it on the same timeline (`correlate.ts`). No change in
-   the window means no culprit is invented.
+3. **Correlates, then FUSES** — for a break event, lines it up against the
+   change that shipped just before it on the same timeline (`correlate.ts`), and
+   then asks who did that work (`fusion/`). The road runs through the commit:
+   `Selvedge-Session` trailers stamped by ship, `agent_runs.commit_sha` for
+   Selvedge's own ships, and the companion's commit↔session mapping for work
+   done in a terminal. The result is the sentence the product exists to be able
+   to say — *"This began after the change from Monday's Codex session (the
+   guest-checkout work)"* — which appears in the brief and on the break's
+   timeline entry, with the conversation and the diff one click away.
+
+   Three rules make it safe to print. No change in the window means no culprit
+   is invented. No session named on the commits means no sentence at all — the
+   correlation line stands alone rather than reaching for a plausible session.
+   And more than one candidate is NAMED as several and resolved to none: *"began
+   after changes from … — I can't tell which"* is a correct and shippable
+   output. Both guards were deliberately broken once to prove the tests catch
+   them.
+
+   The commits reach Fusion on a structured envelope field (`change_refs`),
+   filled by the connector, because nothing downstream of the connector layer
+   may read `raw` — the boundary the normalizer's own comment anticipated
+   needing.
 4. **Routes** (`routing/route.ts`) — pure. Finds the row for the event type in
    `config/routing-table.json` (**35 rows**, groups A–G), reads the decision for
    the project's stakes tier, then applies five global modifiers: known-flaky
@@ -350,7 +369,7 @@ whether it held up. Nothing on this path may ever produce a verdict.
 
 ## 7. Data model
 
-Postgres, 27 tables, Drizzle schema in `server/db/schema/`, 25 forward-only
+Postgres, 27 tables, Drizzle schema in `server/db/schema/`, 26 forward-only
 migrations in `server/db/migrations/`.
 
 | Group | Tables |
@@ -510,7 +529,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**1,177 tests across 148 files**, all green, under `test/` — mirroring
+**1,199 tests across 151 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 

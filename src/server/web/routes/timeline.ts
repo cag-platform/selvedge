@@ -39,6 +39,8 @@ export function createTimelineRouter(db: Db) {
       const entries = await projectTimeline(db, orgId, projectId, { ...(since ? { since } : {}) });
       res.json({
         project: { id: projectId, name: pack.identity.name },
+        // So a commit on an entry can become a link to the actual diff.
+        repo_url: pack.identity.links?.repo_url ?? null,
         days,
         entries,
       });
