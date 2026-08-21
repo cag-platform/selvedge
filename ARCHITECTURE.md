@@ -5,6 +5,7 @@ someone who needs to change it: where a thing lives, what it may talk to, and
 which properties must survive the change.
 
 Companion documents: **BUILD-BRIEF.md** (what gets built, in what order),
+**docs/companion.md** (the local companion: what it sends, and what it never does),
 **INBOX-LOOP-BRIEF.md** (the Inbox and the Loop — the phased plan that extends
 it), **STATUS.md** (what is switched on right now), **MIGRATION-CENTER.md** (a
 deferred acquisition channel, scoped not built), `docs/routing-table.md` (the
@@ -304,9 +305,52 @@ from the real cost of the ones before it.
 
 ---
 
+## 6b. The loop — work done elsewhere, and context served everywhere
+
+Two halves of one seam, shipped together, because either alone is half a
+product: a daemon without the MCP is an archive, and an MCP without the daemon
+serves a stale pack.
+
+**The companion** (`src/cli`, shipped as the `selvedge` bin) runs on the owner's
+own machine. `selvedge watch` tails Claude Code and Codex session logs, and on a
+session going quiet sends a SUMMARY — intent, files touched, tool counts,
+outcome, the commit that landed while it was open, cost — to
+`POST /api/companion/sessions`. Raw code and transcripts never leave: the wire
+format (`shared/types/session.ts`) has nowhere to put them, both sides validate
+against the same pure checker, and `--dry-run` prints exactly what would be sent
+so the claim is inspectable rather than merely stated.
+
+The parsers are written for logs nobody documents: they never throw, never
+guess, and a log they cannot read is REPORTED as `unreadable` with its reason —
+which surfaces on the timeline and leads the next morning's brief. A companion
+that silently skipped what it couldn't parse would leave an owner believing they
+had a complete record when they didn't.
+
+**`selvedge context`** is the same binary as an MCP server (stdio), mounted by
+any agent anywhere. Three read-only tools — `get_project_context`,
+`get_recent_changes`, `get_open_issues` — served from
+`server/companion/context.ts`, which composes the same pack the brief and the
+Workshop already use and reuses the handoff's project block, so an agent
+mounting the MCP and an agent taking over a thread are told the same things in
+the same words. Read-only is a decision, not a v1 limit: an agent that could
+write memory would let any tool in any repo edit what Selvedge believes, and the
+pack's whole value is that it is grounded in what happened.
+
+**Auth** is a bearer key per machine (`companion_tokens`, hashed like the error
+beacon), because nothing on this path has a browser or a person behind it. The
+companion router mounts BEFORE the Clerk org guard and scopes everything to the
+key's org.
+
+**Observed is not verified.** `external_sessions` rows are marked wherever they
+appear — on the timeline, in the brief, in the MCP's answers — with the same
+sentence: Selvedge did not run this work, did not gate it, and has not checked
+whether it held up. Nothing on this path may ever produce a verdict.
+
+---
+
 ## 7. Data model
 
-Postgres, 25 tables, Drizzle schema in `server/db/schema/`, 23 forward-only
+Postgres, 27 tables, Drizzle schema in `server/db/schema/`, 25 forward-only
 migrations in `server/db/migrations/`.
 
 | Group | Tables |
@@ -314,8 +358,8 @@ migrations in `server/db/migrations/`.
 | Tenancy | `orgs` |
 | Timeline | `events` (partitioned), `narrations`, `digests`, `narration_library`, `narration_library_uses` |
 | Understanding | `packs` |
-| Work | `cards`, `threads`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `sketches`, `sketch_messages` |
-| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state` |
+| Work | `cards`, `threads`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `external_sessions`, `sketches`, `sketch_messages` |
+| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state`, `companion_tokens` |
 | Accounting & trust | `llm_usage`, `trust_incidents`, `feedback`, `devices` |
 
 Four properties worth knowing before you add a table:
@@ -466,7 +510,7 @@ auto-detect never overrides an explicit choice, and the server enforces that too
 
 ## 11. How this codebase is meant to be tested
 
-**1,116 tests across 140 files**, all green, under `test/` — mirroring
+**1,177 tests across 148 files**, all green, under `test/` — mirroring
 `src/server`'s directories, plus `test/integration`, `test/client` and
 `test/evals`. A full run takes about three minutes.
 

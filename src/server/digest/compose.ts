@@ -6,6 +6,7 @@ import { gatherPacks, gatherWindowNarrations, getPreviousDigest } from './gather
 import { orderAttention, orderMoved, collapseRepeats, type NarrationWithPack } from './order.js';
 import { buildSections, renderDigestText, type OpenThread } from './render.js';
 import { capabilityGapStandingLines, quietLine, unsortedTrayLine, weeklyRetrospective } from './standing.js';
+import { externalSessionLinesForWindow } from './sessions.js';
 import { localDateString, yesterdayBoundsUtc } from './timezone.js';
 import { composeBriefLlm, type ComposeLlmDeps } from './composeLlm.js';
 
@@ -63,8 +64,13 @@ export async function composeDigestForOrg(
   const gapLines = capabilityGapStandingLines(packs);
   const trayLine = await unsortedTrayLine(db, orgId);
   const weeklyLine = await weeklyRetrospective(db, orgId, end);
+  // Yesterday's work in the terminal, and — first — anything the companion
+  // couldn't read. Ahead of the other standing lines because the brief keeps
+  // only two: a day of work the owner actually did outranks a standing note
+  // about a gap that was true yesterday and will be true tomorrow.
+  const sessionLines = await externalSessionLinesForWindow(db, orgId, start, end, packs);
 
-  const standing = [...standingNarrationLines, ...gapLines, ...(trayLine ? [trayLine] : []), ...(weeklyLine ? [weeklyLine] : [])];
+  const standing = [...sessionLines, ...standingNarrationLines, ...gapLines, ...(trayLine ? [trayLine] : []), ...(weeklyLine ? [weeklyLine] : [])];
   const quiet = quietLine(packs, activeProjectIds);
 
   const previousOpenThreads: OpenThread[] = previousDigest ? (previousDigest.openThreads as OpenThread[]) : [];

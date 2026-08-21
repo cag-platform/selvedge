@@ -16,4 +16,5 @@ export * from './feedback.js';
 export * from './trustIncidents.js';
 export * from './build.js';
 export * from './threads.js';
+export * from './companion.js';
 export * from './sketch.js';

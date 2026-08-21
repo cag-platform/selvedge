@@ -176,6 +176,13 @@
       "when": 1787000200000,
       "tag": "0024_timeline_search",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787000300000,
+      "tag": "0025_companion",
+      "breakpoints": true
     }
   ]
 }

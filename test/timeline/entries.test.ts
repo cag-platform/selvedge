@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  OBSERVED_NOTE,
   askEntry,
   cardStatus,
   eventEntry,
   orderTimeline,
   runEntry,
+  sessionEntry,
   switchEntry,
   threadEntry,
   verdictEntry,
@@ -191,6 +193,59 @@ describe('the timeline vocabulary', () => {
     expect(build.sentence).toMatch(/^A piece of work started/);
     expect(talk.sentence).toMatch(/^A conversation started/);
     expect(talk.evidence[0]).toMatch(/nothing is built/i);
+  });
+
+  it('marks a session Selvedge did not run as observed, every time', () => {
+    const entry = sessionEntry(
+      {
+        id: 'x1',
+        agent: 'codex',
+        sessionId: 'cx-1',
+        intent: 'make the checkout one page',
+        filesTouched: ['src/Cart.tsx', 'src/lib/validation.ts'],
+        toolsRun: { shell: 4, apply_patch: 2 },
+        outcome: 'shipped',
+        commitSha: 'a1b2c3d4e5f6',
+        costUsd: 0.42,
+        detail: null,
+        startedAt: new Date('2026-08-20T09:00:00Z'),
+        endedAt: new Date('2026-08-20T10:00:00Z'),
+        createdAt: new Date('2026-08-20T10:05:00Z'),
+      },
+      () => 'Codex',
+    );
+    expect(entry.sentence).toBe('A Codex session ran here outside Selvedge — "make the checkout one page", and a commit landed (a1b2c3d).');
+    // Motion, never health: this work was not gated or checked here, and the
+    // mark that says so rides on every one of these.
+    expect(entry.status).toBe('working');
+    expect(entry.evidence).toContain(OBSERVED_NOTE);
+    expect(entry.evidence.join(' ')).toContain('src/Cart.tsx');
+    expect(entry.evidence.join(' ')).toContain('shell ×4');
+    expect(entry.sentence).not.toMatch(/verified|checked|held up/i);
+  });
+
+  it('says out loud when it could not read a session at all', () => {
+    const entry = sessionEntry(
+      {
+        id: 'x2',
+        agent: 'codex',
+        sessionId: 'cx-2',
+        intent: null,
+        filesTouched: null,
+        toolsRun: null,
+        outcome: 'unreadable',
+        commitSha: null,
+        costUsd: null,
+        detail: 'the log never said which session it was',
+        startedAt: null,
+        endedAt: null,
+        createdAt: new Date('2026-08-20T10:05:00Z'),
+      },
+      () => 'Codex',
+    );
+    expect(entry.sentence).toMatch(/couldn't read a Codex session/);
+    expect(entry.status).toBe('unknown'); // dashed: I can't see this
+    expect(entry.evidence[0]).toBe('the log never said which session it was');
   });
 
   it('orders newest first, and never reshuffles two things from the same moment', () => {

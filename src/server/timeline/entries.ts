@@ -20,7 +20,7 @@ import type { CardState, CardVerdict } from '../cards/types.js';
  */
 
 export type TimelineStatus = 'healthy' | 'working' | 'needs' | 'unknown';
-export type TimelineKind = 'ask' | 'verdict' | 'thread' | 'ship' | 'undo' | 'switch' | 'event';
+export type TimelineKind = 'ask' | 'verdict' | 'thread' | 'ship' | 'undo' | 'switch' | 'event' | 'session';
 
 export type TimelineEntry = {
   id: string;
@@ -250,6 +250,81 @@ export function eventEntry(row: NarrationRow): TimelineEntry | null {
     ref: { event_id: row.eventId },
   };
 }
+
+export type SessionRow = {
+  id: string;
+  agent: string;
+  sessionId: string;
+  intent: string | null;
+  filesTouched: string[] | null;
+  toolsRun: Record<string, number> | null;
+  outcome: string;
+  commitSha: string | null;
+  costUsd: number | null;
+  detail: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  createdAt: Date;
+};
+
+/**
+ * A session that happened somewhere else — in a terminal, in a tool Selvedge
+ * doesn't run.
+ *
+ * MARKED, ALWAYS. Every one of these sentences says "outside Selvedge" and
+ * every one of them carries the same evidence line, because the difference
+ * between work Selvedge gated and work it merely heard about is the difference
+ * between a verdict and a rumour. Nothing here may ever say verified, checked,
+ * or held up — it wasn't watched, and pretending otherwise is the one
+ * unforgivable output wearing a new hat.
+ */
+export function sessionEntry(row: SessionRow, nameOf: (agent: string) => string): TimelineEntry {
+  const at = (row.endedAt ?? row.startedAt ?? row.createdAt).toISOString();
+  const tool = nameOf(row.agent);
+
+  if (row.outcome === 'unreadable') {
+    return {
+      id: `session:${row.id}`,
+      at,
+      kind: 'session',
+      sentence: `I couldn't read a ${tool} session from outside Selvedge, so I can't tell you what happened in it.`,
+      status: 'unknown',
+      evidence: [row.detail ?? 'The session log was in a shape the companion did not recognise.', OBSERVED_NOTE],
+      ref: {},
+    };
+  }
+
+  const files = row.filesTouched ?? [];
+  const tail =
+    row.outcome === 'shipped'
+      ? `, and a commit landed${row.commitSha ? ` (${row.commitSha.slice(0, 7)})` : ''}`
+      : row.outcome === 'abandoned'
+        ? ', and nothing came of it'
+        : row.outcome === 'error'
+          ? ', and it ended in an error'
+          : ', with nothing committed';
+  return {
+    id: `session:${row.id}`,
+    at,
+    kind: 'session',
+    sentence: `A ${tool} session ran here outside Selvedge${row.intent ? ` — "${trim(row.intent, 120)}"` : ''}${tail}.`,
+    // Motion, never health: this work was not gated or verified here.
+    status: row.outcome === 'error' ? 'unknown' : 'working',
+    evidence: [
+      ...(files.length ? [`Files touched: ${files.slice(0, 8).join(', ')}${files.length > 8 ? `, and ${files.length - 8} more` : ''}.`] : []),
+      ...(row.toolsRun && Object.keys(row.toolsRun).length
+        ? [`Ran: ${Object.entries(row.toolsRun).map(([name, n]) => `${name} ×${n}`).join(', ')}.`]
+        : []),
+      ...(row.costUsd ? [`It reported costing about $${row.costUsd.toFixed(2)}.`] : []),
+      OBSERVED_NOTE,
+    ],
+    ref: { ...(row.commitSha ? { commit: row.commitSha } : {}) },
+  };
+}
+
+/** The mark that must ride on every observed session, everywhere it is shown. */
+export const OBSERVED_NOTE =
+  'Observed from outside: Selvedge did not run this work, did not gate it, and has not checked whether it held up.';
 
 /** Newest first, and stable: two things in the same second keep a fixed order. */
 export function orderTimeline(entries: TimelineEntry[]): TimelineEntry[] {

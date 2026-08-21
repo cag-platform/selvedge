@@ -1,11 +1,12 @@
 import { and, desc, eq, gte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { agentMessages, agentRuns, cards, narrations, threads } from '../db/schema/index.js';
+import { agentMessages, agentRuns, cards, externalSessions, narrations, threads } from '../db/schema/index.js';
 import { agentById } from '../../shared/agents.js';
 import type { CardState, CardVerdict } from '../cards/types.js';
 import {
   askEntry,
   eventEntry,
+  sessionEntry,
   orderTimeline,
   runEntry,
   switchEntry,
@@ -45,7 +46,7 @@ export async function projectTimeline(
   const scoped = <T extends { orgId: unknown; projectId: unknown }>(table: T) =>
     and(eq(table.orgId as never, orgId), eq(table.projectId as never, projectId));
 
-  const [cardRows, threadRows, runRows, switchRows, narrationRows] = await Promise.all([
+  const [cardRows, threadRows, runRows, switchRows, narrationRows, sessionRows] = await Promise.all([
     db
       .select()
       .from(cards)
@@ -78,6 +79,16 @@ export async function projectTimeline(
       )
       .orderBy(desc(narrations.occurredAt))
       .limit(limit * 2),
+    db
+      .select()
+      .from(externalSessions)
+      .where(
+        since
+          ? and(scoped(externalSessions), gte(externalSessions.createdAt, since))
+          : scoped(externalSessions),
+      )
+      .orderBy(desc(externalSessions.createdAt))
+      .limit(limit),
   ]);
 
   const entries: TimelineEntry[] = [];
@@ -145,6 +156,29 @@ export async function projectTimeline(
       kind: row.kind,
     });
     if (entry) entries.push(entry);
+  }
+
+  for (const row of sessionRows) {
+    entries.push(
+      sessionEntry(
+        {
+          id: row.id,
+          agent: row.agent,
+          sessionId: row.sessionId,
+          intent: row.intent,
+          filesTouched: (row.filesTouched as string[] | null) ?? null,
+          toolsRun: (row.toolsRun as Record<string, number> | null) ?? null,
+          outcome: row.outcome,
+          commitSha: row.commitSha,
+          costUsd: row.costUsd,
+          detail: row.detail,
+          startedAt: row.startedAt,
+          endedAt: row.endedAt,
+          createdAt: row.createdAt,
+        },
+        (agent) => agentById(agent)?.name ?? agent,
+      ),
+    );
   }
 
   return orderTimeline(entries).slice(0, limit);

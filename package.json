@@ -20,7 +20,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:seed": "tsx src/server/db/seed.ts",
-    "evals": "tsx evals/run.ts"
+    "evals": "tsx evals/run.ts",
+    "companion": "tsx src/cli/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
@@ -30,6 +31,7 @@
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/inter-tight": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@octokit/auth-app": "^8.2.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
@@ -44,7 +46,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "ulid": "^2.3.0"
+    "ulid": "^2.3.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.15",
@@ -69,5 +72,8 @@
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.5"
+  },
+  "bin": {
+    "selvedge": "dist-server/cli/index.js"
   }
 }

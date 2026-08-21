@@ -1,7 +1,7 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **1,116 tests across 140
+and what's still only a plan. Written for a non-coder. **1,177 tests across 148
 files, all green.**
 
 ---
@@ -47,6 +47,8 @@ founder actually speaks.
 | **The Inbox** | The place to work: `/inbox` is one three-pane workbench — projects and their conversations on the left (with the morning brief pinned at the top), the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
 | **Switching agents mid-task** | Tap the chip in the composer, pick, keep typing. A chat thread just changes the model behind it, history intact. A workshop thread composes a **handoff** — what the project is, what's been done, where the work stands, and the ask — and starts the new builder with it, so nothing is re-explained. The thread records the switch in one line with the real size of what was handed over and what carrying it cost: *⇄ continued with Codex — handoff 1.8k tokens, about $0.004*. |
 | **The record, visible** | Every project has a **history**: one scrollable list of what happened to it — what you asked for, work starting, ships, undos, handovers between agents, verdicts, and what the watching saw — each in one plain sentence with its status edge and the evidence one click beneath. Click a project in the rail to read its own history, or open **History** beside a conversation. **Search inside a project** finds what was said in any thread, any ask, and anything the watching reported. And the line under it is true: this is the same history your JSON export carries, in the same words. |
+| **The loop** | Work you do in your own terminal doesn't vanish. A small program on your machine (`selvedge watch`) reads your Claude Code and Codex sessions and sends Selvedge a **summary** of each one — what you asked for, which files it touched, how it ended, the commit that landed, what it cost. Never the conversation, never your code; `selvedge watch --dry-run` prints exactly what would be sent. Those sessions turn up on the project's history and in the next morning's brief, always marked as **observed from outside** — Selvedge didn't run that work and doesn't claim to have checked it. And a session it *couldn't* read is said out loud rather than quietly skipped. |
+| **Context, served anywhere** | The same program is an MCP server (`selvedge context`) that any agent can mount — Claude Code, Codex, anything that speaks MCP. Three read-only tools hand over what this project is, what changed lately, and what's open, so a fresh session anywhere starts knowing the project instead of asking you again. Read-only on purpose: agents consume context here, they never edit what Selvedge believes. Set up under **Connections → Your machines**; the how is in `docs/companion.md`. |
 | **The flight record** | Every run keeps a durable, structured record of what the agent actually did — each tool step with its outcome (did the edit apply, did the test pass), the files changed, the cost, the model — bounded, and joined to the thread. "The full record" opens under the activity feed; ships record the exact diff the risk gate judged; undos get their own row; a finished card's history is one click on Record. The raw log dies with the sandbox in minutes — this is the evidence that outlives it. |
 | **Attachments** | Screenshots inline (paste, pick, or drop); files/zips up to **300MB** streamed to disk and into the sandbox. Zips auto-extract. |
 | **Think it first** | A checkbox on the Workshop composer runs the same agent read-only: it explains in plain English what building the idea would involve, flags risks and cost, and changes nothing. Replaced the separate Sketch room — one conversation, one place, no hand-off. |
@@ -81,6 +83,12 @@ in the customer's repo.
 Written to published docs and unit-tested; no call made against the real service
 from this environment:
 
+- **The companion's log parsers** — Claude Code's and Codex's session files are
+  read from fixtures that match the shapes seen in the wild, not from the live
+  tools on a real machine. The failure mode is deliberately loud: a log the
+  parser doesn't recognise is reported as unreadable and leads the next brief,
+  rather than being skipped. The rest of the loop — ingest, storage, the
+  timeline, the brief line, the MCP — is tested end to end over real HTTP.
 - **Codex as the second builder** — the CLI's install, its command, and its
   JSON event stream (session id, outcome, token usage, tool activity). The
   stream is undocumented and has changed shape between versions, so the parsers
@@ -233,14 +241,18 @@ person and a live sandbox; the machinery is tested, the day hasn't been had.
    `EVAL_MODEL=gpt-5.6-terra` — correlation, not agreement, is the failure
    being hunted.
 
-Then **dogfood the Inbox** (INBOX-LOOP-BRIEF.md §3's gate): run a real day
-inside it — plan in a general thread, build in a workshop thread, switch
+Then **dogfood the Inbox and the Loop** (INBOX-LOOP-BRIEF.md §3 and §5's
+gates): run a real day inside it — plan in a general thread, build in a workshop thread, switch
 builders at least once mid-task without re-explaining anything, and check that
 every message, switch and cost is visible in the record. That day is also the
 first real test of Codex's CLI, and the first real read of a project's history
 with months rather than fixtures behind it. After it: **the Loop** (a local
 companion that reads terminal sessions in, and a pack-serving MCP that hands
-context out), and then the Migration Center, Replit first.
+context out) — both now built, so what remains for them is the day itself:
+install the companion, work a day in the terminal, and check that the next
+morning's brief narrates it correctly. Then **Fusion** (Phase 4: break → the
+change before it → the session that produced it, in one plain sentence), and
+after that the Migration Center, Replit first.
 
 ---
 

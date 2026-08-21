@@ -493,3 +493,51 @@ yet proven:
 (ask → ship → handover → break) reads back in order from the timeline alone,
 with exactly one needs-you edge in it, and three months of a busy project stays
 one bounded, fast list. The screenshot check covers both surfaces.
+
+### Phase 3 — The Loop: **built** (Aug 2026)
+
+Both halves, shipped together as the brief requires.
+
+- **The companion** (`src/cli`, the `selvedge` bin). `selvedge watch` tails
+  Claude Code (`~/.claude/projects/*/*.jsonl`) and Codex
+  (`~/.codex/sessions/**/rollout-*.jsonl`), and when a session goes quiet sends
+  a summary — intent, files touched, tool counts, outcome, the commit that
+  landed while it was open, cost — to an authenticated ingest endpoint. Repo
+  matching is by the session's working directory ↔ the project's repo, and a
+  directory it can't place is recorded without a project rather than filed
+  under a guess.
+- **Summary only, and checkable.** The wire format has nowhere to put a
+  transcript or a diff; both the companion and the server validate against the
+  same pure checker; and `selvedge watch --dry-run` prints exactly what would be
+  sent. The docs say it loudly (`docs/companion.md`) because a program that
+  reads your coding sessions deserves suspicion, and the honest answer is the
+  reason it is safe to say yes to.
+- **Fails loudly.** The parsers never throw and never guess: a log they can't
+  read is reported as `unreadable` with its reason, appears on the project's
+  history, and LEADS the next morning's brief — *"I couldn't read one of
+  yesterday's Codex sessions, so I can't tell you what happened in it."*
+- **The pack-serving MCP.** The same binary, `selvedge context`, is an MCP
+  server over stdio with three read-only tools — `get_project_context`,
+  `get_recent_changes`, `get_open_issues` — composing the same pack the brief
+  and the Workshop use, and reusing the handoff's project block so an agent
+  mounting the MCP and an agent taking over a thread hear the same words.
+  Read-only is a decision: an agent that could write memory would let any tool
+  in any repo edit what Selvedge believes.
+- **Observed is not verified.** Every surface that shows an ingested session
+  marks it — timeline, brief, MCP answers — with the same sentence: Selvedge
+  did not run this work, did not gate it, and has not checked whether it held
+  up. Nothing on this path can produce a verdict.
+- **Keys.** A bearer key per machine, hashed like the error beacon, minted and
+  revoked under Connections → Your machines. Nothing on this path has a browser
+  or a person behind it, so it does not pretend to.
+- Cursor and Gemini CLI stay deferred, as specified.
+
+**Gate:** the machine half is met end to end in `test/integration/loop.test.ts`
+— a session log is written on disk, the companion reads it, a summary crosses
+real HTTP into the real ingest route, and the next morning's brief and the
+project's history both carry it; then a fresh MCP client, knowing only the
+directory it is in, is told what the project is and what changed, including that
+session, marked as observed. What a test cannot do is spend the day: the gate as
+written ("work a full day in the terminal, never opening Selvedge") still needs
+a person, a terminal and a morning — and it is also the first real run of both
+log parsers against the live tools, which remain unverified from here.
