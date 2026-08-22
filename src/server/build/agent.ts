@@ -76,6 +76,13 @@ export type TurnOptions = {
    * where the last one stopped instead of cold.
    */
   handoff?: string;
+  /**
+   * The one line the conversation shows about what this turn read from another
+   * project or conversation. The material itself rides in `handoff`; this is
+   * what the owner sees, so context arriving is visible rather than something
+   * the answer mysteriously knows.
+   */
+  referenceNote?: string;
 };
 
 export type AgentTurnConfig = SandboxConfig & {
@@ -288,6 +295,16 @@ export async function runAgentTurn(
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
   await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+
+  // What this turn read from elsewhere, said out loud directly beneath the ask
+  // that pulled it in. Written HERE rather than by the caller so it can never
+  // land above the message it belongs to — the turn owns its own ordering.
+  if (options.referenceNote) {
+    await db
+      .insert(agentMessages)
+      .values({ id: ulid(), orgId, projectId, threadId, role: 'switch', content: options.referenceNote, runId })
+      .catch(() => undefined);
+  }
 
   // Image attachments are shown on the thread (bytes kept separate — see the
   // table's own note); a persistence hiccup must not sink the turn, since the

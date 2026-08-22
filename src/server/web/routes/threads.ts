@@ -21,6 +21,8 @@ import { briefAsText, briefForThread, withFreshness } from '../../decisions/stor
 import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
+import { referenceLine } from '../../../shared/references.js';
+import { renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 
 function orgIdOf(req: Request): string {
@@ -462,6 +464,20 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        */
       const intent = mentionIntent(text);
 
+      /**
+       * WHAT THEY POINTED AT — resolved once, here, from the stored text.
+       *
+       * Every branch below needs the same answer, and resolving it three times
+       * would be three chances to drift. `missed` is carried too: a name that
+       * matched nothing is reported to the model so it can say so, rather than
+       * quietly answering as though half the question wasn't asked.
+       */
+      const references = await resolveReferences(db, orgId, text).catch(() => ({ resolved: [], missed: [] }));
+      const referenced = renderReferences(references);
+      const referenceNote = references.resolved.length
+        ? referenceLine(references.resolved.map((r) => ({ label: r.label, ...(r.note ? { note: r.note } : {}) })))
+        : undefined;
+
       // A CONSULTATION. Everyone named answers the same question, on their own
       // model and without the sandbox, and the conversation does not change
       // hands. Two agents cannot build at once — one project, one sandbox —
@@ -479,6 +495,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             content: consultationLine(asked, (id) => agentById(id)?.name ?? id),
             meta: { consulted: asked },
           },
+          ...(referenceNote
+            ? [{ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'switch', content: referenceNote }]
+            : []),
         ]);
 
         const consulted = thread;
@@ -521,7 +540,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         // The turn runs in the background like every other turn, so a slow
         // model never holds the composer.
         const talking = thread;
-        void chatTurn(db, orgId, talking, text, { client: fuel?.client ?? null }).catch((err) => {
+        void chatTurn(db, orgId, talking, text, {
+          client: fuel?.client ?? null,
+          ...(referenceNote ? { referenceNote } : {}),
+        }).catch((err) => {
           console.error(`chat turn failed for ${orgId}/${talking.id}:`, err);
         });
         res.status(202).json({ started: true, warming: false });
@@ -632,11 +654,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           mode,
           threadId: thread.id,
           // One seam for "start this agent with this context", whether the
-          // context is a handover from another agent or the decision this work
-          // exists to carry out.
-          ...(handoff || decisionPreamble
-            ? { handoff: [decisionPreamble, handoff?.text].filter(Boolean).join('\n\n---\n\n') }
+          // context is a handover from another agent, the decision this work
+          // exists to carry out, or another project the owner pointed at.
+          ...(handoff || decisionPreamble || referenced
+            ? { handoff: [decisionPreamble, referenced, handoff?.text].filter(Boolean).join('\n\n---\n\n') }
             : {}),
+          ...(referenceNote ? { referenceNote } : {}),
         },
       ).catch(async (err) => {
         console.error(`thread turn failed to start for ${orgId}/${thread.id}:`, err);

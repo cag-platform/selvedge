@@ -4,6 +4,7 @@ import type { Db } from '../db/client.js';
 import { agentMessages } from '../db/schema/index.js';
 import { getPack } from '../packs/store.js';
 import { healthLine } from '../packs/healthLine.js';
+import { renderReferences, resolveReferences } from '../references/resolve.js';
 import { checkThinkingBudget } from '../llm/budget.js';
 import { chatModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
@@ -103,6 +104,8 @@ export type ChatDeps = {
   recordOwnerMessage?: boolean;
   /** Answer as this agent rather than the thread's own. */
   answeringAs?: AgentId;
+  /** The line the conversation shows about what this turn read from elsewhere. */
+  referenceNote?: string;
   /**
    * A take, not a turn: the agent has been asked what it thinks, and is
    * answering over its model without the sandbox. This is the only way a
@@ -192,6 +195,14 @@ export async function runChatTurn(
       role: 'owner',
       content: ownerText,
     });
+    // Directly beneath the ask that pulled it in — written here rather than by
+    // the caller so it can never land above the message it belongs to.
+    if (deps.referenceNote) {
+      await db
+        .insert(agentMessages)
+        .values({ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'switch', content: deps.referenceNote })
+        .catch(() => undefined);
+    }
   }
 
   // Who is answering is not always the thread's own agent: a consultation asks
@@ -231,6 +242,11 @@ export async function runChatTurn(
   // context to give — and the system prompt's "say what you can't see" rule
   // covers the difference honestly.
   const project = thread.projectId ? await projectContext(db, orgId, thread.projectId) : null;
+  // WHAT THEY POINTED AT. A conversation about one project routinely needs
+  // another — "does this match how #loom does it" — and until now the answer
+  // was whatever the model could guess. Resolved from the stored text, bounded,
+  // and carrying the mark on anything that was said somewhere else.
+  const referenced = renderReferences(await resolveReferences(db, orgId, ownerText).catch(() => ({ resolved: [], missed: [] })));
   const model = chatModel(provider);
   const result = await deps.client.complete({
     model,
@@ -238,6 +254,7 @@ export async function runChatTurn(
     userContent: [
       project ? `The project this conversation is about:\n${JSON.stringify(project, null, 2)}` : 'I have no context pack for this project, so I know nothing about it beyond this conversation.',
       '',
+      ...(referenced ? [referenced, ''] : []),
       `The conversation so far (the last message is what you are answering):\n\n${conversation}`,
     ].join('\n'),
     maxTokens: MAX_REPLY_TOKENS,
