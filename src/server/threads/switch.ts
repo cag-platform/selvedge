@@ -67,10 +67,28 @@ export function saySize(tokens: number): string {
   return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k tokens` : `${tokens} tokens`;
 }
 
+/**
+ * A real cost, said so it can't be mistaken for a free one.
+ *
+ * The rule this exists for: a handover of a couple of hundred tokens costs a
+ * fraction of a cent, and `toFixed(3)` rendered that as "$0.000" — a figure
+ * nobody writes, which reads as free while not being free. For a product whose
+ * standing rule is that money is never buried, rounding a real charge DOWN to
+ * something that looks like zero is the wrong direction to be wrong in. Small
+ * amounts are described instead of printed.
+ */
+export function sayMoney(usd: number): string {
+  if (usd <= 0) return 'no charge';
+  // Below this it renders as $0.000 — the exact misreading being avoided.
+  if (usd < 0.0005) return 'less than a tenth of a cent';
+  if (usd < 0.01) return `about $${usd.toFixed(3)}`;
+  return `about $${usd.toFixed(2)}`;
+}
+
 export function switchLine(from: AgentId, to: AgentId, tokens: number, costUsdValue: number | null): string {
   const name = agentById(to)?.name ?? to;
   if (tokens === 0) return `⇄ continued with ${name} — the conversation so far carries over as it is.`;
-  const cost = costUsdValue === null ? '' : `, about $${costUsdValue < 0.01 ? costUsdValue.toFixed(3) : costUsdValue.toFixed(2)}`;
+  const cost = costUsdValue === null ? '' : `, ${sayMoney(costUsdValue)}`;
   const tail = costUsdValue === null ? ' — its cost lands with the turn.' : '';
   return `⇄ continued with ${name} — handoff ${saySize(tokens)}${cost}${tail}`;
 }
@@ -84,8 +102,7 @@ export function quoteNote(tokens: number, costUsdValue: number | null): string {
   if (tokens === 0) return 'switching is free';
   const carries = `carries ${saySize(tokens)} over`;
   if (costUsdValue === null) return `${carries} — its cost lands with the turn`;
-  const money = costUsdValue < 0.01 ? costUsdValue.toFixed(3) : costUsdValue.toFixed(2);
-  return `switching costs about $${money} · ${carries}`;
+  return `switching costs ${sayMoney(costUsdValue)} · ${carries}`;
 }
 
 /** The runs of a thread, in the shape the handoff composer reads them. */

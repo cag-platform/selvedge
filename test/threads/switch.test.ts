@@ -7,7 +7,7 @@ import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, getThread } from '../../src/server/threads/store.js';
-import { markHandoffSpent, pendingHandoff, switchThreadAgent, switchLine } from '../../src/server/threads/switch.js';
+import { markHandoffSpent, pendingHandoff, switchThreadAgent, switchLine, quoteNote, sayMoney } from '../../src/server/threads/switch.js';
 
 /**
  * SWITCHING BUILDERS MID-TASK — the interaction the Inbox is for.
@@ -184,5 +184,41 @@ describe('switching the agent behind a thread', () => {
   it('says the size the way a person would, and never quotes a price it cannot stand behind', () => {
     expect(switchLine('claude-code', 'codex', 1834, 0.0037)).toBe('⇄ continued with Codex — handoff 1.8k tokens, about $0.004');
     expect(switchLine('claude-code', 'codex', 420, null)).toBe('⇄ continued with Codex — handoff 420 tokens — its cost lands with the turn.');
+  });
+
+  describe('a real cost is never rounded down into looking free', () => {
+    // The bug: a 217-token handover costs a fraction of a cent, and toFixed(3)
+    // rendered it "$0.000" — a figure nobody writes, which reads as free while
+    // not being free. For a product whose standing rule is that money is never
+    // buried, rounding a real charge DOWN to zero is the wrong direction to be
+    // wrong in.
+    it('describes an amount too small to print', () => {
+      expect(sayMoney(0.00021)).toBe('less than a tenth of a cent');
+      expect(sayMoney(0.00021)).not.toContain('0.000');
+      expect(quoteNote(217, 0.00021)).toBe('switching costs less than a tenth of a cent · carries 217 tokens over');
+      expect(switchLine('claude-code', 'codex', 217, 0.00021)).toBe(
+        '⇄ continued with Codex — handoff 217 tokens, less than a tenth of a cent',
+      );
+    });
+
+    it('prints one as soon as printing one is honest', () => {
+      expect(sayMoney(0.0037)).toBe('about $0.004');
+      expect(sayMoney(0.42)).toBe('about $0.42');
+      expect(sayMoney(12)).toBe('about $12.00');
+    });
+
+    it('says free only when it is actually free', () => {
+      // "switching is free" is already the answer when nothing carries over.
+      // It must never become the answer to something that costs money.
+      expect(quoteNote(0, null)).toBe('switching is free');
+      expect(sayMoney(0)).toBe('no charge');
+      expect(quoteNote(217, 0.00021)).not.toContain('free');
+    });
+
+    it('still refuses to quote what it cannot price', () => {
+      // An unpriced model gets no figure rather than an invented one — the
+      // pricing table's own rule, and this must not smuggle a number in.
+      expect(quoteNote(217, null)).toBe('carries 217 tokens over — its cost lands with the turn');
+    });
   });
 });
