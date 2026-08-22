@@ -129,9 +129,49 @@ function splitPoll(out: string): { log: string; done: boolean } {
   return { log, done };
 }
 
+/**
+ * THE PART OF A LOG A PERSON CAN ACT ON.
+ *
+ * A turn's log is stream-json — machine lines, useless to read. What matters
+ * when something goes wrong is the text that ISN'T json: the CLI's own stderr,
+ * which says "command not found" or "invalid api key" or "no space left on
+ * device". Those lines are the difference between a fixable problem and a
+ * shrug, and they were being discarded.
+ */
+export function tailOf(output: string, max = 300): string | null {
+  const plain = output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('{') && !line.startsWith('[') && !line.startsWith('__EXIT:') && !line.startsWith('__STATE:'))
+    .slice(-3)
+    .join(' ');
+  if (plain === '') return null;
+  return plain.length > max ? `…${plain.slice(-max)}` : plain;
+}
+
 function exitCodeOf(log: string): number | null {
   const m = /__EXIT:(\d+)/.exec(log);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * WHY A TURN DIDN'T FINISH.
+ *
+ * "I hit a problem and couldn't finish that" is true and unactionable — the
+ * exit code and the whole log are right there and were thrown away, so nobody,
+ * including whoever is debugging it, could tell an uninstalled CLI from a bad
+ * key from a repo that wouldn't build.
+ */
+export function buildFailureLine(name: string, setupFailure: string | null, log: string | null, exitCode: number | null): string {
+  // The install first: everything downstream of a failed install fails with a
+  // symptom rather than a cause.
+  if (setupFailure) return `${name} couldn't be installed in the workshop, so the turn never started — ${setupFailure}. Nothing was shipped.`;
+  const said = log === null ? null : tailOf(log);
+  if (said) return `${name} stopped without finishing — ${said}. Nothing was shipped.`;
+  if (exitCode !== null && exitCode !== 0) {
+    return `${name} exited with code ${exitCode} and said nothing about why. Nothing was shipped — ask me again, and if it repeats it is worth looking at the workshop itself.`;
+  }
+  return "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
 }
 
 /** Screenshots live outside the project so they never land in a checkpoint or ship. */
@@ -392,13 +432,19 @@ export async function runAgentTurn(
 
   /** Run one attempt to completion, streaming activity. Returns the full log, or null on timeout. */
   let setupDone = false;
+  /** What the CLI install said when it failed, or null when it didn't. */
+  let setupFailure: string | null = null;
   const attempt = async (resumeSessionId: string | null): Promise<string | null> => {
     // Install the CLI if this agent needs it. Once per turn, best-effort: a
     // failure here surfaces as the turn failing to produce a result, with the
     // CLI's own words, rather than as an exception nobody sees.
     if (driver.setupCommand && !setupDone) {
       setupDone = true;
-      await execute(driver.setupCommand, 300).catch(() => undefined);
+      // Remembered rather than swallowed. An install that fails here produces a
+      // turn that dies with "command not found" three steps later, and the
+      // sentence the owner gets should name the install, not the symptom.
+      const setup = await execute(driver.setupCommand, 300).catch(() => ({ exitCode: 1, result: 'the install command could not be run' }));
+      if (setup.exitCode !== 0) setupFailure = tailOf(setup.result ?? '');
     }
     const suffix = ulid().toLowerCase();
     const log = `/tmp/selvedge-turn-${suffix}.log`;
@@ -494,7 +540,7 @@ export async function runAgentTurn(
     ? (narrative || (planning ? 'Here is how I would approach it.' : 'Done — take a look at the preview.')) + costNote
     : log === null
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
-      : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
+      : narrative || buildFailureLine(agentById(agent)?.name ?? agent, setupFailure, log, exitCodeOf(log));
 
   // ONLY IF IT IS STILL OURS TO FINISH. The owner may have pressed stop while
   // this was in flight; the thread already says so, and a late "Done — take a

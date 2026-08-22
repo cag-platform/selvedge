@@ -199,7 +199,10 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       sleep: noSleep,
     });
     expect(out.status).toBe('failed');
-    expect(out.reply).toMatch(/couldn't finish/i);
+    // The agent's own words, not a shrug: "boom" is what the CLI said, and it
+    // is the only thing anybody can act on.
+    expect(out.reply).toContain('boom');
+    expect(out.reply).toMatch(/[Nn]othing was shipped/);
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.status).toBe('failed');
   });
