@@ -211,3 +211,40 @@ export function renderReferences(result: ReferenceResult): string | null {
   }
   return `Other things the owner pointed at, for context. None of this is what they are asking you to change.\n\n${parts.join('\n\n')}`;
 }
+
+/** One thing that can be pointed at, for the composer's picker. */
+export type ReferenceCandidate = {
+  kind: ReferenceKind;
+  id: string;
+  name: string;
+  /** "imported from ChatGPT", where that is true. */
+  note?: string;
+};
+
+/**
+ * Everything this org can point at, for the `#` picker.
+ *
+ * Projects first because they are the most grounded thing a name can mean,
+ * then subjects, then conversations. Imported ones are listed like any other
+ * and carry their mark — the whole reason the import exists is so a chat you
+ * had elsewhere is reachable here, and a picker that hid them would undo it.
+ */
+export async function listReferenceCandidates(db: Db, orgId: string): Promise<ReferenceCandidate[]> {
+  const [packs, subjectRows, threadRows] = await Promise.all([
+    listPacks(db, orgId),
+    listSubjects(db, orgId),
+    db
+      .select({ id: threads.id, title: threads.title, importedFrom: threads.importedFrom })
+      .from(threads)
+      .where(and(eq(threads.orgId, orgId), isNull(threads.archivedAt))),
+  ]);
+
+  return [
+    ...packs.map((p) => ({ kind: 'project' as const, id: p.identity.project_id, name: p.identity.name })),
+    ...subjectRows.map((s) => ({ kind: 'subject' as const, id: s.id, name: s.name })),
+    ...threadRows.map((t) => {
+      const note = threadNote(t);
+      return { kind: 'conversation' as const, id: t.id, name: t.title, ...(note ? { note } : {}) };
+    }),
+  ];
+}

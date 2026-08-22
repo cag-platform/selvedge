@@ -5,11 +5,14 @@ import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/r
 import { Reveal } from './Brief.js';
 import { AgentChip } from './AgentChip.js';
 import { AgentMenu } from './AgentMenu.js';
+import { ReferenceMenu } from './ReferenceMenu.js';
 import { completeMention, mentionQuery, sendNote, type AgentOffer, type RosterResponse } from '../lib/agents.js';
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from './WorkshopAttach.js';
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
+import { referenceNote, type ReferenceCandidate, type ReferencesResponse } from '../lib/references.js';
+import { completeReference, referenceQuery } from '../../shared/references.js';
 import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
@@ -189,6 +192,8 @@ export function ThreadPane({
   // takes a beat, and a button that looks unpressed for that beat gets
   // pressed again.
   const [stopping, setStopping] = useState(false);
+  /** Everything this account can be pointed at with `#`. Loaded once. */
+  const [referenceItems, setReferenceItems] = useState<ReferenceCandidate[]>([]);
   /**
    * Who could answer, and what handing it to each would cost — quoted by the
    * server before anything is handed over. Re-read when the answering agent
@@ -286,6 +291,15 @@ export function ThreadPane({
     setText((current) => (mentionQuery(current) !== null ? current : current === '' || current.endsWith(' ') ? `${current}@` : `${current} @`));
     composerRef.current?.focus();
   }, [switcherOpen, onSwitcherOpenChange, composerRef]);
+
+  useEffect(() => {
+    api
+      .get<ReferencesResponse>('/api/references')
+      .then((r) => setReferenceItems(r.items))
+      // A picker that can't load is a picker that doesn't open. Typing `#loom`
+      // by hand still works, because the parse that matters is the server's.
+      .catch(() => setReferenceItems([]));
+  }, []);
 
   // A turn that has started clears the "getting ready" line — the thread is
   // moving again, and saying it twice would be noise.
@@ -533,7 +547,21 @@ export function ThreadPane({
         {sendNote(text, roster) && (
           <p className="mb-work-tight font-mono text-tech text-ink-dim">{sendNote(text, roster)}</p>
         )}
+        {/* And what it is about to READ. Same principle as the price tag above
+            it: what a decision costs belongs in front of the decision. */}
+        {referenceNote(text, referenceItems) && (
+          <p className="mb-work-tight font-mono text-tech text-ink-quiet">{referenceNote(text, referenceItems)}</p>
+        )}
         <form ref={form} onSubmit={(e) => void send(e)} className="relative flex items-end gap-work">
+          <ReferenceMenu
+            items={referenceItems}
+            query={referenceQuery(text)}
+            onPick={(name) => {
+              setText((current) => completeReference(current, name));
+              composerRef.current?.focus();
+            }}
+            onDismiss={() => setText((current) => current.replace(/(?:^|[^A-Za-z0-9_])#("?)([^"\n]*)$/, (whole, _q: string, typed: string) => whole.slice(0, whole.length - typed.length - 1)))}
+          />
           <AgentMenu
             agents={roster}
             query={mentionQuery(text)}

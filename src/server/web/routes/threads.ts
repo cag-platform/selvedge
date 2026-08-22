@@ -22,7 +22,7 @@ import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { referenceLine } from '../../../shared/references.js';
-import { renderReferences, resolveReferences } from '../../references/resolve.js';
+import { listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 
 function orgIdOf(req: Request): string {
@@ -408,6 +408,17 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
       res.json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent, archived: thread.archivedAt !== null } });
+    }),
+  );
+
+  /**
+   * Everything that can be put after a `#`. One call, because the picker opens
+   * on a keystroke and a list that arrives in pieces is a list that flickers.
+   */
+  router.get(
+    '/api/references',
+    asyncHandler(async (req, res) => {
+      res.json({ items: await listReferenceCandidates(db, orgIdOf(req)) });
     }),
   );
 
