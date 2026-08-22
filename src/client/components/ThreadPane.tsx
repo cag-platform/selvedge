@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
@@ -10,6 +10,8 @@ import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
+import { WorkCard } from './WorkCard.js';
+import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 
 /**
@@ -178,6 +180,14 @@ export function ThreadPane({
    * changes, because a handover's size depends on who it is coming from.
    */
   const [roster, setRoster] = useState<AgentOffer[]>([]);
+  /**
+   * The work on this project that is waiting on YOU — folded into the thread
+   * rather than parked in a side tab. A proposal you never look at is a
+   * proposal nobody approved, and the panel it used to live in was closed by
+   * default on a laptop. Work already in motion is not here: it belongs in
+   * Now, not in front of your face.
+   */
+  const [proposals, setProposals] = useState<WorkCardData[]>([]);
   const [planFirst, setPlanFirst] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -224,6 +234,21 @@ export function ThreadPane({
       live = false;
     };
   }, [data.thread.id, data.thread.agent]);
+
+  const projectId = data.project?.id ?? null;
+  const loadProposals = useCallback(() => {
+    if (!projectId) return;
+    api
+      .get<{ cards: WorkCardData[] }>(`/api/cards?project=${encodeURIComponent(projectId)}`)
+      .then((r) => setProposals(r.cards.filter((c) => needsOwner(c.state))))
+      .catch(() => setProposals([]));
+  }, [projectId]);
+
+  // Re-read when a turn ends: a turn is exactly what raises a card or trips a
+  // checkpoint, so waiting for the next visit would hide it.
+  useEffect(() => {
+    loadProposals();
+  }, [loadProposals, data.working]);
 
   /**
    * The chip and Cmd+J do the same thing the `@` key does: open the roster by
@@ -371,6 +396,24 @@ export function ThreadPane({
         )}
         <div ref={end} />
       </div>
+
+      {/* Work waiting on you, in the conversation rather than behind a tab.
+          The card is the whole card — estimate, cap, gate, verdict — because
+          approving is exactly the moment those figures matter. */}
+      {proposals.length > 0 && (
+        <div className="space-y-work border-t border-hairline bg-panel-soft px-work-loose py-work">
+          {proposals.map((card) => (
+            <WorkCard
+              key={card.id}
+              card={card}
+              onChanged={() => {
+                loadProposals();
+                onReload();
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {workshop && data.project && data.staged_changes_ready && (
         <ShipControls data={{ ...data, project: data.project }} onDone={onReload} />

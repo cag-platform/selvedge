@@ -41,6 +41,15 @@ export function needsOwner(state: CardState): boolean {
 }
 
 /**
+ * Running rather than waiting. The complement of `needsOwner` among the states
+ * that are still open — what belongs in "in motion" rather than in front of
+ * your face. Every other state is closed, and belongs in History.
+ */
+export function inMotion(state: CardState): boolean {
+  return state === 'approved' || state === 'working' || state === 'verifying';
+}
+
+/**
  * The card's edge. Needs-you states wear the one thread edge; in-motion states
  * are brass; a clean finish is healthy; anything that ended without a clean
  * result (inconclusive, stopped, failed, declined) is dashed unknown — never

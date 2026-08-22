@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cardEdge, stateLabel, needsOwner, formatCents, formatRange, gateNote } from '../../src/client/lib/card.js';
+import { cardEdge, stateLabel, needsOwner, inMotion, formatCents, formatRange, gateNote, type CardState } from '../../src/client/lib/card.js';
 
 describe('cardEdge — read the state from the edge, never a false all-clear', () => {
   it('needs-you states wear the thread edge', () => {
@@ -66,5 +66,32 @@ describe('gateNote — the hard gate explained in plain words', () => {
   it('ordinary has no note; cosmetic reads as low risk', () => {
     expect(gateNote('ordinary')).toBeNull();
     expect(gateNote('cosmetic')).toMatch(/low risk/i);
+  });
+});
+
+/**
+ * The split the workbench now depends on. Work that needs you is folded into
+ * the thread; work in motion sits in Now; everything else is history. If a
+ * state fell through all three, it would appear NOWHERE — which is exactly the
+ * silent disappearance the product is built to prevent.
+ */
+describe('needsOwner / inMotion — the split that decides where work is shown', () => {
+  const ALL: CardState[] = ['proposed', 'approved', 'working', 'blocked', 'verifying', 'done', 'declined', 'stopped', 'failed'];
+
+  it('never claims a state is both waiting on you and running', () => {
+    for (const s of ALL) expect(needsOwner(s) && inMotion(s)).toBe(false);
+  });
+
+  it('every open state is one or the other — nothing falls out of both', () => {
+    for (const s of ['proposed', 'blocked', 'approved', 'working', 'verifying'] as const) {
+      expect(needsOwner(s) || inMotion(s)).toBe(true);
+    }
+  });
+
+  it('a closed card is neither — it belongs in history', () => {
+    for (const s of ['done', 'declined', 'stopped', 'failed'] as const) {
+      expect(needsOwner(s)).toBe(false);
+      expect(inMotion(s)).toBe(false);
+    }
   });
 });

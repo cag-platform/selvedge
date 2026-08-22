@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { WorkCard } from './WorkCard.js';
 import { TimelineTab } from './TimelineTab.js';
 import { btnPrimary } from './ui.js';
-import type { WorkCardData } from '../lib/card.js';
+import { formatCents } from '../lib/ledger.js';
+import { inMotion, stateLabel, type WorkCardData } from '../lib/card.js';
 import type { ThreadData } from '../lib/inbox.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 
@@ -12,19 +12,25 @@ import type { ContextPack } from '../../shared/types/pack.js';
  * THE CONTEXT PANEL — what is true about the project this thread belongs to,
  * beside the conversation rather than instead of it.
  *
- * These are not places you go: they are context for the thread in focus. The
- * work cards, the app running in the sandbox, and what Selvedge understands
- * about the project — the same pack the brief and the agent read, shown here so
- * "what does it think this app is?" is answerable without leaving the work.
+ * Three tabs, and three is the point. It carried four, one of which (Work) was
+ * a list of things that were not about the conversation you were having — and
+ * the cards that DID want you sat in a panel that is closed by default on a
+ * laptop. Those are folded into the thread now, where approving happens.
  *
+ * What is left answers three questions, in the order people ask them:
+ *   Now      — what is true this minute: the app, and what is in motion.
+ *   History  — what has happened to this project.
+ *   About    — what Selvedge understands it to be, and how to correct that.
+ *
+ * These are not places you go: they are context for the thread in focus.
  * Collapsible, and collapsed by default on a narrow screen: on a laptop the
  * conversation matters more than the panel.
  */
 
-type Tab = 'work' | 'preview' | 'timeline' | 'pack';
+type Tab = 'now' | 'timeline' | 'pack';
 type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
 
-function PreviewTab({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
+function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -105,26 +111,48 @@ function PreviewTab({ data, onReload }: { data: ThreadData & { project: { id: st
   );
 }
 
-function WorkTab({ projectId }: { projectId: string }) {
+/**
+ * WHAT IS IN MOTION — running, not waiting. Work that needs you is folded into
+ * the thread instead, because a decision belongs where the conversation is,
+ * and this panel is closed by default on a laptop.
+ *
+ * Each line carries what it has spent against what it may spend, because
+ * "working on it" without a figure is exactly the shape of a surprise.
+ */
+function InMotion({ projectId }: { projectId: string }) {
   const [cards, setCards] = useState<WorkCardData[] | null>(null);
-  const load = useCallback(() => {
+
+  useEffect(() => {
     api
       .get<{ cards: WorkCardData[] }>(`/api/cards?project=${encodeURIComponent(projectId)}`)
-      .then((r) => setCards(r.cards))
+      .then((r) => setCards(r.cards.filter((c) => inMotion(c.state))))
       .catch(() => setCards([]));
   }, [projectId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (!cards) return <p className="text-body text-ink-quiet">Loading…</p>;
-  if (cards.length === 0) return <p className="text-body text-ink-quiet">No cards on this project — every ask that becomes work turns up here.</p>;
   return (
-    <div className="space-y-work">
-      {cards.map((card) => (
-        <WorkCard key={card.id} card={card} onChanged={load} />
-      ))}
+    <div className="space-y-work-tight">
+      <p className="text-label font-body uppercase tracking-widest text-ink-quiet">In motion</p>
+      {cards === null ? (
+        <p className="text-body text-ink-quiet">Loading…</p>
+      ) : cards.length === 0 ? (
+        <p className="text-body text-ink-quiet">Nothing running on this project right now.</p>
+      ) : (
+        <ul className="space-y-work-tight">
+          {cards.map((card) => (
+            <li key={card.id} className="flex items-baseline justify-between gap-work border-l-2 border-brass pl-work">
+              <span className="min-w-0 truncate text-body text-ink">{card.title}</span>
+              <span className="shrink-0 font-mono text-tech text-ink-quiet">
+                {stateLabel(card.state, card.verdict).toLowerCase()} · {formatCents(card.spentCents)} of {formatCents(card.stop.capCents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-meta text-ink-quiet">
+        <Link to="/work" className="text-action-bright hover:underline">
+          Everything this project has been asked to do
+        </Link>
+      </p>
     </div>
   );
 }
@@ -175,12 +203,11 @@ export function ContextPanel({
   // A subject's thread has no project behind it, so it has no work cards, no
   // app to preview and no pack — the panel simply isn't shown for one.
   const project = data.project;
-  const [tab, setTab] = useState<Tab>(data.thread.kind === 'workshop' ? 'preview' : 'work');
+  const [tab, setTab] = useState<Tab>('now');
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: 'work', label: 'Work' },
-    ...(data.thread.kind === 'workshop' ? ([{ id: 'preview', label: 'Preview' }] as Array<{ id: Tab; label: string }>) : []),
+    { id: 'now', label: 'Now' },
     { id: 'timeline', label: 'History' },
-    { id: 'pack', label: 'Pack' },
+    { id: 'pack', label: 'About' },
   ];
   if (!project) return null;
 
@@ -206,8 +233,25 @@ export function ContextPanel({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-work">
-        {tab === 'work' && <WorkTab projectId={project.id} />}
-        {tab === 'preview' && <PreviewTab data={{ ...data, project }} onReload={onReload} />}
+        {tab === 'now' && (
+          <div className="space-y-work-loose">
+            {/* Only a building thread has a workshop to look at. A talking one
+                still has work in motion and a project that may be online. */}
+            {data.thread.kind === 'workshop' ? (
+              <LiveApp data={{ ...data, project }} onReload={onReload} />
+            ) : (
+              data.live_url && (
+                <p className="text-body text-ink">
+                  Online at{' '}
+                  <a href={data.live_url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
+                    {data.live_url.replace(/^https:\/\//, '')}
+                  </a>
+                </p>
+              )
+            )}
+            <InMotion projectId={project.id} />
+          </div>
+        )}
         {tab === 'timeline' && <TimelineTab projectId={project.id} onOpenThread={onOpenThread} />}
         {tab === 'pack' && <PackTab projectId={project.id} />}
       </div>
