@@ -28,6 +28,22 @@ export async function createSubject(db: Db, orgId: string, name: string, descrip
   return row!;
 }
 
+/**
+ * The subject of a given name, made if it isn't there yet.
+ *
+ * Exists for the history import, which files an account's old conversations
+ * somewhere they can be SEEN. A thread belonging to neither a project nor a
+ * subject is filed nowhere and the rail cannot show it — reachable by name and
+ * findable by nobody, which is a worse state than being in the wrong place.
+ */
+export async function ensureSubject(db: Db, orgId: string, name: string, description?: string): Promise<Subject> {
+  const wanted = name.trim().slice(0, 120) || 'Untitled';
+  const existing = await listSubjects(db, orgId, { includeArchived: true });
+  const already = existing.find((s) => s.name.toLowerCase() === wanted.toLowerCase());
+  if (already) return already;
+  return createSubject(db, orgId, wanted, description);
+}
+
 export async function getSubject(db: Db, orgId: string, id: string): Promise<Subject | null> {
   const [row] = await db
     .select()

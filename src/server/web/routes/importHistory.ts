@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { subjects } from '../../db/schema/index.js';
+import { ensureSubject } from '../../threads/subjects.js';
 import { getPack } from '../../packs/store.js';
 import { importSummary, readExportZip } from '../../import/consumer/read.js';
 import { fileConversations, type Target } from '../../import/consumer/store.js';
@@ -59,8 +60,18 @@ export function createImportHistoryRouter(db: Db) {
       const body = (req.body ?? {}) as Record<string, unknown>;
       const projectId = typeof body.project_id === 'string' && body.project_id !== '' ? body.project_id : null;
       const subjectId = typeof body.subject_id === 'string' && body.subject_id !== '' ? body.subject_id : null;
-      if ((projectId === null) === (subjectId === null)) {
-        res.status(400).json({ error: 'Say where these should go: a project, or a subject.' });
+      // NAMING A PLACE IS OPTIONAL, and not naming one is the ordinary case.
+      //
+      // This used to demand a project or a subject before it would take the
+      // file at all, which put a filing decision in front of the upload and
+      // then tied a whole account's history to whichever project happened to
+      // be picked. A year of thinking about six different things is not "about
+      // Loom", and once it was filed there it read as though it were.
+      //
+      // So the default is the account: the chats belong to no project, and any
+      // conversation can reach them by name.
+      if (projectId !== null && subjectId !== null) {
+        res.status(400).json({ error: 'Pick one place for these, or none at all.' });
         return;
       }
 
@@ -88,8 +99,19 @@ export function createImportHistoryRouter(db: Db) {
         return;
       }
 
-      const target = (projectId ? { projectId } : { subjectId: subjectId! }) as Target;
-      const filed = await fileConversations(db, orgId, target, read.vendor, read.conversations);
+      /**
+       * With nowhere named, the vendor's own name IS the place: "ChatGPT
+       * history", made once and reused on every later import.
+       *
+       * A subject rather than nothing, because a thread belonging to neither a
+       * project nor a subject is filed nowhere and the rail cannot show it —
+       * reachable by name and findable by nobody, which is worse than being in
+       * the wrong place. A subject is somewhere for work that isn't a codebase,
+       * which is exactly what a year of old chats is.
+       */
+      const madeHome = projectId || subjectId ? null : await ensureSubject(db, orgId, `${VENDOR_NAMES[read.vendor]} history`);
+      const home = projectId ? ({ projectId } as Target) : ({ subjectId: subjectId ?? madeHome!.id } as Target);
+      const filed = await fileConversations(db, orgId, home, read.vendor, read.conversations);
 
       res.status(201).json({
         vendor: read.vendor,
@@ -102,7 +124,11 @@ export function createImportHistoryRouter(db: Db) {
         unreadable: read.unreadable.slice(0, MAX_UNREADABLE_LISTED),
         unreadable_truncated: Math.max(0, read.unreadable.length - MAX_UNREADABLE_LISTED),
         limitations: read.limitations,
-        summary: importSummary(read.vendor, filed.filed, read.unreadable.length),
+        // WHERE THEY WENT. An import that files somewhere the owner did not
+        // name has to say where, or the chats are simply gone as far as they
+        // can tell.
+        ...(madeHome ? { filed_under: madeHome.name } : {}),
+        summary: importSummary(read.vendor, filed.filed, read.unreadable.length, madeHome?.name),
       });
     }),
   );

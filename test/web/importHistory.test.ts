@@ -3,7 +3,7 @@ import request from 'supertest';
 import { zipSync, strToU8 } from 'fflate';
 import { and, asc, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, orgs, threads } from '../../src/server/db/schema/index.js';
+import { agentMessages, orgs, subjects, threads } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createSubject } from '../../src/server/threads/subjects.js';
@@ -123,8 +123,35 @@ describe('web/routes/importHistory', () => {
     expect(thread).toMatchObject({ projectId: null, subjectId: subject.id });
   });
 
-  it('insists on being told where it goes, and refuses both at once', async () => {
-    expect((await post(claudeExport(), {})).status).toBe(400);
+  it('belongs to the account when no place is named', async () => {
+    // The rule this replaces: it used to REFUSE an upload until you picked a
+    // project or a subject, which put a filing decision in front of the file
+    // and then tied a whole account's history to whichever project happened to
+    // be chosen. A year of thinking about six different things is not "about
+    // Loom", and once filed there it read as though it were.
+    const res = await post(claudeExport(), {});
+    expect(res.status).toBe(201);
+
+    // Under the vendor's own name, so it is visible in the rail rather than
+    // filed nowhere — reachable by name and findable by nobody is a worse
+    // state than being in the wrong place.
+    expect(res.body.filed_under).toBe('Claude history');
+    expect(res.body.summary).toContain('Claude history');
+    expect(res.body.summary).toContain('any conversation can pull one in by name');
+
+    const [thread] = await db.select().from(threads).where(eq(threads.orgId, orgId));
+    expect(thread!.projectId).toBeNull();
+    expect(thread!.subjectId).not.toBeNull();
+  });
+
+  it('reuses that one place on every later import', async () => {
+    await post(claudeExport(), {});
+    await post(claudeExport(), {});
+    const made = await db.select().from(subjects).where(eq(subjects.orgId, orgId));
+    expect(made.filter((s) => s.name === 'Claude history')).toHaveLength(1);
+  });
+
+  it('still refuses two places at once', async () => {
     expect((await post(claudeExport(), { project_id: 'loom', subject_id: 'anything' })).status).toBe(400);
   });
 

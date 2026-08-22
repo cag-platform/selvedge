@@ -52,14 +52,19 @@ export function ImportHistory() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || target === '') return;
+    if (!file) return;
     setBusy(true);
     setError(null);
     setResult(null);
     const body = new FormData();
     body.append('file', file);
-    const [kind, id] = target.split(':');
-    body.append(kind === 'subject' ? 'subject_id' : 'project_id', id!);
+    // No place named is the ordinary case: the chats belong to the account and
+    // any conversation can reach them by name. Naming one is for the times a
+    // history really is about a single project.
+    if (target !== '') {
+      const [kind, id] = target.split(':');
+      body.append(kind === 'subject' ? 'subject_id' : 'project_id', id!);
+    }
     try {
       // Multipart, so this one goes around the JSON helper rather than
       // through it — the browser has to set its own boundary header.
@@ -80,14 +85,14 @@ export function ImportHistory() {
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="mt-3 block text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright">
-        Bring in an old history →
+        Bring in ChatGPT or Claude chats →
       </button>
     );
   }
 
   return (
     <Pane className="mt-3">
-      <p className="text-body text-ink">Bring in an old history</p>
+      <p className="text-body text-ink">Bring in ChatGPT or Claude chats</p>
       <p className="mt-1 text-meta text-ink-quiet">
         Upload the export ZIP that ChatGPT, Claude or Gemini gave you, exactly as it downloaded. Those chats become ordinary
         conversations here — searchable, part of the history — and every one is marked as imported, because none of it was said to
@@ -104,10 +109,13 @@ export function ImportHistory() {
             className="mt-1 block w-full text-body text-ink-dim file:mr-3 file:rounded-inset file:border file:border-hairline file:bg-panel-soft file:px-3 file:py-1 file:text-body file:text-ink"
           />
         </label>
+        {/* Optional, and left alone by nearly everyone. A year of thinking
+            about six different things is not "about Loom", and demanding a
+            project before the upload would go through made it read that way. */}
         <label className="block text-body text-ink-dim">
-          Where these belong
+          Where these belong (optional)
           <select value={target} onChange={(e) => setTarget(e.target.value)} className={inputCls}>
-            <option value="">Choose a project or a subject…</option>
+            <option value="">Nowhere in particular — any conversation can reach them</option>
             {dest?.projects.map((p) => (
               <option key={p.project_id} value={`project:${p.project_id}`}>
                 {p.name}
@@ -121,7 +129,7 @@ export function ImportHistory() {
           </select>
         </label>
         <div className="flex items-center gap-work">
-          <button type="submit" disabled={busy || !file || target === ''} className={btnPrimary}>
+          <button type="submit" disabled={busy || !file} className={btnPrimary}>
             {busy ? 'Reading it…' : 'Import'}
           </button>
           <button type="button" onClick={() => setOpen(false)} className="text-meta text-ink-quiet hover:text-ink-dim">

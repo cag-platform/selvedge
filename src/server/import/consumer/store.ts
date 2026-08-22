@@ -25,6 +25,11 @@ import { VENDOR_NAMES, type ImportedConversation, type Vendor } from './types.js
  * can present that stamp as when it was actually said.
  */
 
+/**
+ * Where an import lands. A project, a subject, or — the default — the account
+ * itself, which the route turns into a per-vendor subject so the chats stay
+ * visible in the rail while belonging to no project in particular.
+ */
 export type Target = { projectId: string; subjectId?: undefined } | { subjectId: string; projectId?: undefined };
 
 export type FileResult = {

@@ -90,9 +90,12 @@ export function readExportZip(zip: Uint8Array): ReadResult {
  * the same volume, because "1,204 conversations imported" with 300 silently
  * dropped is the shape of lie this codebase refuses.
  */
-export function importSummary(vendor: Vendor, filed: number, unreadable: number): string {
+export function importSummary(vendor: Vendor, filed: number, unreadable: number, filedUnder?: string): string {
   const name = VENDOR_NAMES[vendor];
   const main = `${filed} ${filed === 1 ? 'conversation' : 'conversations'} from ${name} ${filed === 1 ? 'is' : 'are'} in.`;
-  if (unreadable === 0) return `${main} Nothing in the file was unreadable.`;
-  return `${main} ${unreadable} ${unreadable === 1 ? 'entry' : 'entries'} in the file I could not read — they are listed below, and they are not in.`;
+  // Where they went, when the owner didn't name a place — otherwise the chats
+  // are simply gone as far as they can tell.
+  const where = filedUnder ? ` They're under "${filedUnder}", and any conversation can pull one in by name.` : '';
+  if (unreadable === 0) return `${main}${where} Nothing in the file was unreadable.`;
+  return `${main}${where} ${unreadable} ${unreadable === 1 ? 'entry' : 'entries'} in the file I could not read — they are listed below, and they are not in.`;
 }
