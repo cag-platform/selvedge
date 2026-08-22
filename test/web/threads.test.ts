@@ -35,22 +35,13 @@ describe('web/routes/threads — the Inbox surface', () => {
 
   const app = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, ...deps }));
 
-  it('the rail: every project with its edge, its threads newest-first, and the brief pinned', async () => {
+  it('the rail: every project with its edge and its threads newest-first', async () => {
     const first = await ensureWorkshopThread(db, orgId, 'loom');
     const second = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Pricing' });
     await db.insert(agentMessages).values([
       { id: ulid(), orgId, projectId: 'loom', threadId: first.id, role: 'owner', content: 'old', createdAt: new Date('2026-01-01T00:00:00Z') },
       { id: ulid(), orgId, projectId: 'loom', threadId: second.id, role: 'owner', content: 'new', createdAt: new Date('2026-08-01T00:00:00Z') },
     ]);
-    await db.insert(digests).values({
-      id: ulid(),
-      orgId,
-      digestDate: new Date().toISOString().slice(0, 10),
-      headline: 'A quiet night — nothing needs you.',
-      sections: {},
-      openThreads: [],
-      renderedText: 'x',
-    });
 
     const res = await request(app()).get('/api/inbox');
     expect(res.status).toBe(200);
@@ -62,8 +53,28 @@ describe('web/routes/threads — the Inbox surface', () => {
     // Each row carries its agent's mono mark — identity as text, never colour.
     expect(project.threads[0].chip).toBe('CL');
     expect(project.threads[1].chip).toBe('CC');
-    expect(res.body.brief.headline).toBe('A quiet night — nothing needs you.');
-    expect(res.body.unsorted_count).toBe(0);
+  });
+
+  /**
+   * The rail carried a brief headline and an unsorted count. The brief is
+   * retired; filing what Selvedge has seen is settings work. Neither is looked
+   * up any more — a payload nobody reads is still a query somebody pays for,
+   * and a rail that quietly kept computing them would drift back into use.
+   */
+  it('carries no brief line and no unsorted count — both left the rail', async () => {
+    await db.insert(digests).values({
+      id: ulid(),
+      orgId,
+      digestDate: new Date().toISOString().slice(0, 10),
+      headline: 'A quiet night — nothing needs you.',
+      sections: {},
+      openThreads: [],
+      renderedText: 'x',
+    });
+
+    const res = await request(app()).get('/api/inbox').expect(200);
+    expect(res.body.brief).toBeUndefined();
+    expect(res.body.unsorted_count).toBeUndefined();
   });
 
   it('an archived thread drops off the rail without being deleted', async () => {

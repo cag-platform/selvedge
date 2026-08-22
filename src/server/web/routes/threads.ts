@@ -3,10 +3,9 @@ import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { agentMessages, agentMessageAttachments, agentRuns, digests, llmUsage, orgs, threads } from '../../db/schema/index.js';
+import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, threads } from '../../db/schema/index.js';
 import { getPack, listPacks } from '../../packs/store.js';
 import { edgeStatus, healthLine } from '../../packs/healthLine.js';
-import { localDateString } from '../../digest/timezone.js';
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { runAgentTurn } from '../../build/agent.js';
@@ -22,7 +21,6 @@ import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
-import { listUnsortedEvents } from '../../resolution/unsortedTray.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -83,13 +81,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     '/api/inbox',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
-      const [packs, subjectRows, threadRows, org] = await Promise.all([
+      const [packs, subjectRows, threadRows] = await Promise.all([
         listPacks(db, orgId),
         listSubjects(db, orgId),
         db.select().from(threads).where(eq(threads.orgId, orgId)),
-        db.select({ timezone: orgs.timezone }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1),
       ]);
-      const timezone = org[0]?.timezone ?? 'UTC';
 
       // Last activity per thread, for "most-recent-first" — one grouped query
       // rather than one per thread.
@@ -138,18 +134,16 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         };
       });
 
-      const [digest] = await db
-        .select({ date: digests.digestDate, headline: digests.headline })
-        .from(digests)
-        .where(and(eq(digests.orgId, orgId), eq(digests.digestDate, localDateString(new Date(), timezone))))
-        .limit(1);
+      // The rail no longer carries a brief line (the brief is retired) or an
+      // unsorted count (filing is settings work, not something to put beside
+      // the work). Neither is looked up here any more — a payload nobody reads
+      // is still a query somebody pays for.
 
-      // The tray's count is a quiet line on the rail, not a destination.
-      const unsorted = await listUnsortedEvents(db, orgId).catch(() => []);
-
-      // Subjects sit below the projects: conversations that belong to a topic
-      // rather than to a codebase. They carry no status, because there is
-      // nothing about a subject to be right or wrong about.
+      // Subjects come back in the same payload and are merged into one list
+      // client-side: a subject is a project without a repo, and the owner
+      // should not have to know which they are in before starting a
+      // conversation. They carry no status, because there is nothing about a
+      // subject to be right or wrong about.
       const subjectList = subjectRows.map((subject) => ({
         id: subject.id,
         name: subject.name,
@@ -169,8 +163,6 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       res.json({
         projects,
         subjects: subjectList,
-        brief: digest ? { date: digest.date, headline: digest.headline } : null,
-        unsorted_count: unsorted.length,
         engine_on: env() !== null,
       });
     }),

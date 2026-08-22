@@ -35,8 +35,6 @@ export type SubjectRow = {
 export type InboxData = {
   projects: ProjectRow[];
   subjects: SubjectRow[];
-  brief: { date: string; headline: string } | null;
-  unsorted_count: number;
   engine_on: boolean;
 };
 
@@ -97,6 +95,46 @@ const RAIL_RANK: Record<ProjectRow['status'], number> = { needs: 0, working: 1, 
 
 export function railOrder(projects: ProjectRow[]): ProjectRow[] {
   return [...projects].sort((a, b) => RAIL_RANK[a.status] - RAIL_RANK[b.status] || a.name.localeCompare(b.name));
+}
+
+/**
+ * ONE LIST, ONE WORD.
+ *
+ * The rail carried two lists under two headings — "projects" and "subjects" —
+ * and the owner had to know which they were in before they could start a
+ * conversation. They aren't different things: a subject is a project without a
+ * repo. So they are one list, and the only difference is what the rail can
+ * honestly SAY about each.
+ *
+ * A place with no code gets no edge and no health line, because a status on it
+ * would be a claim about nothing — the false-calm rule, applied to absence
+ * rather than to uncertainty. And it sorts after everything that has one: a
+ * place that cannot be broken must never outrank one that is.
+ */
+export type RailPlace = {
+  id: string;
+  name: string;
+  /** Null where there is no code, and therefore nothing that could be healthy. */
+  status: ProjectRow['status'] | null;
+  health: string | null;
+  threads: ThreadRow[];
+  /** Which "new conversation here" this place takes. */
+  hasCode: boolean;
+};
+
+export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): RailPlace[] {
+  const withCode: RailPlace[] = railOrder(projects).map((p) => ({
+    id: p.id,
+    name: p.name,
+    status: p.status,
+    health: p.health,
+    threads: p.threads,
+    hasCode: true,
+  }));
+  const withoutCode: RailPlace[] = [...subjects]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((s) => ({ id: s.id, name: s.name, status: null, health: null, threads: s.threads, hasCode: false }));
+  return [...withCode, ...withoutCode];
 }
 
 /** A thread's date, said the way a person would in a list. */

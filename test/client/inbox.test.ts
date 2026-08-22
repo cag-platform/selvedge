@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allThreads, matches, railOrder, whenShort, type ProjectRow } from '../../src/client/lib/inbox.js';
+import { allThreads, matches, railOrder, railPlaces, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
 
 const project = (over: Partial<ProjectRow>): ProjectRow => ({
   id: 'p',
@@ -64,5 +64,63 @@ describe('the rail', () => {
     expect(matches('loom', 'Checkout rework', 'Loom')).toBe(true);
     expect(matches('  ', 'anything')).toBe(true);
     expect(matches('nope', 'Checkout rework', 'Loom')).toBe(false);
+  });
+});
+
+/**
+ * ONE LIST, ONE WORD.
+ *
+ * The rail carried two lists under two headings, and the owner had to know
+ * whether a thing was a "project" or a "subject" before they could start a
+ * conversation about it. They are the same thing; one of them has code.
+ *
+ * The two rules that survive the merge are both honesty rules, and both are
+ * about what the rail may CLAIM: a place with no code gets no status (a status
+ * on it would be a claim about nothing), and it never outranks a place that
+ * has one (a thing that cannot break must not sit above a thing that is
+ * broken).
+ */
+describe('the rail, as one list', () => {
+  const subject = (over: Partial<SubjectRow>): SubjectRow => ({ id: 's', name: 'S', threads: [], ...over });
+
+  it('says nothing about a place with no code, rather than saying it is fine', () => {
+    const [place] = railPlaces([], [subject({ id: 'pricing', name: 'Pricing' })]);
+    expect(place!.status).toBeNull();
+    expect(place!.health).toBeNull();
+    expect(place!.hasCode).toBe(false);
+  });
+
+  it('never lets a place that cannot break sit above one that is broken', () => {
+    const places = railPlaces(
+      [project({ id: 'loom', name: 'Loom', status: 'needs' }), project({ id: 'yoke', name: 'Yoke', status: 'healthy' })],
+      [subject({ id: 'aaa', name: 'Aaa' })],
+    );
+    expect(places.map((p) => p.id)).toEqual(['loom', 'yoke', 'aaa']);
+  });
+
+  it('keeps the health ordering the stack is read by', () => {
+    const places = railPlaces(
+      [
+        project({ id: 'a', name: 'Alpha', status: 'healthy' }),
+        project({ id: 'b', name: 'Bravo', status: 'unknown' }),
+        project({ id: 'c', name: 'Charlie', status: 'needs' }),
+        project({ id: 'd', name: 'Delta', status: 'working' }),
+      ],
+      [],
+    );
+    expect(places.map((p) => p.id)).toEqual(['c', 'd', 'b', 'a']);
+  });
+
+  it('breaks ties by name among the code-less too, so nothing reshuffles under you', () => {
+    const places = railPlaces([], [subject({ id: 'z', name: 'Zulu' }), subject({ id: 'a', name: 'Alpha' })]);
+    expect(places.map((p) => p.name)).toEqual(['Alpha', 'Zulu']);
+  });
+
+  it('carries every conversation through the merge — nothing is dropped by being re-sorted', () => {
+    const places = railPlaces(
+      [project({ id: 'loom', name: 'Loom', threads: [{ id: 't1' } as never] })],
+      [subject({ id: 'pricing', name: 'Pricing', threads: [{ id: 't2' } as never, { id: 't3' } as never] })],
+    );
+    expect(places.flatMap((p) => p.threads).map((t) => t.id)).toEqual(['t1', 't2', 't3']);
   });
 });
