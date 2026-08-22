@@ -36,8 +36,31 @@ export type ChatOutcome =
 
 /** Bounds — the context must not grow without limit as a thread gets long. */
 const MAX_HISTORY = 20;
-const MAX_MESSAGE_CHARS = 1500;
-const MAX_REPLY_TOKENS = 900;
+/**
+ * WHAT THE QUESTION ITSELF IS ALLOWED TO BE.
+ *
+ * Every message used to be clipped to 1,500 characters — including the one
+ * being answered. Paste a long piece of work in and the model was handed its
+ * opening paragraph, then asked to analyse it. GPT noticed and said so ("it
+ * cuts off at 'one thing the…'"); a less careful model would have analysed the
+ * fragment and sounded confident about it, which is the failure this codebase
+ * cares about most.
+ *
+ * So the message being answered gets room to be a real message, older turns
+ * get enough to carry the thread, and a total budget keeps a long conversation
+ * from growing without limit.
+ */
+const MAX_ASK_CHARS = 24_000;
+const MAX_MESSAGE_CHARS = 2_000;
+const MAX_CONVERSATION_CHARS = 60_000;
+/**
+ * Long enough to actually answer. At 900 a considered analysis ran out of room
+ * mid-sentence, and because the reply is structured output, running out means
+ * the JSON never closes — so the whole answer was discarded and the owner was
+ * told "I couldn't get an answer just then". A limit that turns a good long
+ * answer into no answer is set wrong.
+ */
+const MAX_REPLY_TOKENS = 2_000;
 
 const CHAT_SCHEMA = {
   type: 'object',
@@ -154,6 +177,26 @@ async function projectContext(db: Db, orgId: string, projectId: string): Promise
 }
 
 /**
+ * WHY THERE ISN'T AN ANSWER.
+ *
+ * The client already knows — refusal, max_tokens, api_error_429, a timeout —
+ * and every one of those was collapsed into "I couldn't get an answer just
+ * then. Nothing was lost — ask me again." That sentence is true and useless:
+ * it sends somebody to retry a request that will fail identically, and it
+ * hides the two failures they could actually act on.
+ */
+function whyNoAnswer(reason: string): string {
+  if (reason === 'max_tokens') {
+    return 'That answer ran longer than I allow in one go, so none of it came back. Ask for a shorter take, or ask about one part of it.';
+  }
+  if (reason === 'refusal') return 'The model declined to answer that one. Nothing was lost — try asking it differently.';
+  if (reason === 'api_error_429') return "The model is rate-limiting right now — that's a wait, not a problem with what you asked. Try again in a moment.";
+  if (reason.startsWith('api_error_')) return `The model service refused that call (${reason.replace('api_error_', 'error ')}). Nothing was lost — ask me again.`;
+  if (reason === 'network_or_timeout') return "I couldn't reach the model just then. Nothing was lost — ask me again.";
+  return "I couldn't get an answer just then. Nothing was lost — ask me again.";
+}
+
+/**
  * Every answer records who gave it. Without this a consultation is two
  * paragraphs from nobody in particular, and the whole point of asking two
  * agents is knowing which one said which.
@@ -232,11 +275,19 @@ export async function runChatTurn(
     .orderBy(desc(agentMessages.createdAt))
     .limit(MAX_HISTORY);
 
-  const conversation = history
-    .reverse()
-    .filter((m) => m.role === 'owner' || m.role === 'agent')
-    .map((m) => `${m.role === 'owner' ? 'Owner' : 'Selvedge'}: ${clip(m.content, MAX_MESSAGE_CHARS)}`)
-    .join('\n\n');
+  // Newest first while filling, so the question and what led to it survive and
+  // the oldest turns are what fall off the end.
+  const said = history.filter((m) => m.role === 'owner' || m.role === 'agent');
+  const lines: string[] = [];
+  let spent = 0;
+  for (const [index, m] of said.entries()) {
+    const room = index === 0 ? MAX_ASK_CHARS : MAX_MESSAGE_CHARS;
+    const line = `${m.role === 'owner' ? 'Owner' : 'Selvedge'}: ${clip(m.content, room)}`;
+    if (spent + line.length > MAX_CONVERSATION_CHARS) break;
+    spent += line.length;
+    lines.push(line);
+  }
+  const conversation = lines.reverse().join('\n\n');
 
   // A thread under a SUBJECT is about no project, so there is no project
   // context to give — and the system prompt's "say what you can't see" rule
@@ -263,7 +314,10 @@ export async function runChatTurn(
   await recordUsage(db, orgId, 'chat', result, undefined, thread.id);
 
   if (!result.ok) {
-    const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
+    // In the log with the model that produced it, so a run of these is
+    // diagnosable rather than a mystery reported three times by three agents.
+    console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
+    const message = whyNoAnswer(result.reason);
     await say(db, orgId, thread, message, speaking);
     return { ok: false, reason: 'model_failed', message };
   }
