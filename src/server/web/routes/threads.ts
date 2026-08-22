@@ -22,7 +22,7 @@ import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { referenceLine } from '../../../shared/references.js';
-import { listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
+import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 
 function orgIdOf(req: Request): string {
@@ -483,10 +483,28 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * matched nothing is reported to the model so it can say so, rather than
        * quietly answering as though half the question wasn't asked.
        */
-      const references = await resolveReferences(db, orgId, text).catch(() => ({ resolved: [], missed: [] }));
+      const named = await resolveReferences(db, orgId, text).catch(() => ({ resolved: [], missed: [] }));
+      /**
+       * AND WHAT THEY MEANT WITHOUT SAYING IT.
+       *
+       * Nobody types punctuation when they are thinking. "refer to our chats
+       * about moving to a monthly fee" is how the question actually arrives,
+       * and answering that with "no such thing as that" while the conversation
+       * sits in the database is the product being pedantic at somebody who is
+       * right.
+       *
+       * Skipped entirely when a `#` is present: they named it, there is
+       * nothing left to guess.
+       */
+      const found = named.resolved.length
+        ? []
+        : await findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
+      const references = { resolved: [...named.resolved, ...found], missed: named.missed };
       const referenced = renderReferences(references);
       const referenceNote = references.resolved.length
-        ? referenceLine(references.resolved.map((r) => ({ label: r.label, ...(r.note ? { note: r.note } : {}) })))
+        ? referenceLine(
+            references.resolved.map((r) => ({ label: r.label, ...(r.note ? { note: r.note } : {}), ...(r.found ? { found: true } : {}) })),
+          )
         : undefined;
 
       // A CONSULTATION. Everyone named answers the same question, on their own

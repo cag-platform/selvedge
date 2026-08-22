@@ -54,9 +54,9 @@ describe('shared/references — pointing at another conversation', () => {
   });
 
   it('stops at the cap, because every one of these costs context', () => {
-    const many = referencedNames('#a #b #c #d #e');
+    const many = referencedNames('#a #b #c #d #e #f #g #h');
     expect(many).toHaveLength(MAX_REFERENCES);
-    expect(many).toEqual(['a', 'b', 'c']);
+    expect(many).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
   });
 
   it('shares no namespace with @', () => {

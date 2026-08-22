@@ -35,8 +35,15 @@
  */
 const REFERENCE = /(^|[^A-Za-z0-9_])#(?:"([^"\n]{1,120})"|([A-Za-z0-9_-]+))/g;
 
-/** How many things one message may pull in. */
-export const MAX_REFERENCES = 3;
+/**
+ * How many things one message may name.
+ *
+ * Raised from three, which was a number I picked rather than justified. A
+ * question that genuinely spans four projects is a real question, and refusing
+ * the fourth silently — the parser just stops — is the worst way to hold a
+ * limit.
+ */
+export const MAX_REFERENCES = 6;
 
 /**
  * Every name referenced in this message, in the order they were written,
@@ -105,8 +112,19 @@ export function completeReference(text: string, name: string): string {
  * that quietly launders the one into the other is the false-calm rule wearing
  * a different coat.
  */
-export function referenceLine(brought: Array<{ label: string; note?: string }>): string {
-  const said = brought.map((b) => (b.note ? `${b.label} (${b.note})` : b.label));
-  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(', ')} and ${said.at(-1)}`;
-  return `⇄ reading ${list} alongside this — nothing there was changed.`;
+export function referenceLine(brought: Array<{ label: string; note?: string; found?: boolean }>): string {
+  const say = (b: { label: string; note?: string }) => (b.note ? `${b.label} (${b.note})` : b.label);
+  const join = (parts: string[]) => (parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`);
+
+  const named = brought.filter((b) => !b.found).map(say);
+  const found = brought.filter((b) => b.found).map(say);
+
+  const parts: string[] = [];
+  if (named.length) parts.push(`reading ${join(named)}`);
+  // A GUESS SAYS SO. The database found these from what was asked; presenting
+  // that as though it had been chosen is how somebody ends up believing they
+  // pointed at something they never did.
+  if (found.length) parts.push(`${named.length ? 'and ' : ''}looked back at ${join(found)}, which seemed to be what you meant`);
+
+  return `⇄ ${parts.join(' ')} — nothing there was changed.`;
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessages, threads } from '../db/schema/index.js';
 import { listPacks } from '../packs/store.js';
@@ -32,8 +32,17 @@ import { VENDOR_NAMES } from '../import/consumer/types.js';
  * block AND on the line the owner sees.
  */
 
-/** Turns of a referenced conversation to carry. Enough for the gist, not the transcript. */
-const MAX_TURNS = 12;
+/**
+ * Turns of a referenced conversation to carry.
+ *
+ * Raised from twelve, which was a number I picked rather than justified. The
+ * point of pointing at another conversation is to keep its memory in place
+ * while you work somewhere else, and half a conversation is a worse kind of
+ * memory than none — it reads as complete while missing what was decided.
+ */
+const MAX_TURNS = 30;
+/** A conversation the DATABASE found rather than one you named — shallower, because it is a guess. */
+const MAX_FOUND_TURNS = 10;
 /** A single message is clipped to this before it goes anywhere near a prompt. */
 const MAX_MESSAGE_CHARS = 700;
 /** Threads listed under a referenced subject. */
@@ -46,6 +55,12 @@ export type ResolvedReference = {
   id: string;
   /** What the owner called it — used in the line the conversation records. */
   label: string;
+  /**
+   * True when the database found this from what was asked rather than the
+   * owner naming it. Said out loud, because a guess presented as a choice is
+   * how somebody ends up thinking they pointed at something they didn't.
+   */
+  found?: boolean;
   /** "imported from ChatGPT", where that is true. Undefined otherwise. */
   note?: string;
   /** The block handed to the model. */
@@ -93,13 +108,14 @@ async function renderConversation(
   db: Db,
   orgId: string,
   thread: { id: string; title: string; importedFrom: string | null },
+  { found = false }: { found?: boolean } = {},
 ): Promise<ResolvedReference> {
   const rows = await db
     .select({ role: agentMessages.role, content: agentMessages.content })
     .from(agentMessages)
     .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id)))
     .orderBy(desc(agentMessages.createdAt))
-    .limit(MAX_TURNS);
+    .limit(found ? MAX_FOUND_TURNS : MAX_TURNS);
 
   const said = rows
     .reverse()
@@ -117,6 +133,7 @@ async function renderConversation(
     kind: 'conversation',
     id: thread.id,
     label: thread.title,
+    ...(found ? { found: true } : {}),
     ...(note ? { note } : {}),
     text: [
       heading,
@@ -247,4 +264,104 @@ export async function listReferenceCandidates(db: Db, orgId: string): Promise<Re
       return { kind: 'conversation' as const, id: t.id, name: t.title, ...(note ? { note } : {}) };
     }),
   ];
+}
+
+/**
+ * FINDING WHAT THEY MEANT WITHOUT BEING TOLD.
+ *
+ * `#loom` is exact and free, and it stays. But nobody types punctuation when
+ * they are thinking — "refer to our chats about moving to a monthly fee" is
+ * how the question actually arrives, and answering it with "no such thing as
+ * that" while the conversation sits in the database is the product being
+ * pedantic at somebody who is right.
+ *
+ * THE DATABASE DOES THE FINDING, not a model. Postgres full-text over the
+ * owner's own messages, ranked, top few. That matters for scale in a way a
+ * model-picks-from-a-list design does not: the cost of this is one query
+ * whatever the size of the history, whereas listing every conversation's title
+ * in a prompt gets more expensive with every conversation you have — the
+ * accounts that most need to reach backwards being exactly the ones it would
+ * punish.
+ *
+ * What keeps it honest: nothing found is nothing added, everything found is
+ * SAID on the thread and marked as found rather than chosen, and an explicit
+ * `#` skips this entirely — you named it, there is nothing to guess.
+ */
+
+/**
+ * ONE WORD IN COMMON IS A COINCIDENCE; TWO IS A SUBJECT.
+ *
+ * Counted, not scored. `ts_rank` looked like the obvious measure and is the
+ * wrong one here: it normalises by how many terms the query had, so three
+ * words matching out of a twelve-word question scores lower than two out of
+ * three — the longer and more specific the question, the worse it ranks. A
+ * count of distinct matching terms doesn't move with the length of the
+ * sentence somebody happened to type.
+ */
+const MIN_TERMS_MATCHED = 2;
+/** How many the database may bring on its own. Deliberately fewer than you may name. */
+const MAX_FOUND = 3;
+/** Too short to be about anything: "yes", "do it", "make it darker". */
+const MIN_QUERY_CHARS = 12;
+
+export async function findRelatedConversations(
+  db: Db,
+  orgId: string,
+  text: string,
+  { excludeThreadId, limit = MAX_FOUND }: { excludeThreadId?: string; limit?: number } = {},
+): Promise<ResolvedReference[]> {
+  const query = text.replace(/#"[^"]*"|#[A-Za-z0-9_-]+/g, ' ').trim();
+  if (query.length < MIN_QUERY_CHARS) return [];
+
+  /**
+   * OR, NOT AND. `websearch_to_tsquery` joins every word with AND, so a
+   * question phrased as a question — "refer to our chats about the move to a
+   * monthly fee" — can only match a message containing all eleven words, which
+   * is to say never. Terms are OR'd instead and the RANK does the work: a
+   * message matching four of them outranks one matching two, and the floor
+   * above drops the ones matching one.
+   *
+   * Terms are reduced to letters and digits before they reach `to_tsquery`,
+   * which takes an expression rather than a phrase and would otherwise choke on
+   * an apostrophe or a bracket.
+   */
+  const terms = [...new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])].slice(0, 24);
+  if (terms.length === 0) return [];
+  const expression = terms.join(' | ');
+
+  // How many of the terms one message covers. Stopwords contribute nothing on
+  // their own — `to_tsquery('english', 'the')` is an empty query and matches
+  // nothing — so "our chats about the…" costs three terms and scores zero.
+  const covered = sql.join(
+    terms.map((t) => sql`(case when to_tsvector('english', ${agentMessages.content}) @@ to_tsquery('english', ${t}) then 1 else 0 end)`),
+    sql` + `,
+  );
+  // Per THREAD, the best single message: one that covers four of the terms is
+  // about the subject, where four messages covering one each are not.
+  const best = sql<number>`max(${covered})`;
+
+  let rows: Array<{ id: string; title: string; importedFrom: string | null; matched: number }>;
+  try {
+    rows = await db
+      .select({ id: threads.id, title: threads.title, importedFrom: threads.importedFrom, matched: best })
+      .from(agentMessages)
+      .innerJoin(threads, eq(threads.id, agentMessages.threadId))
+      .where(
+        and(
+          eq(agentMessages.orgId, orgId),
+          isNull(threads.archivedAt),
+          excludeThreadId ? sql`${threads.id} <> ${excludeThreadId}` : undefined,
+          sql`to_tsvector('english', ${agentMessages.content}) @@ to_tsquery('english', ${expression})`,
+        ),
+      )
+      .groupBy(threads.id, threads.title, threads.importedFrom)
+      .having(sql`${best} >= ${MIN_TERMS_MATCHED}`)
+      .orderBy(desc(best))
+      .limit(limit);
+  } catch {
+    // A search that cannot run is not a turn that cannot happen.
+    return [];
+  }
+
+  return Promise.all(rows.map((r) => renderConversation(db, orgId, r, { found: true })));
 }
