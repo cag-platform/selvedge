@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
-import { and, eq, gt, gte, inArray } from 'drizzle-orm';
+import { and, eq, gt, gte } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
-import { digests, narrations, orgs, trustIncidents } from '../../db/schema/index.js';
+import { digests, narrations, orgs } from '../../db/schema/index.js';
 import { localDateString, yesterdayBoundsUtc } from '../../digest/timezone.js';
 import { composeDigestForOrg } from '../../digest/compose.js';
 import { getPack } from '../../packs/store.js';
@@ -112,25 +112,11 @@ export function createTodayRouter(db: Db, resolveComposeDeps?: ComposeDepsResolv
         }
       }
 
-      // Own the miss out loud (Ironclad 2): any false-all-clear we haven't yet
-      // surfaced becomes a correction on today's brief, then is marked shown.
-      const openIncidents = await db
-        .select()
-        .from(trustIncidents)
-        .where(and(eq(trustIncidents.orgId, orgId), eq(trustIncidents.acknowledged, false)));
-      const corrections = openIncidents.map((i) => ({
-        id: i.id,
-        project_id: i.projectId,
-        line: i.detail ?? "Earlier I said this was fine — it wasn't.",
-      }));
-      if (openIncidents.length > 0) {
-        await db
-          .update(trustIncidents)
-          .set({ acknowledged: true })
-          .where(inArray(trustIncidents.id, openIncidents.map((i) => i.id)));
-      }
-
-      res.json({ digest: enriched, post_digest_events: postDigestEvents, corrections });
+      // Corrections are NOT here any more, and deliberately so. Reading them
+      // acknowledges them, and exactly one surface may own that: a correction
+      // marked shown by a page nobody opens is a correction nobody ever saw.
+      // They live on GET /api/status, beside the projects they are about.
+      res.json({ digest: enriched, post_digest_events: postDigestEvents });
     }),
   );
 

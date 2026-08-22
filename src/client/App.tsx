@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
-import { Today } from './pages/Today.js';
 import { Work } from './pages/Work.js';
 import { TrackRecord } from './pages/TrackRecord.js';
 import { Inbox } from './pages/Inbox.js';
@@ -48,7 +47,7 @@ function AuthedApp() {
         {/* Signed out, every path is the landing page except /sign-in, which
             keeps the original centered Clerk card. A signed-in visit to these
             same paths falls through to the app below — so "/" is the landing
-            for a stranger and Today for an owner. */}
+            for a stranger and the workbench for an owner. */}
         <Routes>
           <Route
             path="/sign-in"
@@ -88,8 +87,12 @@ function AuthedApp() {
           <main className={workbench ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Routes>
-              <Route path="/" element={<Today />} />
-              {/* The moment sign-in/up completes, these paths are the app's — land on Today. */}
+              {/* The workbench is the app. The daily brief was a page you had
+                  to go and read before you could get to the work; what it
+                  actually knew now sits with the projects it is about. */}
+              <Route path="/" element={<Navigate to="/inbox" replace />} />
+              <Route path="/today" element={<Navigate to="/projects" replace />} />
+              {/* The moment sign-in/up completes, these paths are the app's. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
               <Route path="/sign-up" element={<Navigate to="/" replace />} />
               <Route path="/inbox" element={<Inbox />} />

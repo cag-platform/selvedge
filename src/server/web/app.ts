@@ -16,6 +16,7 @@ import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
 import { createTrayRouter } from './routes/tray.js';
+import { createStatusRouter } from './routes/status.js';
 import { createTodayRouter } from './routes/today.js';
 import { createFeedbackRouter } from './routes/feedback.js';
 import { createAdminRouter } from './routes/admin.js';
@@ -131,6 +132,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
   app.use(createTodayRouter(db, (orgId) => buildComposeDeps(db, orgId)));
+  app.use(createStatusRouter(db));
   app.use(createFeedbackRouter(db));
   app.use(createAdminRouter(db));
   app.use(createOrgRouter(db));

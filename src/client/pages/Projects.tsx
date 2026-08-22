@@ -1,9 +1,110 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
 import { ImportHistory } from '../components/ImportHistory.js';
+import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
+import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
+
+type Correction = { id: string; project_id: string | null; line: string };
+type StatusResponse = { corrections: Correction[]; live: SituationEvent[] };
+
+/**
+ * STATUS — what has happened, above the projects it happened to.
+ *
+ * This is what is left of the daily brief. The brief was a composed note you
+ * had to go and read every morning, on a page of its own, ahead of the work;
+ * status is a fact about your projects, so it sits with them and stays out of
+ * the way when there is nothing to say.
+ *
+ * Corrections lead, and are never collapsed or styled down. When Selvedge said
+ * something was fine and it wasn't, owning it out loud is the whole basis for
+ * believing it the rest of the time.
+ */
+function Status({ status }: { status: StatusResponse }) {
+  const live = status.live.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed');
+  if (status.corrections.length === 0 && live.length === 0) return null;
+
+  return (
+    <section aria-label="Status" className="mb-6 space-y-3">
+      {status.corrections.length > 0 && (
+        <div className="rounded-card border border-hairline border-l-2 border-l-thread bg-panel-soft px-4 py-3">
+          <p className="text-label font-body uppercase tracking-widest text-thread">Correcting myself</p>
+          {status.corrections.map((c) => (
+            <p key={c.id} className="mt-1 text-body text-ink">
+              {c.line}
+            </p>
+          ))}
+        </div>
+      )}
+      {live.length > 0 && (
+        <>
+          <p className={eyebrowCls}>Since yesterday</p>
+          <div className="space-y-3">
+            {live.map((n) => (
+              <SituationCard key={n.id} event={n} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The getting-started checklist, rehomed from the retired brief page. It
+ * carries the one safety rule it always had: nothing here claims the watching
+ * has begun before a project exists, because an all-clear about nothing is
+ * still a false all-clear.
+ */
+function Walkthrough({ projects }: { projects: ProjectCardData[] }) {
+  const [fuelConnected, setFuelConnected] = useState(false);
+  useEffect(() => {
+    api
+      .get<{ connected: unknown[] }>('/api/fuel')
+      .then((r) => setFuelConnected(r.connected.length > 0))
+      .catch(() => setFuelConnected(false));
+  }, []);
+
+  const input = {
+    hasProject: projects.length > 0,
+    ...(projects[0]?.name ? { firstProjectName: projects[0].name } : {}),
+    fuelConnected,
+  };
+  if (walkthroughDone(input)) return null;
+  const steps = walkthroughSteps(input);
+
+  return (
+    <Pane className="mb-6 p-6">
+      <p className="text-body-lg text-ink">
+        {projects.length === 0 ? 'Nothing to watch yet — three steps and the watching begins.' : 'Almost there.'}
+      </p>
+      <ol className="mt-4 space-y-4">
+        {steps.map((step) => (
+          <li key={step.key} className="flex gap-3">
+            <span
+              aria-hidden
+              className="mt-0.5 w-4 shrink-0 text-center text-body font-medium"
+              style={{ color: step.done ? 'var(--healthy)' : 'var(--ink-quiet)' }}
+            >
+              {step.done ? '✓' : '·'}
+            </span>
+            <div>
+              <p className={`text-body font-medium ${step.done ? 'text-ink-quiet' : 'text-ink'}`}>{step.title}</p>
+              <p className="text-body text-ink-dim">{step.detail}</p>
+              {!step.done && step.to && (
+                <Link to={step.to} className="mt-1 inline-block text-body text-action-bright hover:underline">
+                  {step.key === 'project' ? 'Add an app →' : step.key === 'fuel' ? 'Connect a key →' : 'Open the workbench →'}
+                </Link>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Pane>
+  );
+}
 
 function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => void }) {
   const [repos, setRepos] = useState<Array<{ full_name: string }>>([]);
@@ -193,18 +294,34 @@ function MemoryBanner() {
 
 export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
+  const [status, setStatus] = useState<StatusResponse>({ corrections: [], live: [] });
   const [showForm, setShowForm] = useState(false);
   const navigate = useNavigate();
 
-  const load = () => api.get<ProjectCardData[]>('/api/projects').then(setProjects);
+  const load = useCallback(
+    () =>
+      api.get<ProjectCardData[]>('/api/projects').then((rows) => {
+        setProjects(rows);
+        // Status must not be able to blank the page: a project list that
+        // renders without its status is degraded, one that doesn't render at
+        // all is broken.
+        api
+          .get<StatusResponse>('/api/status')
+          .then(setStatus)
+          .catch(() => undefined);
+      }),
+    [],
+  );
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   if (!projects) return <p className="text-body text-ink-quiet">Loading…</p>;
 
   return (
     <div className="animate-settle">
+      <Status status={status} />
+      <Walkthrough projects={projects} />
       <MemoryBanner />
       <div className="mb-4 flex items-center justify-between">
         <p className={eyebrowCls}>

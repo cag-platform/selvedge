@@ -2,15 +2,17 @@
  * The getting-started walkthrough — pure view rules, so "when is a step done"
  * and "when may compose be offered" are testable without a DOM.
  *
- * The checklist is Today's no-digest state: it guides until the first brief
- * exists, then never appears again. Step state is DERIVED from data on every
- * render — there is no first-run flag to get stuck, nothing to dismiss, and
- * nothing to un-stick after an export/import.
+ * It guides a new org until the watching is actually on, then never appears
+ * again. Step state is DERIVED from data on every render — there is no
+ * first-run flag to get stuck, nothing to dismiss, and nothing to un-stick
+ * after an export/import.
  *
- * The one safety rule lives here: composing is offered only once a project
- * exists. Composing on an empty org would produce a real "quiet night —
- * nothing needs you" digest about apps that don't exist — a false all-clear,
- * the product's one unforgivable output.
+ * The one safety rule lives here, and it outlived the page it was written for.
+ * It used to guard composing a brief: composing on an empty org would produce
+ * a real "quiet night — nothing needs you" note about apps that don't exist, a
+ * false all-clear, the product's one unforgivable output. The brief is retired
+ * and the rule is unchanged in substance — nothing invites you to start work
+ * on an org with nothing to work on.
  */
 
 export type WalkthroughInput = {
@@ -21,15 +23,23 @@ export type WalkthroughInput = {
 };
 
 export type WalkthroughStep = {
-  key: 'project' | 'fuel' | 'brief';
+  key: 'project' | 'fuel' | 'work';
   done: boolean;
   title: string;
   detail: string;
   /** Where the step's action lives, when it's a navigation. */
-  to?: '/projects' | '/connections';
-  /** Whether the compose action may be offered on the brief step. */
-  offerCompose?: boolean;
+  to?: '/projects' | '/connections' | '/inbox';
 };
+
+/**
+ * When the checklist stops being shown at all. The last step is an invitation
+ * rather than a task, so "every step done" would never be true and the
+ * checklist would sit there forever — the setup is finished once there is
+ * something to watch and something to think with.
+ */
+export function walkthroughDone(input: WalkthroughInput): boolean {
+  return input.hasProject && input.fuelConnected;
+}
 
 export function walkthroughSteps(input: WalkthroughInput): WalkthroughStep[] {
   const project: WalkthroughStep = input.hasProject
@@ -52,33 +62,35 @@ export function walkthroughSteps(input: WalkthroughInput): WalkthroughStep[] {
     ? {
         key: 'fuel',
         done: true,
-        title: 'The brief has its voice',
+        title: 'The agents have their fuel',
         detail: 'Your model key is connected.',
         to: '/connections',
       }
     : {
         key: 'fuel',
         done: false,
-        title: 'Give the brief its voice',
-        detail: 'Connect your model key. Optional — the brief still works without it, in plainer words.',
+        title: 'Give the agents their fuel',
+        detail: 'Connect your model key. Optional — the watching still works without it, in plainer words.',
         to: '/connections',
       };
 
-  const brief: WalkthroughStep = input.hasProject
+  // Never marked done: starting work is an invitation, not a box to tick.
+  // Its ACTION is withheld until there is something to work on — the same
+  // guard that used to stop a brief being composed about nothing.
+  const work: WalkthroughStep = input.hasProject
     ? {
-        key: 'brief',
+        key: 'work',
         done: false,
-        title: 'Your first brief',
-        detail: 'It writes itself at your local 7:00am — or now, if you’d like.',
-        offerCompose: true,
+        title: 'Say what you want',
+        detail: 'Open the workbench and ask in plain words. Any agent, one conversation.',
+        to: '/inbox',
       }
     : {
-        key: 'brief',
+        key: 'work',
         done: false,
-        title: 'Your first brief',
-        detail: 'Writes itself at your local 7:00am, once there’s something to watch.',
-        offerCompose: false,
+        title: 'Say what you want',
+        detail: 'Once there’s an app to work on, the workbench is where you ask.',
       };
 
-  return [project, fuel, brief];
+  return [project, fuel, work];
 }
