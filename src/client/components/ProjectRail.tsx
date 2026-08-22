@@ -11,8 +11,9 @@ export type ProjectCardData = {
   project_id: string;
   name: string;
   tier: string;
-  health_line: string;
-  edge: EdgeStatus;
+  /** Both null when nothing has ever reported — see the server's hasHealthSignal. */
+  health_line: string | null;
+  edge: EdgeStatus | null;
   muted?: boolean;
 };
 
@@ -30,12 +31,12 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
       // Solid --panel by budget: only nav + brief may blur (tokens.css).
       className="relative block rounded-card border border-hairline bg-panel p-4 pl-5 transition-colors duration-settle ease-settle hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
     >
-      <SelvedgeEdge status={project.edge} />
+      {project.edge && <SelvedgeEdge status={project.edge} />}
       <div className="flex items-baseline justify-between gap-2">
         <p className="truncate text-body font-medium text-ink">{project.name}</p>
         <p className="shrink-0 text-label uppercase tracking-widest text-ink-quiet">{TIER_LABEL[project.tier] ?? project.tier}</p>
       </div>
-      <p className="mt-1 truncate text-meta text-ink-dim">{project.health_line}</p>
+      {project.health_line && <p className="mt-1 truncate text-meta text-ink-dim">{project.health_line}</p>}
     </Link>
   );
 }

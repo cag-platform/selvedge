@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { listPacks, mutedProjectIds } from '../../packs/store.js';
-import { edgeStatus, healthLine } from '../../packs/healthLine.js';
+import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -24,8 +24,9 @@ export function createProjectsRouter(db: Db) {
           project_id: pack.identity.project_id,
           name: pack.identity.name,
           tier: pack.stakes.tier,
-          health_line: healthLine(pack),
-          edge: edgeStatus(pack),
+          // Null where nothing has reported — see hasHealthSignal.
+          health_line: hasHealthSignal(pack) ? healthLine(pack) : null,
+          edge: hasHealthSignal(pack) ? edgeStatus(pack) : null,
           links: pack.identity.links ?? {},
           muted: muted.has(pack.identity.project_id),
         })),

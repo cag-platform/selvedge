@@ -5,7 +5,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, threads } from '../../db/schema/index.js';
 import { getPack, listPacks } from '../../packs/store.js';
-import { edgeStatus, healthLine } from '../../packs/healthLine.js';
+import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { runAgentTurn } from '../../build/agent.js';
@@ -128,8 +128,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return {
           id,
           name: pack.identity.name,
-          status: edgeStatus(pack),
-          health: healthLine(pack),
+          // Null where nothing has ever reported: no edge, no line, just the
+          // name. An absence is not a blind spot, and dressing it as one made
+          // every row in the rail apologise at once.
+          status: hasHealthSignal(pack) ? edgeStatus(pack) : null,
+          health: hasHealthSignal(pack) ? healthLine(pack) : null,
           threads,
         };
       });

@@ -33,6 +33,34 @@ export function deriveProjectStatus(pack: ContextPack): ProjectStatus {
 }
 
 /**
+ * HAS ANYTHING ACTUALLY REPORTED ON THIS PROJECT'S HEALTH?
+ *
+ * "I looked and couldn't tell" and "nothing has ever reported" are different
+ * facts, and collapsing them is what made every project in the rail apologise
+ * at once: eight rows of "No health signal yet." under eight dashed edges,
+ * which reads as eight problems rather than one absence.
+ *
+ * A dashed edge is the false-calm guard — it means Selvedge looked at
+ * something and could not vouch for it. Spending it on a project nobody has
+ * ever sent a signal about spends the alarm on nothing, and an alarm that is
+ * always on stops being read.
+ *
+ * So a project with no signal says NOTHING in the owner's lists: no line, no
+ * edge, just its name. It is still watched, still workable, and the agent is
+ * still told the health is unknown — see `healthLine`, which stays complete
+ * for the model's context. This governs only what is put in front of a person.
+ */
+export function hasHealthSignal(pack: ContextPack): boolean {
+  const healthy = pack.state?.serving_now?.healthy;
+  if (healthy !== null && healthy !== undefined) return true;
+  // A stated confidence problem IS a signal — it's Selvedge saying it looked.
+  const confidence = pack.trust?.overall_confidence;
+  if (confidence === 'low' || confidence === 'partial') return true;
+  // So is a known gap: a real unmet thing somebody wrote down.
+  return (pack.topology.capability_gaps ?? []).length > 0;
+}
+
+/**
  * The edge vocabulary for a project card ("The Look"). Derived from the one
  * status function above so it never disagrees with the health line.
  */

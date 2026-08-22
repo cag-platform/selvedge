@@ -4,13 +4,20 @@ import { AgentChip } from './AgentChip.js';
 import { railPlaces, whenShort, type InboxData, type ThreadRow } from '../lib/inbox.js';
 
 /**
- * THE RAIL — everywhere you work, and every conversation under it.
+ * THE RAIL — everywhere you work. One row each, one conversation each.
  *
  * ONE LIST. It used to carry two, under two headings, and the owner had to
  * know whether a thing was a "project" or a "subject" before they could start
  * a conversation about it. They are the same thing; one of them has code. So
  * the rail is one list ordered by what needs you, and the only difference is
  * what it can honestly say about each place.
+ *
+ * ONE CHAT. It also used to nest a list of threads under every project, which
+ * in practice split by agent — "GPT Workshop" above "CC Workshop", the same
+ * project, the same work, two rooms. That is precisely the wall the @-mention
+ * model took down, drawn back on in the navigation. A project has one
+ * conversation; naming somebody moves it, and the chip on the row says who has
+ * it now.
  *
  * It carries the product's oldest acceptance test into the new room: a
  * stranger reads the whole stack's health from the edges alone. So a place
@@ -52,64 +59,39 @@ export function Rail({
         )}
 
         {railPlaces(data.projects, data.subjects ?? []).map((place) => (
-          <section key={place.id} className="mb-work">
-            <div
-              className={`relative flex items-center justify-between rounded-inset px-work-tight py-work-tight ${
-                place.id === activeProjectId ? 'bg-panel-soft' : ''
-              }`}
-            >
-              {/* No edge where there is no code: a status on a place that
-                  cannot break would be a claim about nothing. */}
-              {place.status && <SelvedgeEdge status={place.status} />}
-              {place.hasCode ? (
-                // The project's own name opens its history — what happened
-                // here, which is a different question from what is being said
-                // in any one conversation.
-                <button
-                  onClick={() => onOpenProject(place.id)}
-                  title={`What happened to ${place.name}`}
-                  className="min-w-0 flex-1 pl-work text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
-                >
-                  <p className="truncate text-body font-medium text-ink">{place.name}</p>
-                  {/* Colour is never the only signal: the health line says it in words. */}
-                  <p className="truncate text-meta text-ink-quiet">{place.health}</p>
-                </button>
-              ) : (
-                <p className="min-w-0 flex-1 truncate pl-work text-body font-medium text-ink">{place.name}</p>
-              )}
-              <button
-                onClick={() => (place.hasCode ? onNewThread(place.id) : onNewSubjectThread(place.id))}
-                title={place.hasCode ? 'New thread here (Cmd+N)' : `New conversation about ${place.name}`}
-                className="ml-work shrink-0 rounded-inset px-work-tight text-meta text-ink-quiet hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
-              >
-                +
-              </button>
-            </div>
+          <button
+            key={place.id}
+            data-thread-row={place.chat?.id}
+            onClick={() => (place.chat ? onOpen(place.chat) : place.hasCode ? onNewThread(place.id) : onNewSubjectThread(place.id))}
+            aria-current={place.chat && place.chat.id === activeThreadId ? 'true' : undefined}
+            className={`relative mb-work-tight flex w-full items-center gap-work rounded-inset px-work-tight py-work text-left transition-colors duration-settle ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
+              (place.chat && place.chat.id === activeThreadId) || place.id === activeProjectId ? 'bg-panel-soft' : 'hover:bg-panel-soft'
+            }`}
+          >
+            {/* Two different silences, one rule: say nothing. No code here to
+                be healthy or broken, or nothing has ever reported on the code
+                that is. A dashed edge is for "I looked and couldn't tell". */}
+            {place.status && <SelvedgeEdge status={place.status} />}
 
-            <ul className="mt-work-tight">
-              {place.threads.map((thread) => (
-                <li key={thread.id}>
-                  <button
-                    data-thread-row={thread.id}
-                    onClick={() => onOpen(thread)}
-                    aria-current={thread.id === activeThreadId ? 'true' : undefined}
-                    className={`flex min-h-row-work w-full items-center gap-work px-work-tight py-work-tight text-left transition-colors duration-settle ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
-                      thread.id === activeThreadId ? 'rounded-inset bg-panel-soft' : 'hover:bg-panel-soft'
-                    }`}
-                  >
-                    <AgentChip agent={thread.agent} working={thread.working} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body text-ink">{thread.title}</span>
-                    </span>
-                    <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(thread.last_at)}</span>
-                  </button>
-                </li>
-              ))}
-              {place.threads.length === 0 && (
-                <li className="px-work-tight py-work-tight text-meta text-ink-quiet">No conversations yet — press + to start one.</li>
+            <span className="min-w-0 flex-1 pl-work">
+              <span className="flex items-baseline gap-work">
+                <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{place.name}</span>
+                {place.chat && (
+                  <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</span>
+                )}
+              </span>
+              {/* Colour is never the only signal — but where there is no
+                  signal, there is no sentence either. */}
+              {place.health && <span className="block truncate text-meta text-ink-quiet">{place.health}</span>}
+              {!place.chat && (
+                <span className="block truncate text-meta text-ink-quiet">Nothing said here yet — open it and start.</span>
               )}
-            </ul>
-          </section>
+            </span>
+
+            {/* Who is on it right now. One conversation per project, so this is
+                the whole answer rather than one row of a list. */}
+            {place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}
+          </button>
         ))}
 
         <button

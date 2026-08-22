@@ -188,7 +188,6 @@ export function ThreadPane({
    * Now, not in front of your face.
    */
   const [proposals, setProposals] = useState<WorkCardData[]>([]);
-  const [planFirst, setPlanFirst] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -282,7 +281,6 @@ export function ThreadPane({
     try {
       const res = await api.post<{ started: boolean; warming: boolean }>(`/api/threads/${data.thread.id}/message`, {
         text: body,
-        ...(workshop && planFirst ? { mode: 'plan' } : {}),
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
         ...(acknowledgeStale ? { acknowledge_stale: true } : {}),
@@ -291,7 +289,6 @@ export function ThreadPane({
       setText('');
       setImages([]);
       setFiles([]);
-      setPlanFirst(false);
       setStaleRefusal(null);
       setCeiling(null);
       setWarming(res.warming);
@@ -535,18 +532,16 @@ export function ThreadPane({
             disabled={sending || text.trim() === '' || uploading}
             className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
-            {sending ? 'Sending…' : planFirst ? 'Think it through' : workshop ? 'Do it' : 'Send'}
+            {sending ? 'Sending…' : workshop ? 'Do it' : 'Send'}
           </button>
         </form>
-        {workshop && (
-          <label className="mt-work-tight flex cursor-pointer items-center gap-2 text-meta text-ink-quiet">
-            <input type="checkbox" checked={planFirst} onChange={(e) => setPlanFirst(e.target.checked)} disabled={sending} className="accent-action-bright" />
-            Think it through first — talk it over, build nothing yet
-          </label>
-        )}
+        {/* "Think it through first" was a checkbox here. It is moot: naming a
+            talker IS thinking it through, and that costs a keystroke instead of
+            a mode. Two ways to do one thing, and the checkbox was the one that
+            couldn't also change its mind halfway. */}
         {!data.engine_on && workshop && (
           <p className="mt-work-tight text-meta text-ink-quiet">
-            The workshop isn't switched on here yet — the build engine's credentials aren't configured. The watching and your brief are unaffected.
+            The workshop isn't switched on here yet — the build engine's credentials aren't configured. The watching is unaffected, and talking still works.
           </p>
         )}
       </div>

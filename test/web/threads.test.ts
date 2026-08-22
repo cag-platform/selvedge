@@ -35,7 +35,7 @@ describe('web/routes/threads — the Inbox surface', () => {
 
   const app = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, ...deps }));
 
-  it('the rail: every project with its edge and its threads newest-first', async () => {
+  it('the rail: every project with its threads newest-first', async () => {
     const first = await ensureWorkshopThread(db, orgId, 'loom');
     const second = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Pricing' });
     await db.insert(agentMessages).values([
@@ -48,11 +48,48 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(res.body.projects).toHaveLength(1);
     const project = res.body.projects[0];
     expect(project.name).toBe('Loom');
-    expect(project.status).toBeTruthy(); // the edge a stranger reads health from
     expect(project.threads.map((t: { title: string }) => t.title)).toEqual(['Pricing', 'Workshop']);
     // Each row carries its agent's mono mark — identity as text, never colour.
     expect(project.threads[0].chip).toBe('CL');
     expect(project.threads[1].chip).toBe('CC');
+  });
+
+  /**
+   * "I looked and couldn't tell" and "nothing has ever reported" are different
+   * facts, and the rail used to say the second in the words of the first —
+   * every project wearing a dashed edge under "No health signal yet.". Eight
+   * rows of that reads as eight problems rather than one absence, and an alarm
+   * that is always on stops being read.
+   *
+   * The dashed edge is the false-calm guard. It is spent on a project Selvedge
+   * looked at and could not vouch for, and on nothing else.
+   */
+  it('says nothing about a project nothing has reported on — no edge, no line', async () => {
+    const res = await request(app()).get('/api/inbox').expect(200);
+    const project = res.body.projects[0];
+    expect(project.status).toBeNull();
+    expect(project.health).toBeNull();
+  });
+
+  it('but still wears the edge the moment there is something to say', async () => {
+    await createPack(
+      db,
+      orgId,
+      makeTestPack({
+        identity: { project_id: 'sild', name: 'SILD', owner_description: 'A shop.' },
+        state: { serving_now: { healthy: false } },
+      }),
+    );
+
+    const res = await request(app()).get('/api/inbox').expect(200);
+    const sild = res.body.projects.find((p: { id: string }) => p.id === 'sild');
+    expect(sild.status).toBe('needs');
+    expect(sild.health).toMatch(/down/i);
+
+    // And the silent one beside it stays silent — the rule is per project, not
+    // a global switch that one signal flips for everybody.
+    const loom = res.body.projects.find((p: { id: string }) => p.id === 'loom');
+    expect(loom.status).toBeNull();
   });
 
   /**

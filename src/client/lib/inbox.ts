@@ -20,8 +20,9 @@ export type ThreadRow = {
 export type ProjectRow = {
   id: string;
   name: string;
-  status: 'healthy' | 'working' | 'needs' | 'unknown';
-  health: string;
+  /** Null when nothing has ever reported — see the server's hasHealthSignal. */
+  status: 'healthy' | 'working' | 'needs' | 'unknown' | null;
+  health: string | null;
   threads: ThreadRow[];
 };
 
@@ -91,10 +92,13 @@ export function allThreads(data: InboxData | null): Array<ThreadRow & { projectI
  * then the quiet ones — the edge vocabulary, applied to a list. Within a
  * project the server already sorts threads newest-first.
  */
-const RAIL_RANK: Record<ProjectRow['status'], number> = { needs: 0, working: 1, unknown: 2, healthy: 3 };
+const RAIL_RANK: Record<NonNullable<ProjectRow['status']>, number> = { needs: 0, working: 1, unknown: 2, healthy: 3 };
+/** No signal sorts with the quiet ones — it is not a problem, it is a silence. */
+const NO_SIGNAL_RANK = RAIL_RANK.healthy;
 
 export function railOrder(projects: ProjectRow[]): ProjectRow[] {
-  return [...projects].sort((a, b) => RAIL_RANK[a.status] - RAIL_RANK[b.status] || a.name.localeCompare(b.name));
+  const rank = (p: ProjectRow) => (p.status === null ? NO_SIGNAL_RANK : RAIL_RANK[p.status]);
+  return [...projects].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 /**
@@ -114,15 +118,28 @@ export function railOrder(projects: ProjectRow[]): ProjectRow[] {
 export type RailPlace = {
   id: string;
   name: string;
-  /** Null where there is no code, and therefore nothing that could be healthy. */
+  /**
+   * Null in two different situations, both of which mean "say nothing": there
+   * is no code here to be healthy or broken, or nothing has ever reported on
+   * the code that is.
+   */
   status: ProjectRow['status'] | null;
   health: string | null;
   threads: ThreadRow[];
   /** Which "new conversation here" this place takes. */
   hasCode: boolean;
+  /**
+   * THE conversation for this place. One chat per project — the whole point of
+   * naming an agent mid-sentence is that a single conversation moves between
+   * them, so a list of threads split by agent is the wall we took down, drawn
+   * back on in the rail. Null until the first one exists.
+   */
+  chat: ThreadRow | null;
 };
 
 export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): RailPlace[] {
+  // The server sorts a place's threads newest-first, so the first IS the
+  // current conversation.
   const withCode: RailPlace[] = railOrder(projects).map((p) => ({
     id: p.id,
     name: p.name,
@@ -130,10 +147,19 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
     health: p.health,
     threads: p.threads,
     hasCode: true,
+    chat: p.threads[0] ?? null,
   }));
   const withoutCode: RailPlace[] = [...subjects]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((s) => ({ id: s.id, name: s.name, status: null, health: null, threads: s.threads, hasCode: false }));
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      status: null,
+      health: null,
+      threads: s.threads,
+      hasCode: false,
+      chat: s.threads[0] ?? null,
+    }));
   return [...withCode, ...withoutCode];
 }
 
