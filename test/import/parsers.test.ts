@@ -3,7 +3,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { parseChatgptExport } from '../../src/server/import/consumer/chatgpt.js';
 import { parseClaudeExport } from '../../src/server/import/consumer/claude.js';
 import { parseGeminiExport } from '../../src/server/import/consumer/gemini.js';
-import { importSummary, readExportZip } from '../../src/server/import/consumer/read.js';
+import { importSummary, readExport, readExportZip } from '../../src/server/import/consumer/read.js';
 
 /**
  * THE EXPORT PARSERS.
@@ -165,16 +165,58 @@ describe('import/consumer — reading the archive', () => {
     expect(read.ok && read.vendor).toBe('gemini');
   });
 
-  it('says plainly when the archive holds nothing it knows how to read', () => {
-    const read = readExportZip(zip({ 'photos/cat.txt': 'meow' }));
+  it('says plainly when the archive holds nothing it knows how to read — and what it DID hold', () => {
+    // Naming the contents is the difference between a dead end and a clue.
+    // Without it somebody stares at a file they have no reason to doubt, which
+    // is how an export manifest gets uploaded three times.
+    const read = readExportZip(zip({ 'photos/cat.txt': 'meow', 'manifest-abc.json': '{}' }));
     expect(read.ok).toBe(false);
     expect(!read.ok && read.error).toMatch(/couldn't find a conversations.json/);
+    expect(!read.ok && read.error).toContain('"cat.txt"');
+    expect(!read.ok && read.error).toContain('"manifest-abc.json"');
+    expect(!read.ok && read.error).toMatch(/manifest from the export email is not the export itself/);
   });
 
   it('does not pretend a non-ZIP is one', () => {
     const read = readExportZip(strToU8('this is not a zip file at all'));
     expect(read.ok).toBe(false);
     expect(!read.ok && read.error).toMatch(/couldn't open that as a ZIP/);
+  });
+
+  describe('a bare .json, because vendors hand one out', () => {
+    // Refusing these taught people to zip the file themselves, which is the
+    // one thing the archive error asks them not to do.
+    it('reads an unzipped Claude export', () => {
+      const read = readExport(strToU8(JSON.stringify([{ uuid: 'u1', chat_messages: [{ sender: 'human', text: 'hi' }] }])));
+      expect(read.ok && read.vendor).toBe('claude');
+    });
+
+    it('reads an unzipped ChatGPT export', () => {
+      const json = JSON.stringify([
+        { conversation_id: 'c1', mapping: { a: { id: 'a', parent: null, message: { author: { role: 'user' }, content: { content_type: 'text', parts: ['hi'] } } } } },
+      ]);
+      expect(readExport(strToU8(json)).ok).toBe(true);
+    });
+
+    it('still reads an archive', () => {
+      const read = readExport(zip({ 'conversations.json': JSON.stringify([{ uuid: 'u1', chat_messages: [{ sender: 'human', text: 'hi' }] }]) }));
+      expect(read.ok && read.vendor).toBe('claude');
+    });
+
+    it('names the manifest problem instead of asking for a conversations.json again', () => {
+      // The actual failure: a 1KB manifest-<uuid>.json from the export email,
+      // uploaded because it was the only thing the download produced.
+      const read = readExport(strToU8(JSON.stringify({ files: ['https://example.com/part-1'], expires: '2026-08-23' })));
+      expect(read.ok).toBe(false);
+      expect(!read.ok && read.error).toMatch(/manifest from the export email/);
+      expect(!read.ok && read.error).toMatch(/the real download is what it points at/);
+    });
+
+    it('refuses something that is neither', () => {
+      const read = readExport(strToU8('hello, I am prose'));
+      expect(read.ok).toBe(false);
+      expect(!read.ok && read.error).toMatch(/isn't a ZIP archive or a JSON file/);
+    });
   });
 
   it('never reports a success count without the failures beside it', () => {

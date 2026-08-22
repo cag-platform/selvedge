@@ -44,20 +44,85 @@ function vendorOfConversationsJson(json: unknown): Vendor | null {
   return null;
 }
 
+/** ZIPs begin "PK". Cheaper than decoding 400MB to find out it wasn't JSON. */
+function looksZipped(bytes: Uint8Array): boolean {
+  return bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+}
+
+/** What a bare JSON file is, when it isn't in an archive at all. */
+function vendorOfBareJson(json: unknown): Vendor | null {
+  const conversation = vendorOfConversationsJson(json);
+  if (conversation) return conversation;
+  // Takeout's activity log: entries with a title, no conversation shape.
+  if (Array.isArray(json) && json.some((item) => item && typeof item === 'object' && 'title' in (item as object))) return 'gemini';
+  return null;
+}
+
+/**
+ * The export, whether it arrived as an archive or as a single file.
+ *
+ * A bare .json is accepted because vendors hand one out — and because
+ * refusing it taught people to zip it themselves, which is the one thing the
+ * error message asks them not to do.
+ */
+export function readExport(bytes: Uint8Array): ReadResult {
+  if (looksZipped(bytes)) return readExportZip(bytes);
+
+  let json: unknown;
+  try {
+    json = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return {
+      ok: false,
+      error: "That isn't a ZIP archive or a JSON file. Upload the export exactly as the vendor's download arrived.",
+    };
+  }
+
+  const vendor = vendorOfBareJson(json);
+  if (!vendor) {
+    // The manifest case, and every other small JSON that isn't the export: say
+    // what it looks like rather than repeating "I need a conversations.json".
+    const shape = Array.isArray(json) ? `a list of ${json.length} ${json.length === 1 ? 'item' : 'items'}` : 'an object';
+    return {
+      ok: false,
+      error: `That JSON is ${shape}, and no conversations are in it. If it's a manifest from the export email, the real download is what it points at — that's the file to upload.`,
+    };
+  }
+
+  const parsed = vendor === 'chatgpt' ? parseChatgptExport(json) : vendor === 'claude' ? parseClaudeExport(json) : parseGeminiExport(json);
+  return { ok: true, vendor, file: 'the file you uploaded', ...parsed };
+}
+
 export function readExportZip(zip: Uint8Array): ReadResult {
   let entries: Record<string, Uint8Array>;
+  // Every entry's name passes through the filter, so the archive's contents
+  // are known even though only the one file that matters is decompressed.
+  const inside: string[] = [];
   try {
-    entries = unzipSync(zip, { filter: (file) => WANTED.some((w) => w.match(file.name)) && file.originalSize <= MAX_JSON_BYTES });
+    entries = unzipSync(zip, {
+      filter: (file) => {
+        inside.push(file.name);
+        return WANTED.some((w) => w.match(file.name)) && file.originalSize <= MAX_JSON_BYTES;
+      },
+    });
   } catch (err) {
     return { ok: false, error: `I couldn't open that as a ZIP file${err instanceof Error ? ` — ${err.message}` : ''}.` };
   }
 
   const names = Object.keys(entries);
   if (names.length === 0) {
+    // SAY WHAT WAS IN IT. "I couldn't find conversations.json" without naming
+    // what the archive DID hold leaves somebody staring at a file they have no
+    // reason to doubt — which is exactly how an export manifest gets uploaded
+    // three times.
+    const listed = inside.slice(0, 8).map((n) => n.split('/').pop() || n);
+    const more = inside.length - listed.length;
+    const held = inside.length === 0
+      ? 'That archive is empty.'
+      : `It holds ${listed.map((n) => `"${n}"`).join(', ')}${more > 0 ? ` and ${more} more` : ''}.`;
     return {
       ok: false,
-      error:
-        "I couldn't find a conversations.json (ChatGPT or Claude) or a Gemini MyActivity.json in that archive. Upload the export exactly as the download arrived — unzipping and re-zipping it moves things around.",
+      error: `I couldn't find a conversations.json (ChatGPT or Claude) or a Gemini MyActivity.json in that archive. ${held} Upload the export exactly as the download arrived — unzipping and re-zipping it moves things around, and a manifest from the export email is not the export itself.`,
     };
   }
 

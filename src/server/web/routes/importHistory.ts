@@ -6,7 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { subjects } from '../../db/schema/index.js';
 import { ensureSubject } from '../../threads/subjects.js';
 import { getPack } from '../../packs/store.js';
-import { importSummary, readExportZip } from '../../import/consumer/read.js';
+import { importSummary, readExport } from '../../import/consumer/read.js';
 import { fileConversations, type Target } from '../../import/consumer/store.js';
 import { VENDOR_NAMES } from '../../import/consumer/types.js';
 
@@ -93,7 +93,9 @@ export function createImportHistoryRouter(db: Db) {
         }
       }
 
-      const read = readExportZip(new Uint8Array(file.buffer));
+      // Archive or bare .json — the reader tells them apart from the bytes,
+      // because the file extension is the least reliable thing about an upload.
+      const read = readExport(new Uint8Array(file.buffer));
       if (!read.ok) {
         res.status(400).json({ error: read.error });
         return;

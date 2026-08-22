@@ -94,7 +94,7 @@ export function ImportHistory() {
     <Pane className="mt-3">
       <p className="text-body text-ink">Bring in ChatGPT or Claude chats</p>
       <p className="mt-1 text-meta text-ink-quiet">
-        Upload the export ZIP that ChatGPT, Claude or Gemini gave you, exactly as it downloaded. Those chats become ordinary
+        Upload the export that ChatGPT, Claude or Gemini gave you — a ZIP or a .json, exactly as it downloaded. Those chats become ordinary
         conversations here — searchable, part of the history — and every one is marked as imported, because none of it was said to
         Selvedge. Nothing is connected and nothing keeps reading: this happens once, from a file you chose.
       </p>
@@ -104,7 +104,7 @@ export function ImportHistory() {
           The export
           <input
             type="file"
-            accept=".zip,application/zip"
+            accept=".zip,.json,application/zip,application/json"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="mt-1 block w-full text-body text-ink-dim file:mr-3 file:rounded-inset file:border file:border-hairline file:bg-panel-soft file:px-3 file:py-1 file:text-body file:text-ink"
           />
