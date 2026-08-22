@@ -40,7 +40,6 @@ export function Inbox() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [contextOpen, setContextOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= NARROW));
-  const [newThread, setNewThread] = useState<{ projectId: string; kind: 'workshop' | 'general' } | null>(null);
   // On a phone the three panes become a drill: rail → thread → context.
   const [view, setView] = useState<'rail' | 'thread' | 'context'>('thread');
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -140,13 +139,24 @@ export function Inbox() {
     }
   }, [loadInbox]);
 
+  /**
+   * Pressing + starts the conversation. It does not ask a question first.
+   *
+   * There used to be a bar here that made you pick "Claude Code — builds" or
+   * "Claude — talks it through" before you could type a word. That was the one
+   * decision this redesign exists to make free: you name whoever you want in
+   * the sentence, mid-conversation, and hand it over as often as you like. A
+   * gate in front of the composer asked you to commit to an answer before you
+   * had finished having the thought — and it put one vendor's name on the
+   * door of an app that talks to four.
+   */
   const createThread = useCallback(
-    async (projectId: string, kind: 'workshop' | 'general') => {
+    async (projectId: string) => {
       setError(null);
       try {
         // Encoded: a project id is not guaranteed to be URL-safe, and an
         // unencoded one fails as a 404 that looks like "nothing happened".
-        const res = await api.post<{ thread: { id: string } }>(`/api/projects/${encodeURIComponent(projectId)}/threads`, { kind });
+        const res = await api.post<{ thread: { id: string } }>(`/api/projects/${encodeURIComponent(projectId)}/threads`, {});
         await loadInbox();
         open(res.thread.id);
         // Straight into typing — a new thread is one tap and a sentence.
@@ -177,12 +187,11 @@ export function Inbox() {
       if (meta && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         const target = projectId ?? thread?.project?.id ?? inbox?.projects[0]?.id;
-        if (target) setNewThread({ projectId: target, kind: 'workshop' });
+        if (target) void createThread(target);
         return;
       }
       if (e.key === 'Escape') {
         if (paletteOpen) setPaletteOpen(false);
-        else if (newThread) setNewThread(null);
         else if (switcherOpen) setSwitcherOpen(false);
         else setContextOpen(false);
         return;
@@ -202,7 +211,7 @@ export function Inbox() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [inbox, newThread, open, paletteOpen, projectId, switcherOpen, thread, threadId, threads]);
+  }, [createThread, inbox, open, paletteOpen, projectId, switcherOpen, thread, threadId, threads]);
 
   // A first-load failure is the whole screen; anything after it is a banner
   // over the working one. What must never happen — and did — is an error with
@@ -236,7 +245,7 @@ export function Inbox() {
             activeProjectId={projectId ?? null}
             onOpen={(t) => open(t.id)}
             onOpenProject={openProject}
-            onNewThread={(id) => setNewThread({ projectId: id, kind: 'workshop' })}
+            onNewThread={(id) => void createThread(id)}
             onNewSubjectThread={(id) => void createSubjectThread(id)}
             onNewSubject={() => void createSubject()}
           />
@@ -258,25 +267,12 @@ export function Inbox() {
             </div>
           )}
 
-          {newThread && (
-            <NewThreadBar
-              kind={newThread.kind}
-              onToggle={() => setNewThread({ ...newThread, kind: newThread.kind === 'workshop' ? 'general' : 'workshop' })}
-              onCreate={() => {
-                const target = newThread;
-                setNewThread(null);
-                void createThread(target.projectId, target.kind);
-              }}
-              onCancel={() => setNewThread(null)}
-            />
-          )}
-
           {projectId ? (
             <ProjectHistory
               projectId={projectId}
               name={inbox?.projects.find((p) => p.id === projectId)?.name ?? projectId}
               onOpenThread={open}
-              onNewThread={() => setNewThread({ projectId, kind: 'workshop' })}
+              onNewThread={() => void createThread(projectId)}
             />
           ) : thread ? (
             <ThreadPane
@@ -328,62 +324,6 @@ export function Inbox() {
 }
 
 /** Pick what kind of conversation this is: Tab toggles, Enter starts it, Esc drops it. */
-function NewThreadBar({
-  kind,
-  onToggle,
-  onCreate,
-  onCancel,
-}: {
-  kind: 'workshop' | 'general';
-  onToggle: () => void;
-  onCreate: () => void;
-  onCancel: () => void;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    box.current?.focus();
-  }, []);
-  return (
-    <div
-      ref={box}
-      tabIndex={-1}
-      onKeyDown={(e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          onToggle();
-        }
-        if (e.key === 'Enter') onCreate();
-        if (e.key === 'Escape') onCancel();
-      }}
-      className="flex flex-wrap items-center gap-work border-b border-hairline bg-panel-soft px-work-loose py-work focus-visible:outline-none"
-    >
-      <p className="text-body text-ink">Start with —</p>
-      <div className="flex gap-work-tight">
-        {(['workshop', 'general'] as const).map((option) => (
-          <button
-            key={option}
-            onClick={() => (option === kind ? onCreate() : onToggle())}
-            aria-pressed={option === kind}
-            className={`rounded-inset px-work py-work-tight text-body focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
-              option === kind ? 'bg-action text-ink' : 'text-ink-dim hover:text-ink'
-            }`}
-          >
-            {/* Who answers first, not what kind of room this is. The two used
-                to be the same thing and that was the wall: a conversation
-                could never move between them. */}
-            {option === 'workshop' ? 'Claude Code — builds' : 'Claude — talks it through'}
-          </button>
-        ))}
-      </div>
-      <p className="text-meta text-ink-quiet">You can hand it to anyone later, mid-conversation, by naming them.</p>
-      <p className="font-mono text-tech text-ink-quiet">Tab switches · Enter starts it · Esc drops it</p>
-      <button onClick={onCancel} className="ml-auto text-meta text-ink-quiet hover:text-ink-dim">
-        Cancel
-      </button>
-    </div>
-  );
-}
-
 /**
  * One project's history, given the room to be read. The context panel's
  * History tab answers "what happened here?" beside a conversation; this is the
