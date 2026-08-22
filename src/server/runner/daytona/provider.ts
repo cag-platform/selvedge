@@ -4,6 +4,7 @@ import { getPack } from '../../packs/store.js';
 import type { Card } from '../../cards/types.js';
 import type { SandboxProvider, SandboxHandle, AgentContext, AgentStepResult } from '../types.js';
 import { WORKDIR, shellQuote, claudeCommand, buildAgentPrompt, parseResult, parseToolEvents, resultToStep } from './agentCommand.js';
+import { resolveRepoToken } from '../../build/repoToken.js';
 
 /**
  * The live Daytona build engine — ported from Toile's server/sandbox + agent
@@ -16,6 +17,9 @@ import { WORKDIR, shellQuote, claudeCommand, buildAgentPrompt, parseResult, pars
  * One sandbox per card: created on first sight, torn down when the runner is
  * done (the runner's finally). The customer's repo is cloned via a GitHub token
  * injected only through Daytona's env mechanism — never written to disk or a URL.
+ * That token is minted per card from the org's own app installation (see
+ * build/repoToken.ts), so the runner can reach exactly the repos the owner
+ * connected and no others.
  */
 
 let client: Daytona | null = null;
@@ -26,12 +30,17 @@ function daytona(): Daytona {
 
 type SandboxEnv = {
   claudeCodeOauthToken: string;
-  githubToken: string;
   model?: string;
 };
 
-async function runIn(sandbox: Sandbox, label: string, command: string, timeoutSec: number): Promise<string> {
-  const res = await sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+async function runIn(
+  sandbox: Sandbox,
+  label: string,
+  command: string,
+  timeoutSec: number,
+  env?: Record<string, string>,
+): Promise<string> {
+  const res = await sandbox.process.executeCommand(command, undefined, env, timeoutSec);
   if (res.exitCode !== 0) {
     throw new Error(`Sandbox step "${label}" failed (exit ${res.exitCode}): ${res.result}`);
   }
@@ -60,7 +69,7 @@ async function setupSandbox(sandbox: Sandbox): Promise<void> {
 }
 
 /** Clone the customer's repo. Ported from Toile's setupImportedRepo (credential helper, no token on disk). */
-async function cloneRepo(sandbox: Sandbox, repoFullName: string, branch: string): Promise<void> {
+async function cloneRepo(sandbox: Sandbox, repoFullName: string, branch: string, token: string): Promise<void> {
   const helper = '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f';
   await runIn(
     sandbox,
@@ -68,39 +77,51 @@ async function cloneRepo(sandbox: Sandbox, repoFullName: string, branch: string)
     `git config --global user.name "Selvedge" && git config --global user.email "selvedge@users.noreply.github.com" && git config --global credential.helper ${shellQuote(helper)}`,
     30,
   );
-  await runIn(sandbox, 'clone', `git clone --branch ${shellQuote(branch)} https://github.com/${repoFullName}.git ${WORKDIR}`, 600);
+  await runIn(sandbox, 'clone', `git clone --branch ${shellQuote(branch)} https://github.com/${repoFullName}.git ${WORKDIR}`, 600, {
+    GITHUB_TOKEN: token,
+  });
 }
 
 /**
- * Build the SandboxProvider + agentStep for the runner. Everything the sandbox
- * needs (the Claude auth token, the GitHub token, the model) is passed in, so no
- * env is read below this line and the whole thing stays injectable.
+ * Build the SandboxProvider + agentStep for the runner. What the sandbox needs
+ * from the platform (the Claude auth token, the model) is passed in, so no env
+ * is read below this line and the whole thing stays injectable. GitHub is the
+ * exception by design: it is per-org, per-repo and short-lived, so it is
+ * resolved from the card rather than held.
  */
 export function daytonaEngine(db: Db, cfg: SandboxEnv): { sandbox: SandboxProvider; agentStep: (ctx: AgentContext) => Promise<AgentStepResult> } {
-  async function repoForCard(card: Card): Promise<{ repoFullName: string; branch: string }> {
+  /**
+   * Where the work happens and what may reach it. The token is minted here
+   * rather than held by the engine because installation tokens expire within
+   * the hour and a card can sit in the queue longer than that.
+   */
+  async function repoForCard(card: Card): Promise<{ repoFullName: string; branch: string; token: string }> {
     const pack = await getPack(db, card.orgId, card.projectId);
     const source = pack?.topology.sources.find((s) => s.connector === 'github');
     if (!source) throw new Error('this project has no GitHub source to change');
-    return { repoFullName: source.resource_id, branch: 'main' };
+    const token = await resolveRepoToken(db, card.orgId, source.resource_id);
+    if (!token.ok) throw new Error(token.reason);
+    return { repoFullName: source.resource_id, branch: 'main', token: token.token };
   }
 
   const sandbox: SandboxProvider = {
     async create(card: Card): Promise<SandboxHandle> {
-      const { repoFullName, branch } = await repoForCard(card);
+      const { repoFullName, branch, token } = await repoForCard(card);
       const box = await daytona().create(
         {
           labels: { 'selvedge/card': card.id, 'selvedge/project': card.projectId },
           public: false,
+          // No GitHub token here on purpose: it outlives nothing and the
+          // sandbox outlives it. It rides each command instead.
           envVars: {
             CLAUDE_CODE_OAUTH_TOKEN: cfg.claudeCodeOauthToken,
-            GITHUB_TOKEN: cfg.githubToken,
           },
         },
         { timeout: 300 },
       );
       try {
         await setupSandbox(box);
-        await cloneRepo(box, repoFullName, branch);
+        await cloneRepo(box, repoFullName, branch, token);
       } catch (err) {
         await box.delete(60).catch(() => undefined);
         throw err;
@@ -133,7 +154,11 @@ export function daytonaEngine(db: Db, cfg: SandboxEnv): { sandbox: SandboxProvid
       // Only commit + push when there is actually a change.
       `git diff --cached --quiet || (git commit -q -m ${shellQuote(`Selvedge: ${ctx.card.title}`)} && git push -u origin ${shellQuote(branch)})`,
     ].join(' && ');
-    const pushed = await box.process.executeCommand(push, undefined, undefined, 300).catch(() => null);
+    // A fresh token: the clone's may be an hour old by the time a turn ends.
+    const pushToken = await repoForCard(ctx.card).then((r) => r.token).catch(() => null);
+    const pushed = pushToken
+      ? await box.process.executeCommand(push, undefined, { GITHUB_TOKEN: pushToken }, 300).catch(() => null)
+      : null;
     const changed = pushed?.exitCode === 0 && !/nothing to commit/i.test(pushed?.result ?? '');
     const branchNote = changed ? ` Pushed to branch ${branch} for your review.` : ' No code change was needed.';
 

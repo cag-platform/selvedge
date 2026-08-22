@@ -29,7 +29,16 @@ import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/ty
  * sandbox) is retried once fresh rather than failing the turn.
  */
 
-export type ExecuteInSandbox = (command: string, timeoutSec: number) => Promise<{ exitCode: number; result?: string }>;
+/**
+ * `env` carries per-command secrets — in practice the GitHub token, which is
+ * short-lived and therefore cannot live in the sandbox's own environment.
+ * Injected test doubles are free to ignore it.
+ */
+export type ExecuteInSandbox = (
+  command: string,
+  timeoutSec: number,
+  env?: Record<string, string>,
+) => Promise<{ exitCode: number; result?: string }>;
 
 /** Write a file's bytes into the sandbox at an absolute path (Daytona's fs.uploadFile). */
 export type UploadToSandbox = (absPath: string, data: Buffer) => Promise<void>;
@@ -307,9 +316,13 @@ export async function runAgentTurn(
 
   const execute: ExecuteInSandbox =
     deps.execute ??
-    (async (command: string, timeoutSec: number) => {
+    (async (command: string, timeoutSec: number, env?: Record<string, string>) => {
       const sandbox = await getSandbox();
-      return sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+      // Every command in a turn carries this request's GitHub token, so an
+      // agent that reaches for git mid-turn finds a live credential rather
+      // than whatever was true when the sandbox was first built.
+      const merged = { GITHUB_TOKEN: cfg.githubToken, ...(env ?? {}) };
+      return sandbox.process.executeCommand(command, undefined, merged, timeoutSec);
     });
   const uploadFile: UploadToSandbox =
     deps.uploadFile ??

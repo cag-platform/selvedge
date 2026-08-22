@@ -42,8 +42,20 @@ export type SandboxConfig = {
   branch: string;
 };
 
-async function run(sandbox: Sandbox, label: string, command: string, timeoutSec: number): Promise<string> {
-  const res = await sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+/**
+ * `env` is how the GitHub token reaches a command, and the only way it should.
+ * Daytona passes it to the process directly, so it never appears in the command
+ * string — which matters because a failed step's output is quoted back to the
+ * owner verbatim, and a token in an error message is a token in a log.
+ */
+async function run(
+  sandbox: Sandbox,
+  label: string,
+  command: string,
+  timeoutSec: number,
+  env?: Record<string, string>,
+): Promise<string> {
+  const res = await sandbox.process.executeCommand(command, undefined, env, timeoutSec);
   if (res.exitCode !== 0) throw new Error(`Sandbox step "${label}" failed (exit ${res.exitCode}): ${res.result}`);
   return res.result ?? '';
 }
@@ -75,7 +87,13 @@ async function prepare(sandbox: Sandbox, cfg: SandboxConfig): Promise<void> {
     `git config --global user.name "Selvedge" && git config --global user.email "selvedge@users.noreply.github.com" && git config --global credential.helper ${shellQuote(helper)}`,
     30,
   );
-  await run(sandbox, 'clone', `git clone --branch ${shellQuote(cfg.branch)} https://github.com/${cfg.repoFullName}.git ${WORKDIR}`, 600);
+  await run(
+    sandbox,
+    'clone',
+    `git clone --branch ${shellQuote(cfg.branch)} https://github.com/${cfg.repoFullName}.git ${WORKDIR}`,
+    600,
+    { GITHUB_TOKEN: cfg.githubToken },
+  );
 }
 
 async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {
@@ -84,7 +102,11 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
       labels: { 'selvedge/org': orgId, 'selvedge/project': projectId },
       public: false,
       autoStopInterval: SANDBOX_IDLE_MINUTES, // the sandbox-cost guard
-      envVars: { CLAUDE_CODE_OAUTH_TOKEN: cfg.claudeCodeOauthToken, GITHUB_TOKEN: cfg.githubToken },
+      // The GitHub token is deliberately NOT baked in here. A sandbox outlives
+      // any token by days; an installation token pinned at creation would be an
+      // hour's worth of working and then a puzzling failure. It travels with
+      // each command instead, fresh per request.
+      envVars: { CLAUDE_CODE_OAUTH_TOKEN: cfg.claudeCodeOauthToken },
     },
     { timeout: 300 },
   );

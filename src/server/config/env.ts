@@ -39,7 +39,11 @@ export const FEATURES: FeatureSpec[] = [
   // Postgres, this one creates databases for the customer's apps at go-live.
   { key: 'app_databases', label: 'Neon (databases for apps you put online)', kind: 'feature', vars: ['NEON_API_KEY'], gives: 'creating a database for an app that declares one in its .env.example; without it, go-live says plainly that it cannot' },
   { key: 'push', label: 'Push notifications', kind: 'feature', vars: ['APNS_AUTH_KEY', 'APNS_KEY_ID', 'APNS_TEAM_ID', 'APNS_BUNDLE_ID'], gives: 'critical alerts on the owner’s phone; without it they still fold into the brief' },
-  { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'GITHUB_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox, the Claude Code agent, and a GitHub token to clone the repo and push the review branch' },
+  // GITHUB_TOKEN is deliberately absent: reaching a repo is answered per org
+  // from the GitHub App installation above, so a deployment-wide token is
+  // neither required nor sufficient. It survives only as an optional fallback
+  // for deployments with no app, and for creating a repo from nothing.
+  { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox and the Claude Code agent. Cloning and pushing use the org’s own GitHub App installation' },
   // Gated on the KEY, not the model name: EVAL_MODEL has a safe default
   // (gpt-5.6-luna) and lives in OPTIONAL_VARS as a tuning knob. Listing it here
   // would report `partial` for a deploy that set the key and sensibly left the

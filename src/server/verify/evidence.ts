@@ -52,15 +52,21 @@ type CompareFile = { filename?: unknown; status?: unknown; patch?: unknown };
 
 export type EvidenceDeps = {
   /** Injected so the whole thing is testable without GitHub. */
-  fetchCompare?: (repoFullName: string, base: string, head: string) => Promise<CompareFile[] | null>;
+  fetchCompare?: (repoFullName: string, base: string, head: string, accessToken?: string) => Promise<CompareFile[] | null>;
   token?: string;
 };
 
-async function defaultFetchCompare(repoFullName: string, base: string, head: string): Promise<CompareFile[] | null> {
-  // No token, no call. The build engine requires GITHUB_TOKEN, so a deploy
-  // without it has no runs to verify anyway — and an unauthenticated compare
-  // against a private repo would 404 indistinguishably from "no branch".
-  const token = process.env.GITHUB_TOKEN?.trim();
+async function defaultFetchCompare(
+  repoFullName: string,
+  base: string,
+  head: string,
+  accessToken?: string,
+): Promise<CompareFile[] | null> {
+  // No token, no call: an unauthenticated compare against a private repo 404s
+  // indistinguishably from "no branch", and "we couldn't look" must never be
+  // graded as "nothing changed". The caller passes the org's own credential;
+  // the env fallback is for deployments with no GitHub app configured.
+  const token = accessToken?.trim() || process.env.GITHUB_TOKEN?.trim();
   if (!token) return null;
 
   const url = `https://api.github.com/repos/${repoFullName}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
@@ -123,7 +129,7 @@ export async function fetchChangeEvidence(
   deps: EvidenceDeps = {},
 ): Promise<ChangeEvidence | null> {
   const fetchCompare = deps.fetchCompare ?? defaultFetchCompare;
-  const files = await fetchCompare(repoFullName, baseBranch, reviewBranchFor(cardId)).catch(() => null);
+  const files = await fetchCompare(repoFullName, baseBranch, reviewBranchFor(cardId), deps.token).catch(() => null);
   if (!files) return null;
   return shapeEvidence(files);
 }

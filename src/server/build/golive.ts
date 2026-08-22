@@ -16,6 +16,7 @@ import {
   DeployTimeoutError,
 } from '../connectors/railway/provision.js';
 import { ensureLiveUrlCheck } from '../monitor/wiring.js';
+import { resolveRepoToken } from './repoToken.js';
 import { resolveHostAccount, hostProjectOptions, whereItLives, type HostAccount } from './hostAccount.js';
 import { parseRailwayTarget, type RailwayTarget } from '../connectors/railway/client.js';
 import type { ContextPack } from '../../shared/types/pack.js';
@@ -90,9 +91,14 @@ export function needsDatabase(envExample: string | null): boolean {
   return /^\s*#?\s*DATABASE_URL\s*=/m.test(envExample);
 }
 
-/** Read one file from the repo without waking a sandbox. Null when it isn't there. */
-export async function readRepoFile(repoFullName: string, path: string): Promise<string | null> {
-  const token = process.env.GITHUB_TOKEN?.trim();
+/**
+ * Read one file from the repo without waking a sandbox. Null when it isn't
+ * there — or when we couldn't look, which the caller has to treat as "don't
+ * know" rather than "no". Same credential as the clone: the org's own
+ * installation, falling back to a configured token where no app exists.
+ */
+export async function readRepoFile(repoFullName: string, path: string, accessToken?: string): Promise<string | null> {
+  const token = accessToken?.trim() || process.env.GITHUB_TOKEN?.trim();
   if (!token) return null;
   try {
     const res = await fetch(`https://api.github.com/repos/${repoFullName}/contents/${path}`, {
@@ -128,7 +134,7 @@ export type GoLiveDeps = {
   setVars?: (token: string, target: RailwayTarget, vars: Record<string, string>) => Promise<void>;
   domain?: (token: string, target: RailwayTarget) => Promise<string>;
   awaitDeploy?: (token: string, target: RailwayTarget) => Promise<void>;
-  readFile?: (repoFullName: string, path: string) => Promise<string | null>;
+  readFile?: (repoFullName: string, path: string, accessToken?: string) => Promise<string | null>;
   /** Arm the health watch on the new address. Injected so go-live is testable without the checks table. */
   watch?: (db: Db, orgId: string, projectId: string, url: string) => Promise<void>;
 };
@@ -192,7 +198,8 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     // 1) A database, if the app asked for one in its own .env.example.
     const variables: Record<string, string> = { ...BASE_VARIABLES };
     let neonProjectId: string | null = null;
-    if (!hasDatabase(pack) && needsDatabase(await readFile(repo, '.env.example'))) {
+    const repoRead = await resolveRepoToken(db, orgId, repo);
+    if (!hasDatabase(pack) && needsDatabase(await readFile(repo, '.env.example', repoRead.ok ? repoRead.token : undefined))) {
       if (!neonConfigured() && !deps.provisionDb) {
         return { outcome: 'not_possible', message: "This app needs a database, and Selvedge's database provider isn't configured yet." };
       }

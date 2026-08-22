@@ -2,6 +2,7 @@ import type { Db } from '../db/client.js';
 import { getPack } from '../packs/store.js';
 import { templateRunChecks, type RunCheckDeps } from './checks.js';
 import { fetchChangeEvidence, renderEvidence, type EvidenceDeps } from './evidence.js';
+import { resolveRepoToken } from '../build/repoToken.js';
 import type { VerifyContext } from './run.js';
 import type { CheckResult } from './verdict.js';
 
@@ -50,7 +51,16 @@ export function buildTemplateRunChecks(
     // No repo, no branch, or GitHub unreachable → no evidence → the acceptance
     // check stays manual and the verdict caps at `probably`. Never a guess.
     const repo = pack?.topology.sources.find((s) => s.connector === 'github')?.resource_id ?? null;
-    const evidence = repo ? await fetchChangeEvidence(repo, ctx.card.id, 'main', options.evidenceDeps ?? {}) : null;
+    // Read the branch as the org, not as the platform: the same credential the
+    // run cloned with is the one that can see what it pushed.
+    const evidenceDeps = options.evidenceDeps ?? {};
+    const repoToken = repo && evidenceDeps.token === undefined ? await resolveRepoToken(db, ctx.card.orgId, repo) : null;
+    const evidence = repo
+      ? await fetchChangeEvidence(repo, ctx.card.id, 'main', {
+          ...evidenceDeps,
+          ...(repoToken?.ok ? { token: repoToken.token } : {}),
+        })
+      : null;
 
     const judge = options.makeJudge?.(ctx.card.orgId);
     return templateRunChecks(

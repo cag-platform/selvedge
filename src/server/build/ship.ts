@@ -102,7 +102,10 @@ export async function shipChanges(
     deps.execute ??
     (await (async () => {
       const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
-      return (command: string, timeoutSec: number) => sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+      // Pushing needs a live GitHub credential, and the sandbox holds none —
+      // it travels with the command. See sandbox.ts on why it isn't baked in.
+      return (command: string, timeoutSec: number, env?: Record<string, string>) =>
+        sandbox.process.executeCommand(command, undefined, { GITHUB_TOKEN: cfg.githubToken, ...(env ?? {}) }, timeoutSec);
     })());
 
   // 1) The gate, judged on the actual changed files.
@@ -266,7 +269,10 @@ export async function rollbackShip(
     deps.execute ??
     (await (async () => {
       const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
-      return (command: string, timeoutSec: number) => sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
+      // Pushing needs a live GitHub credential, and the sandbox holds none —
+      // it travels with the command. See sandbox.ts on why it isn't baked in.
+      return (command: string, timeoutSec: number, env?: Record<string, string>) =>
+        sandbox.process.executeCommand(command, undefined, { GITHUB_TOKEN: cfg.githubToken, ...(env ?? {}) }, timeoutSec);
     })());
 
   const res = await execute(
