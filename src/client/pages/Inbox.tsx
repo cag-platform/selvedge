@@ -129,7 +129,7 @@ export function Inbox() {
 
   /** Make somewhere to put work that isn't a codebase. */
   const createSubject = useCallback(async () => {
-    const name = window.prompt('What is this subject? (a name is enough)');
+    const name = window.prompt('What are we building today?');
     if (!name?.trim()) return;
     try {
       await api.post('/api/subjects', { name: name.trim() });
