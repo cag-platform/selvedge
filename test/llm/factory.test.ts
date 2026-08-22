@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs } from '../../src/server/db/schema/index.js';
 import { connectCredential } from '../../src/server/connectors/credentials/store.js';
-import { buildNarrationDeps, buildComposeDeps, buildAskDeps } from '../../src/server/llm/factory.js';
+import { buildNarrationDeps, buildComposeDeps } from '../../src/server/llm/factory.js';
 
 /**
  * The per-org pivot: the voice is powered by each org's own fuel, decided at
@@ -32,13 +32,11 @@ describe('llm/factory — deps follow the org, not the process', () => {
     await connectCredential(db, 'byo', 'anthropic', 'sk-ant-byo-key');
     expect(await buildNarrationDeps(db, 'byo')).toBeDefined();
     expect(await buildComposeDeps(db, 'byo')).toBeDefined();
-    expect(await buildAskDeps(db, 'byo')).toBeDefined();
   });
 
   it('an org with no fuel and no platform key gets the mechanical path', async () => {
     expect(await buildNarrationDeps(db, 'bare')).toBeUndefined();
     expect(await buildComposeDeps(db, 'bare')).toBeUndefined();
-    expect(await buildAskDeps(db, 'bare')).toBeUndefined();
   });
 
   it('one org can have a voice while another, in the same process, does not', async () => {

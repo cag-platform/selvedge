@@ -14,7 +14,6 @@ import { createPortabilityRouter } from '../../src/server/web/routes/portability
 import { createDevicesRouter } from '../../src/server/web/routes/devices.js';
 import { createOrgRouter } from '../../src/server/web/routes/org.js';
 import { createMemoryRouter } from '../../src/server/web/routes/memory.js';
-import { createAskRouter } from '../../src/server/web/routes/ask.js';
 import { createFuelRouter } from '../../src/server/web/routes/fuel.js';
 import { FakeLlmClient } from '../../src/server/llm/fake.js';
 import { makeTestPack } from '../fixtures/testPack.js';
@@ -28,8 +27,8 @@ import { localDateString } from '../../src/server/digest/timezone.js';
  * request-scoping logic.
  *
  * Covered here: packs, projects, tray, today, export/import, devices, org
- * settings, memory, and Ask's model context. Scoped in their own suites:
- * feedback, trust, connector health, admin.
+ * settings, and memory. Scoped in their own suites: feedback, trust,
+ * connector health, admin.
  *
  * A note on how this file drifted, because the same thing will happen again:
  * it used to say "every API surface" while mounting four routers, and four
@@ -210,32 +209,6 @@ describe('multi-tenancy: org isolation across every API surface', () => {
     expect(a.body.timezone).toBe('UTC');
     const b = await request(app).get('/api/org').set('x-test-org', orgB);
     expect(b.body.timezone).toBe('Asia/Tokyo');
-  });
-
-  it('Ask never puts another org\'s stack into the model context', async () => {
-    // Asserts on what was SENT to the model, not just what came back: a
-    // scoping bug here would leak org A's projects into org B's prompt even
-    // if the answer happened to look innocuous.
-    const fake = new FakeLlmClient((req) => ({
-      ok: true,
-      json: { answer: 'Nothing to report.', confidence: 'high' },
-      tokensIn: 10,
-      tokensOut: 10,
-      model: req.model,
-    }));
-    const askApp = express();
-    askApp.use(express.json());
-    askApp.use((req, _res, next) => {
-      (req as Request & { orgId: string }).orgId = req.header('x-test-org') ?? '';
-      next();
-    });
-    askApp.use(createAskRouter(db, { llm: fake, db }));
-
-    await request(askApp).post('/api/ask').set('x-test-org', orgB).send({ question: 'How are my apps?' });
-
-    const sent = JSON.stringify(fake.requests);
-    expect(sent).not.toContain('Loom (Org A)');
-    expect(sent).not.toContain('acme/loom');
   });
 
   it('fuel credentials are scoped: org B cannot see or revoke org A\'s key', async () => {
