@@ -11,16 +11,16 @@ import { allThreads, type InboxData, type ThreadData } from '../lib/inbox.js';
 /**
  * THE INBOX — the place to work.
  *
- * One persistent three-pane layout instead of four pages: the rail (projects,
- * their threads, the brief pinned at the top), the thread (the conversation and
- * everything you do to it), and the context panel (work cards, the app running,
- * what Selvedge understands). Today stays the front door; this is where you go
- * after reading it.
+ * One persistent three-pane layout instead of four pages: the rail (everywhere
+ * you work and every conversation under it), the thread (the conversation and
+ * everything you do to it), and the context panel (what is true now, what has
+ * happened, and what Selvedge understands this to be). This is the front door
+ * — there is no page to read before you can get to the work.
  *
  * Two rules from the design notes are enforced here rather than in the pieces:
  * the panes are SOLID panels on flat paper (the glass budget is spent on the
- * nav and the brief, and a third blurred layer would break it), and there is
- * one motion token — panes arrive with --settle and then hold still.
+ * nav, and a third blurred layer would break it), and there is one motion
+ * token — panes arrive with --settle and then hold still.
  *
  * Liveness is polling, as everywhere else in this product: 3 seconds while an
  * agent is working, 12 when it isn't. No SSE, no websockets — that remains a
