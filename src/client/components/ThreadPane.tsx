@@ -9,6 +9,7 @@ import { completeMention, mentionQuery, sendNote, type AgentOffer, type RosterRe
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from './WorkshopAttach.js';
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
+import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 
 /**
@@ -188,6 +189,9 @@ export function ThreadPane({
   // The building thread's refusal: set when the server declined a turn because
   // the decision behind this thread has fallen behind the thinking.
   const [staleRefusal, setStaleRefusal] = useState<{ refusal: StaleRefusal; message: string } | null>(null);
+  // The other refusal with a way through: this conversation has spent what it
+  // was allowed to spend, and is asking before it spends more.
+  const [ceiling, setCeiling] = useState<{ refusal: CeilingRefusal; message: string } | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
 
@@ -244,7 +248,7 @@ export function ThreadPane({
    * button, having read what they were overriding. It is never carried over
    * from a previous send, and never defaulted on.
    */
-  async function send(e: React.FormEvent | null, acknowledgeStale = false) {
+  async function send(e: React.FormEvent | null, acknowledgeStale = false, raiseCap = false) {
     e?.preventDefault();
     const body = text.trim();
     if (body === '' || uploading) return;
@@ -257,21 +261,27 @@ export function ThreadPane({
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
         ...(acknowledgeStale ? { acknowledge_stale: true } : {}),
+        ...(raiseCap ? { raise_cap: true } : {}),
       });
       setText('');
       setImages([]);
       setFiles([]);
       setPlanFirst(false);
       setStaleRefusal(null);
+      setCeiling(null);
       setWarming(res.warming);
       onReload();
     } catch (err) {
-      // A stale decision is a refusal with a way through, not a dead end: keep
-      // what was typed, say what is behind, and let the owner choose. The
+      // Both of these are refusals with a way through, not dead ends: keep what
+      // was typed, say what is in the way, and let the owner choose. The
       // message is NOT sent by the act of being told.
-      const refusal = err instanceof ApiError && err.status === 409 ? staleRefusalOf(err.body) : null;
-      if (refusal) setStaleRefusal({ refusal, message: err instanceof Error ? err.message : '' });
-      else setNote(err instanceof Error ? err.message : "that didn't go through");
+      const body409 = err instanceof ApiError && err.status === 409 ? err.body : null;
+      const stale = body409 ? staleRefusalOf(body409) : null;
+      const hit = body409 ? ceilingRefusalOf(body409) : null;
+      const message = err instanceof Error ? err.message : '';
+      if (stale) setStaleRefusal({ refusal: stale, message });
+      else if (hit) setCeiling({ refusal: hit, message });
+      else setNote(message || "that didn't go through");
     } finally {
       setSending(false);
     }
@@ -387,6 +397,32 @@ export function ThreadPane({
                 className="text-meta text-ink-quiet underline hover:text-ink-dim disabled:opacity-50"
               >
                 Build from it as it stands
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Nothing spends past what you approved — said here, in the place the
+            spending actually happens, with the figure and the way through. */}
+        {ceiling && (
+          <div className="mb-work-tight space-y-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2">
+            <p className="text-body font-medium text-thread">{ceiling.message}</p>
+            <p className="font-mono text-tech text-ink-dim">
+              {money(ceiling.refusal.spent_cents)} spent of {money(ceiling.refusal.cap_cents)} agreed
+              {ceiling.refusal.raises > 0 && ` · raised ${ceiling.refusal.raises}×`}
+            </p>
+            <div className="flex flex-wrap items-center gap-work">
+              <button
+                disabled={sending}
+                onClick={() => void send(null, false, true)}
+                className="rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
+              >
+                {raiseLabel(ceiling.refusal)}
+              </button>
+              <button
+                onClick={() => setCeiling(null)}
+                className="text-meta text-ink-quiet underline hover:text-ink-dim"
+              >
+                Leave it here
               </button>
             </div>
           </div>

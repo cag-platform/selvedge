@@ -16,6 +16,7 @@ import { createSubjectThread, createThread, ensureWorkshopThread, getThread, lis
 import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
 import { agentRoster } from '../../threads/roster.js';
+import { raiseCeiling, threadCeiling } from '../../threads/ceiling.js';
 import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
 import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
@@ -511,6 +512,27 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if (await activeRun(orgId, thread.projectId)) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
         return;
+      }
+
+      /**
+       * THE SPEND CEILING. A conversation stops where it said it would, the
+       * same way a work card does — this is the half of "nothing spends past
+       * what you approved" that the workbench used not to have.
+       *
+       * Like the stale-decision guard below, it is a refusal WITH A WAY
+       * THROUGH: the number is named, the way on is one word, and taking it is
+       * written onto the conversation so a lifted ceiling is never invisible.
+       */
+      const ceiling = await threadCeiling(db, orgId, thread);
+      if (ceiling.reached) {
+        if ((req.body as { raise_cap?: unknown })?.raise_cap !== true) {
+          res.status(409).json({
+            error: ceiling.note,
+            spend_ceiling: { spent_cents: ceiling.spentCents, cap_cents: ceiling.capCents, raises: ceiling.raises },
+          });
+          return;
+        }
+        await raiseCeiling(db, orgId, thread, ceiling);
       }
 
       // THE STALE-DECISION GUARD. A building thread paired to a decision brief
