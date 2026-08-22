@@ -148,11 +148,6 @@ function InMotion({ projectId }: { projectId: string }) {
           ))}
         </ul>
       )}
-      <p className="text-meta text-ink-quiet">
-        <Link to="/work" className="text-action-bright hover:underline">
-          Everything this project has been asked to do
-        </Link>
-      </p>
     </div>
   );
 }

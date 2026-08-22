@@ -26,9 +26,6 @@ export function Nav() {
             <NavLink to="/inbox" className={linkClass}>
               Inbox
             </NavLink>
-            <NavLink to="/work" className={linkClass}>
-              Work
-            </NavLink>
             <NavLink to="/record" className={linkClass}>
               Record
             </NavLink>

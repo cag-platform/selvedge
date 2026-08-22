@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
-import { Work } from './pages/Work.js';
 import { TrackRecord } from './pages/TrackRecord.js';
 import { Inbox } from './pages/Inbox.js';
 import { WorkshopRedirect } from './pages/WorkshopRedirect.js';
@@ -99,7 +98,12 @@ function AuthedApp() {
               {/* Static segment first: a project's history is not a thread id. */}
               <Route path="/inbox/project/:projectId" element={<Inbox />} />
               <Route path="/inbox/:threadId" element={<Inbox />} />
-              <Route path="/work" element={<Work />} />
+              {/* The Work surface is gone — every part of it had a better home.
+                  A card that needs you is in the thread it came from, work in
+                  motion is one line in that thread's Now panel, and what
+                  finished is on the Record and the project's own history. A
+                  bookmark lands on the front door rather than on nothing. */}
+              <Route path="/work" element={<Navigate to="/" replace />} />
               <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
