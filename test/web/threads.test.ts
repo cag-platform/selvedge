@@ -107,7 +107,7 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect((await getThread(db, orgId, thread.id))!.title).toBe('Workshop');
   });
 
-  it('starts a new thread of either kind, and refuses an agent that cannot run it', async () => {
+  it('starts a conversation on whoever was asked for, and only balks at an agent nobody declared', async () => {
     const workshop = await request(app()).post('/api/projects/loom/threads').send({ kind: 'workshop', title: 'Checkout rework' });
     expect(workshop.status).toBe(201);
     expect(workshop.body.thread).toMatchObject({ kind: 'workshop', agent: 'claude-code', title: 'Checkout rework' });
@@ -115,9 +115,16 @@ describe('web/routes/threads — the Inbox surface', () => {
     const general = await request(app()).post('/api/projects/loom/threads').send({ kind: 'general' });
     expect(general.body.thread).toMatchObject({ kind: 'general', agent: 'claude' });
 
-    const wrong = await request(app()).post('/api/projects/loom/threads').send({ kind: 'workshop', agent: 'gpt' });
-    expect(wrong.status).toBe(400);
-    expect(wrong.body.error).toMatch(/can't run a workshop thread/i);
+    // Any agent may start any conversation. The pairing below used to be
+    // refused outright; there is nothing incoherent about it, and the turn
+    // itself decides what actually happens.
+    const anyAgent = await request(app()).post('/api/projects/loom/threads').send({ kind: 'workshop', agent: 'gpt' });
+    expect(anyAgent.status).toBe(201);
+    expect(anyAgent.body.thread.agent).toBe('gpt');
+
+    const nobody = await request(app()).post('/api/projects/loom/threads').send({ agent: 'llama' });
+    expect(nobody.status).toBe(400);
+    expect(nobody.body.error).toMatch(/don't know that agent/i);
     expect((await request(app()).post('/api/projects/nope/threads').send({})).status).toBe(404);
   });
 
@@ -137,9 +144,11 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(res.body.line).toContain('continued with Codex');
     expect(res.body.handoff_tokens).toBeGreaterThan(0);
 
-    const refused = await request(app()).patch(`/api/threads/${thread.id}`).send({ agent: 'gpt' });
-    expect(refused.status).toBe(400);
-    expect(refused.body.error).toMatch(/sandbox/i);
+    // And back out to a talker, which costs nothing and says so.
+    const back = await request(app()).patch(`/api/threads/${thread.id}`).send({ agent: 'gpt' });
+    expect(back.status).toBe(200);
+    expect(back.body.thread.agent).toBe('gpt');
+    expect(back.body.line).toMatch(/carries over as it is/i);
   });
 
   it('a workshop message starts a build turn, carrying the thread and any parked handoff', async () => {

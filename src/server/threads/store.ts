@@ -2,7 +2,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { threads } from '../db/schema/index.js';
-import { agentById, defaultAgentFor, isAgentId, type AgentId } from '../../shared/agents.js';
+import { agentById, DEFAULT_AGENT, isAgentId, startingAgentFor, type AgentId } from '../../shared/agents.js';
 import { DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../shared/types/thread.js';
 
 /**
@@ -34,7 +34,7 @@ export async function createThread(db: Db, orgId: string, projectId: string, fie
       projectId,
       kind: fields.kind,
       title: fields.title?.trim() || DEFAULT_WORKSHOP_TITLE,
-      agent: fields.agent ?? defaultAgentFor(fields.kind),
+      agent: fields.agent ?? startingAgentFor(fields.kind),
       model: fields.model ?? null,
     })
     .returning();
@@ -61,7 +61,7 @@ export async function createSubjectThread(
       subjectId,
       kind: 'general',
       title: fields.title?.trim() || DEFAULT_GENERAL_TITLE,
-      agent: fields.agent ?? defaultAgentFor('general'),
+      agent: fields.agent ?? DEFAULT_AGENT,
       model: fields.model ?? null,
     })
     .returning();
@@ -163,12 +163,12 @@ export async function setThreadAgent(
   threadId: string,
   agent: string,
   model?: string | null,
-): Promise<{ ok: true; thread: Thread } | { ok: false; reason: 'no_such_thread' | 'unknown_agent' | 'wrong_kind' }> {
+): Promise<{ ok: true; thread: Thread } | { ok: false; reason: 'no_such_thread' | 'unknown_agent' }> {
   if (!isAgentId(agent)) return { ok: false, reason: 'unknown_agent' };
   const thread = await getThread(db, orgId, threadId);
   if (!thread) return { ok: false, reason: 'no_such_thread' };
-  const descriptor = agentById(agent)!;
-  if (!descriptor.kinds.includes(thread.kind as ThreadKind)) return { ok: false, reason: 'wrong_kind' };
+  // No capability gate here: any agent may answer in any conversation. What
+  // differs is what happens when it does, which the message path decides.
   const [row] = await db
     .update(threads)
     .set({ agent, ...(model === undefined ? {} : { model }) })

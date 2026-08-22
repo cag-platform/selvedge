@@ -26,7 +26,12 @@ export function AgentChip({ agent, working = false, title }: { agent: string; wo
   );
 }
 
-/** Every agent that can run this kind of thread — live ones first, the rest named honestly. */
-export function agentChoices(kind: 'workshop' | 'general') {
-  return AGENTS.filter((a) => a.kinds.includes(kind));
+/**
+ * The whole roster. There used to be a filter here, keyed on the thread's kind,
+ * and it was the wall: it decided who could answer before anyone knew what the
+ * conversation was about. Every agent can join every conversation now, and the
+ * picker says what each one does instead of hiding half of them.
+ */
+export function agentChoices() {
+  return [...AGENTS];
 }

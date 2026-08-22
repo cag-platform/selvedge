@@ -15,14 +15,12 @@ import { AgentChip, agentChoices } from './AgentChip.js';
  * it is, and one that offers what fails teaches them not to trust it.
  */
 export function AgentSwitcher({
-  kind,
   agent,
   open,
   onOpenChange,
   onPick,
   disabled = false,
 }: {
-  kind: 'workshop' | 'general';
   agent: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -48,7 +46,7 @@ export function AgentSwitcher({
     };
   }, [open, onOpenChange]);
 
-  const choices = agentChoices(kind);
+  const choices = agentChoices();
 
   return (
     <div ref={box} className="relative">

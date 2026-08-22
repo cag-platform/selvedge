@@ -1,12 +1,10 @@
-import type { ThreadKind } from './types/thread.js';
-
 /**
  * The agent registry — one table, the way `connectors/registry.ts` is one table
  * for providers. Everything that needs to know an agent exists reads it here:
  * the handoff composer (who it is writing for), the thread store (what an
- * agent id may be), and, from Phase 1, the composer's switcher.
+ * agent id may be), and the composer's switcher.
  *
- * TWO RULES, both load-bearing.
+ * THREE RULES, all load-bearing.
  *
  * 1. IDENTITY IS TEXT, NEVER COLOR OR BRAND. Status color is spoken for —
  *    `--thread` red means "this needs you" and nothing else — so agent identity
@@ -19,8 +17,18 @@ import type { ThreadKind } from './types/thread.js';
  *    surface can be honest about what is coming without offering a picker entry
  *    that fails on first use.
  *
- * Ids are stored in `threads.agent` and read back by every later phase, so they
- * may be added but never renamed.
+ * 3. CAPABILITY, NOT MODE. An agent is described by what it can DO — whether it
+ *    changes files — never by what kind of conversation it is allowed into.
+ *    There used to be a `kinds` field here, and a matching `kind` on a thread,
+ *    and between them they walled talking off from building: to move a
+ *    conversation from deciding what to build to building it, you had to start
+ *    a second conversation and say everything twice. That wall was the single
+ *    biggest thing standing between this product and its own promise, so it is
+ *    gone. Any agent can join any conversation; what differs is what happens
+ *    when it answers.
+ *
+ * Ids are stored in `threads.agent` and read back everywhere, so they may be
+ * added but never renamed.
  */
 
 export type AgentId = 'claude-code' | 'codex' | 'claude' | 'gpt';
@@ -31,8 +39,12 @@ export type AgentDescriptor = {
   chip: string;
   /** What a person calls it. */
   name: string;
-  /** Which kinds of thread this agent can run. A builder needs a sandbox; a chat model doesn't. */
-  kinds: readonly ThreadKind[];
+  /**
+   * Does answering mean editing the project's code? This is the only
+   * distinction between agents that has ever mattered, and it decides which
+   * path a turn takes — the sandbox, or a plain model call.
+   */
+  changesFiles: boolean;
   /** Whose fuel it burns — what the ledger attributes the spend to. */
   provider: 'anthropic' | 'openai';
   /**
@@ -49,7 +61,12 @@ export type AgentDescriptor = {
    * figure we can't stand behind is worse than an honest comparison.
    */
   costNote: string;
-  /** Can it run today? Declared-but-not-live agents are roadmap, not offers. */
+  /**
+   * Can it run today? This means WIRED, not FUELLED: every agent here has a
+   * real path to a real model, and an agent whose key the owner hasn't
+   * connected says exactly that when asked, rather than being hidden. Hiding a
+   * wired agent teaches people the product is smaller than it is.
+   */
   live: boolean;
 };
 
@@ -58,7 +75,7 @@ const AGENT_TABLE = {
     id: 'claude-code',
     chip: 'CC',
     name: 'Claude Code',
-    kinds: ['workshop'],
+    changesFiles: true,
     provider: 'anthropic',
     pricingModel: 'claude-sonnet-5',
     costNote: "builds in your project's sandbox — about $0.05–0.30 a turn",
@@ -68,31 +85,33 @@ const AGENT_TABLE = {
     id: 'codex',
     chip: 'CX',
     name: 'Codex',
-    kinds: ['workshop'],
+    changesFiles: true,
     provider: 'openai',
     pricingModel: 'gpt-5.6-terra',
     costNote: 'builds in the same sandbox, on your OpenAI key — about $0.05–0.30 a turn',
-    live: false,
+    // The driver is real (runner/agents/driver.ts); without an OpenAI key it
+    // returns null and the caller says so. That is fuel, not wiring.
+    live: true,
   },
   claude: {
     id: 'claude',
     chip: 'CL',
     name: 'Claude',
-    kinds: ['general'],
+    changesFiles: false,
     provider: 'anthropic',
     pricingModel: 'claude-sonnet-5',
     costNote: 'plain chat on your own model key — a fraction of what a build turn costs',
-    live: false,
+    live: true,
   },
   gpt: {
     id: 'gpt',
     chip: 'GPT',
     name: 'GPT',
-    kinds: ['general'],
+    changesFiles: false,
     provider: 'openai',
     pricingModel: 'gpt-5.6-terra',
     costNote: 'plain chat on your own OpenAI key — a fraction of what a build turn costs',
-    live: false,
+    live: true,
   },
 } satisfies Record<AgentId, AgentDescriptor>;
 
@@ -106,17 +125,32 @@ export function isAgentId(value: unknown): value is AgentId {
   return typeof value === 'string' && value in AGENT_TABLE;
 }
 
-/** Every agent that could run this kind of thread, live or not (the roadmap surface). */
-export function agentsFor(kind: ThreadKind): AgentDescriptor[] {
-  return AGENTS.filter((a) => a.kinds.includes(kind));
+/** Does answering as this agent mean touching the project's code? */
+export function changesFiles(agent: string): boolean {
+  return agentById(agent)?.changesFiles ?? false;
 }
 
-/** Only the ones that actually work today — what a picker may offer. */
-export function liveAgentsFor(kind: ThreadKind): AgentDescriptor[] {
-  return agentsFor(kind).filter((a) => a.live);
+/**
+ * Every agent a conversation may be handed to. There is no filter any more —
+ * that WAS the wall. The picker shows the whole roster and says what each one
+ * does, which is the only honest way to offer a choice.
+ */
+export function switchableAgents(): AgentDescriptor[] {
+  return [...AGENTS];
 }
 
-/** What a new thread of this kind starts with. */
-export function defaultAgentFor(kind: ThreadKind): AgentId {
-  return kind === 'workshop' ? 'claude-code' : 'claude';
+/**
+ * Where a conversation STARTS. Not where it has to stay — that distinction is
+ * the whole point, and it is why this is a default rather than a rule.
+ *
+ * Someone who pressed "build something" means it, so that thread opens on a
+ * builder; everything else opens on a talker, which is both cheaper and the
+ * answer that is never wrong when nobody has said yet what they want. Either
+ * way the next sentence can hand it to anyone.
+ */
+export function startingAgentFor(intent: 'workshop' | 'general'): AgentId {
+  return intent === 'workshop' ? 'claude-code' : 'claude';
 }
+
+/** Where a conversation with no stated intent starts: talking. */
+export const DEFAULT_AGENT: AgentId = 'claude';

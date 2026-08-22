@@ -70,11 +70,42 @@ function clip(text: string, max: number): string {
   return one.length <= max ? one : `${one.slice(0, max - 1).trimEnd()}…`;
 }
 
-/** The provider a thread's agent runs on, or null when the agent isn't a chat agent. */
+export type ChatDeps = {
+  client?: LlmClient | null;
+  now?: () => Date;
+  /** False when the caller has already written the owner's message. */
+  recordOwnerMessage?: boolean;
+  /** Answer as this agent rather than the thread's own. */
+  answeringAs?: AgentId;
+  /**
+   * A take, not a turn: the agent has been asked what it thinks, and is
+   * answering over its model without the sandbox. This is the only way a
+   * builder speaks on this path, and the conversation says so out loud.
+   */
+  asTake?: boolean;
+};
+
+/**
+ * The provider this agent answers on, or null when it answers by editing files
+ * instead — a builder's turn goes through the sandbox, not this path.
+ */
 export function chatProviderFor(agent: AgentId): 'anthropic' | 'openai' | null {
   const descriptor = agentById(agent);
-  if (!descriptor || !descriptor.kinds.includes('general')) return null;
+  if (!descriptor || descriptor.changesFiles) return null;
   return descriptor.provider;
+}
+
+/**
+ * The provider to answer on, allowing for a take.
+ *
+ * A builder asked for its opinion answers on the model behind it, with no
+ * sandbox attached — which is a real thing to offer and a slightly different
+ * thing from that builder doing the work, so the consultation line says as
+ * much rather than letting the distinction pass unremarked.
+ */
+function providerForTake(agent: AgentId, asTake: boolean): 'anthropic' | 'openai' | null {
+  if (!asTake) return chatProviderFor(agent);
+  return agentById(agent)?.provider ?? null;
 }
 
 /** The plainest true description of the project a thread hangs off. Null when there's no pack. */
@@ -93,7 +124,12 @@ async function projectContext(db: Db, orgId: string, projectId: string): Promise
   };
 }
 
-async function say(db: Db, orgId: string, thread: Thread, content: string): Promise<void> {
+/**
+ * Every answer records who gave it. Without this a consultation is two
+ * paragraphs from nobody in particular, and the whole point of asking two
+ * agents is knowing which one said which.
+ */
+async function say(db: Db, orgId: string, thread: Thread, content: string, answeredBy: AgentId): Promise<void> {
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,
@@ -101,6 +137,7 @@ async function say(db: Db, orgId: string, thread: Thread, content: string): Prom
     threadId: thread.id,
     role: 'agent',
     content,
+    meta: { answered_by: answeredBy },
   });
 }
 
@@ -114,23 +151,31 @@ export async function runChatTurn(
   orgId: string,
   thread: Thread,
   ownerText: string,
-  deps: { client?: LlmClient | null; now?: () => Date } = {},
+  deps: ChatDeps = {},
 ): Promise<ChatOutcome> {
   const now = deps.now ?? (() => new Date());
-  await db.insert(agentMessages).values({
-    id: ulid(),
-    orgId,
-    projectId: thread.projectId,
-    threadId: thread.id,
-    role: 'owner',
-    content: ownerText,
-  });
+  // In a consultation the question is asked once and answered several times,
+  // so the caller writes the owner's message itself and every answer hangs off
+  // that one line rather than each turn re-asking it.
+  if (deps.recordOwnerMessage !== false) {
+    await db.insert(agentMessages).values({
+      id: ulid(),
+      orgId,
+      projectId: thread.projectId,
+      threadId: thread.id,
+      role: 'owner',
+      content: ownerText,
+    });
+  }
 
-  const provider = chatProviderFor(thread.agent as AgentId);
+  // Who is answering is not always the thread's own agent: a consultation asks
+  // several, and none of them takes the conversation over.
+  const speaking = (deps.answeringAs ?? thread.agent) as AgentId;
+  const provider = providerForTake(speaking, deps.asTake === true);
   if (!provider || !deps.client) {
-    const name = agentById(thread.agent as AgentId)?.name ?? thread.agent;
+    const name = agentById(speaking)?.name ?? speaking;
     const message = `This thread runs on ${name}, and there's no key connected for it — so I can't answer here yet. Connect one under Connections, or switch this thread to a model you have connected.`;
-    await say(db, orgId, thread, message);
+    await say(db, orgId, thread, message, speaking);
     return { ok: false, reason: 'no_fuel', message };
   }
 
@@ -139,7 +184,7 @@ export async function runChatTurn(
   const budget = await checkThinkingBudget(db, orgId, now());
   if (budget.over) {
     const message = `This account has reached its daily limit for chat ($${budget.capUsd.toFixed(2)}). It resets tomorrow — the watching and your morning brief are unaffected.`;
-    await say(db, orgId, thread, message);
+    await say(db, orgId, thread, message, speaking);
     return { ok: false, reason: 'over_budget', message };
   }
 
@@ -176,17 +221,17 @@ export async function runChatTurn(
 
   if (!result.ok) {
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
-    await say(db, orgId, thread, message);
+    await say(db, orgId, thread, message, speaking);
     return { ok: false, reason: 'model_failed', message };
   }
 
   const reply = (result.json as { reply?: unknown }).reply;
   if (typeof reply !== 'string' || reply.trim() === '') {
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
-    await say(db, orgId, thread, message);
+    await say(db, orgId, thread, message, speaking);
     return { ok: false, reason: 'model_failed', message };
   }
 
-  await say(db, orgId, thread, reply.trim());
+  await say(db, orgId, thread, reply.trim(), speaking);
   return { ok: true, reply: reply.trim(), model, costed: true };
 }

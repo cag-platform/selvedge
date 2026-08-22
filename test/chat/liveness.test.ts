@@ -23,11 +23,12 @@ import { appWithOrg } from '../web/helpers.js';
  * general thread reaches that turn holding a REAL client, built from the key
  * the owner connected for the agent THIS thread runs on.
  *
- * That question matters because three of the four agents in the registry are
- * marked `live: false`, and the whole product thesis — one place to work
- * across every agent — rests on whether that flag is a capability limit or a
- * label. These tests answer it: the route is exercised over HTTP, and the
- * client the chat turn receives is inspected rather than stubbed away.
+ * That question decided the whole redesign: the product's thesis is one place
+ * to work across every agent, and three of the four were marked `live: false`.
+ * These tests established that the flag was a label rather than a capability
+ * limit — the route is exercised over HTTP and the client the chat turn
+ * receives is inspected rather than stubbed away — and the wall came down on
+ * the strength of them.
  *
  * The model is never actually called. Proving the network works is the
  * provider SDK's job; proving Selvedge hands it the right client, built from
@@ -117,12 +118,13 @@ describe('the chat half, end to end', () => {
   });
 
   /**
-   * `live: false` is a client-side label, not a server-side gate. GPT is
-   * marked not-live in the registry; the server runs it anyway, given a key.
-   * This is the test that says the wall in the picker is cosmetic.
+   * Every agent in the roster is wired to a real model, and the picker offers
+   * all of them. Three of these used to say "not yet" while the server ran
+   * them perfectly well, which is the sort of thing that teaches people the
+   * product is smaller than it is.
    */
-  it('does not refuse an agent the registry marks “not yet”', async () => {
-    expect(AGENTS.find((a) => a.id === 'gpt')?.live).toBe(false);
+  it('offers every agent it can actually run', async () => {
+    expect(AGENTS.every((a) => a.live)).toBe(true);
 
     await connectCredential(db, orgId, 'openai', 'sk-oai-test-0002');
     const thread = await generalThread();
@@ -150,27 +152,19 @@ describe('the chat half, end to end', () => {
   });
 
   /**
-   * THE WALL, stated as a test so removing it has something to fail against.
-   *
-   * A coding agent cannot join a chat thread. The product's headline feature
-   * is switching agents mid-thread, and this is the boundary that matters —
-   * moving between talking and building — which is exactly where it is
-   * refused. When the wall comes down this expectation inverts, and that will
-   * be the diff worth reading.
+   * THE WALL, GONE. This test was written the other way round a commit ago:
+   * it asserted that a conversation could not move between talking and
+   * building, which is the one boundary the product's headline feature exists
+   * to cross.
    */
-  it('refuses to move a conversation between talking and building — today', async () => {
+  it('moves a conversation between talking and building, both ways', async () => {
     const thread = await generalThread();
 
     const toBuilder = await switchThreadAgent(db, orgId, thread.id, 'claude-code');
-    expect(toBuilder.ok).toBe(false);
-    if (!toBuilder.ok) {
-      expect(toBuilder.reason).toBe('wrong_kind');
-      expect(toBuilder.message).toContain('workshop thread');
-    }
+    expect(toBuilder.ok).toBe(true);
 
     const workshop = await createThread(db, orgId, 'loom', { kind: 'workshop', title: 'Build it' });
-    const toChat = await switchThreadAgent(db, orgId, workshop.id, 'claude');
-    expect(toChat.ok).toBe(false);
-    if (!toChat.ok) expect(toChat.reason).toBe('wrong_kind');
+    const toTalker = await switchThreadAgent(db, orgId, workshop.id, 'claude');
+    expect(toTalker.ok).toBe(true);
   });
 });

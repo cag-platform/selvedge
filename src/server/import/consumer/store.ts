@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { agentMessages, threads } from '../../db/schema/index.js';
-import { defaultAgentFor } from '../../../shared/agents.js';
+import { DEFAULT_AGENT } from '../../../shared/agents.js';
 import { VENDOR_NAMES, type ImportedConversation, type Vendor } from './types.js';
 
 /**
@@ -81,7 +81,7 @@ export async function fileConversations(
       title: convo.title,
       // Whoever answers NEXT in this thread is Selvedge's own chat agent. The
       // thread's history is somebody else's; its future is not.
-      agent: defaultAgentFor('general'),
+      agent: DEFAULT_AGENT,
       createdAt: startedAt,
       importedFrom: vendor,
       importSourceId: convo.sourceId,

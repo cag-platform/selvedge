@@ -364,7 +364,6 @@ export function ThreadPane({
         {note && <p className="mb-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2 text-body font-medium text-thread">{note}</p>}
         <form ref={form} onSubmit={(e) => void send(e)} className="flex items-end gap-work">
           <AgentSwitcher
-            kind={data.thread.kind}
             agent={data.thread.agent}
             open={switcherOpen}
             onOpenChange={onSwitcherOpenChange}

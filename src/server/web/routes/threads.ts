@@ -17,7 +17,8 @@ import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
 import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
 import { staleWarningFor } from '../../decisions/freshness.js';
-import { agentById, type AgentId } from '../../../shared/agents.js';
+import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
+import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 import { listUnsortedEvents } from '../../resolution/unsortedTray.js';
 
@@ -305,10 +306,6 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           res.status(400).json({ error: "I don't know that agent." });
           return;
         }
-        if (!descriptor.kinds.includes(kind)) {
-          res.status(400).json({ error: `${descriptor.name} can't run a ${kind} thread.` });
-          return;
-        }
       }
       const title = typeof body.title === 'string' && body.title.trim() !== '' ? body.title.trim().slice(0, 120) : kind === 'workshop' ? DEFAULT_WORKSHOP_TITLE : DEFAULT_GENERAL_TITLE;
       const thread = await createThread(db, orgId, projectId, { kind, title, ...(agent ? { agent: agent as AgentId } : {}) });
@@ -329,9 +326,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const body = (req.body ?? {}) as { title?: unknown; agent?: unknown };
       const agent = typeof body.agent === 'string' ? body.agent : undefined;
       if (agent !== undefined) {
-        const descriptor = agentById(agent);
-        if (!descriptor || !descriptor.kinds.includes('general')) {
-          res.status(400).json({ error: "That agent can't hold a plain conversation." });
+        if (!agentById(agent)) {
+          res.status(400).json({ error: "I don't know that agent." });
           return;
         }
       }
@@ -392,7 +388,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     '/api/threads/:threadId/message',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
-      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      let thread = await getThread(db, orgId, req.params.threadId ?? '');
       if (!thread) {
         res.status(404).json({ error: 'no such thread' });
         return;
@@ -404,13 +400,73 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
 
-      if (thread.kind === 'general') {
+      /**
+       * WHO ANSWERS — read out of the sentence, not out of a mode chosen
+       * before anyone knew what the conversation would become.
+       */
+      const intent = mentionIntent(text);
+
+      // A CONSULTATION. Everyone named answers the same question, on their own
+      // model and without the sandbox, and the conversation does not change
+      // hands. Two agents cannot build at once — one project, one sandbox —
+      // and asking for two takes was never a request for two builds anyway.
+      if (intent.kind === 'consult') {
+        const asked = intent.agents.slice(0, MAX_CONSULTED);
+        await db.insert(agentMessages).values([
+          { id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'owner', content: text },
+          {
+            id: ulid(),
+            orgId,
+            projectId: thread.projectId,
+            threadId: thread.id,
+            role: 'switch',
+            content: consultationLine(asked, (id) => agentById(id)?.name ?? id),
+            meta: { consulted: asked },
+          },
+        ]);
+
+        const consulted = thread;
+        for (const agent of asked) {
+          const provider = agentById(agent)?.provider ?? null;
+          const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
+          void chatTurn(db, orgId, consulted, text, {
+            client: fuel?.client ?? null,
+            recordOwnerMessage: false,
+            answeringAs: agent,
+            asTake: true,
+          }).catch((err) => {
+            console.error(`take from ${agent} failed for ${orgId}/${consulted.id}:`, err);
+          });
+        }
+        res.status(202).json({ started: true, warming: false, consulted: asked });
+        return;
+      }
+
+      // ONE NAME DIRECTS THE TURN — and because that is a switch, it is priced
+      // and recorded exactly like one, handover and all.
+      if (intent.kind === 'direct' && intent.agent !== thread.agent) {
+        const switched = await switchThreadAgent(db, orgId, thread.id, intent.agent);
+        if (!switched.ok) {
+          res.status(400).json({ error: switched.message });
+          return;
+        }
+        thread = switched.thread;
+      }
+
+      /**
+       * WHAT HAPPENS is decided by what the answering agent can DO. There used
+       * to be a `thread.kind` here deciding it instead, and that was the wall:
+       * it meant moving from working out what to build to building it required
+       * a second conversation.
+       */
+      if (!changesFiles(thread.agent)) {
         const provider = chatProviderFor(thread.agent as AgentId);
         const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
         // The turn runs in the background like every other turn, so a slow
         // model never holds the composer.
-        void chatTurn(db, orgId, thread, text, { client: fuel?.client ?? null }).catch((err) => {
-          console.error(`chat turn failed for ${orgId}/${thread.id}:`, err);
+        const talking = thread;
+        void chatTurn(db, orgId, talking, text, { client: fuel?.client ?? null }).catch((err) => {
+          console.error(`chat turn failed for ${orgId}/${talking.id}:`, err);
         });
         res.status(202).json({ started: true, warming: false });
         return;

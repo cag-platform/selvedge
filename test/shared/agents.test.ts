@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AGENTS, agentById, agentsFor, defaultAgentFor, isAgentId, liveAgentsFor } from '../../src/shared/agents.js';
+import { AGENTS, agentById, changesFiles, isAgentId, startingAgentFor, switchableAgents } from '../../src/shared/agents.js';
 
 /**
  * The registry is read by the thread store, the handoff composer and (from the
@@ -26,17 +26,39 @@ describe('the agent registry', () => {
     }
   });
 
-  it('declared is not live — a picker may only offer what actually runs', () => {
-    expect(liveAgentsFor('workshop').map((a) => a.id)).toEqual(['claude-code']);
-    expect(liveAgentsFor('general')).toHaveLength(0);
-    // ...while the roadmap stays visible to whoever needs to be honest about it.
-    expect(agentsFor('workshop').map((a) => a.id)).toEqual(['claude-code', 'codex']);
-    expect(agentsFor('general').map((a) => a.id)).toEqual(['claude', 'gpt']);
+  /**
+   * The picker offers everybody. There used to be a filter keyed on the kind
+   * of thread you were in, and it decided who could answer before anyone knew
+   * what the conversation was about — which is exactly backwards.
+   */
+  it('offers the whole roster, whatever the conversation is', () => {
+    expect(switchableAgents().map((a) => a.id)).toEqual(['claude-code', 'codex', 'claude', 'gpt']);
   });
 
-  it('a builder never defaults into a chat thread, or the other way round', () => {
-    expect(agentById(defaultAgentFor('workshop'))!.kinds).toContain('workshop');
-    expect(agentById(defaultAgentFor('general'))!.kinds).toContain('general');
+  /**
+   * Every agent here has a real path to a real model. `live` means WIRED, not
+   * fuelled: an agent whose key nobody connected says exactly that when asked,
+   * which is more useful than being hidden.
+   */
+  it('offers nothing it cannot actually run', () => {
+    expect(AGENTS.filter((a) => !a.live)).toEqual([]);
+  });
+
+  it('says what each one does, which is the only difference that matters', () => {
+    expect(changesFiles('claude-code')).toBe(true);
+    expect(changesFiles('codex')).toBe(true);
+    expect(changesFiles('claude')).toBe(false);
+    expect(changesFiles('gpt')).toBe(false);
+    expect(changesFiles('nobody')).toBe(false);
+  });
+
+  /**
+   * Where a conversation starts still follows what was asked for. That was
+   * never the wall — the wall was refusing to let it move afterwards.
+   */
+  it('starts a build conversation on a builder, and everything else on a talker', () => {
+    expect(changesFiles(startingAgentFor('workshop'))).toBe(true);
+    expect(changesFiles(startingAgentFor('general'))).toBe(false);
   });
 
   it('an id nobody declared is not an agent', () => {

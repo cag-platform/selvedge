@@ -119,16 +119,49 @@ describe('switching the agent behind a thread', () => {
     expect((await getThread(db, orgId, chat.id))!.agent).toBe('gpt');
   });
 
-  it('refuses a switch that cannot work, in words, before anything is written', async () => {
+  /**
+   * THE MOVE THE PRODUCT EXISTS FOR, and the one that used to be refused:
+   * working out what to build with a talker, then handing it straight to a
+   * builder without saying any of it twice.
+   *
+   * The builder needs the handover because its memory lives in a CLI session
+   * inside the sandbox, which cannot see this conversation at all — so the
+   * switch composes one, prices it, and parks it for the next turn, exactly as
+   * it always did between two builders.
+   */
+  it('carries a conversation from talking into building, and prices the carry', async () => {
+    const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Gift notes' });
+    expect(thread.agent).toBe('claude');
+    await db.insert(agentMessages).values([
+      { id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'owner', content: 'per-item or per-order gift notes?' },
+      { id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'Per-order — per-item doubles fulfilment for a 5% case.' },
+    ]);
+
+    const out = await switchThreadAgent(db, orgId, thread.id, 'claude-code');
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude-code');
+
+    // The handover is real: it was composed, it has a size, and the line says
+    // so rather than letting the cost turn up later as a surprise.
+    expect(out.handoff).not.toBeNull();
+    expect(out.handoff!.estimated_tokens).toBeGreaterThan(0);
+    expect(out.line).toMatch(/Claude Code/);
+    expect(out.line).toMatch(/handoff/i);
+
+    // And what was decided came with it, so nobody explains it twice.
+    expect(out.handoff!.text).toMatch(/per-order/i);
+  });
+
+  /** The other direction is free, and says so: a talker reads the thread back. */
+  it('hands a build conversation back to a talker without charging for it', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
     const out = await switchThreadAgent(db, orgId, thread.id, 'gpt');
-    expect(out.ok).toBe(false);
-    if (out.ok) return;
-    expect(out.reason).toBe('wrong_kind');
-    expect(out.message).toMatch(/can't build in a sandbox/i);
-    expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude-code');
-    const lines = await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'switch')));
-    expect(lines).toHaveLength(0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect((await getThread(db, orgId, thread.id))!.agent).toBe('gpt');
+    expect(out.handoff).toBeNull();
+    expect(out.line).toMatch(/carries over as it is/i);
   });
 
   it('switching to the agent already answering writes nothing at all', async () => {

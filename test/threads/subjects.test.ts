@@ -134,14 +134,23 @@ describe('subjects on the rail and over HTTP', () => {
     expect(pane.body.subject).toMatchObject({ name: 'Pricing' });
   });
 
-  it('refuses to build in a conversation that has no codebase behind it', async () => {
+  /**
+   * A builder may be asked into any conversation — the picker must not lie
+   * about who is available. What it cannot do is build where there is no
+   * codebase, and that is said at the moment it is asked to, in the words of
+   * the thing that is actually missing.
+   */
+  it('lets a builder in, then says plainly there is nothing here to build in', async () => {
     const made = await request(subjectsApp()).post('/api/subjects').send({ name: 'Pricing' });
     const created = await request(threadsApp()).post(`/api/subjects/${made.body.subject.id}/threads`).send({});
-    // A general thread's message would normally start a chat turn; this asserts
-    // the workshop path can never be reached without a project.
-    const res = await request(threadsApp()).patch(`/api/threads/${created.body.thread.id}`).send({ agent: 'claude-code' });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/sandbox/i);
+    const threadId = created.body.thread.id;
+
+    const switched = await request(threadsApp()).patch(`/api/threads/${threadId}`).send({ agent: 'claude-code' });
+    expect(switched.status).toBe(200);
+
+    const res = await request(threadsApp()).post(`/api/threads/${threadId}/message`).send({ text: 'build it' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/nothing here to build in/i);
   });
 
   it('a subject needs a name, and belongs to one org', async () => {

@@ -8,7 +8,6 @@ import { costUsd, isPricedModel } from '../llm/pricing.js';
 import { composeHandoff, type HandoffPayload, type HandoffRun } from '../handoff/compose.js';
 import { agentById, isAgentId, type AgentId } from '../../shared/agents.js';
 import { getThread, setThreadAgent, type Thread } from './store.js';
-import type { ThreadKind } from '../../shared/types/thread.js';
 
 /**
  * SWITCHING AGENTS MID-THREAD — the interaction the Inbox exists for.
@@ -17,14 +16,21 @@ import type { ThreadKind } from '../../shared/types/thread.js';
  * one stopped, and the owner explains nothing twice. Everything here serves
  * that, and the parts that could quietly break it are the parts under test.
  *
- * A general thread carries its whole history anyway — it is all API calls, and
- * the next turn simply sends the same conversation to a different model. There
- * is nothing to hand over, so nothing is composed and nothing is charged.
+ * WHO NEEDS A HANDOVER IS DECIDED BY THE INCOMING AGENT, not by what kind of
+ * conversation this is — there is no such thing as a kind of conversation any
+ * more.
  *
- * A workshop thread cannot: the outgoing agent's memory lives in a CLI session
- * inside the sandbox that the incoming one cannot read. So the switch composes
- * a handoff (handoff/compose.ts), parks it on the thread as a system line, and
- * the next turn starts the new agent with it.
+ * An agent that answers over the API reads the whole thread back out of the
+ * database on its next turn, so there is nothing to hand it. Nothing is
+ * composed and nothing is charged: switching to a talker is free, and the line
+ * says so.
+ *
+ * An agent that changes files cannot: its memory lives in a CLI session inside
+ * the sandbox, which cannot see this conversation at all. So the switch
+ * composes a handoff (handoff/compose.ts), parks it on the thread as a system
+ * line, and the next turn starts the new agent holding it. That is now true
+ * whoever it came FROM — including, at last, straight from a conversation
+ * where the two of you worked out what to build.
  *
  * THE LINE IS THE FEATURE. `⇄ continued with Codex — handoff 1.8k tokens,
  * about $0.02` is what makes the machinery visible, so it states real numbers:
@@ -36,7 +42,7 @@ import type { ThreadKind } from '../../shared/types/thread.js';
 
 export type SwitchResult =
   | { ok: true; thread: Thread; changed: boolean; line: string | null; handoff: HandoffPayload | null }
-  | { ok: false; reason: 'no_such_thread' | 'unknown_agent' | 'wrong_kind'; message: string };
+  | { ok: false; reason: 'no_such_thread' | 'unknown_agent'; message: string };
 
 /** What a parked handoff looks like on the thread — the evidence of what was handed over. */
 export type SwitchMeta = {
@@ -98,13 +104,6 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   const before = await getThread(db, orgId, threadId);
   if (!before) return { ok: false, reason: 'no_such_thread', message: 'no such thread' };
   const descriptor = agentById(target)!;
-  if (!descriptor.kinds.includes(before.kind as ThreadKind)) {
-    const message =
-      before.kind === 'workshop'
-        ? `${descriptor.name} can chat, but it can't build in a sandbox — start a general thread for it.`
-        : `${descriptor.name} builds in a sandbox; this is a chat thread. Start a workshop thread for it.`;
-    return { ok: false, reason: 'wrong_kind', message };
-  }
   if (before.agent === target) return { ok: true, thread: before, changed: false, line: null, handoff: null };
 
   const from = before.agent as AgentId;
@@ -112,9 +111,9 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   if (!switched.ok) return { ok: false, reason: switched.reason, message: 'that switch did not go through' };
   const thread = switched.thread;
 
-  // A general thread hands nothing over: the next turn sends the same
+  // Handing over to a talker costs nothing: the next turn sends this same
   // conversation to a different model, and the history is already in the DB.
-  if (thread.kind !== 'workshop') {
+  if (!descriptor.changesFiles) {
     const line = switchLine(from, target, 0, null);
     await db.insert(agentMessages).values({
       id: ulid(),
@@ -128,8 +127,9 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
     return { ok: true, thread, changed: true, line, handoff: null };
   }
 
-  // A workshop thread always has a project — that is what a sandbox is built
-  // from — but the column is nullable now, so say so rather than assume it.
+  // A builder needs a project, because that is what a sandbox is built from.
+  // The switch still stands — refusing it here would make the picker lie — and
+  // the message path says plainly that there is nothing to build in.
   const projectId = thread.projectId;
   if (!projectId) return { ok: true, thread, changed: true, line: null, handoff: null };
 
@@ -149,7 +149,9 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
     {
       id: thread.id,
       title: thread.title,
-      kind: 'workshop',
+      // What the handoff is written FROM: a builder's work reads differently
+      // to a conversation, and the composer needs to know which it is.
+      kind: agentById(from)?.changesFiles ? 'workshop' : 'general',
       agent: from,
       stagedChangesReady: build?.stagedChangesReady ?? false,
       messages: messages

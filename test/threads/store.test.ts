@@ -86,17 +86,22 @@ describe('the thread store — one project, many conversations', () => {
     expect((await ensureWorkshopThread(db, 'org_1', 'loom')).id).not.toBe(first.id);
   });
 
-  it('switches the agent behind a thread, and refuses the switches that make no sense', async () => {
+  it('hands a thread to any agent, and refuses only what does not exist', async () => {
     const workshop = await ensureWorkshopThread(db, 'org_1', 'loom');
     const switched = await setThreadAgent(db, 'org_1', workshop.id, 'codex');
     expect(switched.ok).toBe(true);
     if (switched.ok) expect(switched.thread.agent).toBe('codex');
 
-    // A chat model cannot run a sandbox thread, and an agent nobody declared
-    // cannot run anything — both refused before anything is written.
-    expect(await setThreadAgent(db, 'org_1', workshop.id, 'gpt')).toEqual({ ok: false, reason: 'wrong_kind' });
+    // A talker may take over a conversation that has been building — that is
+    // the whole point, and it used to be refused.
+    const toTalker = await setThreadAgent(db, 'org_1', workshop.id, 'gpt');
+    expect(toTalker.ok).toBe(true);
+    expect((await getThread(db, 'org_1', workshop.id))!.agent).toBe('gpt');
+
+    // An agent nobody declared still cannot run anything, and neither can a
+    // thread that isn't there.
     expect(await setThreadAgent(db, 'org_1', workshop.id, 'llama')).toEqual({ ok: false, reason: 'unknown_agent' });
     expect(await setThreadAgent(db, 'org_1', 'no_such_thread', 'codex')).toEqual({ ok: false, reason: 'no_such_thread' });
-    expect((await getThread(db, 'org_1', workshop.id))!.agent).toBe('codex');
+    expect((await getThread(db, 'org_1', workshop.id))!.agent).toBe('gpt');
   });
 });
