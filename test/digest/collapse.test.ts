@@ -20,12 +20,12 @@ function item(projectId: string | null, fragment: string | null, id = Math.rando
 describe('collapseRepeats — one fact that happened three times, not three lines', () => {
   it('collapses identical (project, fragment) repeats into one line with a plain count', () => {
     const out = collapseRepeats([
-      item('smith', 'smith-bespoke: new work landed on the main branch today.', 'first'),
-      item('smith', 'smith-bespoke: new work landed on the main branch today.'),
-      item('smith', 'smith-bespoke: new work landed on the main branch today.'),
+      item('smith', 'smith-bespoke: new work landed on the main branch.', 'first'),
+      item('smith', 'smith-bespoke: new work landed on the main branch.'),
+      item('smith', 'smith-bespoke: new work landed on the main branch.'),
     ]);
     expect(out).toHaveLength(1);
-    expect(out[0]!.fragment).toBe('smith-bespoke: new work landed on the main branch today (3 times).');
+    expect(out[0]!.fragment).toBe('smith-bespoke: new work landed on the main branch (3 times).');
     expect(out[0]!.id).toBe('first'); // feedback/traceability attach to the first occurrence
   });
 

@@ -30,7 +30,7 @@ export function orderAttention(items: NarrationWithPack[]): NarrationWithPack[] 
 
 /**
  * Collapse identical (project, fragment) repeats into ONE line with a plain
- * count — three "new work landed on the main branch today" lines are one fact
+ * count — three "new work landed on the main branch" lines are one fact
  * that happened three times, not three facts. The first occurrence keeps its
  * narration id (feedback and traceability attach there); order is preserved.
  */
