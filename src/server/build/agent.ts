@@ -479,8 +479,12 @@ export async function runAgentTurn(
       ? 'That took too long, so I stopped it. Nothing was shipped — try asking for a smaller piece of it.'
       : narrative || "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
-  await db
+  // ONLY IF IT IS STILL OURS TO FINISH. The owner may have pressed stop while
+  // this was in flight; the thread already says so, and a late "Done — take a
+  // look at the preview" landing under it would be the app contradicting
+  // itself about work the owner ended. The cost is still recorded either way,
+  // because the money was still spent.
+  const [claimed] = await db
     .update(agentRuns)
     .set({
       status: succeeded ? 'succeeded' : 'failed',
@@ -488,7 +492,19 @@ export async function runAgentTurn(
       finishedAt: new Date(),
       ...(changedPaths ? { changedPaths } : {}),
     })
-    .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+    .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId), eq(agentRuns.status, 'running')))
+    .returning({ id: agentRuns.id });
+
+  if (!claimed) {
+    await db
+      .update(agentRuns)
+      .set({ costCents })
+      .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)))
+      .catch(() => undefined);
+    return { runId, agent, status: 'failed', costCents, reply, stagedChangesReady };
+  }
+
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
   await setBuild(db, orgId, projectId, {
     ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
     stagedChangesReady,

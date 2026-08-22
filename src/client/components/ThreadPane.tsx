@@ -10,9 +10,17 @@ import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
+import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
+
+/** The name over a message: "Selvedge" unless somebody specific was asked. */
+function speakerOf(message: ThreadMessage): string {
+  if (message.role === 'owner') return 'You';
+  if (!message.answered_by) return 'Selvedge';
+  return agentById(message.answered_by)?.name ?? 'Selvedge';
+}
 
 /**
  * THE THREAD — the conversation, and everything you do to it, in one column.
@@ -137,8 +145,11 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
   }
 
   return (
-    <div className={message.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-work'}>
-      <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{message.role === 'owner' ? 'You' : 'Selvedge'}</p>
+    <div id={`message-${message.id}`} className={message.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-work'}>
+      {/* Who actually said it. A consultation puts two answers in a row, and
+          two paragraphs both labelled "Selvedge" is exactly the confusion
+          asking two agents was meant to resolve. */}
+      <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{speakerOf(message)}</p>
       <p className="whitespace-pre-line text-body text-ink">{message.content}</p>
       {message.attachments.length > 0 && (
         <div className="mt-work-tight flex flex-wrap gap-work-tight">
@@ -174,6 +185,10 @@ export function ThreadPane({
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  // Between pressing Stop and the server confirming. Suspending a sandbox
+  // takes a beat, and a button that looks unpressed for that beat gets
+  // pressed again.
+  const [stopping, setStopping] = useState(false);
   /**
    * Who could answer, and what handing it to each would cost — quoted by the
    * server before anything is handed over. Re-read when the answering agent
@@ -213,9 +228,20 @@ export function ThreadPane({
     el.style.height = `${el.scrollHeight}px`;
   }, [text, composerRef]);
 
+  /**
+   * TO THE TOP OF WHAT ARRIVED, NOT THE BOTTOM OF THE THREAD.
+   *
+   * Scrolling to the tail put the END of the newest message at the bottom of
+   * the viewport — fine for a sentence, useless for a long answer, whose first
+   * line was then several screens up. A consultation, which lands two long
+   * answers at once, showed apparently blank space and made you scroll back to
+   * find where the reply had started. Reading starts at the beginning.
+   */
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [data.messages.length]);
+    const newest = data.messages.at(-1);
+    const node = newest ? document.getElementById(`message-${newest.id}`) : null;
+    (node ?? end.current)?.scrollIntoView({ behavior: 'smooth', block: node ? 'start' : 'end' });
+  }, [data.messages.length, data.messages]);
 
   useEffect(() => {
     setTitleDraft(data.thread.title);
@@ -266,6 +292,26 @@ export function ThreadPane({
   useEffect(() => {
     if (data.working) setWarming(false);
   }, [data.working]);
+
+  /**
+   * Stop what's running. The sandbox is suspended, which is what actually
+   * halts the meter; files it had already written stay where they are. The
+   * server answers the same way whether or not anything was in flight, so
+   * pressing this on a turn that just finished is not an error.
+   */
+  async function stop() {
+    if (stopping) return;
+    setStopping(true);
+    setNote(null);
+    try {
+      await api.post(`/api/threads/${data.thread.id}/stop`, {});
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "that didn't go through");
+    } finally {
+      setStopping(false);
+      onReload();
+    }
+  }
 
   /**
    * `acknowledgeStale` is only ever true because a person pressed the second
@@ -381,9 +427,22 @@ export function ThreadPane({
           <Message key={m.id} message={m} data={data} />
         ))}
         {data.working && (
-          <div className="border-l-2 border-brass pl-work">
-            <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge</p>
-            <p className="text-body text-ink-dim">Working on it…</p>
+          <div className="flex items-start gap-work border-l-2 border-brass pl-work">
+            <div className="flex-1">
+              <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge</p>
+              <p className="text-body text-ink-dim">Working on it…</p>
+            </div>
+            {/* The way out. A turn you can start and not stop is a turn that
+                owns you rather than the other way round — and while it runs,
+                the project takes no other work. */}
+            <button
+              type="button"
+              disabled={stopping}
+              onClick={() => void stop()}
+              className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50"
+            >
+              {stopping ? 'Stopping…' : 'Stop'}
+            </button>
           </div>
         )}
         {warming && !data.working && (

@@ -9,6 +9,7 @@ import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { runAgentTurn } from '../../build/agent.js';
+import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
 import { createSubjectThread, createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
@@ -287,6 +288,13 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           at: m.createdAt.toISOString(),
           attachments: attByMessage.get(m.id) ?? [],
           run_id: m.runId,
+          // WHO SAID IT. A consultation asks several agents the same question
+          // and each answer records its author — which was worth nothing while
+          // it stayed in the database. Two paragraphs both labelled "Selvedge"
+          // is precisely the thing asking two agents was meant to avoid.
+          ...(m.role === 'agent' && (m.meta as { answered_by?: unknown } | null)?.answered_by
+            ? { answered_by: (m.meta as { answered_by: string }).answered_by }
+            : {}),
           ...(m.role === 'activity' || m.role === 'switch' ? { meta: m.meta } : {}),
         })),
         runs: runs.map((r) => ({
@@ -398,6 +406,36 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
       res.json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent, archived: thread.archivedAt !== null } });
+    }),
+  );
+
+  /**
+   * Stop what this thread's project has in flight.
+   *
+   * The one control the workbench was missing: a turn could be started and
+   * then only waited out. It suspends the sandbox — which is what actually
+   * halts the compute and the meter — closes the run, and says in the thread
+   * that files already written are still there and nothing was shipped.
+   *
+   * Idempotent by design. Pressing stop on a thread that has already finished
+   * is a 200 saying nothing was running, because the honest answer to "stop"
+   * when there is nothing to stop is not an error.
+   */
+  router.post(
+    '/api/threads/:threadId/stop',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      if (!thread.projectId) {
+        res.json({ stopped: false });
+        return;
+      }
+      const outcome = await stopActiveRun(db, orgId, thread.projectId);
+      res.json({ stopped: outcome.stopped });
     }),
   );
 
@@ -602,6 +640,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         },
       ).catch(async (err) => {
         console.error(`thread turn failed to start for ${orgId}/${thread.id}:`, err);
+        // The run row is written before the sandbox is touched, so a turn that
+        // dies on the way in leaves the project locked to a run that isn't
+        // happening. Unlock it: the failure costs one sentence, not an hour of
+        // a conversation that won't take work.
+        await failActiveRun(db, orgId, projectId).catch(() => undefined);
         await db
           .insert(agentMessages)
           .values({

@@ -45,7 +45,7 @@ const CHAT_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const SYSTEM = `You are Selvedge, talking with the owner of a small software project.
+const SYSTEM_BASE = `You are Selvedge, talking with the owner of a small software project.
 
 This is a thinking conversation, not a building one: no code is being written here
 and nothing you say ships. Help them think — about what to build, what it would
@@ -64,6 +64,32 @@ What you must not do:
 - Never invent history, numbers, or events.
 - Never hand over commands, install steps, or setup checklists — they have no
   terminal. Building happens in a workshop thread, where an agent does it.`;
+
+/**
+ * WHO IS SPEAKING, when the owner named somebody.
+ *
+ * "@claude and @gpt, what do you think?" asks two named models for their own
+ * takes. Handed the plain prompt, each was told it was Selvedge — so the one
+ * running on Anthropic's model opened with "I'm not Claude or GPT, just me
+ * here", which is both false and exactly the opposite of what was asked for.
+ *
+ * The correction is the truth: this IS that model (providerForTake routes the
+ * call to it), answering inside Selvedge because somebody asked it to. So it
+ * is told so, and told that the other agents in the room are answering the
+ * same question — which is the whole reason to ask more than one.
+ */
+function systemFor(speaking: AgentId, asTake: boolean): string {
+  if (!asTake) return SYSTEM_BASE;
+  const name = agentById(speaking)?.name ?? speaking;
+  return `${SYSTEM_BASE}
+
+The owner asked for YOUR take by name, so answer as ${name} — that is the model
+this conversation is being run on, and saying you are something else, or that
+you are "not ${name}", would simply be untrue. Others may have been asked the
+same question alongside you; answer with your own view rather than trying to
+agree with theirs, and don't introduce yourself — the conversation already shows
+who said what.`;
+}
 
 function clip(text: string, max: number): string {
   const one = text.replace(/\s+/g, ' ').trim();
@@ -208,7 +234,7 @@ export async function runChatTurn(
   const model = chatModel(provider);
   const result = await deps.client.complete({
     model,
-    system: SYSTEM,
+    system: systemFor(speaking, deps.asTake === true),
     userContent: [
       project ? `The project this conversation is about:\n${JSON.stringify(project, null, 2)}` : 'I have no context pack for this project, so I know nothing about it beyond this conversation.',
       '',

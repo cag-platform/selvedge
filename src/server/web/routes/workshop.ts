@@ -12,6 +12,7 @@ import { getBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
 import { runAgentTurn, type AttachedImage, type AttachedFile } from '../../build/agent.js';
 import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
+import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
@@ -292,6 +293,10 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       // silent shrug.
       void runTurn(db, orgId, projectId, text, resolved.cfg, { images: images.images, files, mode }).catch(async (err) => {
         console.error(`workshop turn failed to start for ${orgId}/${projectId}:`, err);
+        // Same reason as the threads route: the run row exists before the
+        // sandbox does, so a turn that dies on the way in must not leave the
+        // project locked to work that never began.
+        await failActiveRun(db, orgId, projectId).catch(() => undefined);
         const threadId = await ensureWorkshopThread(db, orgId, projectId)
           .then((t) => t.id)
           .catch(() => null);

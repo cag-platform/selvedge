@@ -46,6 +46,10 @@ export type ThreadMessage = {
   at: string;
   attachments: Array<{ id: string; mime: string }>;
   run_id?: string | null;
+  /** Which agent gave this answer, when it wasn't the thread's own. Set on
+   *  every reply to a consultation — asking two agents is pointless if both
+   *  answers come back signed the same way. */
+  answered_by?: string | null;
   meta?: RunRecordView | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null } } | null;
 };
 
