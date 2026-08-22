@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
+import { Tray } from './Tray.js';
 
 type Metrics = {
   attention_usd_per_day: number;
@@ -102,6 +103,12 @@ export function Admin() {
 
   return (
     <div className="space-y-8">
+      {/* Filing what Selvedge has seen is settings work, not a destination in
+          the main navigation beside the work itself. */}
+      <section>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">Your apps</h2>
+        <Tray />
+      </section>
       <TimezoneSettings />
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-quiet">

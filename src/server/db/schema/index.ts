@@ -20,3 +20,4 @@ export * from './companion.js';
 export * from './subjects.js';
 export * from './decisions.js';
 export * from './sketch.js';
+export * from './ignoredSources.js';

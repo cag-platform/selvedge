@@ -38,9 +38,6 @@ export function Nav() {
             <NavLink to="/projects" className={linkClass}>
               Projects
             </NavLink>
-            <NavLink to="/tray" className={linkClass}>
-              Unsorted
-            </NavLink>
             <NavLink to="/connections" className={linkClass}>
               Connections
             </NavLink>

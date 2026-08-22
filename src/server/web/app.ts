@@ -129,7 +129,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     }),
   );
   app.use(createProjectsRouter(db));
-  app.use(createTrayRouter(db));
+  app.use(createTrayRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
   app.use(createTodayRouter(db, (orgId) => buildComposeDeps(db, orgId)));
   app.use(createFeedbackRouter(db));
   app.use(createAdminRouter(db));

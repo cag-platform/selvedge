@@ -9,7 +9,6 @@ import { Inbox } from './pages/Inbox.js';
 import { WorkshopRedirect } from './pages/WorkshopRedirect.js';
 import { Connections } from './pages/Connections.js';
 import { Projects } from './pages/Projects.js';
-import { Tray } from './pages/Tray.js';
 import { PackEditor } from './pages/PackEditor.js';
 import { Admin } from './pages/Admin.js';
 import { Styleguide } from './pages/Styleguide.js';
@@ -103,7 +102,8 @@ function AuthedApp() {
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               {/* The workshop is a thread now — old links land in the conversation they meant. */}
               <Route path="/projects/:projectId/workshop" element={<WorkshopRedirect />} />
-              <Route path="/tray" element={<Tray />} />
+              {/* Unsorted lives in Admin now — keep the address working. */}
+              <Route path="/tray" element={<Navigate to="/admin" replace />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
