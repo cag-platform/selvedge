@@ -338,7 +338,7 @@ function NewThreadBar({
       }}
       className="flex flex-wrap items-center gap-work border-b border-hairline bg-panel-soft px-work-loose py-work focus-visible:outline-none"
     >
-      <p className="text-body text-ink">New thread —</p>
+      <p className="text-body text-ink">Start with —</p>
       <div className="flex gap-work-tight">
         {(['workshop', 'general'] as const).map((option) => (
           <button
@@ -349,10 +349,14 @@ function NewThreadBar({
               option === kind ? 'bg-action text-ink' : 'text-ink-dim hover:text-ink'
             }`}
           >
-            {option === 'workshop' ? 'Build something' : 'Just talk'}
+            {/* Who answers first, not what kind of room this is. The two used
+                to be the same thing and that was the wall: a conversation
+                could never move between them. */}
+            {option === 'workshop' ? 'Claude Code — builds' : 'Claude — talks it through'}
           </button>
         ))}
       </div>
+      <p className="text-meta text-ink-quiet">You can hand it to anyone later, mid-conversation, by naming them.</p>
       <p className="font-mono text-tech text-ink-quiet">Tab switches · Enter starts it · Esc drops it</p>
       <button onClick={onCancel} className="ml-auto text-meta text-ink-quiet hover:text-ink-dim">
         Cancel

@@ -75,6 +75,19 @@ export function switchLine(from: AgentId, to: AgentId, tokens: number, costUsdVa
   return `⇄ continued with ${name} — handoff ${saySize(tokens)}${cost}${tail}`;
 }
 
+/**
+ * The same fact as `switchLine`, in the tense of a decision not yet made. The
+ * line is a receipt; this is a price tag, and the picker shows it against
+ * every name before you touch one.
+ */
+export function quoteNote(tokens: number, costUsdValue: number | null): string {
+  if (tokens === 0) return 'switching is free';
+  const carries = `carries ${saySize(tokens)} over`;
+  if (costUsdValue === null) return `${carries} — its cost lands with the turn`;
+  const money = costUsdValue < 0.01 ? costUsdValue.toFixed(3) : costUsdValue.toFixed(2);
+  return `switching costs about $${money} · ${carries}`;
+}
+
 /** The runs of a thread, in the shape the handoff composer reads them. */
 async function runsFor(db: Db, orgId: string, threadId: string): Promise<HandoffRun[]> {
   const rows = await db
@@ -111,27 +124,67 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   if (!switched.ok) return { ok: false, reason: switched.reason, message: 'that switch did not go through' };
   const thread = switched.thread;
 
+  const quote = await quoteHandoff(db, orgId, thread, from, target);
+  await db.insert(agentMessages).values({
+    id: ulid(),
+    orgId,
+    projectId: thread.projectId,
+    threadId: thread.id,
+    role: 'switch',
+    content: quote.line,
+    meta: {
+      switch: {
+        from,
+        to: target,
+        tokens: quote.tokens,
+        cost_usd: quote.costUsd,
+        payload: quote.handoff?.text ?? null,
+        // Only a real handover waits to be spent; a free switch has nothing
+        // parked for the next turn to pick up.
+        pending: quote.handoff !== null,
+      },
+    } satisfies SwitchMeta,
+  });
+
+  return { ok: true, thread, changed: true, line: quote.line, handoff: quote.handoff };
+}
+
+/**
+ * WHAT SWITCHING TO THIS AGENT WOULD COST, right now, without switching.
+ *
+ * The picker calls this to put a price on each name BEFORE you pick one, and
+ * `switchThreadAgent` calls it to do the switching. That is deliberate and it
+ * is the whole point of the function existing: a quote and a receipt produced
+ * by two different pieces of code will eventually disagree, and the one thing
+ * this product cannot afford is a number that turns out to have been a guess.
+ */
+export type HandoffQuote = {
+  tokens: number;
+  costUsd: number | null;
+  handoff: HandoffPayload | null;
+  /** The sentence the thread will show, and the picker shows in advance. */
+  line: string;
+};
+
+export async function quoteHandoff(
+  db: Db,
+  orgId: string,
+  thread: Thread,
+  from: AgentId,
+  target: AgentId,
+): Promise<HandoffQuote> {
+  const free = (): HandoffQuote => ({ tokens: 0, costUsd: null, handoff: null, line: switchLine(from, target, 0, null) });
+  const descriptor = agentById(target);
+  if (!descriptor) return free();
+
   // Handing over to a talker costs nothing: the next turn sends this same
   // conversation to a different model, and the history is already in the DB.
-  if (!descriptor.changesFiles) {
-    const line = switchLine(from, target, 0, null);
-    await db.insert(agentMessages).values({
-      id: ulid(),
-      orgId,
-      projectId: thread.projectId,
-      threadId: thread.id,
-      role: 'switch',
-      content: line,
-      meta: { switch: { from, to: target, tokens: 0, cost_usd: null, payload: null, pending: false } } satisfies SwitchMeta,
-    });
-    return { ok: true, thread, changed: true, line, handoff: null };
-  }
+  if (!descriptor.changesFiles) return free();
 
   // A builder needs a project, because that is what a sandbox is built from.
-  // The switch still stands — refusing it here would make the picker lie — and
-  // the message path says plainly that there is nothing to build in.
+  // There is nothing to compose without one, and the message path says so.
   const projectId = thread.projectId;
-  if (!projectId) return { ok: true, thread, changed: true, line: null, handoff: null };
+  if (!projectId) return free();
 
   const [pack, build, messages, runs] = await Promise.all([
     getPack(db, orgId, projectId).catch(() => null),
@@ -162,21 +215,14 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
     target,
   );
 
-  const priced = isPricedModel(descriptor.pricingModel) ? costUsd(descriptor.pricingModel, handoff.estimated_tokens, 0) : null;
-  const line = switchLine(from, target, handoff.estimated_tokens, priced);
-  await db.insert(agentMessages).values({
-    id: ulid(),
-    orgId,
-    projectId: thread.projectId,
-    threadId: thread.id,
-    role: 'switch',
-    content: line,
-    meta: {
-      switch: { from, to: target, tokens: handoff.estimated_tokens, cost_usd: priced, payload: handoff.text, pending: true },
-    } satisfies SwitchMeta,
-  });
+  const costUsd_ = isPricedModel(descriptor.pricingModel) ? costUsd(descriptor.pricingModel, handoff.estimated_tokens, 0) : null;
+  return {
+    tokens: handoff.estimated_tokens,
+    costUsd: costUsd_,
+    handoff,
+    line: switchLine(from, target, handoff.estimated_tokens, costUsd_),
+  };
 
-  return { ok: true, thread, changed: true, line, handoff };
 }
 
 /**

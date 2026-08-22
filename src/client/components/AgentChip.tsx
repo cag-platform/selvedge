@@ -1,4 +1,4 @@
-import { AGENTS, agentById } from '../../shared/agents.js';
+import { agentById } from '../../shared/agents.js';
 
 /**
  * WHO IS ANSWERING — a two-or-three character mono mark on a plain field.
@@ -24,14 +24,4 @@ export function AgentChip({ agent, working = false, title }: { agent: string; wo
       {working && <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-ink-dim" />}
     </span>
   );
-}
-
-/**
- * The whole roster. There used to be a filter here, keyed on the thread's kind,
- * and it was the wall: it decided who could answer before anyone knew what the
- * conversation was about. Every agent can join every conversation now, and the
- * picker says what each one does instead of hiding half of them.
- */
-export function agentChoices() {
-  return [...AGENTS];
 }

@@ -15,6 +15,7 @@ import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
 import { createSubjectThread, createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
 import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
+import { agentRoster } from '../../threads/roster.js';
 import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
 import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
@@ -171,6 +172,27 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         unsorted_count: unsorted.length,
         engine_on: env() !== null,
       });
+    }),
+  );
+
+  /**
+   * THE ROSTER — who could answer this conversation, and what handing it to
+   * each of them would cost, quoted before anything is handed over.
+   *
+   * This is what turns the picker from a menu into a decision: every name
+   * carries a price tag from the same code that will do the charging, and
+   * anyone who can't run today says why rather than going missing.
+   */
+  router.get(
+    '/api/threads/:threadId/agents',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      res.json({ answering: thread.agent, agents: await agentRoster(db, orgId, thread, env) });
     }),
   );
 

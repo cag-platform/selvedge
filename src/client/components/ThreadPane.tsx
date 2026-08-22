@@ -4,7 +4,8 @@ import { formatCents } from '../lib/ledger.js';
 import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
 import { Reveal } from './Brief.js';
 import { AgentChip } from './AgentChip.js';
-import { AgentSwitcher } from './AgentSwitcher.js';
+import { AgentMenu } from './AgentMenu.js';
+import { completeMention, mentionQuery, sendNote, type AgentOffer, type RosterResponse } from '../lib/agents.js';
 import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from './WorkshopAttach.js';
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
@@ -170,6 +171,12 @@ export function ThreadPane({
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  /**
+   * Who could answer, and what handing it to each would cost — quoted by the
+   * server before anything is handed over. Re-read when the answering agent
+   * changes, because a handover's size depends on who it is coming from.
+   */
+  const [roster, setRoster] = useState<AgentOffer[]>([]);
   const [planFirst, setPlanFirst] = useState(false);
   const [images, setImages] = useState<PendingImage[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -200,6 +207,31 @@ export function ThreadPane({
   useEffect(() => {
     setTitleDraft(data.thread.title);
   }, [data.thread.title]);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .get<RosterResponse>(`/api/threads/${data.thread.id}/agents`)
+      .then((r) => {
+        if (live) setRoster(r.agents);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [data.thread.id, data.thread.agent]);
+
+  /**
+   * The chip and Cmd+J do the same thing the `@` key does: open the roster by
+   * starting a mention. One way of choosing who answers, not two — and it
+   * costs nothing until the message is actually sent.
+   */
+  useEffect(() => {
+    if (!switcherOpen) return;
+    onSwitcherOpenChange(false);
+    setText((current) => (mentionQuery(current) !== null ? current : current === '' || current.endsWith(' ') ? `${current}@` : `${current} @`));
+    composerRef.current?.focus();
+  }, [switcherOpen, onSwitcherOpenChange, composerRef]);
 
   // A turn that has started clears the "getting ready" line — the thread is
   // moving again, and saying it twice would be noise.
@@ -245,16 +277,14 @@ export function ThreadPane({
     }
   }
 
-  async function pickAgent(agent: string) {
-    onSwitcherOpenChange(false);
-    // Focus goes back to the input first, so picking never costs you your place.
+  /**
+   * Picking a name finishes the mention. It does NOT switch the thread: the
+   * choice belongs in the sentence, where it is visible, reversible with one
+   * backspace, and free until the message is sent.
+   */
+  function pickAgent(agent: string) {
+    setText((current) => completeMention(current, agent as Parameters<typeof completeMention>[1]));
     composerRef.current?.focus();
-    try {
-      await api.patch(`/api/threads/${data.thread.id}`, { agent });
-      onReload();
-    } catch (err) {
-      setNote(err instanceof Error ? err.message : "that switch didn't go through");
-    }
   }
 
   async function rename() {
@@ -362,14 +392,28 @@ export function ThreadPane({
           </div>
         )}
         {note && <p className="mb-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2 text-body font-medium text-thread">{note}</p>}
-        <form ref={form} onSubmit={(e) => void send(e)} className="flex items-end gap-work">
-          <AgentSwitcher
-            agent={data.thread.agent}
-            open={switcherOpen}
-            onOpenChange={onSwitcherOpenChange}
-            onPick={(a) => void pickAgent(a)}
-            disabled={sending}
+        {/* What this send is about to do, and what it will cost, BEFORE it is
+            pressed. The price used to arrive on the thread afterwards, which
+            meant committing in order to find out. */}
+        {sendNote(text, roster) && (
+          <p className="mb-work-tight font-mono text-tech text-ink-dim">{sendNote(text, roster)}</p>
+        )}
+        <form ref={form} onSubmit={(e) => void send(e)} className="relative flex items-end gap-work">
+          <AgentMenu
+            agents={roster}
+            query={mentionQuery(text)}
+            onPick={pickAgent}
+            onDismiss={() => setText((current) => current.replace(/(?:^|[^A-Za-z0-9_])@([A-Za-z0-9_-]*)$/, (whole, typed: string) => whole.slice(0, whole.length - typed.length - 1)))}
           />
+          <button
+            type="button"
+            disabled={sending}
+            onClick={() => onSwitcherOpenChange(true)}
+            title="Choose who answers (Cmd+J)"
+            className="rounded-inset focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+          >
+            <AgentChip agent={data.thread.agent} />
+          </button>
           <textarea
             ref={composerRef}
             value={text}
