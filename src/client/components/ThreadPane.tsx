@@ -13,7 +13,15 @@ import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
 import { referenceNote, type ReferenceCandidate, type ReferencesResponse } from '../lib/references.js';
 import { completeReference, referenceQuery } from '../../shared/references.js';
-import { isDocumentSized, nameForPaste, sayLength, MAX_DOCUMENTS, type PastedDocument } from '../../shared/documents.js';
+import {
+  isDocumentSized,
+  nameForPaste,
+  sayLength,
+  MAX_DOCUMENTS,
+  TOO_MANY_DOCUMENTS,
+  NEEDS_A_QUESTION,
+  type PastedDocument,
+} from '../../shared/documents.js';
 import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
@@ -395,7 +403,10 @@ export function ThreadPane({
   async function send(e: React.FormEvent | null, acknowledgeStale = false, raiseCap = false) {
     e?.preventDefault();
     const body = text.trim();
-    if ((body === '' && documents.length === 0) || uploading) return;
+    // A document is not a sentence: an attachment with no words is a message
+    // with no ask in it, which the composer says beside the chip rather than
+    // discovering here.
+    if (body === '' || uploading) return;
     setSending(true);
     setNote(null);
     try {
@@ -560,6 +571,12 @@ export function ThreadPane({
           documents={documents}
           onDocumentsChange={setDocuments}
         />
+        {/* Said in front of the decision, not after the press. The send button
+            is disabled with nothing typed, and a greyed button beside a chip
+            with no explanation is what makes people think a thing is broken. */}
+        {documents.length > 0 && text.trim() === '' && (
+          <p className="mb-work-tight text-tech text-ink-quiet">{NEEDS_A_QUESTION}</p>
+        )}
         {staleRefusal && (
           <div className="mb-work-tight space-y-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2">
             <p className="text-body font-medium text-thread">{staleRefusal.message}</p>
@@ -665,7 +682,7 @@ export function ThreadPane({
               if (!isDocumentSized(text)) return;
               e.preventDefault();
               if (documents.length >= MAX_DOCUMENTS) {
-                setNote(`That's more than ${MAX_DOCUMENTS} attached at once — send these first.`);
+                setNote(TOO_MANY_DOCUMENTS);
                 return;
               }
               setDocuments((current) => [...current, { name: nameForPaste(text), text }]);

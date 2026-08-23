@@ -7,6 +7,8 @@ import {
   renderDocuments,
   PASTE_BECOMES_DOCUMENT,
   MAX_DOCUMENTS,
+  TOO_MANY_DOCUMENTS,
+  NEEDS_A_QUESTION,
 } from '../../src/shared/documents.js';
 
 /**
@@ -22,6 +24,24 @@ describe('shared/documents — a paste too long to be a sentence', () => {
     expect(isDocumentSized('Error: connection refused\n  at Object.<anonymous>')).toBe(false);
     expect(isDocumentSized('x'.repeat(PASTE_BECOMES_DOCUMENT - 1))).toBe(false);
     expect(isDocumentSized('x'.repeat(PASTE_BECOMES_DOCUMENT))).toBe(true);
+  });
+
+  it('pins the numbers the iOS app is held to', () => {
+    // Both clients turn a paste into an attachment at the same size and stop
+    // at the same count. The Swift mirror asserts these same two literals
+    // (scripts/linux-check/parity.main.swift), so a change on either side
+    // breaks the other rather than quietly making the two apps differ.
+    expect(PASTE_BECOMES_DOCUMENT).toBe(4_000);
+    expect(MAX_DOCUMENTS).toBe(5);
+  });
+
+  it('says the two things a composer has to say, in words both clients share', () => {
+    expect(TOO_MANY_DOCUMENTS).toContain(String(MAX_DOCUMENTS));
+    // A greyed-out send button beside a chip, with no word about why, is what
+    // makes people think a product is broken.
+    expect(NEEDS_A_QUESTION).toBe(
+      'Say what you would like done with it — an attachment on its own has no question in it.',
+    );
   });
 
   describe('naming it after what it says', () => {

@@ -33,6 +33,17 @@ export const MAX_DOCUMENT_CHARS = 200_000;
 /** How many may ride on one message. */
 export const MAX_DOCUMENTS = 5;
 
+/** What the composer says when the cap is reached. Said, never silent. */
+export const TOO_MANY_DOCUMENTS = `That's more than ${MAX_DOCUMENTS} attached at once — send these first.`;
+
+/**
+ * A DOCUMENT IS NOT A SENTENCE. Attaching a rundown and pressing send with no
+ * words is a message with no ask in it. This is said beside the chip, before
+ * the press — a greyed-out button with no explanation is the thing that makes
+ * people think a product is broken.
+ */
+export const NEEDS_A_QUESTION = 'Say what you would like done with it — an attachment on its own has no question in it.';
+
 export type PastedDocument = {
   /** What it is called on the thread. Derived from the text, or given by the owner. */
   name: string;
