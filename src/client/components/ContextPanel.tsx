@@ -78,7 +78,7 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         </p>
       ) : (
         <div className="space-y-work-tight">
-          <p className="text-body text-ink-dim">This isn't online yet — only you can see it.</p>
+          <p className="text-body text-ink-dim">This isn’t online yet — only you can see it.</p>
           <button disabled={busy} onClick={() => void goLive()} className={btnPrimary}>
             {busy ? 'Starting…' : 'Put it online'}
           </button>

@@ -95,7 +95,7 @@ function EditForm({ dated, onSaved, onCancel }: { dated: DatedBrief; onSaved: (n
         <button type="button" onClick={onCancel} className="text-meta text-ink-quiet hover:text-ink-dim">
           Cancel
         </button>
-        <p className="text-meta text-ink-quiet">Your words replace mine. This doesn't change what it was written from.</p>
+        <p className="text-meta text-ink-quiet">Your words replace mine. This doesn’t change what it was written from.</p>
       </div>
     </form>
   );

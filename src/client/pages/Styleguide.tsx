@@ -170,7 +170,7 @@ export function Styleguide() {
               <p className="font-mono text-tech text-ink">
                 cannot_tell <span className="text-ink-quiet">--ink-faint + dashed</span>
               </p>
-              <p className="text-meta text-ink-dim">shape-distinct: "can't see" must never read as "fine"</p>
+              <p className="text-meta text-ink-dim">shape-distinct: "can’t see" must never read as "fine"</p>
             </div>
           </div>
         </div>
@@ -274,7 +274,7 @@ export function Styleguide() {
               </Reveal>
             }
           >
-            Chalk ran its first five real transactions — the sales themselves went through fine. What I can't confirm
+            Chalk ran its first five real transactions — the sales themselves went through fine. What I can’t confirm
             is whether the transaction data made it back to Loom; check that connection before more sales stack up.
           </BriefItem>
           <BriefItem
@@ -282,7 +282,7 @@ export function Styleguide() {
             verdict="cannot_tell"
             reveal={<Reveal>sild · post-ship check coverage suspect · verdict cannot_tell · next: verify knowledge packs</Reveal>}
           >
-            And SILD: the checks you built around the new features don't look like they're working right. Have Claude
+            And SILD: the checks you built around the new features don’t look like they’re working right. Have Claude
             verify the knowledge packs are behaving — and a live test with a real counterparty would confirm SILD is
             actually reading their position correctly.
           </BriefItem>
@@ -290,7 +290,7 @@ export function Styleguide() {
         </Brief>
         <p className="mt-2 text-meta text-ink-dim">
           Verdict → edge is fixed vocabulary: users_fine → healthy, users_affected → thread, cannot_tell → dashed. The
-          pane's own edge carries the day's top priority (here: a cannot_tell outranks a users_fine).
+          pane’s own edge carries the day’s top priority (here: a cannot_tell outranks a users_fine).
         </p>
       </section>
 
@@ -309,10 +309,10 @@ export function Styleguide() {
       <section>
         <h2 className="mb-3 text-headline font-display">Situation cards — the same fact, three registers</h2>
         <p className="mb-3 text-body text-ink-dim">
-          One live event from the watching loop, rendered at each owner's <span className="font-mono text-tech">detail_level</span>.
+          One live event from the watching loop, rendered at each owner’s <span className="font-mono text-tech">detail_level</span>.
           The verdict — and so the edge — is identical across all three. Only the technical line changes: absent, collapsed
           behind <span className="italic">why</span>, or shown inline. The change→break lead (<span className="italic">started
-          right after…</span>) shows at every register — it's the most actionable thing on the card.
+          right after…</span>) shows at every register — it’s the most actionable thing on the card.
         </p>
         <div className="space-y-3">
           {(['plain_only', 'plain_expandable', 'technical_forward'] as const).map((level) => (
@@ -347,7 +347,7 @@ export function Styleguide() {
       <section>
         <h2 className="mb-3 text-headline font-display">Work cards — the same grammar, every ask</h2>
         <p className="mb-3 text-body text-ink-dim">
-          One card whether it's a $6 fix or a $200 feature: a plain proposal, an estimate, a stop-point, an approval.
+          One card whether it’s a $6 fix or a $200 feature: a plain proposal, an estimate, a stop-point, an approval.
           A sensitive change wears the thread edge and cannot be approved until a backup is confirmed.
         </p>
         <div className="space-y-3">

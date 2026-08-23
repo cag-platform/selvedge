@@ -196,7 +196,7 @@ export function PackEditor() {
             value={pack.voice.detail_level}
             onChange={(e) => setPack({ ...pack, voice: { ...pack.voice, detail_level: e.target.value as DetailLevel } })}
           >
-            <option value="plain_only">Just tell me what's happening</option>
+            <option value="plain_only">Just tell me what’s happening</option>
             <option value="plain_expandable">Explain it, let me see details</option>
             <option value="technical_forward">I know my way around</option>
           </select>
@@ -361,13 +361,13 @@ function BeaconSection({ projectId }: { projectId: string }) {
     <section className="space-y-3 border-t border-hairline pt-6">
       <h2 className="text-label font-body uppercase tracking-widest text-ink-quiet">Error reporting</h2>
       <p className="text-body text-ink-dim">
-        Optional. If your app can report how many requests errored, I'll watch for a spike above its normal rate and
-        raise it — the same as anything else that breaks. Most apps don't need this.
+        Optional. If your app can report how many requests errored, I’ll watch for a spike above its normal rate and
+        raise it — the same as anything else that breaks. Most apps don’t need this.
       </p>
 
       {token && (
         <div className="space-y-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2">
-          <p className="text-meta text-ink-dim">Your beacon token — copy it now, it won't be shown again:</p>
+          <p className="text-meta text-ink-dim">Your beacon token — copy it now, it won’t be shown again:</p>
           <code className="block break-all font-mono text-tech text-ink">{token}</code>
           <p className="text-meta text-ink-quiet">
             Have your app POST {`{ errors, requests }`} per window to <span className="font-mono">/beacons/errors</span> with

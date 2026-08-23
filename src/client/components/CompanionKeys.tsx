@@ -53,7 +53,7 @@ export function CompanionKeys() {
       <div>
         <h2 className="text-headline font-medium text-ink">Your machines</h2>
         <p className="mt-1 max-w-xl text-body text-ink-dim">
-          Selvedge can read the coding sessions you run in your own terminal, and hand your project's context back to any
+          Selvedge can read the coding sessions you run in your own terminal, and hand your project’s context back to any
           agent you use. Both go through one small program on your machine, with a key you make here.
         </p>
       </div>
@@ -75,7 +75,7 @@ export function CompanionKeys() {
 
       {issued && (
         <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-action-bright bg-panel px-4 py-3">
-          <p className="text-body text-ink">Copy this now — it's shown only once.</p>
+          <p className="text-body text-ink">Copy this now — it’s shown only once.</p>
           <p className="select-all break-all font-mono text-tech text-ink">{issued}</p>
           <div className="space-y-1 font-mono text-tech text-ink-quiet">
             <p>npm install -g selvedge</p>

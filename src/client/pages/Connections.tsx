@@ -39,7 +39,7 @@ export function Connections() {
         <h1 className="text-display font-display font-medium text-ink">Connections</h1>
         <p className="mt-2 max-w-xl text-body text-ink-dim">
           Connect your own AI model key to turn on the voice. Selvedge charges for the layer — the watching, the
-          explaining, the caps and checkpoints — not for the model. The key is yours, checked before it's saved, and you
+          explaining, the caps and checkpoints — not for the model. The key is yours, checked before it’s saved, and you
           can remove it any time.
         </p>
       </div>
@@ -106,7 +106,7 @@ function Hosts() {
     <section>
       <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Your host</p>
       <p className="mb-3 max-w-xl text-meta text-ink-dim">
-        Grant a token so I can see whether your deploys go live or fail. It's your account; the token stays in the vault,
+        Grant a token so I can see whether your deploys go live or fail. It’s your account; the token stays in the vault,
         and you can remove it any time.
       </p>
       <div className="space-y-2">

@@ -142,7 +142,7 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
   return (
     <div className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
       <div className="flex flex-wrap items-center justify-between gap-work">
-        <p className="text-body text-ink">There's finished work here that isn't live yet.</p>
+        <p className="text-body text-ink">There’s finished work here that isn’t live yet.</p>
         <div className="flex items-center gap-work">
           {lastShip && (
             <button disabled={busy} onClick={() => void undo()} className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50">
@@ -740,7 +740,7 @@ export function ThreadPane({
             couldn't also change its mind halfway. */}
         {!data.engine_on && workshop && (
           <p className="mt-work-tight text-meta text-ink-quiet">
-            The workshop isn't switched on here yet — the build engine's credentials aren't configured. The watching is unaffected, and talking still works.
+            The workshop isn’t switched on here yet — the build engine’s credentials aren’t configured. The watching is unaffected, and talking still works.
           </p>
         )}
       </div>

@@ -167,7 +167,7 @@ export function ImportHistory() {
           {/* Always shown, success or not: these limits apply to what DID come in. */}
           {result.limitations.length > 0 && (
             <div>
-              <p className="text-label font-body uppercase tracking-widest text-ink-quiet">What this export can't carry</p>
+              <p className="text-label font-body uppercase tracking-widest text-ink-quiet">What this export can’t carry</p>
               <ul className="list-disc pl-5 text-body text-ink-dim">
                 {result.limitations.map((l) => (
                   <li key={l}>{l}</li>
@@ -177,7 +177,7 @@ export function ImportHistory() {
           )}
           {result.unreadable.length > 0 && (
             <div>
-              <p className="text-label font-body uppercase tracking-widest text-thread">Not imported — I couldn't read these</p>
+              <p className="text-label font-body uppercase tracking-widest text-thread">Not imported — I couldn’t read these</p>
               <ul className="mt-1 font-mono text-tech text-ink-quiet">
                 {result.unreadable.map((u) => (
                   <li key={u.ref}>

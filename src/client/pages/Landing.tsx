@@ -201,8 +201,11 @@ export function SampleThread({ short = false, caption = true }: { short?: boolea
             <p className="mt-1 font-mono text-tech text-ink-dim">
               {/* Status colour used as status, which is the only way it is ever
                   used: this tick means the thing worked. */}
-              <span style={{ color: 'var(--healthy)' }}>&#10003;</span> shipped a4f19c2 &middot; 3 files
-              &middot; $0.42 &middot; preview held &middot; watching for 12 min
+              {/* &nbsp; between a number and its unit: "3" at the end of one
+                  line and "files" at the start of the next is two facts where
+                  there was one. */}
+              <span style={{ color: 'var(--healthy)' }}>&#10003;</span> shipped a4f19c2 &middot; 3&nbsp;files
+              &middot; $0.42 &middot; preview held &middot; watching for 12&nbsp;min
             </p>
           </div>
             </>

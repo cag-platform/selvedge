@@ -171,7 +171,7 @@ export function Rail({
           onClick={onNewSubject}
           className="mt-work w-full rounded-inset px-work-tight py-work-tight text-left text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
         >
-          + somewhere to work that isn't a codebase
+          + somewhere to work that isn’t a codebase
         </button>
       </div>
     </nav>

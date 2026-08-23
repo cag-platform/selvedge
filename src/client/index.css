@@ -62,3 +62,26 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-breathe { animation: none; }
 }
+
+/* NUMBERS THAT DON'T WIGGLE.
+   Inter Tight's default figures are proportional, so a cost that ticks from
+   $0.41 to $0.42 changes width, and a column of them in the ledger doesn't
+   line up. Every technical register in the product is numbers — costs, counts,
+   timestamps, token sizes — so tabular figures are the default there rather
+   than something each site has to remember. The mono face is already tabular;
+   this is for the Inter-set ones. */
+.text-tech,
+.font-mono,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* NO SINGLE-WORD LAST LINE.
+   Fraunces at hero size breaks badly: "All your AI. One" / "conversation." is
+   the difference between set well and set carelessly. `balance` is capped at a
+   few lines by spec, which is exactly the range headings live in, and is
+   ignored where unsupported rather than falling over. */
+h1,
+h2 {
+  text-wrap: balance;
+}

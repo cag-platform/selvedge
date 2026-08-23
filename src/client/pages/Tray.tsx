@@ -80,14 +80,14 @@ export function Tray() {
 
       {data.sources.length === 0 ? (
         <Pane className="p-6">
-          <p className="text-body-lg text-ink">Nothing unplaced — everything I've seen has a home.</p>
+          <p className="text-body-lg text-ink">Nothing unplaced — everything I’ve seen has a home.</p>
           <p className="mt-1 text-body text-ink-dim">
-            When something arrives that I can't place, it waits here quietly. Telling me once is enough.
+            When something arrives that I can’t place, it waits here quietly. Telling me once is enough.
           </p>
         </Pane>
       ) : (
         <>
-          <p className={eyebrowCls}>Things I've seen · tell me once where they belong</p>
+          <p className={eyebrowCls}>Things I’ve seen · tell me once where they belong</p>
           <div className="space-y-3">
             {data.sources.map((source) => (
               <Pane key={keyOf(source)} className="space-y-work pl-5">
@@ -150,7 +150,7 @@ export function Tray() {
           again is indistinguishable from something quietly lost. */}
       {data.ignored.length > 0 && (
         <div className="space-y-work-tight">
-          <p className={eyebrowCls}>Ignored · I don't ask about these</p>
+          <p className={eyebrowCls}>Ignored · I don’t ask about these</p>
           <ul className="space-y-1">
             {data.ignored.map((source) => (
               <li key={keyOf(source)} className="flex flex-wrap items-baseline gap-work text-meta text-ink-quiet">

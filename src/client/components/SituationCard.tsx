@@ -75,7 +75,7 @@ export function FeedbackTaps({ narrationId }: { narrationId: string }) {
     return (
       <span className="flex gap-3 text-meta text-ink-quiet">
         <button className="hover:text-ink-dim" onClick={() => void send('didnt_help')}>
-          didn't help
+          didn’t help
         </button>
         <button className="hover:text-ink-dim" onClick={() => setState('noting')}>
           explain differently
@@ -89,7 +89,7 @@ export function FeedbackTaps({ narrationId }: { narrationId: string }) {
       className="text-meta text-ink-faint transition-colors hover:text-ink-quiet"
       onClick={() => setState('offering')}
     >
-      wasn't helpful?
+      wasn’t helpful?
     </button>
   );
 }
