@@ -13,10 +13,63 @@ import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
 import { referenceNote, type ReferenceCandidate, type ReferencesResponse } from '../lib/references.js';
 import { completeReference, referenceQuery } from '../../shared/references.js';
+import { isDocumentSized, nameForPaste, sayLength, MAX_DOCUMENTS, type PastedDocument } from '../../shared/documents.js';
 import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
+
+/**
+ * One attached document on the thread: its name and size, and the whole of it
+ * one click away. Fetched on opening rather than with the thread, because a
+ * conversation is polled every few seconds and a document is large.
+ */
+function AttachedDocument({
+  threadId,
+  messageId,
+  doc,
+}: {
+  threadId: string;
+  messageId: string;
+  doc: { index: number; name: string; chars: number };
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function show() {
+    setOpen(true);
+    if (text !== null || busy) return;
+    setBusy(true);
+    try {
+      const got = await api.get<{ text: string }>(`/api/threads/${threadId}/documents/${messageId}/${doc.index}`);
+      setText(got.text);
+    } catch {
+      setText("I couldn't read that back just now.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-work-tight rounded-inset border border-hairline bg-panel-soft px-3 py-2">
+      <button
+        type="button"
+        onClick={() => (open ? setOpen(false) : void show())}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <span className="min-w-0 flex-1 truncate text-meta text-ink">{doc.name}</span>
+        <span className="shrink-0 font-mono text-tech text-ink-quiet">{sayLength(doc.chars)}</span>
+        <span className="shrink-0 text-meta text-ink-quiet">{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && (
+        <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words font-mono text-tech text-ink-dim">
+          {busy && text === null ? 'Reading it back…' : text}
+        </pre>
+      )}
+    </div>
+  );
+}
 
 /** The name over a message: "Selvedge" unless somebody specific was asked. */
 function speakerOf(message: ThreadMessage): string {
@@ -154,6 +207,11 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
           asking two agents was meant to resolve. */}
       <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{speakerOf(message)}</p>
       <p className="whitespace-pre-line text-body text-ink">{message.content}</p>
+      {/* WHAT WAS ATTACHED, on the record. A document that only existed in the
+          prompt would make the thread a partial account of what was asked. */}
+      {(message.documents ?? []).map((doc) => (
+        <AttachedDocument key={doc.index} threadId={data.thread.id} messageId={message.id} doc={doc} />
+      ))}
       {message.attachments.length > 0 && (
         <div className="mt-work-tight flex flex-wrap gap-work-tight">
           {message.attachments.map((a) => (
@@ -192,6 +250,8 @@ export function ThreadPane({
   // takes a beat, and a button that looks unpressed for that beat gets
   // pressed again.
   const [stopping, setStopping] = useState(false);
+  /** Pastes too long to be sentences, riding beside the message. */
+  const [documents, setDocuments] = useState<PastedDocument[]>([]);
   /** Everything this account can be pointed at with `#`. Loaded once. */
   const [referenceItems, setReferenceItems] = useState<ReferenceCandidate[]>([]);
   /**
@@ -335,7 +395,7 @@ export function ThreadPane({
   async function send(e: React.FormEvent | null, acknowledgeStale = false, raiseCap = false) {
     e?.preventDefault();
     const body = text.trim();
-    if (body === '' || uploading) return;
+    if ((body === '' && documents.length === 0) || uploading) return;
     setSending(true);
     setNote(null);
     try {
@@ -343,12 +403,14 @@ export function ThreadPane({
         text: body,
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
+        ...(documents.length ? { documents } : {}),
         ...(acknowledgeStale ? { acknowledge_stale: true } : {}),
         ...(raiseCap ? { raise_cap: true } : {}),
       });
       setText('');
       setImages([]);
       setFiles([]);
+      setDocuments([]);
       setStaleRefusal(null);
       setCeiling(null);
       setWarming(res.warming);
@@ -490,7 +552,14 @@ export function ThreadPane({
       )}
 
       <div className="border-t border-hairline px-work-loose py-work">
-        <PendingChips images={images} onImagesChange={setImages} files={files} onFilesChange={setFiles} />
+        <PendingChips
+          images={images}
+          onImagesChange={setImages}
+          files={files}
+          onFilesChange={setFiles}
+          documents={documents}
+          onDocumentsChange={setDocuments}
+        />
         {staleRefusal && (
           <div className="mb-work-tight space-y-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2">
             <p className="text-body font-medium text-thread">{staleRefusal.message}</p>
@@ -586,7 +655,20 @@ export function ThreadPane({
               if (pasted.length) {
                 e.preventDefault();
                 void addImages(pasted, images, setImages, setNote);
+                return;
               }
+              // A DOCUMENT, NOT A SENTENCE. Past a few thousand characters a
+              // paste stops being something you can see past while typing the
+              // question about it, so it becomes a chip instead — and gets its
+              // own room in the prompt rather than competing with the ask.
+              const text = e.clipboardData.getData('text');
+              if (!isDocumentSized(text)) return;
+              e.preventDefault();
+              if (documents.length >= MAX_DOCUMENTS) {
+                setNote(`That's more than ${MAX_DOCUMENTS} attached at once — send these first.`);
+                return;
+              }
+              setDocuments((current) => [...current, { name: nameForPaste(text), text }]);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

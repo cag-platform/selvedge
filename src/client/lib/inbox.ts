@@ -50,6 +50,8 @@ export type ThreadMessage = {
    *  every reply to a consultation — asking two agents is pointless if both
    *  answers come back signed the same way. */
   answered_by?: string | null;
+  /** Pastes attached to this message — name and size only; the text is one request away. */
+  documents?: Array<{ index: number; name: string; chars: number }>;
   meta?: RunRecordView | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null } } | null;
 };
 

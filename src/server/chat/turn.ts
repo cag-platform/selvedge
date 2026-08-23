@@ -5,6 +5,7 @@ import { agentMessages } from '../db/schema/index.js';
 import { getPack } from '../packs/store.js';
 import { healthLine } from '../packs/healthLine.js';
 import { renderReferences, resolveReferences } from '../references/resolve.js';
+import { renderDocuments, type PastedDocument } from '../../shared/documents.js';
 import { checkThinkingBudget } from '../llm/budget.js';
 import { chatModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
@@ -130,6 +131,12 @@ export type ChatDeps = {
   /** The line the conversation shows about what this turn read from elsewhere. */
   referenceNote?: string;
   /**
+   * What was attached to the message — a paste too long to be a sentence.
+   * Given its own room rather than sharing the question's, so a document
+   * cannot crowd out the sentence explaining what to do with it.
+   */
+  documents?: PastedDocument[];
+  /**
    * A take, not a turn: the agent has been asked what it thinks, and is
    * answering over its model without the sandbox. This is the only way a
    * builder speaks on this path, and the conversation says so out loud.
@@ -237,6 +244,11 @@ export async function runChatTurn(
       threadId: thread.id,
       role: 'owner',
       content: ownerText,
+      // The document rides in meta rather than in the content: the thread is
+      // the record and must hold what was actually attached, but a poll every
+      // few seconds must not re-send a hundred kilobytes of it. The payload
+      // carries the name and the size; the text is fetched when opened.
+      ...(deps.documents?.length ? { meta: { documents: deps.documents } } : {}),
     });
     // Directly beneath the ask that pulled it in — written here rather than by
     // the caller so it can never land above the message it belongs to.
@@ -298,6 +310,7 @@ export async function runChatTurn(
   // was whatever the model could guess. Resolved from the stored text, bounded,
   // and carrying the mark on anything that was said somewhere else.
   const referenced = renderReferences(await resolveReferences(db, orgId, ownerText).catch(() => ({ resolved: [], missed: [] })));
+  const attached = renderDocuments(deps.documents ?? []);
   const model = chatModel(provider);
   const result = await deps.client.complete({
     model,
@@ -306,6 +319,7 @@ export async function runChatTurn(
       project ? `The project this conversation is about:\n${JSON.stringify(project, null, 2)}` : 'I have no context pack for this project, so I know nothing about it beyond this conversation.',
       '',
       ...(referenced ? [referenced, ''] : []),
+      ...(attached ? [attached, ''] : []),
       `The conversation so far (the last message is what you are answering):\n\n${conversation}`,
     ].join('\n'),
     maxTokens: MAX_REPLY_TOKENS,

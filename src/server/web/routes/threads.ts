@@ -22,6 +22,7 @@ import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { referenceLine } from '../../../shared/references.js';
+import { boundDocuments } from '../../../shared/documents.js';
 import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 
@@ -294,6 +295,19 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           // and each answer records its author — which was worth nothing while
           // it stayed in the database. Two paragraphs both labelled "Selvedge"
           // is precisely the thing asking two agents was meant to avoid.
+          // NAME AND SIZE, NOT THE TEXT. A thread is polled every few seconds;
+          // re-sending a hundred kilobytes of pasted document each time would
+          // make a conversation that carries one permanently expensive to
+          // watch. The text is one request away, when somebody opens it.
+          ...(m.role === 'owner' && Array.isArray((m.meta as { documents?: unknown } | null)?.documents)
+            ? {
+                documents: ((m.meta as { documents: Array<{ name: string; text: string }> }).documents ?? []).map((d, index) => ({
+                  index,
+                  name: d.name,
+                  chars: d.text.length,
+                })),
+              }
+            : {}),
           ...(m.role === 'agent' && (m.meta as { answered_by?: unknown } | null)?.answered_by
             ? { answered_by: (m.meta as { answered_by: string }).answered_by }
             : {}),
@@ -412,6 +426,37 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   );
 
   /**
+   * One attached document, in full.
+   *
+   * Thread-scoped rather than project-scoped, unlike the image attachments it
+   * sits beside: a conversation under a SUBJECT has no project, and a document
+   * pasted into one is no less part of the record for that.
+   */
+  router.get(
+    '/api/threads/:threadId/documents/:messageId/:index',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      const [row] = await db
+        .select({ meta: agentMessages.meta })
+        .from(agentMessages)
+        .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id), eq(agentMessages.id, req.params.messageId ?? '')))
+        .limit(1);
+      const documents = (row?.meta as { documents?: Array<{ name: string; text: string }> } | null)?.documents;
+      const found = documents?.[Number(req.params.index ?? -1)];
+      if (!found) {
+        res.status(404).json({ error: 'no such document' });
+        return;
+      }
+      res.json({ name: found.name, text: found.text });
+    }),
+  );
+
+  /**
    * Everything that can be put after a `#`. One call, because the picker opens
    * on a keystroke and a list that arrives in pieces is a list that flickers.
    */
@@ -462,7 +507,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -474,6 +519,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * before anyone knew what the conversation would become.
        */
       const intent = mentionIntent(text);
+
+      // A paste too long to be a sentence rides beside the message rather than
+      // inside it — see shared/documents.ts. Bounded here, where the request
+      // arrives, because everything downstream trusts what this route accepted.
+      const documents = boundDocuments(Array.isArray(body.documents) ? (body.documents as Array<{ name?: unknown; text?: unknown }>) : []);
 
       /**
        * WHAT THEY POINTED AT — resolved once, here, from the stored text.
@@ -514,7 +564,15 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if (intent.kind === 'consult') {
         const asked = intent.agents.slice(0, MAX_CONSULTED);
         await db.insert(agentMessages).values([
-          { id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'owner', content: text },
+          {
+            id: ulid(),
+            orgId,
+            projectId: thread.projectId,
+            threadId: thread.id,
+            role: 'owner',
+            content: text,
+            ...(documents.length ? { meta: { documents } } : {}),
+          },
           {
             id: ulid(),
             orgId,
@@ -536,6 +594,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           void chatTurn(db, orgId, consulted, text, {
             client: fuel?.client ?? null,
             recordOwnerMessage: false,
+            ...(documents.length ? { documents } : {}),
             answeringAs: agent,
             asTake: true,
           }).catch((err) => {
@@ -572,6 +631,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         void chatTurn(db, orgId, talking, text, {
           client: fuel?.client ?? null,
           ...(referenceNote ? { referenceNote } : {}),
+          ...(documents.length ? { documents } : {}),
         }).catch((err) => {
           console.error(`chat turn failed for ${orgId}/${talking.id}:`, err);
         });
@@ -689,6 +749,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             ? { handoff: [decisionPreamble, referenced, handoff?.text].filter(Boolean).join('\n\n---\n\n') }
             : {}),
           ...(referenceNote ? { referenceNote } : {}),
+          ...(documents.length ? { documents } : {}),
         },
       ).catch(async (err) => {
         console.error(`thread turn failed to start for ${orgId}/${thread.id}:`, err);

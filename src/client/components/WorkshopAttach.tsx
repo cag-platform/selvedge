@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { sayLength, type PastedDocument } from '../../shared/documents.js';
 
 /**
  * "Add files for the agent to analyze, dissect, or learn from" — the Workshop
@@ -133,15 +134,37 @@ export function PendingChips({
   onImagesChange,
   files,
   onFilesChange,
+  documents = [],
+  onDocumentsChange,
 }: {
   images: PendingImage[];
   onImagesChange: (v: PendingImage[]) => void;
   files: PendingFile[];
   onFilesChange: (v: PendingFile[]) => void;
+  /** Pastes too long to be sentences — see shared/documents.ts. */
+  documents?: PastedDocument[];
+  onDocumentsChange?: (v: PastedDocument[]) => void;
 }) {
-  if (images.length === 0 && files.length === 0) return null;
+  if (images.length === 0 && files.length === 0 && documents.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2 pb-2">
+      {documents.map((doc, i) => (
+        <div key={`doc-${i}`} className="flex max-w-full items-center gap-2 rounded-inset border border-hairline bg-panel-soft py-1 pl-2 pr-1">
+          <FileGlyph />
+          {/* Named from what it says, so three of them are three different
+              things rather than three chips reading "Pasted text". */}
+          <span className="min-w-0 max-w-[12rem] truncate text-meta text-ink">{doc.name}</span>
+          <span className="shrink-0 text-meta text-ink-quiet">{sayLength(doc.text.length)}</span>
+          <button
+            type="button"
+            onClick={() => onDocumentsChange?.(documents.filter((_, j) => j !== i))}
+            aria-label={`Remove ${doc.name}`}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-meta text-ink-quiet hover:bg-panel hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
       {files.map((file, i) => (
         <div key={file.id} className="flex max-w-full items-center gap-2 rounded-inset border border-hairline bg-panel-soft py-1 pl-2 pr-1">
           <FileGlyph />

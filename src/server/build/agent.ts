@@ -10,6 +10,7 @@ import { ensureWorkshopThread } from '../threads/store.js';
 import { driverFor } from '../runner/agents/driver.js';
 import { agentById, type AgentId } from '../../shared/agents.js';
 import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
+import { renderDocuments, type PastedDocument } from '../../shared/documents.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -83,6 +84,11 @@ export type TurnOptions = {
    * the answer mysteriously knows.
    */
   referenceNote?: string;
+  /**
+   * What was attached to the message — a paste too long to be a sentence. Put
+   * in front of the ask like a handoff, and kept on the thread as the record.
+   */
+  documents?: PastedDocument[];
 };
 
 export type AgentTurnConfig = SandboxConfig & {
@@ -334,7 +340,17 @@ export async function runAgentTurn(
 
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
-  await db.insert(agentMessages).values({ id: ownerMessageId, orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+  await db.insert(agentMessages).values({
+    id: ownerMessageId,
+    orgId,
+    projectId,
+    threadId,
+    role: 'owner',
+    content: ownerText,
+    runId,
+    // See the note in chat/turn.ts: the record holds it, the payload doesn't.
+    ...(options.documents?.length ? { meta: { documents: options.documents } } : {}),
+  });
 
   // What this turn read from elsewhere, said out loud directly beneath the ask
   // that pulled it in. Written HERE rather than by the caller so it can never
@@ -404,7 +420,8 @@ export async function runAgentTurn(
   const withNotes = withAttachmentNotes(planning ? planWrap(ownerText) : ownerText, imagePaths, addedFiles);
   // The handover, when there is one, goes at the head: what the project is,
   // what has happened, where the work stands — then the ask itself.
-  const cliPrompt = options.handoff ? `${options.handoff}\n\n---\n\n${withNotes}` : withNotes;
+  const attached = renderDocuments(options.documents ?? []);
+  const cliPrompt = [options.handoff, attached, withNotes].filter(Boolean).join('\n\n---\n\n');
 
   // The live activity row: inserted once, updated in place as the log grows.
   // `inserted` and the shown count are tracked separately, and a retried
