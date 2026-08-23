@@ -5,6 +5,7 @@ import { listPacks } from '../packs/store.js';
 import { listSubjects } from '../threads/subjects.js';
 import { contextForProject } from '../companion/context.js';
 import { referencedNames } from '../../shared/references.js';
+import { AGENTS } from '../../shared/agents.js';
 import { VENDOR_NAMES } from '../import/consumer/types.js';
 
 /**
@@ -289,20 +290,94 @@ export async function listReferenceCandidates(db: Db, orgId: string): Promise<Re
  */
 
 /**
- * ONE WORD IN COMMON IS A COINCIDENCE; TWO IS A SUBJECT.
+ * TWO WORDS IN COMMON IS NOT A SUBJECT IF BOTH WORDS ARE "MAKE" AND "BETTER".
  *
- * Counted, not scored. `ts_rank` looked like the obvious measure and is the
- * wrong one here: it normalises by how many terms the query had, so three
- * words matching out of a twelve-word question scores lower than two out of
- * three — the longer and more specific the question, the worse it ranks. A
- * count of distinct matching terms doesn't move with the length of the
- * sentence somebody happened to type.
+ * This started as a flat "two distinct terms matched" and it was too loose by a
+ * long way. The message that proved it was "@claude give me your thoughts on
+ * what could make this better as well", sent in a thread about a chess app,
+ * which came back having "looked back at" three imported conversations about
+ * venture pitches and cross-border communications. Nothing in that sentence is
+ * about anything, and the product said it had found what the owner meant.
+ *
+ * Two separate faults, both fixed below:
+ *
+ *  1. THE AGENT'S NAME WAS A SEARCH TERM. `@claude` survived into the query, and
+ *     conversations imported from Claude tend to contain the word "Claude" — so
+ *     naming who should answer silently searched for everything that agent had
+ *     ever said. Choosing who answers is ROUTING; it is never subject matter.
+ *
+ *  2. FILLER COUNTED AS SIGNAL. Postgres drops true stopwords ("the", "what",
+ *     "could"), which the old code relied on — but "give", "thoughts", "make",
+ *     "better" and "well" are not stopwords to Postgres and are not about
+ *     anything to a person. A sentence made only of those has no subject, and
+ *     the honest number of related conversations to find in it is zero.
+ *
+ * So the bar is now proportional to how much the message actually says. Counted
+ * rather than scored, still: `ts_rank` normalises by query length, so a precise
+ * twelve-word question would rank below a vague three-word one.
  */
 const MIN_TERMS_MATCHED = 2;
+/**
+ * A long question should not be satisfied by two words, and should not need ten
+ * either. Half the subject terms, never fewer than two, never more than four.
+ */
+const MAX_TERMS_REQUIRED = 4;
 /** How many the database may bring on its own. Deliberately fewer than you may name. */
 const MAX_FOUND = 3;
 /** Too short to be about anything: "yes", "do it", "make it darker". */
 const MIN_QUERY_CHARS = 12;
+
+/**
+ * Words that are common in ASKING and absent from SUBJECTS. Two kinds, and
+ * both have to go for the same reason.
+ *
+ * GRAMMAR. Postgres's english dictionary already scores these zero, so they
+ * were harmless to the numerator — but they were counted in the DENOMINATOR
+ * when working out how many terms a match should cover, which made a wordy
+ * question demand more matches than it contained matchable words. Dropping them
+ * here makes the proportion honest and the generated SQL smaller.
+ *
+ * FILLER. What Postgres keeps and a person would not call subject matter:
+ * think, better, thoughts, want, help. A conversation matching on those is
+ * matching on the fact that it too was a conversation.
+ *
+ * The filler half is deliberately conservative — meta-vocabulary, not weak
+ * nouns. "Work", "add" and "use" are NOT here: they are vague, but a person
+ * really can be looking for the chat where they worked something out. An owner
+ * who wants a past conversation about any word in this list can still name it
+ * with `#`, which skips this search entirely.
+ */
+const NO_SUBJECT = new Set([
+  // Grammar.
+  'and', 'the', 'for', 'are', 'but', 'not', 'you', 'your', 'yours', 'its', 'our', 'ours',
+  'his', 'her', 'hers', 'him', 'she', 'they', 'them', 'their', 'theirs', 'this', 'that',
+  'these', 'those', 'was', 'were', 'been', 'being', 'has', 'had', 'have', 'having',
+  'can', 'could', 'would', 'should', 'shall', 'will', 'may', 'might', 'must', 'does', 'did',
+  'with', 'from', 'into', 'onto', 'out', 'off', 'over', 'under', 'than', 'then', 'when',
+  'where', 'which', 'while', 'what', 'who', 'whom', 'why', 'how', 'all', 'any', 'both',
+  'each', 'more', 'most', 'other', 'some', 'such', 'only', 'own', 'same', 'too', 'very',
+  'just', 'now', 'once', 'again', 'because', 'before', 'after', 'during', 'until', 'through',
+  'between', 'above', 'below', 'down', 'few', 'nor', 'get', 'got',
+  // Filler.
+  'think', 'thinks', 'thinking', 'thought', 'thoughts',
+  'give', 'gives', 'giving', 'given',
+  'make', 'makes', 'making', 'made',
+  'better', 'best', 'good', 'great', 'well',
+  'want', 'wants', 'wanted', 'need', 'needs', 'needed',
+  'know', 'knows', 'tell', 'tells', 'say', 'says', 'said',
+  'look', 'looks', 'looking', 'looked', 'see', 'seen',
+  'help', 'please', 'thanks', 'thank', 'sure', 'really', 'actually', 'maybe',
+  'thing', 'things', 'stuff', 'kind', 'sort', 'lot', 'bit',
+  'also', 'still', 'even', 'here', 'there', 'about',
+  'question', 'questions', 'answer', 'answers',
+  'anything', 'something', 'everything', 'nothing', 'someone', 'anyone',
+  // The agents themselves. Stripped as `@mentions` already; this catches the
+  // plain-text form ("ask claude what he thinks"), which is the same routing
+  // instruction wearing different punctuation.
+  ...AGENTS.map((a) => a.id.replace(/-/g, '')),
+  ...AGENTS.flatMap((a) => a.id.split('-')),
+  ...AGENTS.map((a) => a.name.toLowerCase()),
+]);
 
 export async function findRelatedConversations(
   db: Db,
@@ -310,7 +385,12 @@ export async function findRelatedConversations(
   text: string,
   { excludeThreadId, limit = MAX_FOUND }: { excludeThreadId?: string; limit?: number } = {},
 ): Promise<ResolvedReference[]> {
-  const query = text.replace(/#"[^"]*"|#[A-Za-z0-9_-]+/g, ' ').trim();
+  const query = text
+    // An explicit `#reference` is handled elsewhere, and an `@mention` decides
+    // who answers. Neither is something to search for.
+    .replace(/#"[^"]*"|#[A-Za-z0-9_-]+/g, ' ')
+    .replace(/(^|[^A-Za-z0-9_])@[A-Za-z0-9_-]+/g, '$1 ')
+    .trim();
   if (query.length < MIN_QUERY_CHARS) return [];
 
   /**
@@ -325,9 +405,14 @@ export async function findRelatedConversations(
    * which takes an expression rather than a phrase and would otherwise choke on
    * an apostrophe or a bracket.
    */
-  const terms = [...new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])].slice(0, 24);
-  if (terms.length === 0) return [];
+  const terms = [...new Set(query.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])].filter((t) => !NO_SUBJECT.has(t)).slice(0, 24);
+  // Fewer than two words that are about anything means the message is about
+  // nothing findable — which is the correct answer for "give me your thoughts
+  // on what could make this better", and was previously three confident and
+  // unrelated conversations.
+  if (terms.length < MIN_TERMS_MATCHED) return [];
   const expression = terms.join(' | ');
+  const required = Math.min(MAX_TERMS_REQUIRED, Math.max(MIN_TERMS_MATCHED, Math.ceil(terms.length / 2)));
 
   // How many of the terms one message covers. Stopwords contribute nothing on
   // their own — `to_tsquery('english', 'the')` is an empty query and matches
@@ -355,7 +440,7 @@ export async function findRelatedConversations(
         ),
       )
       .groupBy(threads.id, threads.title, threads.importedFrom)
-      .having(sql`${best} >= ${MIN_TERMS_MATCHED}`)
+      .having(sql`${best} >= ${required}`)
       .orderBy(desc(best))
       .limit(limit);
   } catch {

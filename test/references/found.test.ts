@@ -143,4 +143,67 @@ describe('references/found — reaching back without being told to', () => {
     const found = await findRelatedConversations(db, orgId, '#loom how does the monthly subscription fee idea fit here');
     expect(found.map((f) => f.label)).toEqual(['Pricing the platform']);
   });
+
+  /**
+   * THE ONE THAT GOT OUT.
+   *
+   * Sent in a thread about a chess app: "@claude give me your thoughts on what
+   * could make this better as well". It came back having "looked back at" three
+   * imported conversations — a venture pitch, a memory-systems chat, and one
+   * about cross-border communications — none of which had anything to do with
+   * chess or with each other.
+   *
+   * Two faults met. `@claude` was left in the query, and conversations imported
+   * from Claude contain the word "Claude", so naming who should answer searched
+   * for everything that agent had ever said. And the rest of the sentence —
+   * give, thoughts, make, better, well — is filler that Postgres does not treat
+   * as stopwords, so any two of them cleared the old flat bar of two.
+   */
+  describe('the words in a message that are not about anything', () => {
+    beforeEach(async () => {
+      // Three conversations with nothing in common but the fact of being
+      // conversations, phrased the way an imported chat log reads.
+      await conversation('Pitching SILD to Redbud VC', [
+        'I think the deck could be better if we make the traction slide first — give me your thoughts',
+      ]);
+      await conversation('Domain memory systems for industry learning', [
+        'what could make this better is a retrieval step, well worth thinking about',
+      ]);
+      await conversation('Cross-border enterprise communication', [
+        'give me your thoughts on what would make this work better as well',
+      ]);
+    });
+
+    it('finds nothing in a sentence made entirely of filler', async () => {
+      const found = await findRelatedConversations(db, orgId, 'give me your thoughts on what could make this better as well');
+      expect(found).toEqual([]);
+    });
+
+    /**
+     * Choosing who answers is ROUTING. An agent's name must never become a
+     * search term — least of all one that matches every conversation imported
+     * from that agent.
+     */
+    it('does not search for the agent that was asked', async () => {
+      const found = await findRelatedConversations(db, orgId, '@claude give me your thoughts on what could make this better as well');
+      expect(found).toEqual([]);
+
+      // The plain-text form of the same instruction, which wears no punctuation.
+      expect(await findRelatedConversations(db, orgId, 'ask claude and gpt what they think about this')).toEqual([]);
+    });
+
+    /**
+     * The proportional bar, from the other side: a real subject still comes
+     * back even when it arrives wrapped in the same filler.
+     */
+    it('still finds a real subject buried in a polite sentence', async () => {
+      await conversation('Basket persistence', ['the basket empties itself when you navigate back from checkout']);
+      const found = await findRelatedConversations(
+        db,
+        orgId,
+        'give me your thoughts on what could make the basket checkout navigation better',
+      );
+      expect(found.map((f) => f.label)).toEqual(['Basket persistence']);
+    });
+  });
 });
