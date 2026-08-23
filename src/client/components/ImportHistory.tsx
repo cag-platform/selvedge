@@ -113,6 +113,15 @@ export function ImportHistory() {
         conversations here — searchable, part of the history — and every one is marked as imported, because none of it was said to
         Selvedge. Nothing is connected and nothing keeps reading: this happens once, from a file you chose.
       </p>
+      {/* SAID BEFORE THE WALL, NOT AFTER IT. A ChatGPT export is mostly images
+          — every render, every upload — around a conversations.json that is a
+          fraction of the total, and only that one file is ever read. Somebody
+          with a large history hits the size limit on their first try, and
+          learning the way through at that point costs them the whole upload. */}
+      <p className="mt-1 text-meta text-ink-quiet">
+        A big ChatGPT export is mostly images. If yours is over 500MB, unzip it and upload just{' '}
+        <code className="font-mono text-tech">conversations.json</code> — it’s the only file read, and it’s a small part of the download.
+      </p>
 
       <form onSubmit={submit} className="mt-work space-y-work-tight">
         <label className="block text-body text-ink-dim">

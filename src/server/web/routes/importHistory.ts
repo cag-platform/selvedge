@@ -26,6 +26,15 @@ import { reviewFiling } from '../../import/filing.js';
  */
 
 const MAX_ZIP_BYTES = 500 * 1024 * 1024;
+/**
+ * The way through when an archive is over that. A ChatGPT export is mostly
+ * images — every DALL·E render, everything anyone ever uploaded — and only
+ * `conversations.json` is ever read, so a history that will not fit as an
+ * archive fits comfortably as the one file. Said here as well as in the
+ * reader, because this is the limit a large export hits FIRST.
+ */
+const JUST_THE_FILE =
+  'Unzip it and upload just conversations.json — that is the only file I read, and it is a small part of what the download contains.';
 /** One import, one go. Beyond this the response itself becomes unreadable. */
 const MAX_UNREADABLE_LISTED = 50;
 
@@ -45,7 +54,7 @@ export function createImportHistoryRouter(db: Db) {
         const tooBig = err instanceof Error && 'code' in err && (err as { code?: string }).code === 'LIMIT_FILE_SIZE';
         res.status(400).json({
           error: tooBig
-            ? `That export is bigger than ${Math.round(MAX_ZIP_BYTES / 1024 / 1024)}MB, which is more than I can take in one go.`
+            ? `That export is bigger than ${Math.round(MAX_ZIP_BYTES / 1024 / 1024)}MB, which is more than I can take in one go. ${JUST_THE_FILE}`
             : "I couldn't read that upload.",
         });
       });
@@ -96,7 +105,11 @@ export function createImportHistoryRouter(db: Db) {
 
       // Archive or bare .json — the reader tells them apart from the bytes,
       // because the file extension is the least reliable thing about an upload.
-      const read = readExport(new Uint8Array(file.buffer));
+      // multer's buffer IS a Uint8Array, so the copy this used to make was a
+      // second full-size allocation of a file that can run to hundreds of
+      // megabytes — the one place in the request where doubling the memory
+      // bought nothing at all.
+      const read = readExport(file.buffer);
       if (!read.ok) {
         res.status(400).json({ error: read.error });
         return;

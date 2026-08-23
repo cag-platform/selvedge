@@ -8,6 +8,7 @@ import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createSubject } from '../../src/server/threads/subjects.js';
 import { createImportHistoryRouter } from '../../src/server/web/routes/importHistory.js';
+import { readExportZip } from '../../src/server/import/consumer/read.js';
 import { appWithOrg } from './helpers.js';
 
 /**
@@ -242,6 +243,74 @@ describe('web/routes/importHistory', () => {
       const res = await request(app()).get('/api/import/filing').expect(200);
       expect(res.body.unfiled).toBe(0);
       expect(res.body.note).toBeNull();
+    });
+  });
+
+  /**
+   * THE BIG EXPORT — the one that does not land.
+   *
+   * A ChatGPT export is mostly images: every DALL·E render and every file
+   * anyone ever uploaded, around a `conversations.json` that is a fraction of
+   * the total. So the archive is the thing that is too big, and the one file
+   * that is actually read would have been fine.
+   *
+   * Every couldn't-read message used to end with "upload the export exactly as
+   * the download arrived", which is right for a manifest and precisely wrong
+   * here: the person whose export was too big was told the one thing that
+   * could not work, and the way through was never mentioned.
+   */
+  describe('when the export is too big to take whole', () => {
+    it('says it FOUND the file and could not read it, rather than that it is missing', () => {
+      // The bug this replaces: the filter dropped an oversized entry silently,
+      // so the archive fell through to "I couldn't find a conversations.json"
+      // — and the very next sentence listed conversations.json among the
+      // contents. Naming a file in the same breath as saying you cannot find
+      // it reads as a broken product rather than a limit, and leaves nothing
+      // to do about it.
+      const zip = zipSync({ 'conversations.json': strToU8(JSON.stringify([{ mapping: {} }])), 'chat.html': strToU8('x') });
+      const read = readExportZip(zip, 8); // a cap of 8 bytes, so the entry is over it
+
+      expect(read.ok).toBe(false);
+      if (read.ok) return;
+      expect(read.error).toMatch(/I found conversations\.json/);
+      expect(read.error).not.toMatch(/couldn't find/i);
+      // And the way through, by name — the thing that used to be argued against.
+      expect(read.error).toMatch(/upload just conversations\.json/i);
+    });
+
+    it('still tells somebody with a manifest to go and get the real download', () => {
+      const zip = zipSync({ 'export-manifest.json': strToU8('{}') });
+      const read = readExportZip(zip);
+      expect(read.ok).toBe(false);
+      if (read.ok) return;
+      expect(read.error).toMatch(/manifest/i);
+      expect(read.error).toMatch(/"export-manifest.json"/);
+    });
+
+    it('takes the one file on its own, which is the whole point of the advice', async () => {
+      // Exactly what somebody gets by unzipping and picking conversations.json.
+      const bare = Buffer.from(
+        JSON.stringify([
+          {
+            conversation_id: 'c1',
+            title: 'Pricing the winter line',
+            create_time: 1700000000,
+            current_node: 'n2',
+            mapping: {
+              n1: { id: 'n1', parent: null, message: { author: { role: 'user' }, create_time: 1700000000, content: { content_type: 'text', parts: ['what should we charge?'] }, recipient: 'all' } },
+              n2: { id: 'n2', parent: 'n1', message: { author: { role: 'assistant' }, create_time: 1700000060, content: { content_type: 'text', parts: ['Cost plus forty.'] }, recipient: 'all' } },
+            },
+          },
+        ]),
+      );
+
+      const res = await request(app()).post('/api/import/history').attach('file', bare, 'conversations.json').expect(201);
+      expect(res.body.vendor).toBe('chatgpt');
+      expect(res.body.filed).toBe(1);
+
+      const [thread] = await db.select().from(threads).where(eq(threads.orgId, orgId));
+      expect(thread!.title).toBe('Pricing the winter line');
+      expect(thread!.importedFrom).toBe('chatgpt');
     });
   });
 });

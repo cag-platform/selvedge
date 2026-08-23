@@ -16,6 +16,23 @@ import { VENDOR_NAMES, type ParseResult, type Vendor } from './types.js';
 
 const MAX_JSON_BYTES = 400 * 1024 * 1024;
 
+/**
+ * THE ESCAPE HATCH, AND WHY IT HAS TO BE OFFERED BY NAME.
+ *
+ * Only one file in the archive is ever read. A ChatGPT export is mostly images
+ * — DALL·E output, everything anyone ever uploaded — and a heavy user's ZIP
+ * runs to gigabytes while its `conversations.json` is a fraction of that. So a
+ * history that will not fit as an archive fits perfectly as the one file.
+ *
+ * That escape hatch existed and was actively argued against: every
+ * couldn't-read message told people to "upload the export exactly as the
+ * download arrived", which is correct advice for a manifest and precisely
+ * wrong for the person whose export is too big. Anyone whose archive was over
+ * the limit was told the one thing that could not work.
+ */
+const JUST_THE_FILE =
+  'If the archive is too big, unzip it and upload just conversations.json — that is the only file I read, and it is a small part of what a ChatGPT export contains.';
+
 /** Which file in the archive holds the conversations, per vendor. */
 const WANTED: Array<{ vendor: Vendor; match: (path: string) => boolean }> = [
   // Claude and ChatGPT both call it conversations.json; they are told apart by
@@ -42,6 +59,11 @@ function vendorOfConversationsJson(json: unknown): Vendor | null {
     if ('chat_messages' in item) return 'claude';
   }
   return null;
+}
+
+/** Sizes a person can read, in the sentence that tells them what to do about one. */
+function mb(bytes: number): string {
+  return `${Math.round(bytes / 1024 / 1024)}MB`;
 }
 
 /** ZIPs begin "PK". Cheaper than decoding 400MB to find out it wasn't JSON. */
@@ -93,16 +115,29 @@ export function readExport(bytes: Uint8Array): ReadResult {
   return { ok: true, vendor, file: 'the file you uploaded', ...parsed };
 }
 
-export function readExportZip(zip: Uint8Array): ReadResult {
+/**
+ * `maxJsonBytes` is injectable so the oversized branch below can be exercised
+ * without shipping four hundred megabytes through a test. The default is the
+ * only value production ever uses.
+ */
+export function readExportZip(zip: Uint8Array, maxJsonBytes = MAX_JSON_BYTES): ReadResult {
   let entries: Record<string, Uint8Array>;
   // Every entry's name passes through the filter, so the archive's contents
   // are known even though only the one file that matters is decompressed.
   const inside: string[] = [];
+  const tooBig: Array<{ name: string; size: number }> = [];
   try {
     entries = unzipSync(zip, {
       filter: (file) => {
         inside.push(file.name);
-        return WANTED.some((w) => w.match(file.name)) && file.originalSize <= MAX_JSON_BYTES;
+        if (!WANTED.some((w) => w.match(file.name))) return false;
+        // Remembered rather than silently skipped — see the oversized branch
+        // below, which exists because this used to be a shrug.
+        if (file.originalSize > maxJsonBytes) {
+          tooBig.push({ name: file.name, size: file.originalSize });
+          return false;
+        }
+        return true;
       },
     });
   } catch (err) {
@@ -111,6 +146,24 @@ export function readExportZip(zip: Uint8Array): ReadResult {
 
   const names = Object.keys(entries);
   if (names.length === 0) {
+    /**
+     * FOUND IT, COULDN'T READ IT — said as itself.
+     *
+     * The filter drops an oversized entry silently, so an archive whose
+     * conversations.json is over the cap fell through to "I couldn't find a
+     * conversations.json" — while the sentence right after it LISTED
+     * conversations.json among the contents. Naming the file in the same
+     * breath as saying you cannot find it is worse than either half alone: it
+     * reads as a broken product rather than a limit, and there is nothing the
+     * person can do about a problem stated that way.
+     */
+    const oversized = tooBig.find((f) => WANTED.some((w) => w.match(f.name)));
+    if (oversized) {
+      return {
+        ok: false,
+        error: `I found ${oversized.name}, but it is ${mb(oversized.size)} — larger than the ${mb(maxJsonBytes)} I can read in one go. ${JUST_THE_FILE}`,
+      };
+    }
     // SAY WHAT WAS IN IT. "I couldn't find conversations.json" without naming
     // what the archive DID hold leaves somebody staring at a file they have no
     // reason to doubt — which is exactly how an export manifest gets uploaded
@@ -122,7 +175,7 @@ export function readExportZip(zip: Uint8Array): ReadResult {
       : `It holds ${listed.map((n) => `"${n}"`).join(', ')}${more > 0 ? ` and ${more} more` : ''}.`;
     return {
       ok: false,
-      error: `I couldn't find a conversations.json (ChatGPT or Claude) or a Gemini MyActivity.json in that archive. ${held} Upload the export exactly as the download arrived — unzipping and re-zipping it moves things around, and a manifest from the export email is not the export itself.`,
+      error: `I couldn't find a conversations.json (ChatGPT or Claude) or a Gemini MyActivity.json in that archive. ${held} Upload the export exactly as the download arrived — a manifest from the export email is not the export itself. ${JUST_THE_FILE}`,
     };
   }
 
