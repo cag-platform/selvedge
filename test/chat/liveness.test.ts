@@ -123,16 +123,36 @@ describe('the chat half, end to end', () => {
    * them perfectly well, which is the sort of thing that teaches people the
    * product is smaller than it is.
    */
-  it('offers every agent it can actually run', async () => {
-    expect(AGENTS.every((a) => a.live)).toBe(true);
+  it('gets a real client for every agent it offers', async () => {
+    // Not "every agent is live" any more — a row may be declared ahead of its
+    // driver. The property that matters is unchanged and stronger: anything
+    // the picker OFFERS reaches a working client, which is why this walks the
+    // real route rather than asserting a flag.
+    for (const agent of AGENTS.filter((a) => a.live && !a.changesFiles)) {
+      await connectCredential(db, orgId, agent.provider, `key-for-${agent.provider}`);
+      const thread = await generalThread();
+      await switchThreadAgent(db, orgId, thread.id, agent.id);
+      await request(app()).post(`/api/threads/${thread.id}/message`).send({ text: 'hello' }).expect(202);
+      expect(handed?.client, agent.id).not.toBeNull();
+    }
+  });
 
-    await connectCredential(db, orgId, 'openai', 'sk-oai-test-0002');
-    const thread = await generalThread();
-    await switchThreadAgent(db, orgId, thread.id, 'gpt');
+  it('sends a thread to its own provider, not to whichever key came first', async () => {
+    // The failure this guards is the quiet one: with several keys connected, a
+    // thread on Kimi answering on Anthropic looks like it worked. Anthropic has
+    // its own client class, so the two are distinguishable end to end.
+    await connectCredential(db, orgId, 'anthropic', 'sk-ant-test-0001');
+    await connectCredential(db, orgId, 'kimi', 'sk-moonshot-test-0001');
 
-    await request(app()).post(`/api/threads/${thread.id}/message`).send({ text: 'hello' }).expect(202);
-
+    const onKimi = await generalThread();
+    await switchThreadAgent(db, orgId, onKimi.id, 'kimi');
+    await request(app()).post(`/api/threads/${onKimi.id}/message`).send({ text: 'hello' }).expect(202);
     expect(handed?.client).toBeInstanceOf(OpenAiLlmClient);
+    expect(handed?.client).not.toBeInstanceOf(AnthropicLlmClient);
+
+    const onClaude = await generalThread();
+    await request(app()).post(`/api/threads/${onClaude.id}/message`).send({ text: 'hello' }).expect(202);
+    expect(handed?.client).toBeInstanceOf(AnthropicLlmClient);
   });
 
   /**

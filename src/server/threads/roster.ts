@@ -66,6 +66,19 @@ async function availability(
   env: EngineEnv | null,
   openAiKey: () => Promise<string | null>,
 ): Promise<{ available: boolean; note: string | null }> {
+  // DECLARED IS NOT LIVE, and this is checked FIRST because it outranks every
+  // other reason. The registry can name an agent before it is wired, so the
+  // picker can be honest about what is coming without offering a row that
+  // fails the moment somebody picks it.
+  //
+  // It sat inside the talker branch when it arrived, which was fine while
+  // every builder was live and became wrong the moment one wasn't: a
+  // declared-but-unwired builder would have reported itself available on the
+  // strength of the engine being switched on.
+  if (!agent.live) {
+    return { available: false, note: `${agent.name} isn't wired up here yet — it's named so you know it's coming, not offered.` };
+  }
+
   if (agent.changesFiles) {
     if (!env) {
       return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected." };
@@ -77,13 +90,6 @@ async function availability(
       };
     }
     return { available: true, note: null };
-  }
-
-  // DECLARED IS NOT LIVE. The registry can name an agent before it is wired,
-  // so the picker can be honest about what is coming without offering a row
-  // that fails the moment somebody picks it.
-  if (!agent.live) {
-    return { available: false, note: `${agent.name} isn't wired up yet — it's named here so you know it's coming.` };
   }
 
   const fuel = await resolveFuelFor(db, orgId, agent.provider).catch(() => null);

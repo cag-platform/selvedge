@@ -156,9 +156,25 @@ describe('who could answer this, and what handing it over would cost', () => {
     const agents = await roster((await conversation()).id, () => null);
 
     const builders = agents.filter((a) => a.changes_files);
-    expect(builders).toHaveLength(2);
+    expect(builders).toHaveLength(3);
     expect(builders.every((a) => !a.available)).toBe(true);
     expect(builders[0]!.unavailable_note).toMatch(/build engine isn't switched on/i);
+  });
+
+  /**
+   * A row declared ahead of its wiring. It stays on the list — hiding it would
+   * teach people the product is smaller than it is — and it is never available,
+   * whatever else is switched on.
+   */
+  it('names a builder that has no driver yet, and never offers it', async () => {
+    const withEngine = await roster((await conversation()).id);
+    const declared = withEngine.find((a) => a.id === 'grok-build')!;
+
+    // The engine IS on and its provider's key could be connected; neither
+    // makes it available, because being unwired outranks both.
+    expect(declared.available).toBe(false);
+    expect(declared.unavailable_note).toMatch(/isn't wired up here yet/i);
+    expect(declared.unavailable_note).not.toMatch(/Connections/);
   });
 
   it("says Codex needs its own key, which is fuel and not wiring", async () => {

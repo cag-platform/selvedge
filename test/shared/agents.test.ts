@@ -44,8 +44,19 @@ describe('the agent registry', () => {
    * fuelled: an agent whose key nobody connected says exactly that when asked,
    * which is more useful than being hidden.
    */
-  it('offers nothing it cannot actually run', () => {
-    expect(AGENTS.filter((a) => !a.live)).toEqual([]);
+  it('names what is coming without offering it', () => {
+    // `live` used to be true for everything, so this asserted the empty set.
+    // The flag exists precisely so a row can be declared before it is wired —
+    // what matters is not that the set is empty but that anything in it is
+    // OFFERED nowhere, which the roster enforces (test/web/roster.test.ts) and
+    // a forced turn refuses (build/agent.ts).
+    for (const agent of AGENTS.filter((a) => !a.live)) {
+      // A declared row still has to be a complete row. Half a descriptor is
+      // what turns "coming soon" into a crash the day somebody flips the flag.
+      expect(agent.chip, agent.id).toMatch(/^[A-Z]{2,3}$/);
+      expect(agent.costNote.length, agent.id).toBeGreaterThan(20);
+      expect(agent.pricingModel.length, agent.id).toBeGreaterThan(2);
+    }
   });
 
   it('says what each one does, which is the only difference that matters', () => {
@@ -91,6 +102,7 @@ describe('the agent registry', () => {
       'grok',
       'deepseek',
       'mistral',
+      'grok-build',
     ]);
   });
 
@@ -114,7 +126,13 @@ describe('the agent registry', () => {
    * until that driver exists — otherwise the picker offers a build that
    * cannot happen.
    */
-  it('only names a builder where a sandbox driver exists for it', () => {
-    expect(AGENTS.filter((a) => a.changesFiles).map((a) => a.id)).toEqual(['claude-code', 'codex']);
+  it('only offers a builder where a sandbox driver exists for it', () => {
+    // A builder needs four per-CLI things a table row cannot supply: an
+    // install command, an exec command, and three parsers. So a builder may be
+    // DECLARED ahead of its driver — and must not be live until the driver is
+    // there, or the picker offers a build that cannot happen.
+    const offered = AGENTS.filter((a) => a.changesFiles && a.live).map((a) => a.id);
+    expect(offered).toEqual(['claude-code', 'codex']);
+    expect(AGENTS.find((a) => a.id === 'grok-build')!.live).toBe(false);
   });
 });

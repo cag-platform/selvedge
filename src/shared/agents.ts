@@ -40,7 +40,8 @@ export type AgentId =
   | 'kimi'
   | 'grok'
   | 'deepseek'
-  | 'mistral';
+  | 'mistral'
+  | 'grok-build';
 
 /**
  * Whose fuel an agent burns.
@@ -197,6 +198,38 @@ const AGENT_TABLE = {
     pricingModel: 'mistral-large',
     costNote: 'plain chat on your own Mistral key — a fraction of what a build turn costs',
     live: true,
+  },
+  /**
+   * DECLARED, NOT WIRED — and the reason is worth stating, because this is the
+   * first row to use `live: false` and it should stay the only kind that does.
+   *
+   * A builder is not a table row. Claude Code and Codex each need four things
+   * that only exist per-CLI (runner/agents/driver.ts): a command to install it
+   * in the sandbox, a command to run one turn, and three parsers that read its
+   * output for what it did, what it said, and whether it worked. None of that
+   * can be written against a CLI whose invocation and event stream are unknown
+   * — inventing parsers for a format nobody has seen produces a turn that
+   * reports success it cannot see, which is the exact failure this codebase
+   * refuses everywhere else.
+   *
+   * So the id is reserved here, at its real name, because ids may be added and
+   * never renamed and a placeholder would become permanent. The roster shows
+   * the row and says plainly that it is coming rather than offered, and a turn
+   * forced onto it refuses cleanly instead of pretending.
+   *
+   * TO FINISH IT, four things and no architecture: the install command, the
+   * exec command, and the three parsers, in a file beside codexCommand.ts plus
+   * a case in driverFor. Then flip `live`.
+   */
+  'grok-build': {
+    id: 'grok-build',
+    chip: 'GB',
+    name: 'Grok Build',
+    changesFiles: true,
+    provider: 'xai',
+    pricingModel: 'grok-4',
+    costNote: 'builds in the same sandbox, on your xAI key — about $0.05–0.30 a turn',
+    live: false,
   },
 } satisfies Record<AgentId, AgentDescriptor>;
 
