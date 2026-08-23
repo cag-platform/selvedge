@@ -112,7 +112,11 @@ describe('the plan table', () => {
    * model usage is included, because it isn't.
    */
   it('says whose the model costs are, without promising unlimited anything', () => {
-    expect(BYO_KEYS_LINE).toMatch(/your own AI keys/i);
+    expect(BYO_KEYS_LINE).toMatch(/your own AI keys or subscriptions/i);
+    // Both ways of bringing your own, because both now work: the builders read
+    // a subscription token and an API key from different variables and the
+    // connect screen takes either (server/build/builderAuth.ts).
+    expect(BYO_KEYS_LINE).toMatch(/every agent runs on your account/i);
     expect(BYO_KEYS_LINE).toMatch(/spend ceilings/i);
     expect(BYO_KEYS_LINE).toContain(priceLine('pro'));
     expect(BYO_KEYS_LINE.toLowerCase()).not.toContain('unlimited');

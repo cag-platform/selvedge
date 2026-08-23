@@ -9,6 +9,7 @@ import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandb
 import { touchProjectSandbox } from './metering.js';
 import { ensureWorkshopThread } from '../threads/store.js';
 import { driverFor } from '../runner/agents/driver.js';
+import { resolveBuilderAuth } from './builderAuth.js';
 import { agentById, type AgentId } from '../../shared/agents.js';
 import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
 import { renderDocuments, type PastedDocument } from '../../shared/documents.js';
@@ -96,8 +97,6 @@ export type AgentTurnConfig = SandboxConfig & {
   model?: string;
   /** Which builder runs this turn. Defaults to Claude Code, the only one there used to be. */
   agent?: AgentId;
-  /** Codex's fuel. Absent means Codex can't run here, and the thread is told so plainly. */
-  openaiApiKey?: string;
 };
 
 export type AgentTurnOutcome = {
@@ -328,10 +327,30 @@ export async function runAgentTurn(
   // this deployment has no fuel for is said plainly on the thread — never a
   // silent fallback to a different one, which would make the switcher a lie.
   const agent: AgentId = cfg.agent ?? 'claude-code';
-  const driver = driverFor(agent, { openaiApiKey: cfg.openaiApiKey });
+  /**
+   * WHOSE ACCOUNT THIS TURN RUNS ON. Resolved here — after the agent is known,
+   * before a sandbox is touched — rather than bundled into the config by
+   * whoever assembled it. Two reasons, and the second is the one that bit.
+   *
+   * The credential is fetched at the moment of use, so it is the org's current
+   * one rather than whatever was current when the request started; and it is
+   * fetched for THIS agent only, so a turn never carries a credential it isn't
+   * going to spend. A config carrying every builder's fuel is a config that
+   * hands one agent's secret to the code path of another.
+   */
+  const resolved = await resolveBuilderAuth(db, orgId, agent);
+  const driver = driverFor(agent, resolved.ok ? resolved.auth : null);
   if (!driver) {
     const name = agentById(agent)?.name ?? agent;
-    const reply = `${name} isn't switched on here yet — there's no key for it, so I can't run your message through it. Switch this thread back to Claude Code and I'll pick it up.`;
+    // The resolver's own sentence — which names the credential to connect and
+    // where — rather than a generic "no key". A refusal a person can act on.
+    //
+    // And "switch back to Claude Code" is only advice when Claude Code is not
+    // the one that can't run. It used to be appended unconditionally, which was
+    // harmless while its token came free with the deployment and became
+    // nonsense the moment it needed an account like everybody else.
+    const why = resolved.ok ? `${name} can't build here.` : resolved.note;
+    const reply = agent === 'claude-code' ? why : `${why} Or switch this thread to Claude Code and I'll pick it up.`;
     const failedRunId = ulid();
     await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });

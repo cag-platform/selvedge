@@ -43,7 +43,12 @@ export const FEATURES: FeatureSpec[] = [
   // from the GitHub App installation above, so a deployment-wide token is
   // neither required nor sufficient. It survives only as an optional fallback
   // for deployments with no app, and for creating a repo from nothing.
-  { key: 'agent', label: 'Build engine (agent + sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'], gives: 'the part that actually makes an approved change: a Daytona sandbox and the Claude Code agent. Cloning and pushing use the org’s own GitHub App installation' },
+  // CLAUDE_CODE_OAUTH_TOKEN is deliberately absent for the same reason
+  // GITHUB_TOKEN is: whose account an agent runs on is answered per org
+  // (build/builderAuth.ts), so a deployment-wide credential is neither required
+  // nor sufficient. It survives as an optional fallback below, for orgs that
+  // haven't connected their own — never as the thing the engine needs to exist.
+  { key: 'agent', label: 'Build engine (the sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY'], gives: 'somewhere for an approved change to actually be made. The agent runs on the org’s own Anthropic key or Claude subscription, and cloning and pushing use the org’s own GitHub App installation' },
   // Gated on the KEY, not the model name: EVAL_MODEL has a safe default
   // (gpt-5.6-luna) and lives in OPTIONAL_VARS as a tuning knob. Listing it here
   // would report `partial` for a deploy that set the key and sensibly left the
@@ -61,7 +66,11 @@ export const FEATURES: FeatureSpec[] = [
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG'];
+// MANAGED_FUEL and CLAUDE_CODE_OAUTH_TOKEN are the two halves of one policy
+// switch. The token covers orgs that haven't connected their own account;
+// MANAGED_FUEL=off stops it covering anybody, which is the setting for a
+// deployment where bring-your-own is the promise rather than the default.
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG', 'CLAUDE_CODE_OAUTH_TOKEN', 'MANAGED_FUEL'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

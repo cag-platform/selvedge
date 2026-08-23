@@ -268,11 +268,26 @@ function ConnectedRow({ row, onRemoved }: { row: Connected; onRemoved: () => voi
   );
 }
 
+/**
+ * Providers where a SUBSCRIPTION is an alternative to an API key.
+ *
+ * Anthropic alone, and the server refuses the rest, because the Claude Code CLI
+ * reads a subscription token from an environment variable — a thing a pasted
+ * secret can be — while Codex signs in through its own browser flow and writes
+ * the result on the machine it ran on. Offering the choice where it can't work
+ * would be offering a path that ends in an auth error on a metered minute.
+ */
+const SUBSCRIPTION_PROVIDERS = new Set(['anthropic']);
+
 function ConnectForm({ providers, onConnected }: { providers: string[]; onConnected: () => void }) {
   const [provider, setProvider] = useState(providers[0] ?? '');
   const [key, setKey] = useState('');
+  const [kind, setKind] = useState<'api_key' | 'subscription'>('api_key');
   const [state, setState] = useState<'idle' | 'checking'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const canSubscribe = SUBSCRIPTION_PROVIDERS.has(provider);
+  // A kind that stopped being offered must not stay selected underneath.
+  const effectiveKind = canSubscribe ? kind : 'api_key';
   const hint = keyHint(provider);
 
   async function submit(e: React.FormEvent) {
@@ -280,7 +295,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
     setState('checking');
     setError(null);
     try {
-      await api.post('/api/fuel', { provider, key: key.trim() });
+      await api.post('/api/fuel', { provider, key: key.trim(), kind: effectiveKind });
       setKey('');
       onConnected();
     } catch (err) {
@@ -307,15 +322,39 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
               </option>
             ))}
           </select>
+          {canSubscribe && (
+            <select
+              value={effectiveKind}
+              onChange={(e) => setKind(e.target.value === 'subscription' ? 'subscription' : 'api_key')}
+              className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+            >
+              <option value="api_key">API key</option>
+              <option value="subscription">Subscription</option>
+            </select>
+          )}
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder="paste your API key"
+            placeholder={effectiveKind === 'subscription' ? 'paste your subscription token' : 'paste your API key'}
             className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           />
         </div>
-        {hint && <p className="text-meta text-ink-quiet">Your {fuelLabel(provider)} key — {hint}. It's checked before it's saved.</p>}
+        {/*
+          Two different promises, so two different sentences. A key is pinged
+          before it's stored, so "checked before it's saved" is true. A
+          subscription can't be — only the CLI that uses it can prove it — and
+          saying it was checked would be a lie on the one screen whose whole
+          job is that "connected" means "works".
+        */}
+        {effectiveKind === 'subscription' ? (
+          <p className="text-meta text-ink-quiet">
+            Your Claude subscription — run <code className="font-mono text-tech">claude setup-token</code> and paste what it prints. It
+            can’t be checked from here the way a key can; your first build will prove it.
+          </p>
+        ) : (
+          hint && <p className="text-meta text-ink-quiet">Your {fuelLabel(provider)} key — {hint}. It's checked before it's saved.</p>
+        )}
         <div className="flex items-center gap-3">
           <button
             type="submit"

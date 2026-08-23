@@ -110,6 +110,17 @@ export function claudeCommand(
   model = 'sonnet',
   resumeSessionId?: string | null,
   mode: 'build' | 'plan' = 'build',
+  /**
+   * Whose account this turn runs on, and which variable the CLI reads it from.
+   * Not optional in practice — `driverFor` will not build a driver without it —
+   * but typed optional so the command can still be rendered for a test that
+   * cares about the arguments rather than the credential.
+   *
+   * The variable name comes from builderAuth.ts and is NEVER assumed here: a
+   * subscription token in ANTHROPIC_API_KEY doesn't fail loudly, it fails as
+   * "no credentials found" inside a sandbox the owner is already paying for.
+   */
+  auth?: { envVar: string; secret: string } | null,
 ): string {
   const args = [
     'claude',
@@ -129,7 +140,12 @@ export function claudeCommand(
   // Iteration: --resume continues the same conversation, so "now make it
   // darker" builds on the last change instead of starting from scratch.
   if (resumeSessionId) args.push('--resume', shellQuote(resumeSessionId));
-  return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
+  // Prefixed on the command rather than set on the sandbox, exactly as Codex's
+  // key is. One turn, one credential, gone when the process exits — so a
+  // sandbox that outlives a rotated key doesn't keep using the old one, and a
+  // sandbox belonging to one org never holds another's secret.
+  const credential = auth?.secret ? `${auth.envVar}=${shellQuote(auth.secret)} ` : '';
+  return `${PATH_PREFIX} cd ${WORKDIR} && ${credential}${args.join(' ')}`;
 }
 
 export type ResultEvent = {

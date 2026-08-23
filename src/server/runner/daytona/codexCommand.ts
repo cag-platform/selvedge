@@ -46,7 +46,21 @@ export function codexInstallCommand(): string {
 
 export function codexCommand(
   prompt: string,
-  opts: { apiKey: string; model?: string; resumeSessionId?: string | null; mode?: 'build' | 'plan' },
+  opts: {
+    /**
+     * Whose account this turn runs on, and which variable the CLI reads it
+     * from. The variable NAME comes from the one table that maps a credential's
+     * kind to its variable (build/builderAuth.ts) rather than being written
+     * here — a second place that decides which variable a secret goes in is a
+     * second place for the two to disagree, and the disagreement doesn't
+     * announce itself: the CLI just reports no credentials, inside a sandbox
+     * the owner is already paying for.
+     */
+    auth: { envVar: string; secret: string };
+    model?: string;
+    resumeSessionId?: string | null;
+    mode?: 'build' | 'plan';
+  },
 ): string {
   const mode = opts.mode ?? 'build';
   const args = [
@@ -61,9 +75,10 @@ export function codexCommand(
     ...(mode === 'plan' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox']),
     shellQuote(`${agentRules(mode)}\n\n---\n\n${prompt}`),
   ];
-  // The key rides as an env prefix rather than a flag: it never lands in the
-  // repo, and the sandbox holds one customer's project and nothing else.
-  return `${PATH_PREFIX} cd ${WORKDIR} && OPENAI_API_KEY=${shellQuote(opts.apiKey)} ${args.join(' ')}`;
+  // The credential rides as an env prefix rather than a flag: it never lands in
+  // the repo, it dies with the process, and a sandbox that outlives a rotated
+  // key does not keep using the old one.
+  return `${PATH_PREFIX} cd ${WORKDIR} && ${opts.auth.envVar}=${shellQuote(opts.auth.secret)} ${args.join(' ')}`;
 }
 
 export type CodexResult = {

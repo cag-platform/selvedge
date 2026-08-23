@@ -45,8 +45,12 @@ function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * What it takes to have a working copy of a repo on a machine. Note what is
+ * absent: any model credential. Which agent runs, and on whose account, is
+ * decided per turn (build/builderAuth.ts) and never travels with the sandbox.
+ */
 export type SandboxConfig = {
-  claudeCodeOauthToken: string;
   githubToken: string;
   repoFullName: string;
   branch: string;
@@ -112,11 +116,17 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
       labels: { 'selvedge/org': orgId, 'selvedge/project': projectId },
       public: false,
       autoStopInterval: SANDBOX_IDLE_MINUTES, // the sandbox-cost guard
-      // The GitHub token is deliberately NOT baked in here. A sandbox outlives
-      // any token by days; an installation token pinned at creation would be an
-      // hour's worth of working and then a puzzling failure. It travels with
-      // each command instead, fresh per request.
-      envVars: { CLAUDE_CODE_OAUTH_TOKEN: cfg.claudeCodeOauthToken },
+      // NO CREDENTIALS ARE BAKED IN HERE. A sandbox outlives any secret by
+      // days: a token pinned at creation is an hour's worth of working and then
+      // a puzzling failure. Every secret travels with the command that needs
+      // it, fresh per request — the GitHub installation token, and now the
+      // builder's own model credential too.
+      //
+      // The Claude Code token used to sit on this line, directly beneath a
+      // comment explaining why the GitHub token must not. It was also the
+      // DEPLOYMENT's token rather than the org's, which meant a sandbox
+      // belonging to one customer was started holding the credentials everyone
+      // else's builds ran on. See build/builderAuth.ts.
     },
     { timeout: 300 },
   );

@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { connectCredential, listConnected, revokeCredential } from '../../connectors/credentials/store.js';
+import { connectCredential, listConnected, revokeCredential, type CredentialKind } from '../../connectors/credentials/store.js';
 import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { FUEL_PROVIDERS, type FuelProvider } from '../../connectors/fuel/resolve.js';
 import { LIVE_FUEL_PROVIDERS } from '../../connectors/registry.js';
@@ -20,6 +20,19 @@ const LIVE_PROVIDERS: FuelProvider[] = LIVE_FUEL_PROVIDERS;
 function isFuelProvider(v: unknown): v is FuelProvider {
   return typeof v === 'string' && (FUEL_PROVIDERS as readonly string[]).includes(v);
 }
+
+/**
+ * Providers whose SUBSCRIPTION can drive a builder, as opposed to an API key.
+ *
+ * Anthropic only, and deliberately so. The Claude Code CLI reads a subscription
+ * token from an environment variable, which is a thing a pasted secret can be.
+ * The Codex CLI signs in to a ChatGPT account through its own browser flow and
+ * writes the result inside the machine it ran on — not something a token
+ * reproduces in a fresh sandbox. Offering the field anyway would be offering a
+ * path that ends in an auth error on a metered minute, so the refusal is here,
+ * at the moment of pasting, where it costs nothing.
+ */
+const SUBSCRIPTION_PROVIDERS: FuelProvider[] = ['anthropic'];
 
 /**
  * A liveness check: a tiny real call that proves the key works before we tell
@@ -85,7 +98,12 @@ export function createFuelRouter(db: Db, verify: FuelVerifier = realVerifier) {
         return;
       }
 
-      const { provider, key, label } = req.body as { provider?: unknown; key?: unknown; label?: unknown };
+      const { provider, key, label, kind } = req.body as {
+        provider?: unknown;
+        key?: unknown;
+        label?: unknown;
+        kind?: unknown;
+      };
 
       if (!isFuelProvider(provider)) {
         res.status(400).json({ error: 'provide a supported provider' });
@@ -97,8 +115,49 @@ export function createFuelRouter(db: Db, verify: FuelVerifier = realVerifier) {
       }
       const cleanLabel = typeof label === 'string' && label.length <= 80 ? label : undefined;
 
+      /**
+       * AN API KEY OR A SUBSCRIPTION — the vault has always had both kinds, and
+       * this is where an owner gets to say which they are pasting.
+       *
+       * It is not cosmetic. A Claude subscription token and an Anthropic API key
+       * are read from DIFFERENT environment variables by the CLI that builds
+       * (see build/builderAuth.ts), so a token stored under the wrong kind is a
+       * credential that silently isn't found, inside a sandbox the owner has
+       * already been metered for.
+       */
+      const credentialKind: CredentialKind = kind === 'subscription' ? 'subscription' : 'api_key';
+
       if (!LIVE_PROVIDERS.includes(provider)) {
         res.status(400).json({ error: `${provider} isn't supported yet — it's on the way`, coming_soon: true });
+        return;
+      }
+
+      if (credentialKind === 'subscription') {
+        /**
+         * NOT PINGED, AND SAID SO. A subscription token doesn't authenticate
+         * against the messages API — the only thing that can prove it is the CLI
+         * that uses it, inside a sandbox. Verifying it here would reject a
+         * perfectly good token; claiming we had verified it would be a lie on a
+         * screen whose entire promise is that "connected" means "works".
+         *
+         * So it is stored, and the response says plainly that it hasn't been
+         * checked yet. The first build proves it.
+         */
+        if (!SUBSCRIPTION_PROVIDERS.includes(provider)) {
+          res.status(400).json({
+            error: `A ${PROVIDER_WIRING[provider].label} subscription can't be used here yet — connect an API key instead.`,
+          });
+          return;
+        }
+        const saved = await connectCredential(db, orgIdOf(req), provider, key.trim(), {
+          kind: 'subscription',
+          ...(cleanLabel ? { label: cleanLabel } : {}),
+        });
+        res.json({
+          connected: saved,
+          verified: false,
+          note: "Saved. A subscription can't be checked from here the way a key can — the first build will prove it.",
+        });
         return;
       }
 

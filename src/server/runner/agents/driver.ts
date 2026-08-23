@@ -3,6 +3,7 @@ import type { ToolEvent } from '../../../shared/types/toolEvent.js';
 import { claudeCommand, parseAssistantText, parseResult, parseToolEvents } from '../daytona/agentCommand.js';
 import { codexCommand, codexInstallCommand, codexModel, parseCodexEvents, parseCodexResult, parseCodexText } from '../daytona/codexCommand.js';
 import { costUsd } from '../../llm/pricing.js';
+import type { BuilderAuth } from '../../build/builderAuth.js';
 
 /**
  * ONE SHAPE FOR "A BUILDER". The workshop turn (build/agent.ts) is a long,
@@ -15,6 +16,12 @@ import { costUsd } from '../../llm/pricing.js';
  * So the agent-specific parts are exactly four — the command that runs a turn,
  * and the three parsers that read its output — and they live behind this seam.
  * Adding a third builder is a file next to codexCommand.ts and a case here.
+ *
+ * EVERY BUILDER IS BUILT FROM A CREDENTIAL NOW. Claude Code used to be a
+ * constant here, because its token came from the deployment's environment and
+ * was already inside the sandbox before this seam was reached. Codex took one.
+ * That asymmetry WAS the bug — see build/builderAuth.ts — so the shape is the
+ * same for both: no credential, no driver, and the caller says so by name.
  */
 
 export type TurnResult = {
@@ -40,32 +47,34 @@ export type AgentDriver = {
   events(log: string): { tools: ToolEvent[]; truncated: boolean };
 };
 
-const claudeDriver: AgentDriver = {
-  id: 'claude-code',
-  // The Daytona base image ships the Claude Code CLI, and sandbox.ts installs
-  // it if a future image doesn't.
-  setupCommand: null,
-  command: (prompt, opts) => claudeCommand(prompt, opts.model ?? 'sonnet', opts.resumeSessionId, opts.mode),
-  result: (log) => {
-    const parsed = parseResult(log);
-    return {
-      sessionId: parsed?.sessionId ?? null,
-      isError: parsed === null || parsed.isError,
-      costUsd: parsed?.totalCostUsd ?? 0,
-      costReported: typeof parsed?.totalCostUsd === 'number',
-    };
-  },
-  text: parseAssistantText,
-  events: parseToolEvents,
-};
+function claudeDriver(auth: BuilderAuth): AgentDriver {
+  return {
+    id: 'claude-code',
+    // The Daytona base image ships the Claude Code CLI, and sandbox.ts installs
+    // it if a future image doesn't.
+    setupCommand: null,
+    command: (prompt, opts) => claudeCommand(prompt, opts.model ?? 'sonnet', opts.resumeSessionId, opts.mode, auth),
+    result: (log) => {
+      const parsed = parseResult(log);
+      return {
+        sessionId: parsed?.sessionId ?? null,
+        isError: parsed === null || parsed.isError,
+        costUsd: parsed?.totalCostUsd ?? 0,
+        costReported: typeof parsed?.totalCostUsd === 'number',
+      };
+    },
+    text: parseAssistantText,
+    events: parseToolEvents,
+  };
+}
 
-function codexDriver(apiKey: string): AgentDriver {
+function codexDriver(auth: BuilderAuth): AgentDriver {
   return {
     id: 'codex',
     setupCommand: codexInstallCommand(),
     command: (prompt, opts) =>
       codexCommand(prompt, {
-        apiKey,
+        auth,
         model: opts.model ?? codexModel(),
         resumeSessionId: opts.resumeSessionId ?? null,
         mode: opts.mode,
@@ -88,16 +97,15 @@ function codexDriver(apiKey: string): AgentDriver {
 }
 
 /**
- * The driver for an agent, or null when it can't run here — Codex without an
- * OpenAI key is not a broken build, it is an agent this deployment hasn't been
- * given the fuel for, and the caller says exactly that.
+ * The driver for an agent, or null when it can't run — which now means exactly
+ * one thing for every builder: nobody has given it an account to run on. The
+ * caller has the resolver's own sentence for that and says it, rather than
+ * inventing a generic one.
  */
-export function driverFor(agent: AgentId, cfg: { openaiApiKey?: string | null } = {}): AgentDriver | null {
-  if (agent === 'claude-code') return claudeDriver;
-  if (agent === 'codex') {
-    const key = cfg.openaiApiKey?.trim();
-    return key ? codexDriver(key) : null;
-  }
+export function driverFor(agent: AgentId, auth: BuilderAuth | null): AgentDriver | null {
+  if (!auth) return null;
+  if (agent === 'claude-code' && auth.agent === 'claude-code') return claudeDriver(auth);
+  if (agent === 'codex' && auth.agent === 'codex') return codexDriver(auth);
   // Chat agents don't run in a sandbox at all — chat/turn.ts is their path.
   return null;
 }

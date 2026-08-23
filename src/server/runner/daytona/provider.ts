@@ -5,6 +5,7 @@ import type { Card } from '../../cards/types.js';
 import type { SandboxProvider, SandboxHandle, AgentContext, AgentStepResult } from '../types.js';
 import { WORKDIR, shellQuote, claudeCommand, buildAgentPrompt, parseResult, parseToolEvents, resultToStep } from './agentCommand.js';
 import { resolveRepoToken } from '../../build/repoToken.js';
+import { resolveBuilderAuth } from '../../build/builderAuth.js';
 
 /**
  * The live Daytona build engine — ported from Toile's server/sandbox + agent
@@ -28,8 +29,12 @@ function daytona(): Daytona {
   return client;
 }
 
+/**
+ * What the deployment supplies to a card run. No model credential: which
+ * account a card's agent burns is the CARD'S ORG's question, answered per step
+ * in `agentStep` (build/builderAuth.ts), the same as a workshop turn.
+ */
 type SandboxEnv = {
-  claudeCodeOauthToken: string;
   model?: string;
 };
 
@@ -111,11 +116,10 @@ export function daytonaEngine(db: Db, cfg: SandboxEnv): { sandbox: SandboxProvid
         {
           labels: { 'selvedge/card': card.id, 'selvedge/project': card.projectId },
           public: false,
-          // No GitHub token here on purpose: it outlives nothing and the
-          // sandbox outlives it. It rides each command instead.
-          envVars: {
-            CLAUDE_CODE_OAUTH_TOKEN: cfg.claudeCodeOauthToken,
-          },
+          // NOTHING SECRET HERE ON PURPOSE. The GitHub token outlives nothing
+          // and the sandbox outlives it, so it rides each command; the agent's
+          // model credential now does the same, and is the card's org's rather
+          // than the deployment's. See build/builderAuth.ts.
         },
         { timeout: 300 },
       );
@@ -136,8 +140,17 @@ export function daytonaEngine(db: Db, cfg: SandboxEnv): { sandbox: SandboxProvid
   };
 
   async function agentStep(ctx: AgentContext): Promise<AgentStepResult> {
+    // Whose account this card's work goes on — the card's org, resolved now
+    // rather than baked into the sandbox at creation. A card run is the second
+    // path that starts an agent, and it had the same bug the workshop turn did.
+    const auth = await resolveBuilderAuth(db, ctx.card.orgId, 'claude-code');
+    if (!auth.ok) {
+      // Nothing spent, nothing changed, and the reason is the one the owner can
+      // act on. Done, because retrying without a credential just burns the cap.
+      return { spentCents: 0, done: true, note: auth.note };
+    }
     const box = await daytona().get(ctx.sandbox.id);
-    const command = claudeCommand(buildAgentPrompt(ctx.card), cfg.model);
+    const command = claudeCommand(buildAgentPrompt(ctx.card), cfg.model, null, 'build', auth.auth);
     // One turn; generous ceiling. The runner's cap is the real spend guard.
     const res = await box.process.executeCommand(command, undefined, undefined, 1800);
     const step = resultToStep(parseResult(res.result ?? ''));

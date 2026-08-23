@@ -3,7 +3,7 @@ import type { LlmClient } from '../../llm/types.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
 import { OpenAiLlmClient } from '../../llm/openai.js';
 import { platformKeyFor, wiringFor } from '../../llm/providers.js';
-import { useCredential } from '../credentials/store.js';
+import { useCredentialWithKind } from '../credentials/store.js';
 
 /**
  * The fuel connector — turns a stored credential into a live model client.
@@ -48,6 +48,23 @@ export type ResolvedFuel = {
  * different base URL, stamped with its own provider name so the ledger
  * attributes spend correctly, and told how that endpoint takes a schema.
  */
+/**
+ * AN API KEY, NOT A SUBSCRIPTION. Every client below talks to a messages or
+ * chat-completions endpoint, and a subscription token does not authenticate
+ * against one — it authenticates a CLI.
+ *
+ * This matters because ONE credential row serves two surfaces: an owner who
+ * connects an Anthropic subscription is arming the Claude Code BUILDER
+ * (build/builderAuth.ts), and the same row would otherwise be handed to the
+ * chat client here, where it produces a 401 that reads as "your Claude
+ * connection stopped working". So a chat turn skips a subscription rather than
+ * failing on it, and falls through to the platform key or to the deterministic
+ * path — the shape every other "no fuel" case already takes.
+ */
+function usableForChat(kind: string): boolean {
+  return kind !== 'subscription';
+}
+
 function clientFor(provider: FuelProvider, apiKey: string): LlmClient | null {
   if (provider === 'anthropic') return new AnthropicLlmClient(apiKey);
   const wiring = wiringFor(provider);
@@ -67,9 +84,9 @@ function clientFor(provider: FuelProvider, apiKey: string): LlmClient | null {
 export async function resolveFuel(db: Db, orgId: string): Promise<ResolvedFuel | null> {
   // 1. BYO — the org's own connected fuel, tried in a stable provider order.
   for (const provider of FUEL_PROVIDERS) {
-    const secret = await useCredential(db, orgId, provider);
-    if (!secret) continue;
-    const client = clientFor(provider, secret);
+    const connected = await useCredentialWithKind(db, orgId, provider);
+    if (!connected || !usableForChat(connected.kind)) continue;
+    const client = clientFor(provider, connected.secret);
     if (client) return { client, provider, source: 'byo' };
     // A stored credential for a provider we can't yet build a client for is
     // skipped, not fatal — the customer connected ahead of our support.
@@ -101,9 +118,9 @@ export async function resolveFuel(db: Db, orgId: string): Promise<ResolvedFuel |
  * somebody else.
  */
 export async function resolveFuelFor(db: Db, orgId: string, provider: FuelProvider): Promise<ResolvedFuel | null> {
-  const secret = await useCredential(db, orgId, provider);
-  if (secret) {
-    const client = clientFor(provider, secret);
+  const connected = await useCredentialWithKind(db, orgId, provider);
+  if (connected && usableForChat(connected.kind)) {
+    const client = clientFor(provider, connected.secret);
     if (client) return { client, provider, source: 'byo' };
   }
   const platformKey = platformKeyFor(provider);

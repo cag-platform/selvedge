@@ -27,16 +27,20 @@ describe('who could answer this, and what handing it over would cost', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
-  const engineOn = () => ({ claudeCodeOauthToken: 'c', githubToken: 'g', openaiApiKey: 'o' });
+  const engineOn = () => ({ daytonaApiKey: 'd' });
 
-  // Codex's fuel now resolves like every other key — the org's own first, the
-  // platform's second — so the platform's has to be absent for "no key
-  // anywhere" to mean what it says here.
+  // EVERY builder's fuel resolves the same way now — the org's own account
+  // first, the deployment's second — so the deployment's has to be absent for
+  // "nothing connected" to mean what it says here. Claude Code joined this
+  // list when its token stopped coming free with the deployment.
   const platformOpenAi = process.env.OPENAI_API_KEY;
+  const platformClaude = process.env.CLAUDE_CODE_OAUTH_TOKEN;
 
   beforeEach(async () => {
     process.env.CREDENTIALS_KEY = 'x'.repeat(48);
     delete process.env.OPENAI_API_KEY;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.ANTHROPIC_API_KEY;
     const t = await createTestDb();
     db = t.db;
     close = t.close;
@@ -51,6 +55,8 @@ describe('who could answer this, and what handing it over would cost', () => {
     delete process.env.CREDENTIALS_KEY;
     if (platformOpenAi === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = platformOpenAi;
+    if (platformClaude === undefined) delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    else process.env.CLAUDE_CODE_OAUTH_TOKEN = platformClaude;
     await close();
   });
 
@@ -161,14 +167,33 @@ describe('who could answer this, and what handing it over would cost', () => {
     expect(builders[0]!.unavailable_note).toMatch(/build engine isn't switched on/i);
   });
 
-  it("says Codex needs its own key, which is fuel and not wiring", async () => {
-    const agents = await roster((await conversation()).id, () => ({ claudeCodeOauthToken: 'c', githubToken: 'g' }));
-    const codex = agents.find((a) => a.id === 'codex')!;
+  /**
+   * FUEL IS NOT WIRING, AND IT IS NOW EVERY BUILDER'S QUESTION.
+   *
+   * This test used to assert that Claude Code was available on the strength of
+   * the engine alone, because its token came out of the deployment's
+   * environment — which was the bug: one account's subscription running every
+   * customer's builds. Both builders are asked the same question now, and both
+   * answer it with the org's own account.
+   */
+  it('says each builder needs its own account, which is fuel and not wiring', async () => {
+    const agents = await roster((await conversation()).id);
 
-    expect(codex.available).toBe(false);
-    expect(codex.unavailable_note).toMatch(/OpenAI key/i);
-    // ...while the builder that does have its engine is offered as normal.
+    for (const id of ['codex', 'claude-code']) {
+      const row = agents.find((a) => a.id === id)!;
+      expect(row.available).toBe(false);
+      expect(row.unavailable_note).toMatch(/Connections/);
+    }
+    expect(agents.find((a) => a.id === 'codex')!.unavailable_note).toMatch(/OpenAI/i);
+    expect(agents.find((a) => a.id === 'claude-code')!.unavailable_note).toMatch(/Anthropic/i);
+  });
+
+  it('offers a builder as soon as its own account is connected', async () => {
+    await connectCredential(db, orgId, 'anthropic', 'sk-ant-test-0002', { kind: 'api_key' });
+    const agents = await roster((await conversation()).id);
     expect(agents.find((a) => a.id === 'claude-code')!.available).toBe(true);
+    // ...and connecting one builder's account says nothing about the other's.
+    expect(agents.find((a) => a.id === 'codex')!.available).toBe(false);
   });
 
   it('is org-scoped', async () => {

@@ -2,7 +2,6 @@ import type { Db } from '../db/client.js';
 import { getPack } from '../packs/store.js';
 import type { AgentTurnConfig } from './agent.js';
 import { resolveRepoToken, type RepoToken } from './repoToken.js';
-import { resolveOpenAiKey } from './openaiKey.js';
 
 /**
  * "Can this project be worked on, and with what?" — one answer, shared by every
@@ -11,49 +10,65 @@ import { resolveOpenAiKey } from './openaiKey.js';
  * credentials-and-source check is how one of them ends up quietly out of date.
  */
 
-export type EngineEnv = { claudeCodeOauthToken: string };
+/**
+ * What the DEPLOYMENT provides, which is now exactly one thing: somewhere to
+ * run. The machines are ours — we rent them, meter them and reap them, and
+ * `buildMinutes` in the plan table is what they cost.
+ */
+export type EngineEnv = { daytonaApiKey: string };
 
 /**
- * The build engine's platform credentials, or null when this deployment has no
- * engine.
+ * Is there a build engine here at all, or is this a deployment that only
+ * watches? Null means the workshop is off, and every surface says so plainly.
  *
- * TWO THINGS ARE DELIBERATELY NOT HERE, for the same reason.
+ * THREE THINGS ARE DELIBERATELY NOT HERE, and they used to be two.
  *
  * GitHub: reaching a repo is a per-org, per-repo question answered by
  * repoToken.ts against the org's own app installation. A deployment-wide token
  * in this shape was how the engine ended up able to see repos it could not
  * clone.
  *
- * OpenAI: Codex's fuel is a per-org question answered by openaiKey.ts, the
+ * OpenAI: Codex's fuel is a per-org question answered by builderAuth.ts, the
  * owner's connected key first. A deployment-wide key in this shape was how an
  * owner with a working key still got a 401 out of the sandbox.
  *
- * What's left is what genuinely belongs to the deployment: the engine either
- * runs here or it doesn't.
+ * ANTHROPIC — the one that was still here. `CLAUDE_CODE_OAUTH_TOKEN` sat in
+ * this function with no org in scope, so every build turn every customer would
+ * ever run went on ONE account's Claude subscription: the bill in the wrong
+ * place, and a per-account rate limit shared by strangers. It is a per-org
+ * question now, answered by builderAuth.ts alongside Codex's, and the shape of
+ * bug that produced it three times in this codebase is described there.
+ *
+ * What's left is what genuinely belongs to the deployment: the sandbox host.
  */
 export function engineEnv(): EngineEnv | null {
-  const claude = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   const daytona = process.env.DAYTONA_API_KEY?.trim();
-  if (!claude || !daytona) return null;
-  return { claudeCodeOauthToken: claude };
+  if (!daytona) return null;
+  return { daytonaApiKey: daytona };
 }
 
 export type EngineConfig = { cfg: AgentTurnConfig; liveUrl: string | null };
 export type EngineRefusal = { error: string; status: number };
 
-/** The pack's GitHub source + engine creds, or a plain reason why not. */
+/**
+ * The pack's GitHub source and a machine to run on, or a plain reason why not.
+ *
+ * NOTE WHAT THIS NO LONGER RETURNS: any model credential. The builder's secret
+ * is resolved inside `runAgentTurn`, at the moment the turn knows which agent
+ * is running and for which org — one place, after the choice, rather than a
+ * bundle of every agent's fuel assembled before it. That is what stops a
+ * credential travelling further than the turn that needs it.
+ */
 export async function configFor(
   db: Db,
   orgId: string,
   projectId: string,
   env: () => EngineEnv | null = engineEnv,
   resolveToken: (db: Db, orgId: string, repoFullName: string) => Promise<RepoToken> = resolveRepoToken,
-  resolveOpenAi: (db: Db, orgId: string) => Promise<string | null> = resolveOpenAiKey,
 ): Promise<EngineConfig | EngineRefusal> {
   const pack = await getPack(db, orgId, projectId);
   if (!pack) return { error: 'no such project', status: 404 };
-  const creds = env();
-  if (!creds) {
+  if (!env()) {
     return { status: 409, error: "The workshop isn't switched on yet — the build engine's credentials aren't configured." };
   }
   const source = pack.topology.sources.find((s) => s.connector === 'github');
@@ -64,13 +79,8 @@ export async function configFor(
   // machine started, a minute billed, and a clone that dies on authentication.
   const token = await resolveToken(db, orgId, source.resource_id);
   if (!token.ok) return { status: 409, error: token.reason };
-  // Optional in the same way it always was: without a key Codex simply isn't
-  // one of the builders on offer, and everything else works as before.
-  const openaiApiKey = await resolveOpenAi(db, orgId);
   return {
     cfg: {
-      ...creds,
-      ...(openaiApiKey ? { openaiApiKey } : {}),
       githubToken: token.token,
       repoFullName: source.resource_id,
       branch: 'main',

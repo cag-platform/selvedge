@@ -89,6 +89,48 @@ export async function listConnected(db: Db, orgId: string): Promise<ConnectedCre
  * treated as unusable, not as an exception to bubble up.
  */
 export async function useCredential(db: Db, orgId: string, provider: string): Promise<string | null> {
+  return (await useCredentialWithKind(db, orgId, provider))?.secret ?? null;
+}
+
+/** A used credential, and what sort of thing it is. */
+export type UsedCredential = { secret: string; kind: CredentialKind };
+
+/**
+ * Is there a usable credential here, and what sort — WITHOUT decrypting it.
+ *
+ * For the surfaces that need to know whether something could run rather than
+ * to run it: the agent roster, an availability check, a settings screen. Going
+ * through `useCredential` for those would stamp `last_used_at` on a credential
+ * nothing used, which turns a genuinely useful column ("when did this key last
+ * do any work?") into a record of how often somebody opened a page.
+ */
+export async function credentialPresence(
+  db: Db,
+  orgId: string,
+  provider: string,
+): Promise<{ kind: CredentialKind; status: string } | null> {
+  const [row] = await db
+    .select({ kind: connectorCredentials.kind, status: connectorCredentials.status })
+    .from(connectorCredentials)
+    .where(and(eq(connectorCredentials.orgId, orgId), eq(connectorCredentials.provider, provider)))
+    .limit(1);
+  if (!row || row.status === 'revoked') return null;
+  return { kind: row.kind === 'subscription' ? 'subscription' : 'api_key', status: row.status };
+}
+
+/**
+ * The same single decryption path, with the KIND attached.
+ *
+ * The kind is not decoration. A CLI that can authenticate either way needs to
+ * be told which env var to read the secret from, and an API key handed to the
+ * subscription variable does not fail loudly — it fails as an auth error deep
+ * inside a sandbox the owner has already been charged a minute for. So the
+ * caller that hands a secret to a program gets to see what it is holding.
+ *
+ * A row whose kind predates this distinction reads as 'api_key', which is what
+ * the column already defaults to and what every pasted key has been.
+ */
+export async function useCredentialWithKind(db: Db, orgId: string, provider: string): Promise<UsedCredential | null> {
   const [row] = await db
     .select()
     .from(connectorCredentials)
@@ -102,7 +144,7 @@ export async function useCredential(db: Db, orgId: string, provider: string): Pr
       .update(connectorCredentials)
       .set({ lastUsedAt: new Date() })
       .where(and(eq(connectorCredentials.orgId, orgId), eq(connectorCredentials.provider, provider)));
-    return secret;
+    return { secret, kind: row.kind === 'subscription' ? 'subscription' : 'api_key' };
   } catch {
     return null;
   }

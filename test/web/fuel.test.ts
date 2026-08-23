@@ -48,6 +48,43 @@ describe('web/routes/fuel — the BYO connect experience', () => {
     expect(JSON.stringify(res.body)).not.toContain(KEY);
   });
 
+  /**
+   * A SUBSCRIPTION IS THE OTHER WAY TO BRING YOUR OWN, and it is stored as a
+   * different kind because the CLI that builds reads it from a different
+   * environment variable (server/build/builderAuth.ts). Wrong kind means a
+   * credential the CLI silently doesn't find, inside a sandbox the owner has
+   * already been metered for.
+   */
+  it('stores a Claude subscription as a subscription, and does not claim to have checked it', async () => {
+    // `neverLive` on purpose: a subscription token would fail an API-key ping,
+    // and the route must not try — verifying it here would reject a perfectly
+    // good token.
+    const app = appWithOrg(orgId, createFuelRouter(db, neverLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'anthropic', key: KEY, kind: 'subscription' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.connected.kind).toBe('subscription');
+    // Not verified, and SAID so, on the one screen whose promise is that
+    // "connected" means "works".
+    expect(res.body.verified).toBe(false);
+    expect(res.body.note).toMatch(/first build/i);
+    expect(JSON.stringify(res.body)).not.toContain(KEY);
+  });
+
+  it('refuses a subscription for a provider where one cannot work, rather than storing a dud', async () => {
+    const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'openai', key: KEY, kind: 'subscription' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/API key/i);
+    expect(await listConnected(db, orgId)).toHaveLength(0);
+  });
+
+  it('still treats an unlabelled connect as an API key, and still pings it', async () => {
+    const app = appWithOrg(orgId, createFuelRouter(db, neverLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'anthropic', key: KEY });
+    expect(res.status).toBe(422);
+  });
+
   it('REFUSES to store a key that does not verify — no false "connected"', async () => {
     const app = appWithOrg(orgId, createFuelRouter(db, neverLive));
     const res = await request(app).post('/api/fuel').send({ provider: 'anthropic', key: KEY });

@@ -1,7 +1,7 @@
 import type { Db } from '../db/client.js';
 import { AGENTS, type AgentId } from '../../shared/agents.js';
 import { engineEnv, type EngineEnv } from '../build/engineConfig.js';
-import { resolveOpenAiKey } from '../build/openaiKey.js';
+import { builderAvailability } from '../build/builderAuth.js';
 import { resolveFuelFor } from '../connectors/fuel/resolve.js';
 import { quoteHandoff, quoteNote } from './switch.js';
 import type { Thread } from './store.js';
@@ -48,23 +48,26 @@ function does(changesFiles: boolean): string {
 /**
  * Can this agent take a turn for this org today?
  *
- * A builder needs the build engine, and Codex needs an OpenAI key on top of it
- * — its driver returns null without one, which is fuel rather than wiring. A
- * talker needs a connected key for its own provider. Every "no" here has a
- * sentence attached, because a greyed-out row with no explanation is the thing
- * that makes people think a product is broken.
+ * A builder needs somewhere to run — the sandbox host, which is the
+ * deployment's — AND an account to run on, which is the org's. A talker needs a
+ * connected key for its own provider. Every "no" here has a sentence attached,
+ * because a greyed-out row with no explanation is the thing that makes people
+ * think a product is broken.
  *
- * Codex's key is resolved exactly as GPT's is — the org's own connected key
- * first. It used to be read from the deployment's environment alone, which
- * meant this row could say "no OpenAI key" to an owner looking at their own
- * connected OpenAI key on the next screen.
+ * BOTH BUILDERS ARE ASKED THE SAME QUESTION, by the same resolver the turn
+ * itself uses (build/builderAuth.ts). That mattered for Codex first — this row
+ * used to read the deployment's environment, so it could say "no OpenAI key" to
+ * an owner looking at their own connected OpenAI key on the next screen — and
+ * it matters for Claude Code now, whose token came free with the deployment
+ * until it didn't. A picker whose availability logic is a second opinion is a
+ * picker that eventually disagrees with the thing it is describing.
  */
 async function availability(
   db: Db,
   orgId: string,
   agent: (typeof AGENTS)[number],
   env: EngineEnv | null,
-  openAiKey: () => Promise<string | null>,
+  builderCan: (agentId: AgentId) => Promise<{ available: boolean; note: string | null }>,
 ): Promise<{ available: boolean; note: string | null }> {
   // DECLARED IS NOT LIVE, and this is checked FIRST because it outranks every
   // other reason. The registry can name an agent before it is wired, so the
@@ -80,16 +83,13 @@ async function availability(
   }
 
   if (agent.changesFiles) {
+    // No machine to run on is the deployment's problem and outranks whose
+    // account would have paid: there is nothing an owner can connect that fixes
+    // it, so offering them a credential to add would be the wrong advice.
     if (!env) {
       return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected." };
     }
-    if (agent.id === 'codex' && !(await openAiKey())) {
-      return {
-        available: false,
-        note: `${agent.name} builds on an OpenAI key. Add one under Connections and it can build here.`,
-      };
-    }
-    return { available: true, note: null };
+    return builderCan(agent.id);
   }
 
   const fuel = await resolveFuelFor(db, orgId, agent.provider).catch(() => null);
@@ -104,18 +104,27 @@ export async function agentRoster(
   orgId: string,
   thread: Thread,
   env: () => EngineEnv | null = engineEnv,
-  openAi: (db: Db, orgId: string) => Promise<string | null> = resolveOpenAiKey,
+  canBuild: (db: Db, orgId: string, agent: AgentId) => Promise<{ available: boolean; note: string | null }> = builderAvailability,
 ): Promise<AgentOffer[]> {
   const engine = env();
   const from = thread.agent as AgentId;
-  // Asked at most once for the whole roster, and only if something asks.
-  let pending: Promise<string | null> | null = null;
-  const openAiKey = () => (pending ??= openAi(db, orgId).catch(() => null));
+  // Asked once per builder, and only if something asks. Each answer is cached
+  // because two agents can share a provider, and the roster is rendered on
+  // every thread open.
+  const pending = new Map<AgentId, Promise<{ available: boolean; note: string | null }>>();
+  const builderCan = (id: AgentId) => {
+    let p = pending.get(id);
+    if (!p) {
+      p = canBuild(db, orgId, id).catch(() => ({ available: false, note: null }));
+      pending.set(id, p);
+    }
+    return p;
+  };
 
   return Promise.all(
     AGENTS.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
-      const { available, note } = await availability(db, orgId, agent, engine, openAiKey);
+      const { available, note } = await availability(db, orgId, agent, engine, builderCan);
 
       // Nobody quotes you a price for staying where you are.
       const quote = answeringNow ? null : await quoteHandoff(db, orgId, thread, from, agent.id);

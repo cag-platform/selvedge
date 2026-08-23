@@ -6,7 +6,27 @@ import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../..
 import { getBuild, setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
 
-const cfg = { claudeCodeOauthToken: 't', githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
+const cfg = { githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
+
+/**
+ * These tests are about the TURN LOOP — poll, stream, record, price, resume —
+ * not about whose account pays for it. So they run on the managed path: the
+ * deployment's own credentials, which is one of the two real configurations.
+ * Which account a turn resolves to, and why it is the org's before the
+ * platform's, is held by test/build/builderAuth.test.ts.
+ *
+ * Set explicitly because test/setup.ts strips every ambient credential — a
+ * suite that reads the developer's shell is a suite that goes red on somebody
+ * else's machine, which is how CI spent a day red before that file existed.
+ */
+function managedFuel() {
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'platform-claude-token';
+  process.env.OPENAI_API_KEY = 'sk-platform';
+}
+function noFuel() {
+  delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+  delete process.env.OPENAI_API_KEY;
+}
 
 const toolUse = (name: string, input: Record<string, unknown>) =>
   JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
@@ -43,12 +63,16 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
   const orgId = 'org_1';
 
   beforeEach(async () => {
+    managedFuel();
     const t = await createTestDb();
     db = t.db;
     close = t.close;
     await db.insert(orgs).values({ orgId });
   });
-  afterEach(async () => close());
+  afterEach(async () => {
+    noFuel();
+    await close();
+  });
 
   it('streams activity onto the thread WHILE working, then lands the reply, cost, session, staged flag', async () => {
     const step1 = [toolUse('Read', { file_path: '/workspace/app/src/App.tsx' })].join('\n');
@@ -337,12 +361,16 @@ describe('runAgentTurn — every row lands in one conversation', () => {
   const done = [text('Done.'), resultLine('sess_1'), '__EXIT:0'].join('\n');
 
   beforeEach(async () => {
+    managedFuel();
     const t = await createTestDb();
     db = t.db;
     close = t.close;
     await db.insert(orgs).values({ orgId });
   });
-  afterEach(async () => close());
+  afterEach(async () => {
+    noFuel();
+    await close();
+  });
 
   it('opens the project workshop thread on the first turn and writes everything into it', async () => {
     await runAgentTurn(db, orgId, 'loom', 'make the header dark', cfg, {}, {
@@ -396,7 +424,7 @@ describe('runAgentTurn — building with Codex', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
-  const codexCfg = { ...cfg, agent: 'codex' as const, openaiApiKey: 'sk-test' };
+  const codexCfg = { ...cfg, agent: 'codex' as const };
 
   const codexLog = [
     JSON.stringify({ type: 'thread.started', thread_id: 'th_9' }),
@@ -407,12 +435,16 @@ describe('runAgentTurn — building with Codex', () => {
   ].join('\n');
 
   beforeEach(async () => {
+    managedFuel();
     const t = await createTestDb();
     db = t.db;
     close = t.close;
     await db.insert(orgs).values({ orgId });
   });
-  afterEach(async () => close());
+  afterEach(async () => {
+    noFuel();
+    await close();
+  });
 
   it('runs the Codex CLI, records who did the work, and prices the turn from its tokens', async () => {
     const commands: string[] = [];
@@ -460,7 +492,9 @@ describe('runAgentTurn — building with Codex', () => {
     expect(start).toContain('now finish the checkout');
   });
 
-  it('an agent with no fuel here is refused in plain words, not silently swapped', async () => {
+  it('an agent with no account to run on is refused in plain words, not silently swapped', async () => {
+    // No key anywhere: not on the org, and not on the deployment either.
+    delete process.env.OPENAI_API_KEY;
     const commands: string[] = [];
     const out = await runAgentTurn(db, orgId, 'loom', 'make the header dark', { ...cfg, agent: 'codex' }, {}, {
       execute: executor({ polls: [codexLog], onCommand: (c) => commands.push(c) }),
@@ -468,7 +502,11 @@ describe('runAgentTurn — building with Codex', () => {
     });
 
     expect(out.status).toBe('failed');
-    expect(out.reply).toMatch(/isn't switched on here yet/i);
+    // The resolver's own sentence, which names the credential AND the screen —
+    // and, because Codex is not the only builder, the way back to the other one.
+    expect(out.reply).toMatch(/OpenAI API key/i);
+    expect(out.reply).toMatch(/Connections/);
+    expect(out.reply).toMatch(/switch this thread to Claude Code/i);
     expect(commands).toHaveLength(0); // nothing ran, nothing was spent
     const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
     // The owner's message is still on the record, with the honest answer under it.

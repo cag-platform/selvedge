@@ -216,7 +216,7 @@ export const PLAN_TAGLINE: Record<PlanId, string> = {
  * same place as the prices rather than in a footnote.
  */
 export const BYO_KEYS_LINE =
-  'You bring your own AI keys — agent costs are yours at cost, with hard spend ceilings. ' +
+  'You bring your own AI keys or subscriptions — every agent runs on your account, at cost, with hard spend ceilings. ' +
   `${priceLine('pro')} covers the record.`;
 
 /**

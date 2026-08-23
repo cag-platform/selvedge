@@ -41,15 +41,17 @@ export function agentModelFromEnv(env: NodeJS.ProcessEnv = process.env): string 
 
 export function buildBuildEngine(db: Db): DriveDeps | null {
   const daytonaKey = process.env.DAYTONA_API_KEY?.trim();
-  const claudeToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  // GitHub isn't checked here any more: reaching a repo is answered per org and
-  // per repo at use time, so a deployment-wide token is neither required nor
-  // sufficient. A card whose repo can't be reached fails with the reason.
-  if (!daytonaKey || !claudeToken) return null;
+  // NEITHER GITHUB NOR THE MODEL IS CHECKED HERE, for the same reason: both are
+  // answered per org at use time, so a deployment-wide credential is neither
+  // required nor sufficient. A card whose repo can't be reached, or whose org
+  // has connected no account for the agent, fails with the reason rather than
+  // making the whole engine report itself absent.
+  //
+  // Only the machines are the deployment's.
+  if (!daytonaKey) return null;
 
   const agentModel = agentModelFromEnv();
   const engine = daytonaEngine(db, {
-    claudeCodeOauthToken: claudeToken,
     ...(agentModel ? { model: agentModel } : {}),
   });
 

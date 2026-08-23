@@ -104,7 +104,7 @@ const AGENT_TABLE = {
     changesFiles: true,
     provider: 'anthropic',
     pricingModel: 'claude-sonnet-5',
-    costNote: "builds in your project's sandbox — about $0.05–0.30 a turn",
+    costNote: "builds in your project's sandbox, on your own Anthropic key or Claude subscription — about $0.05–0.30 a turn",
     live: true,
   },
   codex: {
@@ -114,7 +114,7 @@ const AGENT_TABLE = {
     changesFiles: true,
     provider: 'openai',
     pricingModel: 'gpt-5.6-terra',
-    costNote: 'builds in the same sandbox, on your OpenAI key — about $0.05–0.30 a turn',
+    costNote: 'builds in the same sandbox, on your own OpenAI key — about $0.05–0.30 a turn',
     // The driver is real (runner/agents/driver.ts); without an OpenAI key it
     // returns null and the caller says so. That is fuel, not wiring.
     live: true,

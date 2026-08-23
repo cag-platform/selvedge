@@ -49,15 +49,29 @@ describe('describeConfig — booleans only, no secrets', () => {
       GITHUB_TOKEN: 'ght',
     } as NodeJS.ProcessEnv);
     expect(cfg.database).toBe(true);
-    expect(cfg.agent).toBe(true); // all three build-engine vars present
+    expect(cfg.agent).toBe(true); // the sandbox host is present, which is all the engine needs
     expect(cfg.push).toBe(false);
     // No secret leaks into the description.
     expect(JSON.stringify(cfg)).not.toContain('secret-value');
   });
 
-  it('the build engine is only "on" when all of its credentials are present', () => {
-    const partial = describeConfig({ ...bootOnly, DAYTONA_API_KEY: 'k' } as NodeJS.ProcessEnv);
-    expect(partial.agent).toBe(false); // Daytona alone isn't enough
+  /**
+   * WHAT THE DEPLOYMENT OWES, AND WHAT IT DOESN'T.
+   *
+   * This used to require a Claude token too, which was the deployment claiming
+   * a responsibility that wasn't its: whose account an agent runs on is a
+   * per-org question, so a deployment-wide credential is neither required nor
+   * sufficient and reporting the engine `off` without one told a deployment
+   * full of BYO workspaces that it had no build engine.
+   *
+   * The engine is the machines. Nothing else.
+   */
+  it('is "on" with somewhere to run, and does not claim to need an account too', () => {
+    const machinesOnly = describeConfig({ ...bootOnly, DAYTONA_API_KEY: 'k' } as NodeJS.ProcessEnv);
+    expect(machinesOnly.agent).toBe(true);
+
+    const nothing = describeConfig({ ...bootOnly } as NodeJS.ProcessEnv);
+    expect(nothing.agent).toBe(false);
   });
 });
 

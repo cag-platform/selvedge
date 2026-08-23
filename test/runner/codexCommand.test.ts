@@ -19,7 +19,7 @@ const line = (o: unknown) => JSON.stringify(o);
 
 describe('the Codex command', () => {
   it('runs one turn in the project, with the key in the environment rather than the repo', () => {
-    const cmd = codexCommand('make the header dark', { apiKey: 'sk-test', model: 'gpt-5.6-terra' });
+    const cmd = codexCommand('make the header dark', { auth: { envVar: 'OPENAI_API_KEY', secret: 'sk-test' }, model: 'gpt-5.6-terra' });
     expect(cmd).toContain('cd /workspace/app');
     expect(cmd).toContain('OPENAI_API_KEY=');
     expect(cmd).toContain("'sk-test'");
@@ -29,7 +29,7 @@ describe('the Codex command', () => {
   });
 
   it('carries the standing rules in the prompt, because this CLI has no system-prompt flag', () => {
-    const cmd = codexCommand('make the header dark', { apiKey: 'k' });
+    const cmd = codexCommand('make the header dark', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } });
     // The rules must reach the agent somehow, and the one way they must NOT is
     // a file in the customer's repository.
     expect(cmd).toContain('no terminal');
@@ -38,19 +38,19 @@ describe('the Codex command', () => {
   });
 
   it('a thinking turn runs read-only; a building turn is allowed to work', () => {
-    expect(codexCommand('x', { apiKey: 'k', mode: 'plan' })).toContain('--sandbox read-only');
-    expect(codexCommand('x', { apiKey: 'k', mode: 'build' })).toContain('--dangerously-bypass-approvals-and-sandbox');
-    expect(codexCommand('x', { apiKey: 'k', mode: 'plan' })).not.toContain('bypass-approvals');
+    expect(codexCommand('x', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' }, mode: 'plan' })).toContain('--sandbox read-only');
+    expect(codexCommand('x', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' }, mode: 'build' })).toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(codexCommand('x', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' }, mode: 'plan' })).not.toContain('bypass-approvals');
   });
 
   it('resumes its own session when it has one, and installs itself if the image lacks it', () => {
-    expect(codexCommand('x', { apiKey: 'k', resumeSessionId: 'sess_9' })).toContain("resume 'sess_9'");
-    expect(codexCommand('x', { apiKey: 'k' })).not.toContain('resume');
+    expect(codexCommand('x', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' }, resumeSessionId: 'sess_9' })).toContain("resume 'sess_9'");
+    expect(codexCommand('x', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } })).not.toContain('resume');
     expect(codexInstallCommand()).toContain('@openai/codex');
   });
 
   it('quotes a prompt that would otherwise escape the shell', () => {
-    const cmd = codexCommand("it's broken; rm -rf /", { apiKey: 'k' });
+    const cmd = codexCommand("it's broken; rm -rf /", { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } });
     expect(cmd).toContain(`'\\''`); // the apostrophe is quoted, not closing the string
   });
 });
