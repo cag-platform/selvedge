@@ -27,6 +27,8 @@ import { boundDocuments } from '../../../shared/documents.js';
 import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 import { canStartBuild } from '../../billing/entitlements.js';
+import { createProject } from '../../packs/create.js';
+import type { StakesTier } from '../../../shared/types/pack.js';
 import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
@@ -63,6 +65,12 @@ export type ThreadsDeps = {
   runTurn?: typeof runAgentTurn;
   chatTurn?: typeof runChatTurn;
   env?: () => EngineEnv | null;
+  /**
+   * Make a fresh private repo for an idea that turned into a thing. Absent
+   * when the deployment has no GITHUB_TOKEN — in which case "start a new one"
+   * is not offered at all rather than offered and then refused.
+   */
+  createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
 };
 
 export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
@@ -70,6 +78,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   const runTurn = deps.runTurn ?? runAgentTurn;
   const chatTurn = deps.chatTurn ?? runChatTurn;
   const env = deps.env ?? engineEnv;
+  // WIRED BY THE APP, never reached for here — the same way the packs router
+  // gets it. A router that reaches into process.env for a capability is a
+  // router that behaves differently in a test than in production, and this one
+  // decides whether to offer somebody a real repo.
+  const makeRepo = deps.createRepo;
 
   async function activeRun(orgId: string, projectId: string) {
     const cutoff = new Date(Date.now() - STUCK_RUN_MS);
@@ -475,6 +488,105 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   );
 
   /**
+   * AN IDEA BECOMES A THING.
+   *
+   * The exit from a plain chat, and the reason to have had the idea here
+   * rather than in a browser tab: the conversation does not restart, it MOVES.
+   * Same thread id, same history — the argument about scraping versus asking,
+   * the thing GPT said, what you decided — all of it becomes the project's
+   * first thread, and the next turn is a build turn in the same place.
+   *
+   * Two ways in, and they end identically:
+   *   { project_id } — join a project that exists.
+   *   { create: { name, tier } } — make one, repo and all, then join it.
+   *
+   * THE CREATE BRANCH IS THE DANGEROUS ONE and it is deliberately explicit.
+   * `create` carries a NAME the caller had to have been shown, because minting
+   * a real repo on somebody's GitHub is irreversible and outward-facing, and
+   * arriving at it by @-mentioning a builder mid-sentence is exactly how that
+   * happens by accident. The client asks first; this endpoint is the answer to
+   * the question, not the question.
+   *
+   * Everything about ordering — the plan gate before the repo, the repo before
+   * the pack — lives in packs/create.ts, shared with the New Project form, so
+   * the second door cannot drift from the first.
+   */
+  router.post(
+    '/api/threads/:threadId/build',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const threadId = req.params.threadId ?? '';
+      const body = (req.body ?? {}) as { project_id?: unknown; create?: unknown };
+
+      const thread = await getThread(db, orgId, threadId);
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      // Already somewhere. Not an error — the conversation is where it needs to
+      // be, and saying so beats moving it twice.
+      if (thread.projectId) {
+        res.json({ thread: { id: threadId, project_id: thread.projectId }, moved: false });
+        return;
+      }
+
+      const projectId = typeof body.project_id === 'string' && body.project_id !== '' ? body.project_id : null;
+      const create = body.create && typeof body.create === 'object' ? (body.create as { name?: unknown; tier?: unknown }) : null;
+      if ((projectId === null) === (create === null)) {
+        res.status(400).json({ error: 'Name a project for it, or the new one to make — one or the other.' });
+        return;
+      }
+
+      let joined: string;
+      if (projectId) {
+        if (!(await getPack(db, orgId, projectId))) {
+          res.status(404).json({ error: 'no such project' });
+          return;
+        }
+        joined = projectId;
+      } else {
+        const name = typeof create!.name === 'string' ? create!.name.trim() : '';
+        if (!name) {
+          res.status(400).json({ error: 'A new project needs a name — it becomes the repo.' });
+          return;
+        }
+        if (!makeRepo) {
+          res.status(503).json({
+            error: "This deployment can't create repos, so I can't start a project from nothing here. Point this conversation at a project you already have.",
+          });
+          return;
+        }
+        // Sandbox unless told otherwise: an idea that just became a project has
+        // nothing in production, and claiming a higher tier would turn on
+        // watching that has nothing true to say yet.
+        const tier: StakesTier = create!.tier === 'personal' || create!.tier === 'live_small' || create!.tier === 'live_critical' ? create!.tier : 'sandbox';
+        const made = await createProject(db, orgId, { name, repo: null, tier }, { createRepo: makeRepo });
+        if (!made.ok) {
+          if (made.kind === 'limit') {
+            refuse(res, made.allowance);
+            return;
+          }
+          res.status(made.status).json({ error: made.error });
+          return;
+        }
+        joined = made.pack.identity.project_id;
+      }
+
+      // THE MOVE. Same id, same messages, same dates — only the filing changes.
+      const moved = await fileThread(db, orgId, threadId, { projectId: joined });
+      if (!moved) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      res.status(201).json({
+        thread: { id: threadId, project_id: joined },
+        moved: true,
+        created_project: projectId ? null : joined,
+      });
+    }),
+  );
+
+  /**
    * PUT A CONVERSATION SOMEWHERE — the move the product did not have.
    *
    * Deliberately its own route rather than a field on the PATCH above. Filing
@@ -744,6 +856,37 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
 
+      /**
+       * A BUILDER NEEDS SOMEWHERE TO PUT THE CODE, and this is asked BEFORE the
+       * conversation changes hands.
+       *
+       * The order matters more than it looks. This check used to sit after the
+       * switch, which meant naming Claude Code in an idea handed the thread to
+       * a builder that could not build, wrote a switch line onto the record,
+       * and then refused — leaving the conversation on the wrong agent with the
+       * message unsent and nothing to do but retype it.
+       *
+       * Refusing first leaves everything exactly as it was. The answer is
+       * `POST /threads/:id/build`, and the same message is sent again after the
+       * move — at which point this passes and the switch happens for real.
+       */
+      if (changesFiles(intent.kind === 'direct' ? intent.agent : thread.agent) && !thread.projectId) {
+        const packs = await listPacks(db, orgId);
+        const wanted = intent.kind === 'direct' ? intent.agent : (thread.agent as AgentId);
+        const agentName = agentById(wanted)?.name ?? 'A builder';
+        res.status(409).json({
+          error: `${agentName} builds inside a project — it needs somewhere to put the code.`,
+          code: 'needs_project',
+          agent: wanted,
+          projects: packs.map((p) => ({ id: p.identity.project_id, name: p.identity.name })),
+          // Whether "start a new one" can work here at all. Said rather than
+          // discovered: offering to make a repo on a deployment that cannot is
+          // a dead end dressed as a choice.
+          can_create: Boolean(makeRepo),
+        });
+        return;
+      }
+
       // ONE NAME DIRECTS THE TURN — and because that is a switch, it is priced
       // and recorded exactly like one, handover and all.
       if (intent.kind === 'direct' && intent.agent !== thread.agent) {
@@ -783,16 +926,23 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(400).json({ error: "mode must be 'build' or 'plan'" });
         return;
       }
-      if (!thread.projectId) {
-        res.status(409).json({ error: "This conversation isn't about a project, so there's nothing here to build in." });
+      /**
+       * Unreachable: the builder guard above returns for exactly this case.
+       * Written as a narrowing rather than a `!` so that a future edit which
+       * moves or weakens that guard fails loudly here, instead of reaching a
+       * sandbox call with a null project id.
+       */
+      const buildIn = thread.projectId;
+      if (!buildIn) {
+        res.status(409).json({ error: 'That conversation has no project to build in.', code: 'needs_project' });
         return;
       }
-      const resolved = await configFor(db, orgId, thread.projectId, env);
+      const resolved = await configFor(db, orgId, buildIn, env);
       if ('error' in resolved) {
         res.status(resolved.status).json({ error: resolved.error });
         return;
       }
-      if (await activeRun(orgId, thread.projectId)) {
+      if (await activeRun(orgId, buildIn)) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
         return;
       }
@@ -855,7 +1005,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // it — marked spent only once the turn has actually been handed it, so a
       // failed start never silently eats the handover.
       const handoff = await pendingHandoff(db, orgId, thread.id).catch(() => null);
-      const build = await getBuild(db, orgId, thread.projectId);
+      const build = await getBuild(db, orgId, buildIn);
       const agent = thread.agent as AgentId;
 
       // The decision opens the work: on the FIRST turn the builder is handed
@@ -878,7 +1028,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .values({
             id: ulid(),
             orgId,
-            projectId: thread.projectId,
+            projectId: buildIn,
             threadId: thread.id,
             role: 'switch',
             content: `⇄ built from the decision as it stood — ${paired.freshness.behind} later message${paired.freshness.behind === 1 ? '' : 's'} in the thinking were not part of it.`,
@@ -887,7 +1037,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .catch(() => undefined);
       }
 
-      const projectId = thread.projectId;
+      const projectId = buildIn;
       void runTurn(
         db,
         orgId,
@@ -918,7 +1068,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .values({
             id: ulid(),
             orgId,
-            projectId: thread.projectId,
+            projectId: buildIn,
             threadId: thread.id,
             role: 'agent',
             content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,

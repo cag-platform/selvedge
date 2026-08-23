@@ -46,6 +46,7 @@ export function Rail({
   onNewThread,
   onNewSubjectThread,
   onNewSubject,
+  onStartIdea,
   onPutAway,
 }: {
   data: InboxData | null;
@@ -56,6 +57,7 @@ export function Rail({
   onNewThread: (projectId: string) => void;
   onNewSubjectThread: (subjectId: string) => void;
   onNewSubject: () => void;
+  onStartIdea: () => void;
   /** Fold a place away, or bring it back. */
   onPutAway: (place: RailPlace, away: boolean) => void;
 }) {
@@ -167,9 +169,26 @@ export function Rail({
           </div>
         )}
 
+        {/*
+          START AN IDEA — the front door to a plain conversation, above the
+          quieter "make a place" because it is what somebody actually wants to
+          do. It is not a new kind of thing: an idea is a conversation under a
+          subject, which is what a subject already is.
+
+          Worded as a door that happens to be there, not a step you are failing
+          to take. Most ideas never become projects, and that is correct — a
+          product that framed this as a funnel would make ninety percent of what
+          you write here read as unfinished.
+        */}
+        <button
+          onClick={onStartIdea}
+          className="mt-work w-full rounded-inset px-work-tight py-work-tight text-left text-body text-ink-dim hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+        >
+          + Start an idea
+        </button>
         <button
           onClick={onNewSubject}
-          className="mt-work w-full rounded-inset px-work-tight py-work-tight text-left text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+          className="w-full rounded-inset px-work-tight py-work-tight text-left text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
         >
           + somewhere to work that isn’t a codebase
         </button>

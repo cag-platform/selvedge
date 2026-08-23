@@ -135,22 +135,32 @@ describe('subjects on the rail and over HTTP', () => {
   });
 
   /**
-   * A builder may be asked into any conversation — the picker must not lie
-   * about who is available. What it cannot do is build where there is no
-   * codebase, and that is said at the moment it is asked to, in the words of
-   * the thing that is actually missing.
+   * A BUILDER MAY BE ASKED INTO ANY CONVERSATION — the picker must not lie
+   * about who exists. What it cannot do is build where there is no codebase,
+   * and this is where that gets said.
+   *
+   * WHAT CHANGED, AND WHY THIS TEST WAS REWRITTEN. It used to switch the
+   * thread to the builder FIRST and refuse afterwards, which is what the old
+   * behaviour did: you ended up on an agent that could not answer, with your
+   * message unsent and a switch line on the record. The refusal is now raised
+   * before anything moves, and it carries the projects this conversation could
+   * join so the answer is available in place.
    */
-  it('lets a builder in, then says plainly there is nothing here to build in', async () => {
+  it('asks which project rather than walling it off, and moves nothing until told', async () => {
     const made = await request(subjectsApp()).post('/api/subjects').send({ name: 'Pricing' });
     const created = await request(threadsApp()).post(`/api/subjects/${made.body.subject.id}/threads`).send({});
     const threadId = created.body.thread.id;
 
-    const switched = await request(threadsApp()).patch(`/api/threads/${threadId}`).send({ agent: 'claude-code' });
-    expect(switched.status).toBe(200);
-
-    const res = await request(threadsApp()).post(`/api/threads/${threadId}/message`).send({ text: 'build it' });
+    const res = await request(threadsApp()).post(`/api/threads/${threadId}/message`).send({ text: '@claudecode build it' });
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/nothing here to build in/i);
+    expect(res.body.code).toBe('needs_project');
+    expect(res.body.error).toMatch(/builds inside a project/i);
+    expect(Array.isArray(res.body.projects)).toBe(true);
+
+    // NOTHING MOVED. The conversation is still on the talker it started on, so
+    // saying the same thing again after picking a project is all it takes.
+    const after = await request(threadsApp()).get(`/api/threads/${threadId}`);
+    expect(after.body.thread.agent).toBe('claude');
   });
 
   it('a subject needs a name, and belongs to one org', async () => {

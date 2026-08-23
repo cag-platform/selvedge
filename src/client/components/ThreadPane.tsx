@@ -11,6 +11,7 @@ import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';
+import { needsProjectOf, repoSlug, type NeedsProject } from '../lib/needsProject.js';
 import { referenceNote, type ReferenceCandidate, type ReferencesResponse } from '../lib/references.js';
 import { completeReference, referenceQuery } from '../../shared/references.js';
 import {
@@ -296,6 +297,11 @@ export function ThreadPane({
   // The other refusal with a way through: this conversation has spent what it
   // was allowed to spend, and is asking before it spends more.
   const [ceiling, setCeiling] = useState<{ refusal: CeilingRefusal; message: string } | null>(null);
+  // The third refusal with a way through, and the only one that is a MOVE
+  // rather than a permission: this idea has nowhere to build yet.
+  const [needsProject, setNeedsProject] = useState<{ refusal: NeedsProject; message: string } | null>(null);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [moving, setMoving] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
 
@@ -462,6 +468,7 @@ export function ThreadPane({
       setDocuments([]);
       setStaleRefusal(null);
       setCeiling(null);
+      setNeedsProject(null);
       setWarming(res.warming);
       onReload();
     } catch (err) {
@@ -474,12 +481,42 @@ export function ThreadPane({
       const body409 = err instanceof ApiError && err.status === 409 ? err.body : null;
       const stale = body409 ? staleRefusalOf(body409) : null;
       const hit = body409 ? ceilingRefusalOf(body409) : null;
+      const nowhere = body409 ? needsProjectOf(body409) : null;
       const message = err instanceof Error ? err.message : '';
       if (stale) setStaleRefusal({ refusal: stale, message });
       else if (hit) setCeiling({ refusal: hit, message });
+      else if (nowhere) setNeedsProject({ refusal: nowhere, message });
       else setNote(message || "that didn't go through");
     } finally {
       setSending(false);
+    }
+  }
+
+  /**
+   * GIVE THIS CONVERSATION SOMEWHERE TO BUILD, and then say the thing again.
+   *
+   * The move is the point: the thread keeps its id and its whole history, so
+   * the argument you just had is inside the project it produced. Nothing is
+   * summarised and nothing restarts.
+   *
+   * The message is re-sent rather than held server-side, because the refusal
+   * left it in the composer where it is still editable — being told what was in
+   * the way is not the same as having agreed to send.
+   */
+  async function giveItAProject(destination: { project_id: string } | { create: { name: string } }) {
+    setMoving(true);
+    setNote(null);
+    try {
+      await api.post(`/api/threads/${data.thread.id}/build`, destination);
+      setNeedsProject(null);
+      onReload();
+      await send(null);
+    } catch (err) {
+      // A plan wall or a GitHub failure lands here as a plain sentence. The
+      // conversation has not moved and nothing was created.
+      setNote(err instanceof Error ? err.message : "that didn't go through");
+    } finally {
+      setMoving(false);
     }
   }
 
@@ -660,6 +697,67 @@ export function ThreadPane({
         )}
         {/* Nothing spends past what you approved — said here, in the place the
             spending actually happens, with the figure and the way through. */}
+        {needsProject && (
+          <div className="mb-work-tight space-y-work-tight rounded-inset border border-hairline bg-panel-soft px-3 py-2">
+            <p className="text-body text-ink">{needsProject.message}</p>
+            {/* What survives the move, said before it happens — because the
+                whole reason to have had the idea here is that it does. */}
+            <p className="text-meta text-ink-quiet">
+              This conversation moves with it — everything said here stays, and the next turn builds.
+            </p>
+
+            {needsProject.refusal.projects.length > 0 && (
+              <div className="flex flex-wrap gap-work-tight">
+                {needsProject.refusal.projects.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={moving}
+                    onClick={() => void giveItAProject({ project_id: p.id })}
+                    className="rounded-inset border border-hairline bg-panel px-3 py-1 text-body text-ink hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {needsProject.refusal.canCreate && (
+              <div className="space-y-work-tight border-t border-hairline pt-work-tight">
+                <label className="block text-meta text-ink-quiet">
+                  …or start a new one
+                  <input
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="what to call it"
+                    className="mt-1 block w-full rounded-inset border border-hairline bg-panel px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+                  />
+                </label>
+                {/* THE NAME OF THE REPO, BEFORE IT EXISTS. Minting one is
+                    irreversible and outward-facing; arriving at it by naming a
+                    builder mid-sentence is exactly how that happens by
+                    accident, so it is shown and agreed to rather than done. */}
+                {repoSlug(newProjectName) !== '' && (
+                  <p className="text-meta text-ink-quiet">
+                    I’ll create the repo <code className="font-mono text-tech text-ink-dim">{repoSlug(newProjectName)}</code> on your GitHub. That’s
+                    real and I can’t undo it.
+                  </p>
+                )}
+                <button
+                  disabled={moving || repoSlug(newProjectName) === ''}
+                  onClick={() => void giveItAProject({ create: { name: newProjectName.trim() } })}
+                  className="rounded-inset border border-hairline bg-panel px-3 py-1 text-body text-ink hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+                >
+                  {moving ? 'Making it…' : 'Create it and build'}
+                </button>
+              </div>
+            )}
+
+            <button onClick={() => setNeedsProject(null)} className="text-meta text-ink-quiet underline hover:text-ink-dim">
+              Not yet — keep talking
+            </button>
+          </div>
+        )}
+
         {ceiling && (
           <div className="mb-work-tight space-y-work-tight rounded-inset border-2 border-thread bg-panel-soft px-3 py-2">
             <p className="text-body font-medium text-thread">{ceiling.message}</p>

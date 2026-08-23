@@ -67,6 +67,7 @@ async function availability(
   orgId: string,
   agent: (typeof AGENTS)[number],
   env: EngineEnv | null,
+  hasProject: boolean,
   builderCan: (agentId: AgentId) => Promise<{ available: boolean; note: string | null }>,
 ): Promise<{ available: boolean; note: string | null }> {
   // DECLARED IS NOT LIVE, and this is checked FIRST because it outranks every
@@ -88,6 +89,25 @@ async function availability(
     // it, so offering them a credential to add would be the wrong advice.
     if (!env) {
       return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected." };
+    }
+    /**
+     * A BUILDER NEEDS SOMEWHERE TO PUT THE CODE, and this row used to forget.
+     *
+     * In a conversation with no project — an idea, an imported chat, anything
+     * under a subject — this said AVAILABLE, switching to it was quoted at
+     * nothing, and then the first message came back 409 "there's nothing here
+     * to build in". Three surfaces disagreeing about the same question, and the
+     * only one that told the truth was the last one, after the switch.
+     *
+     * It is still LISTED, because hiding it teaches people the product is
+     * smaller than it is — and the note says the thing that fixes it, which is
+     * a real move rather than a credential to go and find.
+     */
+    if (!hasProject) {
+      return {
+        available: false,
+        note: `${agent.name} builds inside a project. Give this conversation one — an existing project or a new one — and it can pick this up.`,
+      };
     }
     return builderCan(agent.id);
   }
@@ -124,7 +144,7 @@ export async function agentRoster(
   return Promise.all(
     AGENTS.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
-      const { available, note } = await availability(db, orgId, agent, engine, builderCan);
+      const { available, note } = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
 
       // Nobody quotes you a price for staying where you are.
       const quote = answeringNow ? null : await quoteHandoff(db, orgId, thread, from, agent.id);

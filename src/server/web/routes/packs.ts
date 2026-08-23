@@ -5,7 +5,7 @@ import { PackValidationError } from '../../packs/validate.js';
 import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { canCreateProject } from '../../billing/entitlements.js';
+import { createProject } from '../../packs/create.js';
 import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
@@ -38,66 +38,36 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
         return;
       }
       const orgId = orgIdOf(req);
-      const projectId = slugifyProjectId(body.name);
-      if (!projectId) {
-        res.status(400).json({ error: 'name must contain at least one letter or number' });
-        return;
-      }
-      if (await getPack(db, orgId, projectId)) {
-        res.status(409).json({ error: `a project with id "${projectId}" already exists` });
-        return;
-      }
-      // Checked here, before anything is made — and specifically before the
-      // start-from-nothing branch below creates a real repo on GitHub. A limit
-      // that bites after a side effect leaves the owner with a repo they didn't
-      // get to use and no project attached to it.
-      const room = await canCreateProject(db, orgId);
-      if (!room.allowed) {
-        refuse(res, room);
-        return;
-      }
-      // Start-from-nothing: make the repo first, then map the project to it.
-      // The repo is created before the pack so a GitHub failure leaves nothing
-      // half-made; a pack failure after leaves a repo but no project — visible
-      // and harmless, and re-creating the project just maps to it by name.
-      let repo: string;
-      if (createRepo) {
-        if (!deps.createRepo) {
-          res.status(503).json({ error: 'Creating repos needs the build engine’s GITHUB_TOKEN — set it, or pick an existing repo.' });
+
+      // ONE COPY OF THE ORDERING. The plan gate before anything is made, the
+      // repo before the pack — see packs/create.ts, which the idea-chat's
+      // "start a new one" also goes through. Two doors, one sequence.
+      const made = await createProject(
+        db,
+        orgId,
+        {
+          name: body.name.trim(),
+          repo: createRepo ? null : body.repo!.trim(),
+          tier: body.tier!,
+          ...(body.touches_money !== undefined ? { touchesMoney: body.touches_money } : {}),
+          ...(body.downtime_translation ? { downtimeTranslation: body.downtime_translation } : {}),
+        },
+        deps.createRepo ? { createRepo: deps.createRepo } : {},
+      );
+      if (!made.ok) {
+        if (made.kind === 'limit') {
+          refuse(res, made.allowance);
           return;
         }
-        try {
-          repo = (await deps.createRepo(projectId, `${body.name.trim()} — created by Selvedge`)).fullName;
-        } catch (err) {
-          if (err instanceof GithubError) {
-            res.status(err.alreadyExists ? 409 : 502).json({ error: `GitHub did not create the repo: ${err.message}. Nothing was created.` });
-            return;
-          }
-          throw err;
-        }
-      } else {
-        repo = body.repo!.trim();
+        res.status(made.status).json(made.details ? { error: made.error, details: made.details } : { error: made.error });
+        return;
       }
-      const pack = scaffoldPack({
-        name: body.name.trim(),
-        repo,
-        tier: body.tier!,
-        touches_money: body.touches_money,
-        downtime_translation: body.downtime_translation?.trim() || undefined,
-      });
-      try {
-        await createPack(db, orgId, pack);
-      } catch (err) {
-        if (err instanceof PackValidationError) {
-          res.status(422).json({ error: err.message, details: err.errors });
-          return;
-        }
-        throw err;
-      }
+      const pack = made.pack;
+
       // Seed 30 days of history for the newly mapped repo in the background.
       if (deps.backfill) {
         void deps.backfill(orgId, pack.topology.sources[0]!.resource_id).catch((err) => {
-          console.error(`backfill after pack create failed for ${orgId}/${projectId}:`, err);
+          console.error(`backfill after pack create failed for ${orgId}/${pack.identity.project_id}:`, err);
         });
       }
       res.status(201).json(pack);

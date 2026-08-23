@@ -128,6 +128,26 @@ export function Inbox() {
     [loadInbox, navigate],
   );
 
+  /**
+   * START AN IDEA — a plain conversation about nothing in particular, yet.
+   *
+   * No project, no sandbox, nothing to ship, and no ceremony asking what it is
+   * about: the point of an idea is that you do not know yet. It lands under an
+   * "Ideas" subject the server makes on first use, so it is in the rail and
+   * searchable from the moment it exists.
+   */
+  const startIdea = useCallback(async () => {
+    try {
+      const res = await api.post<{ thread: { id: string } }>('/api/ideas', {});
+      await loadInbox();
+      navigate(`/inbox/${res.thread.id}`);
+      setView('thread');
+      setTimeout(() => composerRef.current?.focus(), 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "that didn't go through");
+    }
+  }, [loadInbox, navigate]);
+
   /** Make somewhere to put work that isn't a codebase. */
   const createSubject = useCallback(async () => {
     const name = window.prompt('What are we building today?');
@@ -279,6 +299,7 @@ export function Inbox() {
             onNewThread={(id) => void createThread(id)}
             onNewSubjectThread={(id) => void createSubjectThread(id)}
             onNewSubject={() => void createSubject()}
+            onStartIdea={() => void startIdea()}
             onPutAway={(place, away) => void putAway(place, away)}
           />
           )}

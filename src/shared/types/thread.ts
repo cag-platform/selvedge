@@ -25,3 +25,13 @@ export function isThreadKind(value: unknown): value is ThreadKind {
 export const DEFAULT_WORKSHOP_TITLE = 'Workshop';
 /** What a fresh general thread is called until it earns a name. */
 export const DEFAULT_GENERAL_TITLE = 'New thread';
+
+/**
+ * Where a half-formed thing lives before it is anything.
+ *
+ * A constant rather than a literal in two places: the server makes this subject
+ * on first use and both clients look for it by name to decide whether the
+ * "Start an idea" door leads somewhere that already exists. One string, three
+ * readers — the same reason the plan table is shared.
+ */
+export const IDEAS_SUBJECT = 'Ideas';
