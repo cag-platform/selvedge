@@ -61,7 +61,10 @@ export function Rail({
 }) {
   const [showingPutAway, setShowingPutAway] = useState(false);
 
-  if (!data) return <p className="p-work text-body text-ink-quiet">Loading…</p>;
+  // The shape while it fills belongs to whoever owns the frame — the Inbox
+  // renders RailSkeleton in this slot, so a word here would be a second
+  // loading state fighting the first.
+  if (!data) return null;
 
   const { atHand, putAway } = splitPutAway(railPlaces(data.projects, data.subjects ?? []));
 

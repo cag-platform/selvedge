@@ -44,3 +44,21 @@
 .animate-settle {
   animation: settle var(--settle-duration) var(--settle-ease) both;
 }
+
+/* THE ONE SANCTIONED EXCEPTION TO STILLNESS.
+   A skeleton has to say "this is coming" and a static grey block says
+   "this is broken", so it breathes — once every two seconds, opacity only,
+   no shimmer sweeping across it. The duration is derived from --settle
+   rather than picked, so the one motion token still governs, and
+   prefers-reduced-motion (which collapses that token to 0ms) leaves it
+   holding still at full opacity rather than flickering. */
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.animate-breathe {
+  animation: breathe calc(var(--settle-duration) * 3.5) var(--settle-ease) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-breathe { animation: none; }
+}

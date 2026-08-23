@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Rail } from '../components/Rail.js';
+import { RailSkeleton, ThreadSkeleton, useLoadingPhase, SLOW_LINE } from '../components/ui.js';
 import { ThreadPane } from '../components/ThreadPane.js';
 import { ContextPanel } from '../components/ContextPanel.js';
 import { Palette } from '../components/Palette.js';
@@ -238,6 +239,13 @@ export function Inbox() {
   // the interface version of the one output this product can't have.
   if (error && !inbox) return <p className="p-work text-body text-thread">{error}</p>;
 
+  // WHAT EACH PANE SHOWS WHILE IT FILLS. Under 150ms, nothing at all — a
+  // skeleton that appears and vanishes that fast is its own flash of jank, and
+  // most responses land inside it. Past eight seconds the shape stops being
+  // honest and the pane says the true thing instead, without giving up.
+  const railPhase = useLoadingPhase(inbox === null);
+  const threadPhase = useLoadingPhase(threadId !== null && thread === null);
+
   const phone = width < PHONE;
   const showRail = !phone || view === 'rail';
   const showThread = !phone || view === 'thread';
@@ -256,6 +264,12 @@ export function Inbox() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
       {showRail && (
         <div className={`${phone ? 'w-full' : 'w-rail shrink-0'} border-r border-hairline bg-panel`}>
+          {inbox === null ? (
+            <>
+              {railPhase !== 'idle' && <RailSkeleton />}
+              {railPhase === 'slow' && <p className="px-work text-meta text-ink-quiet">{SLOW_LINE}</p>}
+            </>
+          ) : (
           <Rail
             data={inbox}
             activeThreadId={threadId ?? null}
@@ -267,6 +281,7 @@ export function Inbox() {
             onNewSubject={() => void createSubject()}
             onPutAway={(place, away) => void putAway(place, away)}
           />
+          )}
         </div>
       )}
 
@@ -304,6 +319,13 @@ export function Inbox() {
               onSwitcherOpenChange={setSwitcherOpen}
               composerRef={composerRef}
             />
+          ) : threadId ? (
+            // A thread was asked for and hasn't arrived. The shape goes here,
+            // inside the frame, so nothing moves when the words land.
+            <>
+              {threadPhase !== 'idle' && <ThreadSkeleton />}
+              {threadPhase === 'slow' && <p className="px-work-loose text-meta text-ink-quiet">{SLOW_LINE}</p>}
+            </>
           ) : (
             <div className="flex flex-1 items-center justify-center p-8">
               <p className="max-w-sm text-center text-body text-ink-quiet">

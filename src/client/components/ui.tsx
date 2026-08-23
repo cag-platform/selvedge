@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 /**
  * Shared form/control classes ("The Look", Prompt 5) — tokens only, the
@@ -67,6 +67,108 @@ export function EmptyState({
     <div className="max-w-prose py-work">
       <p className="text-body text-ink-dim">{children}</p>
       {action && <div className="mt-work">{action}</div>}
+    </div>
+  );
+}
+
+/**
+ * A PANE HOLDS ITS SHAPE WHILE IT FILLS.
+ *
+ * A spinner says "something is happening"; a skeleton says "this is what is
+ * about to be here", which is the more useful sentence and the one that stops
+ * the page jumping when the data lands. Nothing here flashes white and nothing
+ * moves after first paint.
+ *
+ * SHAPED, NOT GENERIC. Three grey bars mean nothing; a rail of edge-stub-plus-
+ * two-lines is recognisably the rail. So the skeletons below are per-surface
+ * rather than one reusable "loading box", and they render INSIDE the three-pane
+ * frame so the frame itself never moves.
+ */
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div aria-hidden className={`animate-breathe rounded-inset bg-panel ${className}`} />;
+}
+
+/**
+ * WHEN TO SHOW ONE.
+ *
+ * Not immediately: a skeleton that appears and vanishes inside 150ms is its own
+ * flash of jank, and most local responses land inside that. And not forever
+ * either — past eight seconds a skeleton is a lie by omission, so the surface
+ * says the true thing instead and keeps waiting.
+ *
+ * Returns what the surface should do: nothing yet, the shape, or the sentence.
+ */
+export const SKELETON_AFTER_MS = 150;
+export const SLOW_AFTER_MS = 8_000;
+export const SLOW_LINE = 'Still loading — the server is slow right now.';
+
+export function useLoadingPhase(loading: boolean): 'idle' | 'skeleton' | 'slow' {
+  const [phase, setPhase] = useState<'idle' | 'skeleton' | 'slow'>('idle');
+  useEffect(() => {
+    if (!loading) {
+      setPhase('idle');
+      return;
+    }
+    const toSkeleton = setTimeout(() => setPhase('skeleton'), SKELETON_AFTER_MS);
+    const toSlow = setTimeout(() => setPhase('slow'), SLOW_AFTER_MS);
+    return () => {
+      clearTimeout(toSkeleton);
+      clearTimeout(toSlow);
+    };
+  }, [loading]);
+  return phase;
+}
+
+/** The rail, before it has rows: an edge stub and two lines, five times. */
+export function RailSkeleton() {
+  return (
+    <div className="p-work" aria-busy="true" aria-label="Loading your projects">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="mb-work-tight flex items-center gap-work px-work-tight py-work">
+          <Skeleton className="h-8 w-[3px] shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1.5 pl-work">
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-2.5 w-4/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A conversation, before its messages: three of them, alternating sides. */
+export function ThreadSkeleton() {
+  return (
+    <div className="space-y-work-loose px-work-loose py-work" aria-busy="true" aria-label="Loading this conversation">
+      {[
+        'w-3/5',
+        'w-4/5',
+        'w-2/3',
+      ].map((width, i) => (
+        <div key={i} className={i % 2 === 1 ? 'border-l-2 border-hairline pl-work' : 'pl-6'}>
+          <Skeleton className="h-2.5 w-16" />
+          <Skeleton className={`mt-2 h-3 ${width}`} />
+          <Skeleton className="mt-1.5 h-3 w-1/3" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The context panel, before its data: the tab strip and one card. */
+export function ContextSkeleton() {
+  return (
+    <div className="space-y-work p-work" aria-busy="true" aria-label="Loading the context panel">
+      <div className="flex gap-work-tight">
+        <Skeleton className="h-6 w-16" />
+        <Skeleton className="h-6 w-16" />
+        <Skeleton className="h-6 w-16" />
+      </div>
+      <div className="space-y-2 rounded-card border border-hairline p-work">
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="h-2.5 w-full" />
+        <Skeleton className="h-2.5 w-4/5" />
+      </div>
     </div>
   );
 }
