@@ -6,6 +6,12 @@ exists to prevent.
 
 ## 23 August 2026
 
+- Five more models answer to `@`: Gemini, Kimi, Grok, DeepSeek and Mistral.
+  They arrived as five table rows rather than five integrations, because every
+  provider but Anthropic speaks the same protocol at a different address.
+- A consultation that names more models than it can ask now says who it left
+  out. Naming six and hearing from three in silence was survivable when there
+  were four agents in the room.
 - The landing stops shipping the app it is describing: everything behind a
   session is split per route, so a first visitor no longer downloads a
   workbench they cannot open.

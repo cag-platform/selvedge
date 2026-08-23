@@ -11,6 +11,7 @@ import { createThread } from '../../src/server/threads/store.js';
 import { switchThreadAgent } from '../../src/server/threads/switch.js';
 import { connectCredential } from '../../src/server/connectors/credentials/store.js';
 import type { AgentOffer } from '../../src/server/threads/roster.js';
+import { AGENTS } from '../../src/shared/agents.js';
 import { appWithOrg } from './helpers.js';
 
 /**
@@ -72,8 +73,15 @@ describe('who could answer this, and what handing it over would cost', () => {
     const thread = await conversation();
     const agents = await roster(thread.id);
 
-    expect(agents.map((a) => a.id)).toEqual(['claude-code', 'codex', 'claude', 'gpt']);
+    // Everyone in the registry, in registry order — the roster hides nothing,
+    // which is the property worth pinning rather than the current headcount.
+    expect(agents.map((a) => a.id)).toEqual(AGENTS.map((a) => a.id));
     expect(agents.filter((a) => a.answering_now).map((a) => a.id)).toEqual(['claude']);
+    // And the newer talkers are listed even with no key connected, each with a
+    // sentence rather than a silence.
+    const grok = agents.find((a) => a.id === 'grok')!;
+    expect(grok.available).toBe(false);
+    expect(grok.unavailable_note).toMatch(/Connections/);
   });
 
   /**

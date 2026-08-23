@@ -57,11 +57,23 @@ describe('fuel/resolve — BYO → managed → off', () => {
     expect(await resolveFuel(db, orgId)).toBeNull();
   });
 
-  it('skips a stored credential for a provider we cannot build yet, rather than failing', async () => {
-    // A customer connected a provider ahead of our support (shouldn't happen
-    // via the route, but the resolver must be robust to it): skip, fall
-    // through, and here that means off.
-    await connectCredential(db, orgId, 'gemini', 'gm-key-not-yet-buildable');
+  it('skips a stored credential for a provider it cannot build, rather than failing', async () => {
+    // Every DECLARED provider is buildable now, so the subject of this test had
+    // to change — but the rule it protects did not. A credential row for
+    // something the resolver doesn't recognise (a retired provider, a hand-
+    // written row, a provider added to the table and then removed) must be
+    // stepped over rather than throwing, because the failure would be "no fuel
+    // at all" for an org that has perfectly good keys next to it.
+    await connectCredential(db, orgId, 'some-provider-we-do-not-have', 'key-for-nothing');
     expect(await resolveFuel(db, orgId)).toBeNull();
+  });
+
+  it('now builds a client for a provider that used to be declared-only', async () => {
+    // Gemini and Kimi sat in the table for months as roadmap. The seam they
+    // were waiting for is one base URL per provider.
+    await connectCredential(db, orgId, 'kimi', 'sk-moonshot-test');
+    const fuel = await resolveFuel(db, orgId);
+    expect(fuel?.provider).toBe('kimi');
+    expect(fuel?.source).toBe('byo');
   });
 });

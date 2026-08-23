@@ -67,15 +67,35 @@ describe('web/routes/fuel — the BYO connect experience', () => {
     expect(res.body.connected).toHaveLength(1);
     expect(res.body.connected[0].provider).toBe('anthropic');
     expect(res.body.available).toContain('anthropic');
-    expect(res.body.coming_soon).toContain('gemini');
+    expect(res.body.available).toContain('kimi');
+    // Nothing is "coming soon" any more — every declared provider is wired.
+    // The field stays because the honest thing to do with a future
+    // declared-but-unwired row is still to name it rather than hide it.
+    expect(res.body.coming_soon).toEqual([]);
+    // And each one is named the way a person would name it, from the same
+    // table the call itself reads.
+    expect(res.body.labels.kimi).toMatch(/Kimi/);
     expect(JSON.stringify(res.body)).not.toContain(KEY);
   });
 
-  it('turns away a not-yet-supported provider honestly', async () => {
+  it('takes a key for every provider it declares', async () => {
+    // The inverse of the test this replaces. Gemini used to be turned away as
+    // not-yet-supported; the whole point of the provider table is that there
+    // is no longer a declared provider the connect screen has to refuse.
     const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
-    const res = await request(app).post('/api/fuel').send({ provider: 'gemini', key: 'gm-some-key' });
+    for (const provider of ['gemini', 'kimi', 'xai', 'deepseek', 'mistral']) {
+      const res = await request(app).post('/api/fuel').send({ provider, key: `key-for-${provider}` });
+      // 200 rather than 201: connecting is an upsert, so it is not always a
+      // creation. What matters is that it is accepted.
+      expect([200, 201], provider).toContain(res.status);
+    }
+    expect(await listConnected(db, orgId)).toHaveLength(5);
+  });
+
+  it('still turns away a provider it has never heard of', async () => {
+    const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'not-a-provider', key: 'k' });
     expect(res.status).toBe(400);
-    expect(res.body.coming_soon).toBe(true);
     expect(await listConnected(db, orgId)).toHaveLength(0);
   });
 

@@ -31,7 +31,33 @@
  * added but never renamed.
  */
 
-export type AgentId = 'claude-code' | 'codex' | 'claude' | 'gpt';
+export type AgentId =
+  | 'claude-code'
+  | 'codex'
+  | 'claude'
+  | 'gpt'
+  | 'gemini'
+  | 'kimi'
+  | 'grok'
+  | 'deepseek'
+  | 'mistral';
+
+/**
+ * Whose fuel an agent burns.
+ *
+ * These are the same strings as the connector registry's fuel providers, and
+ * they are ENCRYPTION-BOUND there: a provider id is an AES-GCM AAD component,
+ * so renaming one makes every stored credential for it permanently
+ * undecryptable — silently, because a decryption failure reads as "not
+ * connected". The two lists are checked against each other by a test rather
+ * than by an import, because `shared/` may not reach into `server/`.
+ *
+ * Note `xai` rather than `grok`: the provider is the company whose key you
+ * connect, the agent is the model you name in a sentence. One key can serve
+ * more than one agent, which is exactly the relationship between `openai` and
+ * both GPT and Codex.
+ */
+export type AgentProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
 
 export type AgentDescriptor = {
   id: AgentId;
@@ -46,7 +72,7 @@ export type AgentDescriptor = {
    */
   changesFiles: boolean;
   /** Whose fuel it burns — what the ledger attributes the spend to. */
-  provider: 'anthropic' | 'openai';
+  provider: AgentProvider;
   /**
    * The model id used to PRICE context carried to this agent (a handoff), from
    * config/model-pricing.json. Not necessarily the model it runs: a CLI agent
@@ -111,6 +137,65 @@ const AGENT_TABLE = {
     provider: 'openai',
     pricingModel: 'gpt-5.6-terra',
     costNote: 'plain chat on your own OpenAI key — a fraction of what a build turn costs',
+    live: true,
+  },
+  // The rest of the room. Every one of these reaches its model through the
+  // same OpenAI-compatible seam (server/llm/providers.ts), which is why five
+  // agents arrived as five rows rather than five integrations — and why the
+  // sixth will too.
+  //
+  // They are all talkers. A builder needs a CLI that can run inside a sandbox
+  // and report what it did, which is a driver rather than a table row; adding
+  // one here without that driver would put an agent in the picker that fails
+  // the moment somebody picks it.
+  gemini: {
+    id: 'gemini',
+    chip: 'GM',
+    name: 'Gemini',
+    changesFiles: false,
+    provider: 'gemini',
+    pricingModel: 'gemini-2.5-pro',
+    costNote: 'plain chat on your own Google key — a fraction of what a build turn costs',
+    live: true,
+  },
+  kimi: {
+    id: 'kimi',
+    chip: 'KM',
+    name: 'Kimi',
+    changesFiles: false,
+    provider: 'kimi',
+    pricingModel: 'kimi-k2',
+    costNote: 'plain chat on your own Moonshot key — long context, cheap per turn',
+    live: true,
+  },
+  grok: {
+    id: 'grok',
+    chip: 'GR',
+    name: 'Grok',
+    changesFiles: false,
+    provider: 'xai',
+    pricingModel: 'grok-4',
+    costNote: 'plain chat on your own xAI key — a fraction of what a build turn costs',
+    live: true,
+  },
+  deepseek: {
+    id: 'deepseek',
+    chip: 'DS',
+    name: 'DeepSeek',
+    changesFiles: false,
+    provider: 'deepseek',
+    pricingModel: 'deepseek-chat',
+    costNote: 'plain chat on your own DeepSeek key — among the cheapest per turn',
+    live: true,
+  },
+  mistral: {
+    id: 'mistral',
+    chip: 'MI',
+    name: 'Mistral',
+    changesFiles: false,
+    provider: 'mistral',
+    pricingModel: 'mistral-large',
+    costNote: 'plain chat on your own Mistral key — a fraction of what a build turn costs',
     live: true,
   },
 } satisfies Record<AgentId, AgentDescriptor>;

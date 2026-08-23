@@ -11,6 +11,15 @@ conversations longer than they need to be.
 - **OpenAI** — powers `@gpt` in conversation, `@codex` when it builds, and the
   independent verdict, which is judged by a model that did not write the
   change.
+- **Google** — powers `@gemini`.
+- **Moonshot** — powers `@kimi`.
+- **xAI** — powers `@grok`.
+- **DeepSeek** — powers `@deepseek`.
+- **Mistral** — powers `@mistral`.
+
+Connect one and that agent answers. Connect none and it says so plainly rather
+than quietly answering as somebody else — which is the only reason the list can
+be this long without becoming a list of promises.
 - **Railway / Vercel** — read-only enough to see whether your deploys went live
   or failed.
 - **Supabase, Neon** — only if you ask Selvedge to put something online that
@@ -35,8 +44,9 @@ Costs are the model's, passed through at what they cost:
 
 - **A builder** (`@claudecode`, `@codex`) — roughly **$0.05–0.30** a turn. It
   is reading files, editing, and running tests in a sandbox.
-- **A talker** (`@claude`, `@gpt`) — a fraction of a build turn. It is one
-  question and one answer.
+- **A talker** (`@claude`, `@gpt`, `@gemini`, `@kimi`, `@grok`, `@deepseek`,
+  `@mistral`) — a fraction of a build turn. It is one question and one answer,
+  and what it costs is whatever that provider charges, passed through.
 - **Switching builders mid-task** costs whatever carrying the handover costs,
   and the exact figure is quoted **before** you switch, from the same code that
   does the charging. A price tag that turns out to have been a guess is worse

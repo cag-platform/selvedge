@@ -5,7 +5,7 @@
  * they'd know, not the internal provider ids.
  */
 
-export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi';
+export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
 
 const LABEL: Record<string, string> = {
   anthropic: 'Claude',

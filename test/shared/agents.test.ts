@@ -32,7 +32,11 @@ describe('the agent registry', () => {
    * what the conversation was about — which is exactly backwards.
    */
   it('offers the whole roster, whatever the conversation is', () => {
-    expect(switchableAgents().map((a) => a.id)).toEqual(['claude-code', 'codex', 'claude', 'gpt']);
+    // Stated as the rule rather than as a census: the point is that NOTHING is
+    // filtered out, and a test that lists four names passes for the wrong
+    // reason the moment a fifth agent is added and also filtered.
+    expect(switchableAgents().map((a) => a.id)).toEqual(AGENTS.map((a) => a.id));
+    expect(switchableAgents()).toHaveLength(AGENTS.length);
   });
 
   /**
@@ -63,12 +67,54 @@ describe('the agent registry', () => {
 
   it('an id nobody declared is not an agent', () => {
     expect(isAgentId('claude-code')).toBe(true);
-    expect(isAgentId('kimi')).toBe(false);
+    expect(isAgentId('kimi')).toBe(true);
+    // Not a near-miss, not a provider name, not a plural. `xai` is a provider
+    // — the company whose key you connect — and never an agent you can name.
+    expect(isAgentId('xai')).toBe(false);
+    expect(isAgentId('grok-4')).toBe(false);
     expect(isAgentId(null)).toBe(false);
-    expect(agentById('kimi')).toBeNull();
+    expect(agentById('xai')).toBeNull();
   });
 
   it('the ids in use today are the ids stored in the database — renaming one orphans history', () => {
-    expect(AGENTS.map((a) => a.id)).toEqual(['claude-code', 'codex', 'claude', 'gpt']);
+    // Deliberately a census, unlike the test above: this one is the tripwire.
+    // An id lands in threads.agent and in every message that quoted it, so it
+    // may be ADDED here freely and never renamed. Updating this list is how a
+    // rename gets noticed instead of shipped.
+    expect(AGENTS.map((a) => a.id)).toEqual([
+      'claude-code',
+      'codex',
+      'claude',
+      'gpt',
+      'gemini',
+      'kimi',
+      'grok',
+      'deepseek',
+      'mistral',
+    ]);
+  });
+
+  /**
+   * The seam that makes the roster growable: every agent burns SOME provider's
+   * fuel, and that provider has to be one the fuel resolver can actually build
+   * a client for. `shared/` cannot import `server/`, so the two lists are held
+   * together here rather than by a type.
+   */
+  it('every live agent names a provider the fuel seam can actually reach', () => {
+    const wired = new Set(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral']);
+    for (const agent of AGENTS) {
+      if (!agent.live) continue;
+      expect(wired.has(agent.provider), `${agent.id} → ${agent.provider}`).toBe(true);
+    }
+  });
+
+  /**
+   * A builder is not a table row. It needs a CLI that runs in a sandbox and
+   * reports what it did, so an agent added here as a talker must stay one
+   * until that driver exists — otherwise the picker offers a build that
+   * cannot happen.
+   */
+  it('only names a builder where a sandbox driver exists for it', () => {
+    expect(AGENTS.filter((a) => a.changesFiles).map((a) => a.id)).toEqual(['claude-code', 'codex']);
   });
 });

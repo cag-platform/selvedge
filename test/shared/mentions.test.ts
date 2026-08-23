@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mentionedAgents, mentionIntent, consultationLine, MAX_CONSULTED } from '../../src/shared/mentions.js';
-import { agentById } from '../../src/shared/agents.js';
+import { agentById, AGENTS } from '../../src/shared/agents.js';
 
 describe('@-mentions — who was asked', () => {
   it('reads a name out of the sentence it was written in', () => {
@@ -86,5 +86,63 @@ describe('the line a consultation leaves behind', () => {
 
   it('reads as a sentence with three of them', () => {
     expect(consultationLine(['claude', 'gpt', 'codex'], name)).toContain('Claude, GPT and Codex');
+  });
+});
+
+/**
+ * THE ROOM GOT BIGGER.
+ *
+ * Five talkers arrived as five table rows, and the only thing that could
+ * silently break is the parse: a name that doesn't resolve isn't an error, it
+ * is a message that quietly answers as somebody else.
+ */
+describe('naming any of the models in the room', () => {
+  it('resolves every agent in the registry by its own id', () => {
+    for (const agent of AGENTS) {
+      const intent = mentionIntent(`@${agent.id.replace(/-/g, '')} what do you think?`);
+      expect(intent, agent.id).toEqual({ kind: 'direct', agent: agent.id });
+    }
+  });
+
+  it('tells the near-misses apart', () => {
+    // The reason matching is exact-on-normalised rather than by prefix: these
+    // pairs share an opening and mean different things, and "closest match"
+    // would hand a build to a talker.
+    expect(mentionIntent('@claude go')).toEqual({ kind: 'direct', agent: 'claude' });
+    expect(mentionIntent('@claudecode go')).toEqual({ kind: 'direct', agent: 'claude-code' });
+    expect(mentionIntent('@gpt go')).toEqual({ kind: 'direct', agent: 'gpt' });
+    // A provider is not an agent. `xai` is the key you connect; `grok` is who
+    // you talk to. An unrecognised name doesn't refuse the message — it just
+    // isn't a handover, so whoever is answering carries on.
+    expect(mentionIntent('@xai go')).toEqual({ kind: 'continue' });
+    expect(mentionIntent('@moonshot go')).toEqual({ kind: 'continue' });
+  });
+
+  it('lets the new ones join a consultation', () => {
+    const intent = mentionIntent('@kimi @gemini @grok which of these is cheapest to run?');
+    expect(intent.kind).toBe('consult');
+    if (intent.kind !== 'consult') return;
+    expect(intent.agents).toEqual(['kimi', 'gemini', 'grok']);
+  });
+
+  /**
+   * The parse reports everyone named; the CAP is applied where the spending
+   * happens (routes/threads.ts), which is also where what got left out is now
+   * said out loud. Naming six and hearing from three in silence was survivable
+   * at four agents and is not at nine.
+   */
+  it('reports everyone named, and the line says who did not fit', () => {
+    const intent = mentionIntent('@claude @gpt @kimi @gemini @grok @mistral thoughts?');
+    expect(intent.kind).toBe('consult');
+    if (intent.kind !== 'consult') return;
+    expect(intent.agents).toHaveLength(6);
+
+    const asked = intent.agents.slice(0, MAX_CONSULTED);
+    const skipped = intent.agents.slice(MAX_CONSULTED);
+    const line = consultationLine(asked, (id) => agentById(id)?.name ?? id, skipped);
+    expect(line).toContain('Gemini');
+    expect(line).toContain('the limit');
+    // And with nobody left out, the line says nothing about a limit.
+    expect(consultationLine(asked, (id) => agentById(id)?.name ?? id)).not.toContain('limit');
   });
 });

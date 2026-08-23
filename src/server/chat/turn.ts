@@ -10,7 +10,7 @@ import { checkThinkingBudget } from '../llm/budget.js';
 import { chatModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
 import type { LlmClient } from '../llm/types.js';
-import { agentById, type AgentId } from '../../shared/agents.js';
+import { agentById, type AgentId, type AgentProvider } from '../../shared/agents.js';
 import type { Thread } from '../threads/store.js';
 
 /**
@@ -148,7 +148,7 @@ export type ChatDeps = {
  * The provider this agent answers on, or null when it answers by editing files
  * instead — a builder's turn goes through the sandbox, not this path.
  */
-export function chatProviderFor(agent: AgentId): 'anthropic' | 'openai' | null {
+export function chatProviderFor(agent: AgentId): AgentProvider | null {
   const descriptor = agentById(agent);
   if (!descriptor || descriptor.changesFiles) return null;
   return descriptor.provider;
@@ -162,7 +162,7 @@ export function chatProviderFor(agent: AgentId): 'anthropic' | 'openai' | null {
  * thing from that builder doing the work, so the consultation line says as
  * much rather than letting the distinction pass unremarked.
  */
-function providerForTake(agent: AgentId, asTake: boolean): 'anthropic' | 'openai' | null {
+function providerForTake(agent: AgentId, asTake: boolean): AgentProvider | null {
   if (!asTake) return chatProviderFor(agent);
   return agentById(agent)?.provider ?? null;
 }

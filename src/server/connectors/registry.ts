@@ -41,8 +41,15 @@ const PROVIDERS = {
   // is platform-scoped by construction (llm/factory.ts) precisely so a
   // customer's own key can never end up marking its own homework.
   openai: { fuel: true, fuelLive: true },
-  gemini: { fuel: true },
-  kimi: { fuel: true },
+  // Live from the multi-model Inbox. All four speak the OpenAI
+  // chat-completions protocol at their own base URL (llm/providers.ts), which
+  // is why "support Kimi" is a table row rather than a client — and why the
+  // list can grow without this file learning anything new.
+  gemini: { fuel: true, fuelLive: true },
+  kimi: { fuel: true, fuelLive: true },
+  xai: { fuel: true, fuelLive: true },
+  deepseek: { fuel: true, fuelLive: true },
+  mistral: { fuel: true, fuelLive: true },
   railway: { hostCredential: true, hostTopology: true },
   vercel: { hostCredential: true, hostTopology: true },
   supabase: { hostCredential: true },
@@ -56,7 +63,7 @@ function withFlag(flag: keyof ProviderFlags): ProviderId[] {
 }
 
 /** All declared model providers — the fuel seam's roadmap surface. */
-export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi';
+export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
 export const FUEL_PROVIDERS: readonly FuelProvider[] = withFlag('fuel') as FuelProvider[];
 
 /** Fuel providers with a working client — the only ones connect/advertise offers. */

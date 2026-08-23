@@ -5,6 +5,7 @@ import { connectCredential, listConnected, revokeCredential } from '../../connec
 import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { FUEL_PROVIDERS, type FuelProvider } from '../../connectors/fuel/resolve.js';
 import { LIVE_FUEL_PROVIDERS } from '../../connectors/registry.js';
+import { PROVIDER_WIRING } from '../../llm/providers.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
 import { OpenAiLlmClient } from '../../llm/openai.js';
 import type { LlmClient } from '../../llm/types.js';
@@ -67,6 +68,9 @@ export function createFuelRouter(db: Db, verify: FuelVerifier = realVerifier) {
         connected: fuel,
         available: LIVE_PROVIDERS,
         coming_soon: FUEL_PROVIDERS.filter((p) => !LIVE_PROVIDERS.includes(p)),
+        // Named from the one wiring table, so the connect screen and the thing
+        // that actually makes the call can never disagree about who a provider is.
+        labels: Object.fromEntries(FUEL_PROVIDERS.map((p) => [p, PROVIDER_WIRING[p].label])),
       });
     }),
   );

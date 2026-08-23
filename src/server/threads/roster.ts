@@ -79,6 +79,13 @@ async function availability(
     return { available: true, note: null };
   }
 
+  // DECLARED IS NOT LIVE. The registry can name an agent before it is wired,
+  // so the picker can be honest about what is coming without offering a row
+  // that fails the moment somebody picks it.
+  if (!agent.live) {
+    return { available: false, note: `${agent.name} isn't wired up yet — it's named here so you know it's coming.` };
+  }
+
   const fuel = await resolveFuelFor(db, orgId, agent.provider).catch(() => null);
   if (!fuel) {
     return { available: false, note: `No key connected for ${agent.name}. Add one under Connections and it can answer here.` };

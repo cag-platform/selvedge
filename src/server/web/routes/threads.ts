@@ -601,6 +601,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // and asking for two takes was never a request for two builds anyway.
       if (intent.kind === 'consult') {
         const asked = intent.agents.slice(0, MAX_CONSULTED);
+        // Whoever was named and didn't fit. Said on the thread rather than
+        // dropped in silence — see consultationLine.
+        const skipped = intent.agents.slice(MAX_CONSULTED);
         await db.insert(agentMessages).values([
           {
             id: ulid(),
@@ -617,8 +620,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             projectId: thread.projectId,
             threadId: thread.id,
             role: 'switch',
-            content: consultationLine(asked, (id) => agentById(id)?.name ?? id),
-            meta: { consulted: asked },
+            content: consultationLine(asked, (id) => agentById(id)?.name ?? id, skipped),
+            meta: { consulted: asked, ...(skipped.length ? { skipped } : {}) },
           },
           ...(referenceNote
             ? [{ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'switch', content: referenceNote }]

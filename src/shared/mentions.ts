@@ -89,8 +89,25 @@ export const MAX_CONSULTED = 3;
  * touched. A consultation asks for opinions. It is not several agents building
  * at once, which the sandbox could not do anyway.
  */
-export function consultationLine(agents: AgentId[], names: (id: AgentId) => string): string {
+export function consultationLine(
+  agents: AgentId[],
+  names: (id: AgentId) => string,
+  /**
+   * Named in the message but NOT asked, because the cap was reached.
+   *
+   * This argument exists because the room got bigger. With four agents you
+   * could name at most four and lose one to the cap; with nine you can name
+   * nine and lose six — silently, since the line only ever listed who answered.
+   * Silent truncation reads as "everyone you asked replied", which is the same
+   * shape of lie as an import that drops three hundred entries and reports
+   * success.
+   */
+  skipped: AgentId[] = [],
+): string {
   const said = agents.map(names);
   const list = said.length === 2 ? said.join(' and ') : `${said.slice(0, -1).join(', ')} and ${said.at(-1)}`;
-  return `⇄ asked ${list} for a take — nothing was built, and the conversation stays where it is.`;
+  const note = skipped.length > 0
+    ? ` ${skipped.map(names).join(' and ')} ${skipped.length === 1 ? 'was' : 'were'} named too, but ${MAX_CONSULTED} at once is the limit — ask ${skipped.length === 1 ? 'them' : 'them'} in the next message.`
+    : '';
+  return `⇄ asked ${list} for a take — nothing was built, and the conversation stays where it is.${note}`;
 }

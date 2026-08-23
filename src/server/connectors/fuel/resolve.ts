@@ -2,6 +2,7 @@ import type { Db } from '../../db/client.js';
 import type { LlmClient } from '../../llm/types.js';
 import { AnthropicLlmClient } from '../../llm/anthropic.js';
 import { OpenAiLlmClient } from '../../llm/openai.js';
+import { platformKeyFor, wiringFor } from '../../llm/providers.js';
 import { useCredential } from '../credentials/store.js';
 
 /**
@@ -11,10 +12,11 @@ import { useCredential } from '../credentials/store.js';
  * GPT / Gemini / Kimi key or subscription, and Selvedge charges for the layer,
  * not the tokens. This resolver is the seam that makes that real.
  *
- * Provider-agnostic in shape, ONE provider live today (§25.4 — build the seam,
- * ship one well). Adding a provider is a case in `clientFor`, not a new
- * architecture. An unknown or not-yet-built provider returns null (treated as
- * "no fuel"), never a broken client.
+ * Provider-agnostic in shape, and now genuinely plural. Adding a provider is a
+ * ROW in llm/providers.ts, not a case here and not a new architecture — every
+ * provider but Anthropic speaks the OpenAI chat-completions protocol at its own
+ * base URL, so the work is a URL and a model name. An unknown provider returns
+ * null (treated as "no fuel"), never a broken client.
  *
  * Resolution order — BYO, then managed, then off:
  *   1. The org's own connected credential (BYO). This is the default and the
@@ -38,25 +40,23 @@ export type ResolvedFuel = {
   source: 'byo' | 'managed';
 };
 
-/** Build a client for a provider from a raw key. One provider live; the rest are declared but not yet built. */
+/**
+ * Build a client for a provider from a raw key.
+ *
+ * Anthropic keeps its own client: it was here first, and its structured-output
+ * shape genuinely differs. Everything else is the OpenAI client pointed at a
+ * different base URL, stamped with its own provider name so the ledger
+ * attributes spend correctly, and told how that endpoint takes a schema.
+ */
 function clientFor(provider: FuelProvider, apiKey: string): LlmClient | null {
-  switch (provider) {
-    case 'anthropic':
-      return new AnthropicLlmClient(apiKey);
-    // Wired for the Inbox's general threads: a chat thread can run on GPT with
-    // the org's own key. The client itself already existed — it is the grader's
-    // — which is why this is one line rather than a provider port.
-    case 'openai':
-      return new OpenAiLlmClient(apiKey);
-    // Declared so the seam and the connect UI are honest about the roadmap,
-    // but not yet built — return null rather than a client that would fail on
-    // first use. Wired one at a time on real demand (§25.4).
-    case 'gemini':
-    case 'kimi':
-      return null;
-    default:
-      return null;
-  }
+  if (provider === 'anthropic') return new AnthropicLlmClient(apiKey);
+  const wiring = wiringFor(provider);
+  if (!wiring) return null;
+  return new OpenAiLlmClient(apiKey, {
+    ...(wiring.baseUrl ? { baseURL: wiring.baseUrl } : {}),
+    provider,
+    structured: wiring.structured,
+  });
 }
 
 /**
@@ -75,10 +75,15 @@ export async function resolveFuel(db: Db, orgId: string): Promise<ResolvedFuel |
     // skipped, not fatal — the customer connected ahead of our support.
   }
 
-  // 2. Managed — the platform key (dogfood / managed tier). Anthropic only today.
-  const platformKey = process.env.ANTHROPIC_API_KEY;
-  if (platformKey) {
-    return { client: new AnthropicLlmClient(platformKey), provider: 'anthropic', source: 'managed' };
+  // 2. Managed — the platform key (dogfood / managed tier). Anthropic first,
+  // because it is what this deployment actually carries; the loop after it
+  // means a deployment configured for any other provider still has fuel rather
+  // than falling through to "off" for a reason nobody wrote down.
+  for (const provider of FUEL_PROVIDERS) {
+    const platformKey = platformKeyFor(provider);
+    if (!platformKey) continue;
+    const client = clientFor(provider, platformKey);
+    if (client) return { client, provider, source: 'managed' };
   }
 
   // 3. Off.
@@ -101,7 +106,7 @@ export async function resolveFuelFor(db: Db, orgId: string, provider: FuelProvid
     const client = clientFor(provider, secret);
     if (client) return { client, provider, source: 'byo' };
   }
-  const platformKey = provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : provider === 'openai' ? process.env.OPENAI_API_KEY : undefined;
+  const platformKey = platformKeyFor(provider);
   if (platformKey) {
     const client = clientFor(provider, platformKey);
     if (client) return { client, provider, source: 'managed' };

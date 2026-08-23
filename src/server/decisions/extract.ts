@@ -1,3 +1,4 @@
+import type { FuelProvider } from '../connectors/registry.js';
 import type { LlmClient } from '../llm/types.js';
 import { chatModel } from '../llm/config.js';
 
@@ -86,7 +87,7 @@ export function parseDecision(json: unknown): DecisionDraft | null {
 
 export type ExtractResult = { ok: true; draft: DecisionDraft } | { ok: false; reason: string };
 
-export async function extractDecision(client: LlmClient, provider: 'anthropic' | 'openai', messages: ExtractInput): Promise<ExtractResult> {
+export async function extractDecision(client: LlmClient, provider: FuelProvider, messages: ExtractInput): Promise<ExtractResult> {
   const transcript = transcriptFor(messages);
   if (transcript.trim() === '') return { ok: false, reason: 'there is nothing in this conversation to extract a decision from' };
 

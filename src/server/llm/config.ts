@@ -1,3 +1,6 @@
+import { chatModelFor } from './providers.js';
+import type { FuelProvider } from '../connectors/registry.js';
+
 /**
  * Models come from config, not code (Phase 2 brief, deliverable 2).
  * Defaults per the brief: current Sonnet for fragments, current strongest
@@ -39,7 +42,8 @@ export function evalModel(): string {
  * Both ids are priced in config/model-pricing.json, so a chat turn's spend is
  * counted rather than estimated at the fallback rate.
  */
-export function chatModel(provider: 'anthropic' | 'openai'): string {
-  if (provider === 'openai') return process.env.CHAT_MODEL_OPENAI ?? 'gpt-5.6-terra';
-  return process.env.CHAT_MODEL ?? 'claude-sonnet-5';
+export function chatModel(provider: FuelProvider): string {
+  // One table (llm/providers.ts) rather than a chain of ifs that has to grow a
+  // link every time an agent is added.
+  return chatModelFor(provider);
 }

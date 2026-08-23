@@ -13,9 +13,16 @@ import {
  * deploys get watched) fails loudly instead. Deliberate changes update both.
  */
 describe('connectors/registry — one table, four derived surfaces', () => {
-  it('fuel: four declared, anthropic first (BYO resolution order), only anthropic live', () => {
-    expect(FUEL_PROVIDERS).toEqual(['anthropic', 'openai', 'gemini', 'kimi']);
-    expect(LIVE_FUEL_PROVIDERS).toEqual(['anthropic', 'openai']);
+  it('fuel: seven declared, anthropic first (BYO resolution order), every one live', () => {
+    // Declaration order is resolution order for BYO, so anthropic staying
+    // first is not cosmetic: it is which key answers when an org has several.
+    expect(FUEL_PROVIDERS).toEqual(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral']);
+    // Nothing is declared-but-unbuildable any more. That gap used to be the
+    // roadmap surface; now every row reaches a real endpoint through the one
+    // OpenAI-compatible seam, and the connect screen has nothing to apologise
+    // for. If a row is ever added ahead of its wiring, this is where the two
+    // lists part company and say so.
+    expect(LIVE_FUEL_PROVIDERS).toEqual([...FUEL_PROVIDERS]);
   });
 
   it('hosts: the named asymmetry holds — supabase takes a credential but is not a deploy target; replit the reverse', () => {
