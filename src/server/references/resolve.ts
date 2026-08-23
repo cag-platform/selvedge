@@ -5,7 +5,7 @@ import { listPacks } from '../packs/store.js';
 import { listSubjects } from '../threads/subjects.js';
 import { contextForProject } from '../companion/context.js';
 import { referencedNames } from '../../shared/references.js';
-import { AGENTS } from '../../shared/agents.js';
+import { NO_SUBJECT } from '../text/subjectWords.js';
 import { VENDOR_NAMES } from '../import/consumer/types.js';
 
 /**
@@ -328,56 +328,11 @@ const MAX_FOUND = 3;
 const MIN_QUERY_CHARS = 12;
 
 /**
- * Words that are common in ASKING and absent from SUBJECTS. Two kinds, and
- * both have to go for the same reason.
- *
- * GRAMMAR. Postgres's english dictionary already scores these zero, so they
- * were harmless to the numerator — but they were counted in the DENOMINATOR
- * when working out how many terms a match should cover, which made a wordy
- * question demand more matches than it contained matchable words. Dropping them
- * here makes the proportion honest and the generated SQL smaller.
- *
- * FILLER. What Postgres keeps and a person would not call subject matter:
- * think, better, thoughts, want, help. A conversation matching on those is
- * matching on the fact that it too was a conversation.
- *
- * The filler half is deliberately conservative — meta-vocabulary, not weak
- * nouns. "Work", "add" and "use" are NOT here: they are vague, but a person
- * really can be looking for the chat where they worked something out. An owner
- * who wants a past conversation about any word in this list can still name it
- * with `#`, which skips this search entirely.
+ * The words that are not subject matter live in server/text/subjectWords.ts,
+ * shared with the filing suggester — the two things that decide "what is this
+ * about" are asked the same question, and two lists would drift into one
+ * surface being careful and the other confidently wrong.
  */
-const NO_SUBJECT = new Set([
-  // Grammar.
-  'and', 'the', 'for', 'are', 'but', 'not', 'you', 'your', 'yours', 'its', 'our', 'ours',
-  'his', 'her', 'hers', 'him', 'she', 'they', 'them', 'their', 'theirs', 'this', 'that',
-  'these', 'those', 'was', 'were', 'been', 'being', 'has', 'had', 'have', 'having',
-  'can', 'could', 'would', 'should', 'shall', 'will', 'may', 'might', 'must', 'does', 'did',
-  'with', 'from', 'into', 'onto', 'out', 'off', 'over', 'under', 'than', 'then', 'when',
-  'where', 'which', 'while', 'what', 'who', 'whom', 'why', 'how', 'all', 'any', 'both',
-  'each', 'more', 'most', 'other', 'some', 'such', 'only', 'own', 'same', 'too', 'very',
-  'just', 'now', 'once', 'again', 'because', 'before', 'after', 'during', 'until', 'through',
-  'between', 'above', 'below', 'down', 'few', 'nor', 'get', 'got',
-  // Filler.
-  'think', 'thinks', 'thinking', 'thought', 'thoughts',
-  'give', 'gives', 'giving', 'given',
-  'make', 'makes', 'making', 'made',
-  'better', 'best', 'good', 'great', 'well',
-  'want', 'wants', 'wanted', 'need', 'needs', 'needed',
-  'know', 'knows', 'tell', 'tells', 'say', 'says', 'said',
-  'look', 'looks', 'looking', 'looked', 'see', 'seen',
-  'help', 'please', 'thanks', 'thank', 'sure', 'really', 'actually', 'maybe',
-  'thing', 'things', 'stuff', 'kind', 'sort', 'lot', 'bit',
-  'also', 'still', 'even', 'here', 'there', 'about',
-  'question', 'questions', 'answer', 'answers',
-  'anything', 'something', 'everything', 'nothing', 'someone', 'anyone',
-  // The agents themselves. Stripped as `@mentions` already; this catches the
-  // plain-text form ("ask claude what he thinks"), which is the same routing
-  // instruction wearing different punctuation.
-  ...AGENTS.map((a) => a.id.replace(/-/g, '')),
-  ...AGENTS.flatMap((a) => a.id.split('-')),
-  ...AGENTS.map((a) => a.name.toLowerCase()),
-]);
 
 export async function findRelatedConversations(
   db: Db,

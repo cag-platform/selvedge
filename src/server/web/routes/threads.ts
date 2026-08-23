@@ -12,7 +12,7 @@ import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
-import { createSubjectThread, createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
+import { createSubjectThread, createThread, ensureWorkshopThread, fileThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
 import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { setPlacePutAway } from '../../threads/putAway.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
@@ -462,6 +462,67 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
       res.json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent, archived: thread.archivedAt !== null } });
+    }),
+  );
+
+  /**
+   * PUT A CONVERSATION SOMEWHERE — the move the product did not have.
+   *
+   * Deliberately its own route rather than a field on the PATCH above. Filing
+   * is the one thread edit that changes which list a conversation appears in,
+   * and it is the one an import needs in bulk; a rename that quietly also moved
+   * something would be a bad afternoon for anybody.
+   *
+   * Both destinations are checked against this org before anything moves. A
+   * conversation is only ever in one place, so naming a project clears the
+   * subject and naming a subject clears the project — never both, and never
+   * neither, because a thread filed nowhere shows up in no list at all.
+   */
+  router.post(
+    '/api/threads/:threadId/file',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const threadId = req.params.threadId ?? '';
+      const body = (req.body ?? {}) as { project_id?: unknown; subject_id?: unknown };
+      const projectId = typeof body.project_id === 'string' && body.project_id !== '' ? body.project_id : null;
+      const subjectId = typeof body.subject_id === 'string' && body.subject_id !== '' ? body.subject_id : null;
+
+      if ((projectId === null) === (subjectId === null)) {
+        res.status(400).json({ error: 'Name one place for it — a project or a subject.' });
+        return;
+      }
+
+      const thread = await getThread(db, orgId, threadId);
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      if (projectId && !(await getPack(db, orgId, projectId))) {
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      if (subjectId && !(await getSubject(db, orgId, subjectId))) {
+        res.status(404).json({ error: 'no such subject' });
+        return;
+      }
+
+      const moved = await fileThread(db, orgId, threadId, projectId ? { projectId } : { subjectId: subjectId! });
+      if (!moved) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      const after = await getThread(db, orgId, threadId);
+      res.json({
+        thread: {
+          id: threadId,
+          project_id: after?.projectId ?? null,
+          subject_id: after?.subjectId ?? null,
+          // Unchanged by filing, and returned so nothing downstream has to
+          // assume it: where a conversation came from is a fact about the
+          // conversation, not about where it now lives.
+          imported_from: after?.importedFrom ?? null,
+        },
+      });
     }),
   );
 

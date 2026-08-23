@@ -190,4 +190,58 @@ describe('web/routes/importHistory', () => {
     // not a real date, so nothing downstream can present it as one.
     expect((messages[0]!.meta as { imported: { dated: boolean } }).imported.dated).toBe(false);
   });
+  /**
+   * THE STEP AFTER THE IMPORT.
+   *
+   * An import used to end with everything under one heading, which made
+   * "bring your history and continue building" true up to the word
+   * "continue". This is the join: what came in, matched against the projects
+   * that are here, as suggestions a person reads rather than moves somebody
+   * else made.
+   */
+  describe('and then: where those chats look like they belong', () => {
+    it('suggests a project when a conversation names it, with the evidence', async () => {
+      await request(app())
+        .post('/api/import/history')
+        .attach(
+          'file',
+          claudeExport([
+            {
+              uuid: 'u2',
+              name: 'Loom checkout redesign',
+              created_at: '2026-03-01T09:00:00Z',
+              chat_messages: [{ sender: 'human', created_at: '2026-03-01T09:00:00Z', text: 'the basket page needs work' }],
+            },
+          ]),
+          'export.zip',
+        )
+        .expect(201);
+
+      const res = await request(app()).get('/api/import/filing').expect(200);
+      expect(res.body.unfiled).toBe(2);
+      const found = res.body.suggestions.find((s: { title: string }) => s.title === 'Loom checkout redesign');
+      expect(found.project_id).toBe('loom');
+      expect(found.matched_in).toBe('title');
+      // The words, not a score — a person deciding where their own history
+      // goes should be reading why.
+      expect(found.because).toContain('loom');
+      // And the conversation that names no project is left alone, with a line
+      // saying that is not a failure.
+      expect(res.body.suggestions).toHaveLength(1);
+      expect(res.body.note).toMatch(/not about a codebase/i);
+    });
+
+    it('is org-scoped, like everything else here', async () => {
+      await request(app()).post('/api/import/history').attach('file', claudeExport(), 'export.zip').expect(201);
+      const res = await request(app('org_2')).get('/api/import/filing').expect(200);
+      expect(res.body.unfiled).toBe(0);
+      expect(res.body.suggestions).toEqual([]);
+    });
+
+    it('has nothing to say before anything has been imported', async () => {
+      const res = await request(app()).get('/api/import/filing').expect(200);
+      expect(res.body.unfiled).toBe(0);
+      expect(res.body.note).toBeNull();
+    });
+  });
 });

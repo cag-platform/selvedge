@@ -141,6 +141,44 @@ export async function renameThread(db: Db, orgId: string, threadId: string, titl
   return rows.length > 0;
 }
 
+/**
+ * MOVE A CONVERSATION INTO A PROJECT — or back out of one.
+ *
+ * The operation the product did not have, and the reason an import was a
+ * dead end: conversations arrived filed under a per-vendor subject and there
+ * was no way to put one anywhere else, ever. "Bring your history and continue
+ * building" was true up to the word "continue".
+ *
+ * A project and a subject are the two places a conversation can live and it
+ * lives in exactly one, so filing into a project clears the subject and taking
+ * it back out restores one. Passing `null` for both would leave a thread
+ * nowhere — visible in no list, findable only by search — so the caller has to
+ * name the subject it goes home to.
+ *
+ * WHAT THIS NEVER TOUCHES: `imported_from` and `import_source_id`. Where a
+ * conversation came from is a fact about the conversation, not about where it
+ * is filed, and the mark on an imported thread — "nothing in it was said to
+ * Selvedge" — has to survive being put somewhere useful. Filing it into a
+ * project must not launder it into something that was.
+ */
+export async function fileThread(
+  db: Db,
+  orgId: string,
+  threadId: string,
+  destination: { projectId: string } | { subjectId: string },
+): Promise<boolean> {
+  const set =
+    'projectId' in destination
+      ? { projectId: destination.projectId, subjectId: null }
+      : { projectId: null, subjectId: destination.subjectId };
+  const rows = await db
+    .update(threads)
+    .set(set)
+    .where(and(eq(threads.orgId, orgId), eq(threads.id, threadId)))
+    .returning({ id: threads.id });
+  return rows.length > 0;
+}
+
 /** Archive or restore a thread. Threads are archived, never deleted — the record is the product. */
 export async function setThreadArchived(db: Db, orgId: string, threadId: string, archived: boolean): Promise<boolean> {
   const rows = await db

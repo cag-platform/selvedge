@@ -9,6 +9,7 @@ import { getPack } from '../../packs/store.js';
 import { importSummary, readExport } from '../../import/consumer/read.js';
 import { fileConversations, type Target } from '../../import/consumer/store.js';
 import { VENDOR_NAMES } from '../../import/consumer/types.js';
+import { reviewFiling } from '../../import/filing.js';
 
 /**
  * CONSUMER-HISTORY IMPORT — one endpoint, one file, one time.
@@ -131,6 +132,46 @@ export function createImportHistoryRouter(db: Db) {
         // can tell.
         ...(madeHome ? { filed_under: madeHome.name } : {}),
         summary: importSummary(read.vendor, filed.filed, read.unreadable.length, madeHome?.name),
+      });
+    }),
+  );
+
+  /**
+   * WHERE THE OLD CHATS LOOK LIKE THEY BELONG.
+   *
+   * The step that was missing. An import filed everything under one subject
+   * and stopped there, which made "bring your history and continue building"
+   * true up to the word "continue" — a year of work about your projects,
+   * sitting in a pile next to your projects, with no way to join the two.
+   *
+   * Suggestions only. Nothing here writes, and every row carries the words it
+   * matched on so the owner is reading evidence rather than trusting a score.
+   */
+  router.get(
+    '/api/import/filing',
+    asyncHandler(async (req, res) => {
+      const review = await reviewFiling(db, orgIdOf(req));
+      res.json({
+        unfiled: review.unfiled,
+        ambiguous: review.ambiguous,
+        suggestions: review.suggestions.map((s) => ({
+          thread_id: s.threadId,
+          title: s.title,
+          at: s.at,
+          message_count: s.messageCount,
+          project_id: s.projectId,
+          project_name: s.projectName,
+          because: s.because,
+          matched_in: s.matchedIn,
+        })),
+        // WHAT THIS CANNOT DO, said next to what it can. Most of a personal
+        // history is not about a codebase — it is holidays, health, half-formed
+        // ideas — and a tool that implied every conversation ought to end up in
+        // a project would be inventing work rather than saving it.
+        note:
+          review.unfiled === 0
+            ? null
+            : 'Only conversations that name a project are suggested. The rest stay where they are — most of a history is not about a codebase, and that is not a filing error.',
       });
     }),
   );

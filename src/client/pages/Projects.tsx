@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
 import { ImportHistory } from '../components/ImportHistory.js';
+import { FileOldChats } from '../components/FileOldChats.js';
 import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
 import { UpgradeNote, limitCodeOf } from '../components/UpgradeNote.js';
@@ -276,6 +277,7 @@ function MemoryBanner() {
       <Pane className="mb-6 p-5">
         <p className="text-body text-ink-quiet">Nothing has been watched long enough to have a memory yet.</p>
         <ImportHistory />
+        <FileOldChats />
       </Pane>
     );
   }
@@ -303,6 +305,10 @@ function MemoryBanner() {
       {/* The mirror of the export, and the same argument: what you said
           elsewhere is yours, so it can come in as easily as it can go out. */}
       <ImportHistory />
+      {/* And once it is in, the step that used to be missing: joining a
+          conversation about a project to the project. Renders nothing at all
+          when there is no imported history. */}
+      <FileOldChats />
     </Pane>
   );
 }
