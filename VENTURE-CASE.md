@@ -1,3 +1,10 @@
+> **SUPERSEDED — 22 Aug 2026.** This document describes Selvedge as a
+> monitoring product with a daily brief as the front door. The product has
+> moved: Selvedge is one window per project for every AI you work with, with
+> the record and the watching underneath it. For current truth read STATUS.md
+> and the code; for the current outward story read the landing page. Kept for
+> history — do not take direction from it.
+
 # VENTURE CASE
 
 **31 July 2026.** Written after the founder set the objective: solo-built, aggressively

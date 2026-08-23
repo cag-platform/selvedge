@@ -1,9 +1,14 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // The automatic JSX runtime, so a component test needs no React import and
+  // reads the same as the component it renders.
+  esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
-    include: ['test/**/*.test.ts'],
+    // .tsx too: the landing page's rust ration is a rule about rendered
+    // output, so the only way to hold it is to render the component.
+    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

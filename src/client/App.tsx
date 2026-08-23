@@ -55,7 +55,7 @@ function AuthedApp() {
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
                   <p className="max-w-sm text-body text-ink-dim">
-                    A calm, plain-English watch over the software you ship. One morning brief; the important things, first.
+                    Every project&rsquo;s conversations, agents, and record &mdash; one window.
                   </p>
                 </div>
                 <SignIn signUpUrl="/sign-up" />
@@ -69,7 +69,7 @@ function AuthedApp() {
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
                   <p className="max-w-sm text-body text-ink-dim">
-                    Make an account, then bring an app you already own — the walkthrough takes it from there.
+                    Bring a repo, a ChatGPT export, or just a question &mdash; the walkthrough takes it from there.
                   </p>
                 </div>
                 <SignUp signInUrl="/sign-in" />

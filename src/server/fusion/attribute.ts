@@ -6,8 +6,8 @@
  *
  * Correlation already gets from a break to the change before it. This gets from
  * that change to the WORK that produced it: the conversation someone had, in
- * Selvedge or in a terminal, hours earlier. Nobody else can say it, because
- * nobody else holds both halves.
+ * Selvedge or in a terminal, hours earlier. It is sayable here because this is
+ * the one window that holds both halves — the conversation and the outcome.
  *
  * WHICH IS EXACTLY WHY THE HONESTY RULES HERE ARE THE STRICTEST IN THE
  * CODEBASE. The sentence is impressive; a wrong one is a person spending their

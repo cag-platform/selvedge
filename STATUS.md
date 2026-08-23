@@ -1,34 +1,40 @@
 # Selvedge — build status
 
 Plain-English map of what exists, what's switched on, what's waiting on a key,
-and what's still only a plan. Written for a non-coder. **1,272 tests across 159
+and what's still only a plan. Written for a non-coder. **1,493 tests across 181
 files, all green.**
 
 ---
 
 ## What this is aiming to be
 
-**A calm place to own software you didn't write by hand.**
+**One window per project for every AI you work with.**
+
+Claude, GPT, Claude Code, and Codex in the same thread, reading the same
+history. Conversations you had elsewhere come in by import; sessions you run
+in a terminal come in through the companion. The record — what was asked,
+what was decided, what shipped, what broke — outlives every tab.
 
 Three promises, in order of how much of the product they are:
 
-1. **The watching is the product.** One morning brief in plain English, honest
-   about what it can't see. Never a dashboard, never a false all-clear. A
-   confidently-wrong "everything's fine" is the one unforgivable output.
-2. **The Workshop is the engine.** Say what you want in plain words; it gets
-   built in a sandbox, previewed, and shipped deliberately — the safety gates
-   bite at ship rather than while you're building.
-3. **The brief is the front door** (BUILD-BRIEF §"what not to build" — this
-   line previously promoted the Migration Center to front door; that was this
-   file drifting from the brief, not a decision). The Migration Center —
-   *leaving* Replit/Lovable/Bolt/v0 and landing here, infrastructure in **their
-   own name**, Selvedge as fireable caretaker — stays scoped and researched
-   (`MIGRATION-CENTER.md`) as an acquisition channel, built after the loop
-   proves itself with live customers.
+1. **The window is the product.** One conversation per piece of work, any
+   agent in it by name (`@`), any other conversation in it by reference
+   (`#`). Nothing is re-explained, and nothing changes hands behind your
+   back.
+2. **The record is the reason to stay.** Threads sit next to the commits,
+   deploys, and breaks they produced. When something goes wrong, Selvedge
+   says whose work it began after — or says plainly that it can't tell.
+   A confidently-wrong "everything's fine" is still the one unforgivable
+   output.
+3. **The watching is the reason to believe it.** Health checks, deploy
+   polling, verdicts by a model that didn't write the change. Watching is no
+   longer the front page — it is what makes this window trustworthy in a way
+   a chat aggregator cannot be.
 
-The competitive line: not replacing Cursor or Replit at writing code — making
-**health, status, and honest recovery** the thing that matters, in language a
-founder actually speaks.
+The competitive line: plenty of products put several models in one chat.
+None of them holds both halves — the conversation and the outcome. Selvedge
+does, and every honesty rule in this codebase exists to keep that claim
+deserved.
 
 ---
 
@@ -36,15 +42,15 @@ founder actually speaks.
 
 | Area | What works |
 |---|---|
-| **Landing page & sign-up** | What a stranger sees at tryselvedge.com: the decided words from EXPLAINER.md arranged around a sample brief that wears the real edge vocabulary. "Get started" leads to a real sign-up (`/sign-up`, cross-linked with `/sign-in`); a new account lands on a three-step getting-started checklist on Today — add an app, optionally connect a key, compose the first brief — with state derived from data, nothing to dismiss, gone once the first brief exists. Compose is never offered before a project exists. |
+| **Landing page & sign-up** | What a stranger sees at tryselvedge.com: **"All your AI. One conversation."** — the one-window claim, argued by a hand-authored sample thread rather than described. Two models disagree usefully, a decision from March comes in by `#`, and a builder ships it, in seven messages. Then the two marks, the history that travels with you, what shipping actually looks like, and four reasons to believe it — of which the watching is one. Rust appears exactly once on the whole page (the "needs you" edge specimen), and there is a test that counts it. "Start free" leads to a real sign-up (`/sign-up`, cross-linked with `/sign-in`). Its words come from the alignment pack of 22 Aug and the product as built — **not** from EXPLAINER.md, which is superseded and says so at the top. |
 | **Sign-in** | Clerk, email+password. A solo owner is a tenant of one — never asked to create an "organization". |
 | **Projects** | Create from an existing repo, or **create a brand-new private GitHub repo** in one step. New things start as a sandbox and land straight in the Workshop. |
-| **Today / brief** | Daily digest per org at local 7am, composed by the model when fuel is connected, mechanical when not. Repeats collapse ("…today (3 times)"). |
+| **The daily digest** | Still composed per org at local 7am — by the model when fuel is connected, mechanical when not, with repeats collapsed ("…today (3 times)"). It has no page of its own any more: Today is gone and `/today` redirects to Projects. The digest machinery is kept because it is what a morning push notification will be made of, not because anything renders it today. |
 | **Watching** | Health checks with two-failure debounce, deploy-state polling (Railway/Vercel), error-rate spikes, and correlation of a break to the change just before it. Putting an app online now **arms its health check** — until that was wired, the probe half watched nothing (deploy polling was unaffected). |
-| **Work cards** | A change the loop is walking: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. Cards that need you appear on Today; a project's own sit beside its conversation. Selvedge raises one itself the moment something breaks it could fix — there is no longer a separate Work page, because every part of one had a better home. |
+| **Work cards** | A change the loop is walking: proposal, estimate, cap, gate, approval. Sensitive diffs (payments/auth/user data) need a confirmed backup. Caps genuinely stop work. A card that needs you appears in the conversation it belongs to, above the composer — where approving it is exactly the moment its figures matter. Selvedge raises one itself the moment something breaks it could fix — there is no longer a separate Work page, because every part of one had a better home. |
 | **Independent verdict** | With `OPENAI_API_KEY` set, every finished card's "did it do what was asked" is judged **by a different model than wrote the change** (default `gpt-5.6-luna`), reading the actual diff from the card's review branch. This unlocks the `verified` verdict; without the key, verdicts honestly top out at "probably". The card says when it happened: *"Checked by a different model than the one that wrote it."* Grading runs on its own daily budget, so it can never starve the brief. |
 | **Workshop** | Persistent Daytona sandbox per project, Claude Code agent, live activity feed, live preview iframe, ship (commit+push), undo (real `git revert`), 12-minute post-ship watch with auto-revert on a confirmed break. Cost watch always visible. |
-| **The Inbox** | The place to work: `/inbox` is one three-pane workbench — projects and their conversations on the left (with the morning brief pinned at the top), the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
+| **The Inbox** | The front door and the place to work: `/` and `/inbox` are one three-pane workbench — everywhere you work on the left, the thread in the middle, and context on the right (work cards, the app running live, what Selvedge understands about the project). A project can hold as many conversations as you like: **workshop** threads build in the sandbox, **general** threads are plain chat with no sandbox and nothing to ship — for deciding what to build before anything is built. Threads are renameable and archiveable, never deleted. Cmd+K jumps, Cmd+J switches agent, Cmd+N starts a thread; everything is also reachable by pointer. |
 | **Switching agents mid-task** | Tap the chip in the composer, pick, keep typing. A chat thread just changes the model behind it, history intact. A workshop thread composes a **handoff** — what the project is, what's been done, where the work stands, and the ask — and starts the new builder with it, so nothing is re-explained. The thread records the switch in one line with the real size of what was handed over and what carrying it cost: *⇄ continued with Codex — handoff 1.8k tokens, about $0.004*. |
 | **Break → the work behind it** | When something breaks, Selvedge doesn't just say a change landed first — it says *whose work* that change was: *"This began after the change from Monday's Codex session (let people check out as a guest)."* It gets there through the commit: a session stamp Selvedge's own ships write into the commit message, or the commit the companion saw land while a terminal session was open. The conversation and the diff are one click away, in the brief and on the project's history. And when two changes could equally be behind it, it names both and says plainly that it can't tell which — a coin toss dressed as an answer is the one thing it won't do. |
 | **The record, visible** | Every project has a **history**: one scrollable list of what happened to it — what you asked for, work starting, ships, undos, handovers between agents, verdicts, and what the watching saw — each in one plain sentence with its status edge and the evidence one click beneath. Click a project in the rail to read its own history, or open **History** beside a conversation. **Search inside a project** finds what was said in any thread, any ask, and anything the watching reported. And the line under it is true: this is the same history your JSON export carries, in the same words. |

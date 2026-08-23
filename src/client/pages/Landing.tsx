@@ -1,56 +1,218 @@
 import { Link } from 'react-router-dom';
 import { SelvedgeLockup } from '../components/Logo.js';
-import { SelvedgeEdge, StatusDot, type EdgeStatus } from '../components/SelvedgeEdge.js';
+import { SelvedgeEdge, type EdgeStatus } from '../components/SelvedgeEdge.js';
+import { AgentChip } from '../components/AgentChip.js';
 import { Pane, btnPrimary, btnGhost, eyebrowCls } from '../components/ui.js';
 
 /**
- * The landing page — what a stranger sees before they have an account.
+ * THE LANDING PAGE — what a stranger sees before they have an account.
  *
- * Every sentence here is decided language from EXPLAINER.md ("use these words
- * on the website") arranged, not invented. The one creative liberty is showing
- * the product with its own vocabulary: a hand-authored sample brief whose rows
- * wear the real SelvedgeEdge states, so "you read health from the edges" is
- * demonstrated rather than claimed. Clearly labeled a sample — never dressed
- * up as anyone's real morning.
+ * ONE SENTENCE, AND EVERYTHING ON THE PAGE SERVES IT:
  *
- * Vocabulary rules hold on this page like everywhere else: no "observability",
- * no "dashboard" as a promise, no infrastructure nouns at the plain register.
- * Rust appears exactly once outside the sample — nowhere, actually: rust is
- * needs-you only, and a marketing page needs nothing from you but a click.
+ *   Selvedge is one window per project where every AI you use talks, builds,
+ *   and is remembered — and when something breaks, the conversation that
+ *   caused it is one click away.
+ *
+ * WHAT CHANGED AND WHY. This page used to sell a monitoring product: a sample
+ * morning brief, four apps, "Selvedge keeps your apps running". That was true
+ * of an older Selvedge and is no longer true of this one — the brief is
+ * retired, Today is gone, and the workbench is the product. A landing page
+ * describing a product the code no longer builds is the most expensive kind of
+ * stale prose there is.
+ *
+ * The hierarchy that resolves the old thesis: watching did not stop being the
+ * product, it became the REASON TO BELIEVE this window over the other windows.
+ * Anyone can put four models in one chat. Only this one knows whether what got
+ * built actually worked. So watching appears here as evidence (§"Why you can
+ * believe it"), never as the headline.
+ *
+ * WHERE THE WORDS COME FROM. The alignment pack of 22 Aug 2026 and the product
+ * as built. NOT from EXPLAINER.md, which this page used to cite as its copy
+ * source — that document is superseded and carries a banner saying so.
+ *
+ * RULES THAT BIND THIS PAGE:
+ *  - Rust (`--thread`) appears EXACTLY ONCE: the "needs you" edge specimen. A
+ *    marketing page needs nothing from you but a click, so the colour reserved
+ *    for "this needs you" has one honest use here and no other. There is a
+ *    test for the count.
+ *  - Agent identity is text chips only. No vendor logos, no brand colours,
+ *    anywhere — including inside copy illustrations. The colour system means
+ *    status, and a page full of brand colour would teach people otherwise
+ *    before they ever signed in.
+ *  - House voice: no "observability", no "dashboard" as a promise, no "nobody
+ *    does this". The competitive claim is incentive-shaped ("a window owned by
+ *    one AI company has a favourite"), never honesty-shaped.
+ *  - Tokens only. No raw colour, radius, or type values.
+ *  - One motion token. The sample thread settles in on arrival and then holds
+ *    still; nothing loops, and `prefers-reduced-motion` collapses the duration
+ *    to zero (tokens.css), so this obeys without a second code path.
  */
 
-/** One row of the sample brief. The edge does the talking. */
-function BriefRow({ status, children }: { status: EdgeStatus; children: React.ReactNode }) {
-  return (
-    <div className="relative rounded-inset bg-panel-soft py-2 pl-4 pr-3">
-      <SelvedgeEdge status={status} />
-      <p className="text-body-lg text-ink">{children}</p>
-    </div>
-  );
+/** Section heading — Fraunces, the reading register, one size for all of them. */
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <h2 className="max-w-2xl font-display text-section text-ink">{children}</h2>;
 }
 
-function HowCard({ status, title, children }: { status: EdgeStatus; title: string; children: React.ReactNode }) {
+/** A card in one of the three-up rows. */
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Pane className="pl-5">
-      <SelvedgeEdge status={status} />
+    <Pane>
       <h3 className="font-display text-headline font-medium text-ink">{title}</h3>
-      <p className="mt-2 text-body text-ink-dim">{children}</p>
+      <div className="mt-2 space-y-2 text-body text-ink-dim">{children}</div>
     </Pane>
   );
 }
 
-function HonestyPoint({ title, children }: { title: string; children: React.ReactNode }) {
+/** One of the four reasons, separated by hairlines rather than boxes. */
+function Reason({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
+    <div className="border-t border-hairline pt-5">
       <h3 className="text-body-lg font-medium text-ink">{title}</h3>
-      <p className="mt-1 text-body text-ink-dim">{children}</p>
+      <p className="mt-1 max-w-xl text-body text-ink-dim">{children}</p>
     </div>
   );
 }
 
+/** A sigil, shown at the size it is actually typed. */
+function Sigil({ children }: { children: React.ReactNode }) {
+  return <span style={{ color: 'var(--brass)' }}>{children}</span>;
+}
+
+/** A mono line inside a card — an example of what you would actually type. */
+function Example({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-inset bg-panel-soft px-3 py-2 font-mono text-tech text-ink-dim">{children}</p>
+  );
+}
+
+/**
+ * THE SAMPLE THREAD — the page's signature, and the only argument that
+ * actually lands.
+ *
+ * It replaces the old sample brief for the same reason the brief left the
+ * app: the thing worth showing is the conversation, and a conversation is
+ * something you read rather than something you are told about. Two models
+ * disagreeing usefully, a decision from March pulled in by name, and a
+ * builder shipping it — in seven messages, with no sentence of explanation
+ * around them.
+ *
+ * Hand-authored and labelled as a sample. Every piece of it is the real
+ * component: the real AgentChip, the real edge, the real mono register for
+ * system lines.
+ */
+
+const SETTLE_STEP_MS = 90;
+
+/** One message. `index` staggers its arrival; nothing moves after that. */
+function Message({
+  who,
+  chip,
+  index,
+  children,
+}: {
+  who: string;
+  chip?: string;
+  index: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="animate-settle"
+      style={{ animationDelay: `calc(var(--settle-duration) * ${index * (SETTLE_STEP_MS / 560)})` }}
+    >
+      <div className="flex items-center gap-2">
+        {chip && <AgentChip agent={chip} />}
+        <p className={eyebrowCls}>{who}</p>
+      </div>
+      <p className="mt-1 text-body text-ink">{children}</p>
+    </div>
+  );
+}
+
+/** A system line: what Selvedge did, in the mono register it uses everywhere. */
+function SystemLine({ index, children }: { index: number; children: React.ReactNode }) {
+  return (
+    <p
+      className="animate-settle font-mono text-tech text-ink-quiet"
+      style={{ animationDelay: `calc(var(--settle-duration) * ${index * (SETTLE_STEP_MS / 560)})` }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function SampleThread() {
+  return (
+    <div>
+      <Pane className="pl-5">
+        {/* The healthy edge, doing on this page exactly what it does in the
+            app: saying what state the thing is in, without a word. */}
+        <SelvedgeEdge status="healthy" />
+        <p className={eyebrowCls}>loom &middot; projects / loom / checkout</p>
+
+        <div className="mt-4 space-y-4">
+          <Message who="You" index={0}>
+            Checkout is dropping carts on the payment step. <Sigil>@claude</Sigil> <Sigil>@gpt</Sigil> &mdash;
+            what&rsquo;s the most likely cause?
+          </Message>
+
+          <Message who="Claude" chip="claude" index={1}>
+            The timeout on the payment confirm call is 5s and your processor&rsquo;s p95 is above that on
+            weekends. I&rsquo;d look there first.
+          </Message>
+
+          <Message who="GPT" chip="gpt" index={2}>
+            Agree it&rsquo;s likely the confirm step &mdash; but check the retry logic too. A double-submit
+            guard that&rsquo;s too eager would look identical in your numbers.
+          </Message>
+
+          <Message who="You" index={3}>
+            We hit something like this in March &mdash; <Sigil>#stripe-timeouts</Sigil>
+          </Message>
+
+          <SystemLine index={4}>
+            &#8627; pulled in #stripe-timeouts &mdash; a conversation imported from ChatGPT, Mar 2026
+          </SystemLine>
+
+          <Message who="You" index={5}>
+            Same fix then. <Sigil>@claudecode</Sigil> raise the timeout, add the guard, ship it.
+          </Message>
+
+          <div
+            className="animate-settle"
+            style={{ animationDelay: `calc(var(--settle-duration) * ${6 * (SETTLE_STEP_MS / 560)})` }}
+          >
+            <div className="flex items-center gap-2">
+              <AgentChip agent="claude-code" />
+              <p className={eyebrowCls}>Claude Code</p>
+            </div>
+            <p className="mt-1 font-mono text-tech text-ink-dim">
+              {/* Status colour used as status, which is the only way it is ever
+                  used: this tick means the thing worked. */}
+              <span style={{ color: 'var(--healthy)' }}>&#10003;</span> shipped a4f19c2 &middot; 3 files
+              &middot; $0.42 &middot; preview held &middot; watching for 12 min
+            </p>
+          </div>
+        </div>
+      </Pane>
+      <p className="mt-2 text-meta text-ink-quiet">
+        A sample conversation. The names are how you actually type them.
+      </p>
+    </div>
+  );
+}
+
+/** The four edges, shown once, as themselves. */
+const SPECIMENS: Array<{ status: EdgeStatus; label: string; line: string }> = [
+  { status: 'healthy', label: 'Healthy', line: 'Shipped and holding.' },
+  { status: 'working', label: 'Working', line: 'Building it now.' },
+  { status: 'needs', label: 'Needs you', line: 'Stopped at the cap you set.' },
+  { status: 'unknown', label: "Can't tell", line: 'Nothing has reported yet.' },
+];
+
 export function Landing() {
   return (
-    <div className="animate-settle">
+    <div>
       {/* One of the screen's two allowed blur layers, same treatment as the app nav. */}
       <header
         className="sticky top-0 z-10 border-b border-hairline"
@@ -58,124 +220,175 @@ export function Landing() {
       >
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
           <SelvedgeLockup tone="chalk" className="h-7 w-auto" />
-          <Link to="/sign-in" className={btnGhost}>
-            Sign in
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/sign-in" className={btnGhost}>
+              Sign in
+            </Link>
+            <Link to="/sign-up" className={btnPrimary}>
+              Start free
+            </Link>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-4xl px-4">
         {/* ── Hero ─────────────────────────────────────────────────────── */}
-        <section aria-label="What Selvedge is" className="grid items-center gap-10 py-16 md:grid-cols-[1.1fr_1fr] md:py-24">
-          <div>
-            <p className={eyebrowCls}>The tailor for software you didn&rsquo;t write</p>
+        <section aria-label="What Selvedge is" className="grid items-center gap-10 py-16 md:grid-cols-[1fr_1fr] md:py-24">
+          <div className="animate-settle">
+            <p className={eyebrowCls}>One window per project</p>
             <h1 className="mt-3 font-display text-hero font-medium text-ink">
-              Selvedge keeps your <span style={{ color: 'var(--action-bright)' }}>apps running</span>.
+              All your AI.
+              <br />
+              One conversation.
             </h1>
             <p className="mt-5 max-w-xl text-hero-sub text-ink-dim">
-              A calm place to own software you didn&rsquo;t write by hand. One morning brief in plain
-              English &mdash; the important things, first.
+              Claude, GPT, Claude Code, and Codex &mdash; in the same thread, reading the same history.
+              Ask two of them the same question and get two signed answers. Then tell one to build it,
+              without saying anything twice.
             </p>
-            <div className="mt-8 flex items-center gap-4">
+            <div className="mt-8 flex flex-wrap items-center gap-4">
               <Link to="/sign-up" className={btnPrimary}>
-                Get started
+                Start free
               </Link>
-              <span className="text-meta text-ink-quiet">Bring an app you already own.</span>
+              <a href="#how" className={`${btnGhost} border border-hairline`}>
+                See how it works
+              </a>
             </div>
+            <p className="mt-4 font-mono text-tech text-ink-quiet">runs on your own API keys</p>
           </div>
 
-          {/* The sample brief — the product shown in its own vocabulary. */}
-          <div>
-            <Pane className="p-5">
-              <p className={eyebrowCls}>This morning &middot; four apps</p>
-              <div className="mt-3 space-y-2">
-                <BriefRow status="healthy">Loom &mdash; quiet night. 214 sign-ins, nothing needed.</BriefRow>
-                <BriefRow status="working">Patina &mdash; building the photo uploads you asked for yesterday.</BriefRow>
-                <BriefRow status="needs">
-                  Sild &mdash; checkout errors since 6:12am. I can fix it for about $4 &mdash; say the word.
-                </BriefRow>
-                <BriefRow status="unknown">Fern &mdash; can&rsquo;t see this one yet.</BriefRow>
-              </div>
-            </Pane>
-            <p className="mt-2 text-meta text-ink-quiet">
-              A sample brief. The edges are the status &mdash; <StatusDot status="needs" /> rust is the only
-              thing that needs you, and <StatusDot status="unknown" /> &ldquo;I can&rsquo;t tell&rdquo; is a real answer.
-            </p>
+          <SampleThread />
+        </section>
+
+        {/* ── The sigils ───────────────────────────────────────────────── */}
+        <section id="how" aria-label="The two marks" className="border-t border-hairline py-14">
+          <SectionHeading>Two marks. That&rsquo;s the whole interface.</SectionHeading>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Card title="@ chooses who answers">
+              <p>
+                Name one and the conversation is theirs from here. Name two and you get two answers,
+                each signed &mdash; not a blend, and not a vote.
+              </p>
+              <Example>@gpt is this schema going to bite us?</Example>
+              <Example>@claude @gpt which of these is cheaper to run?</Example>
+              <p>
+                Nothing changes hands behind your back, and one delete takes it back.
+              </p>
+            </Card>
+            <Card title="# chooses what you're talking about">
+              <p>
+                Point at another project, another subject, or another conversation &mdash; including one
+                you had somewhere else and brought in.
+              </p>
+              <Example>how did we handle refunds in #loom?</Example>
+              <p>
+                The decision you made with Claude in March is right there for the agent building the
+                thing this morning.
+              </p>
+            </Card>
           </div>
         </section>
 
-        {/* ── The job ──────────────────────────────────────────────────── */}
-        <section aria-label="The job Selvedge does" className="border-t border-hairline py-14">
-          <p className={eyebrowCls}>The second job</p>
-          <p className="mt-4 max-w-2xl font-display text-section text-ink">
-            Building an app and running one are different jobs &mdash; and running it never got cheaper.
-          </p>
+        {/* ── History ──────────────────────────────────────────────────── */}
+        <section aria-label="Your history" className="border-t border-hairline py-14">
+          <SectionHeading>Your history comes with you.</SectionHeading>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <Card title="Bring your chats">
+              <p>
+                Upload the export ChatGPT, Claude, or Gemini already gives you and those conversations
+                become ordinary threads here &mdash; searchable, referenceable, every one marked as
+                imported because none of it was said to Selvedge.
+              </p>
+              <p>
+                Importing the same file twice can&rsquo;t double your history, and whatever
+                couldn&rsquo;t be read is listed with a reason, at the same volume as what came in.
+              </p>
+            </Card>
+            <Card title="Bring your terminal">
+              <p>
+                <span className="font-mono text-tech">npx selvedge</span> reads the sessions you run in
+                Claude Code and Codex and sends a summary of each: what you asked for, what it touched,
+                how it ended, what it cost.
+              </p>
+              <p>
+                Summaries only. There is nowhere in Selvedge to put a transcript, and nowhere to put
+                your code.
+              </p>
+            </Card>
+            <Card title="Keep the outcome">
+              <p>
+                Threads sit next to the commits, deploys, and breaks they produced. Months later, the
+                question &ldquo;why is it like this?&rdquo; has an answer with a date on it.
+              </p>
+              <p>
+                All of it exports as JSON whenever you like &mdash; being able to leave is what makes
+                the record worth keeping.
+              </p>
+            </Card>
+          </div>
+        </section>
+
+        {/* ── It ships ─────────────────────────────────────────────────── */}
+        <section aria-label="It ships" className="border-t border-hairline py-14">
+          <SectionHeading>It doesn&rsquo;t just talk. It ships.</SectionHeading>
           <p className="mt-4 max-w-2xl text-body-lg text-ink-dim">
-            Selvedge does that second job. It watches the apps you own, tells you in plain English when
-            something is wrong, fixes it with your approval, and proves the fix actually worked. It
-            didn&rsquo;t build your app &mdash; so it has no reason to tell you everything&rsquo;s fine
-            when it isn&rsquo;t.
+            The builders work in a real sandbox on your repo. You watch it happen, see the thing running
+            before anything goes live, ship when you mean to, and roll back if you were wrong. Every
+            conversation has a ceiling you set, and when it&rsquo;s reached the work stops and tells you
+            what it spent &mdash; the real number, not a warning about one.
           </p>
-        </section>
 
-        {/* ── How it works ─────────────────────────────────────────────── */}
-        <section aria-label="How it works" className="border-t border-hairline py-14">
-          <p className={eyebrowCls}>How it works</p>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <HowCard status="healthy" title="It watches">
-              One morning brief, honest about what it can&rsquo;t see. The important things first, the
-              quiet things folded away &mdash; and never a false all-clear.
-            </HowCard>
-            <HowCard status="working" title="It fixes">
-              Say what you want in plain words. Every repair has a price agreed in advance and a hard
-              limit &mdash; it will never quietly spend your money trying the same broken idea forty times.
-            </HowCard>
-            <HowCard status="healthy" title="It proves">
-              Every finished change is checked by a different model than the one that wrote it. And when
-              the evidence isn&rsquo;t there, the verdict says &ldquo;I can&rsquo;t tell yet&rdquo; &mdash;
-              a real answer here.
-            </HowCard>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+            {SPECIMENS.map((s) => (
+              <div key={s.status} className="relative rounded-inset bg-panel-soft py-3 pl-4 pr-3">
+                <SelvedgeEdge status={s.status} />
+                <p className="text-body font-medium text-ink">{s.label}</p>
+                <p className="mt-0.5 text-meta text-ink-quiet">{s.line}</p>
+              </div>
+            ))}
           </div>
+          <p className="mt-3 text-meta text-ink-quiet">
+            You read the state off the edge. &ldquo;Can&rsquo;t tell&rdquo; has its own mark, and it is a
+            different shape rather than a paler colour &mdash; so it can never be mistaken for fine.
+          </p>
         </section>
 
         {/* ── Why believe it ───────────────────────────────────────────── */}
         <section aria-label="Why you can believe it" className="border-t border-hairline py-14">
-          <p className={eyebrowCls}>Why you can believe it</p>
-          <div className="mt-5 grid gap-x-10 gap-y-7 md:grid-cols-2">
-            <HonestyPoint title="Flat price.">
-              Selvedge doesn&rsquo;t earn more when your app breaks more.
-            </HonestyPoint>
-            <HonestyPoint title="No stake in the answer.">
-              It didn&rsquo;t sell you the app, so it has no reason to reassure you.
-            </HonestyPoint>
-            <HonestyPoint title="It admits what it doesn&rsquo;t know.">
-              &ldquo;I can&rsquo;t tell yet&rdquo; is a real answer here &mdash; shown with its own mark,
-              never dressed up as fine.
-            </HonestyPoint>
-            <HonestyPoint title="It stops.">
-              Every repair has a price agreed in advance and a hard limit. Caps genuinely stop work.
-            </HonestyPoint>
+          <SectionHeading>Why you can believe it.</SectionHeading>
+          <div className="mt-6 space-y-5">
+            <Reason title="It runs on your keys.">
+              Your Claude subscription, your OpenAI key, your usage. Selvedge charges for the window and
+              the record, not for the tokens &mdash; so it has no reason to want your conversations
+              longer than they need to be.
+            </Reason>
+            <Reason title="It sits between the vendors, not inside one.">
+              Each model answers as itself, signed with its own name. A window owned by one AI company
+              has a favourite; this one doesn&rsquo;t, and adding the next model is a row in a table
+              rather than a change of heart.
+            </Reason>
+            <Reason title="It says &ldquo;I can&rsquo;t tell.&rdquo;">
+              When nothing has reported, that is what you see &mdash; its own mark, its own shape, never
+              folded into the quiet ones. When two changes could equally be behind a break, it names both
+              and says it can&rsquo;t tell which. A coin toss dressed as an answer is the one output this
+              product will not produce.
+            </Reason>
+            <Reason title="The record outlives the tab.">
+              Close everything, come back in six months, and what was asked, what was decided, what
+              shipped, and what broke are all still here &mdash; in the same sentences the export carries.
+            </Reason>
           </div>
         </section>
 
-        {/* ── Who it's for ─────────────────────────────────────────────── */}
-        <section aria-label="Who it is for" className="border-t border-hairline py-14">
-          <p className={eyebrowCls}>Who it&rsquo;s for</p>
-          <p className="mt-4 max-w-2xl font-display text-section text-ink">
-            You built an app and now people depend on it.
-          </p>
-          <p className="mt-4 max-w-2xl text-body-lg text-ink-dim">
-            Selvedge is who you call when it breaks &mdash; except you don&rsquo;t have to call, because
-            it already noticed. For people who own working software with real users or real revenue, and
-            who don&rsquo;t have an engineer to call.
-          </p>
-          <div className="mt-8 flex items-center gap-4">
-            <Link to="/sign-up" className={`${btnPrimary} shrink-0 whitespace-nowrap`}>
-              Get started
+        {/* ── Close ────────────────────────────────────────────────────── */}
+        <section aria-label="Start" className="border-t border-hairline py-16">
+          <SectionHeading>Stop re-explaining your project to every AI you open.</SectionHeading>
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <Link to="/sign-up" className={btnPrimary}>
+              Start free
             </Link>
             <span className="text-meta text-ink-quiet">
-              Everything Selvedge knows about your app exports as one file &mdash; being able to leave is
-              what makes people stay.
+              Bring a repo, an old export, or just a question.
             </span>
           </div>
         </section>
@@ -183,9 +396,10 @@ export function Landing() {
 
       <footer className="border-t border-hairline">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-8">
-          <p className="text-meta text-ink-quiet">
-            <span className="font-display italic">selvedge</span>, from self + edge: the woven border that
-            finishes itself and cannot fray.
+          <p className="max-w-2xl text-meta text-ink-quiet">
+            <span className="font-display italic">selvedge</span> &mdash; from self + edge: the woven
+            border a fabric finishes itself, the edge that cannot fray. The conversations, the code, the
+            decisions between them &mdash; kept on one continuous cloth.
           </p>
           <Link to="/sign-in" className="text-meta text-ink-quiet hover:text-ink-dim">
             Sign in
