@@ -2,11 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, agentMessages, agentMessageAttachments, agentRuns } from '../../src/server/db/schema/index.js';
+import { orgs, agentMessages, agentMessageAttachments, agentRuns, usageBuildMinutes } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createWorkshopRouter, type WorkshopDeps } from '../../src/server/web/routes/workshop.js';
 import { appWithOrg } from './helpers.js';
+import { onPlan } from '../helpers/plan.js';
+import { planLimits } from '../../src/shared/plans.js';
+import { monthStartUtc } from '../../src/server/billing/entitlements.js';
 
 describe('web/routes/workshop — the workshop surface', () => {
   let db: TestDb;
@@ -242,4 +245,64 @@ describe('web/routes/workshop — the workshop surface', () => {
   function appAndPost(dbx: TestDb, deps: WorkshopDeps) {
     return request(appWithOrg(orgId, createWorkshopRouter(dbx, deps))).post('/api/projects/loom/workshop/message').send({ text: 'x' });
   }
+
+  /**
+   * BUILD MINUTES — the plan limit on wall-clock sandbox time.
+   *
+   * What is gated is STARTING new work. What is deliberately not gated is
+   * finishing it: shipping and rolling back are the completion of work the
+   * minutes were already spent on, and a meter must never stand between
+   * somebody and undoing a bad deploy.
+   */
+  describe('when the month\'s build minutes are gone', () => {
+    const spend = async (minutes: number) =>
+      db.insert(usageBuildMinutes).values({ id: ulid(), orgId, periodStart: monthStartUtc(), minutesUsed: minutes });
+
+    it('refuses a new turn before a sandbox is asked for', async () => {
+      await spend(planLimits('free').buildMinutes);
+      let started = false;
+      const res = await appAndPost(db, {
+        env: engineOn,
+        runTurn: (async () => {
+          started = true;
+        }) as unknown as WorkshopDeps['runTurn'],
+      });
+
+      expect(res.status).toBe(402);
+      expect(res.body.code).toBe('limit_build_minutes');
+      expect(started).toBe(false);
+    });
+
+    /** A preview holds a sandbox open for as long as somebody is looking at it. */
+    it('refuses a preview, which is a sandbox by another name', async () => {
+      await spend(planLimits('free').buildMinutes);
+      let opened = false;
+      const res = await request(
+        app({
+          preview: async () => {
+            opened = true;
+            return { state: 'ready', url: 'http://x' } as never;
+          },
+        }),
+      ).get('/api/projects/loom/workshop/preview');
+
+      expect(res.status).toBe(402);
+      expect(opened).toBe(false);
+    });
+
+    it('tells a Pro account it is fair-use, and never implies a charge', async () => {
+      await onPlan(db, orgId);
+      await spend(planLimits('pro').buildMinutes);
+      const res = await appAndPost(db, { env: engineOn });
+
+      expect(res.status).toBe(402);
+      expect(res.body.error).toMatch(/email us/i);
+      expect(res.body.error).not.toMatch(/\$/);
+    });
+
+    it('lets work through while there are minutes left', async () => {
+      await spend(planLimits('free').buildMinutes - 1);
+      expect((await appAndPost(db, { env: engineOn, runTurn: (async () => {}) as unknown as WorkshopDeps['runTurn'] })).status).toBe(202);
+    });
+  });
 });

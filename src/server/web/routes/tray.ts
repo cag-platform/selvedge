@@ -11,6 +11,8 @@ import {
 } from '../../resolution/unsortedTray.js';
 import type { ConnectorKind } from '../../../shared/types/event.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { canCreateProject } from '../../billing/entitlements.js';
+import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -118,6 +120,15 @@ export function createTrayRouter(db: Db, deps: TrayRouterDeps = {}) {
         return;
       }
       const orgId = orgIdOf(req);
+      // Watching a repo makes a project, so it counts. Refusing here leaves the
+      // source exactly where it was — in the tray, still listed, still
+      // assignable to a project that already exists — which is the whole reason
+      // the tray is a safe place for a limit to bite.
+      const room = await canCreateProject(db, orgId);
+      if (!room.allowed) {
+        refuse(res, room);
+        return;
+      }
       let result: Awaited<ReturnType<typeof watchSource>>;
       try {
         result = await watchSource(db, orgId, source.connector, source.resourceId);

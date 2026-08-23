@@ -8,6 +8,8 @@ import { ingestEvent } from '../../src/server/resolution/ingest.js';
 import { createPacksRouter } from '../../src/server/web/routes/packs.js';
 import { appWithOrg } from './helpers.js';
 import { makeTestPack } from '../fixtures/testPack.js';
+import { onPlan } from '../helpers/plan.js';
+import { planLimits } from '../../src/shared/plans.js';
 
 describe('web/routes/packs', () => {
   let db: TestDb;
@@ -173,5 +175,67 @@ describe('web/routes/packs', () => {
     // org_b's pack is untouched.
     const appB = appWithOrg('org_b', createPacksRouter(db));
     expect((await request(appB).get('/api/packs/p2')).status).toBe(200);
+  });
+
+  /**
+   * THE PROJECT LIMIT.
+   *
+   * The property worth holding is not the number — it is that the refusal
+   * arrives BEFORE anything is made. This route can create a real GitHub repo
+   * on the way to creating a project; a limit that bit afterwards would leave
+   * the owner with a repo they never got to use.
+   */
+  describe('how many projects a plan allows', () => {
+    const app = () => appWithOrg('org_a', createPacksRouter(db));
+    const newProject = (name: string) => request(app()).post('/api/packs').send({ name, repo: `acme/${name}`, tier: 'sandbox' });
+
+    const fill = async (n: number) => {
+      for (let i = 0; i < n; i += 1) {
+        await createPack(db, 'org_a', makeTestPack({ identity: { project_id: `p${i}`, name: `P${i}`, owner_description: 'x' } }));
+      }
+    };
+
+    it('refuses the one past the limit, with a code and a price', async () => {
+      await fill(planLimits('free').projects!);
+      const res = await newProject('third');
+
+      expect(res.status).toBe(402);
+      expect(res.body.code).toBe('limit_projects');
+      expect(res.body.error).toMatch(/\$12\/month/);
+      expect(res.body.limit).toBe(planLimits('free').projects);
+    });
+
+    /** A repo is a side effect on somebody else's server. It must not happen and then be refused. */
+    it('refuses before it creates a repo', async () => {
+      await fill(planLimits('free').projects!);
+      let made = false;
+      const router = createPacksRouter(db, {
+        createRepo: async (name: string) => {
+          made = true;
+          return { fullName: `acme/${name}` };
+        },
+      });
+      const res = await request(appWithOrg('org_a', router)).post('/api/packs').send({ name: 'third', create_repo: true, tier: 'sandbox' });
+
+      expect(res.status).toBe(402);
+      expect(made).toBe(false);
+    });
+
+    it('lets a paying account keep going', async () => {
+      await fill(5);
+      await onPlan(db, 'org_a');
+      expect((await newProject('sixth')).status).toBe(201);
+    });
+
+    /**
+     * A downgrade restricts, it never deletes. Five projects stay five
+     * projects; what stops is making a sixth.
+     */
+    it('leaves the projects an over-limit account already has', async () => {
+      await fill(5);
+      expect((await newProject('sixth')).status).toBe(402);
+      expect((await request(app()).get('/api/packs')).body).toHaveLength(5);
+      expect((await request(app()).get('/api/packs/p0')).status).toBe(200);
+    });
   });
 });

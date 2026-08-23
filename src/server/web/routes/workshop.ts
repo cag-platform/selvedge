@@ -15,6 +15,8 @@ import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../
 import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
+import { canStartBuild } from '../../billing/entitlements.js';
+import { refuse } from '../middleware/limit.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
 import { goLive } from '../../build/golive.js';
@@ -269,6 +271,13 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
         return;
       }
+      // Build minutes, checked before a sandbox is asked for. A run that starts
+      // with minutes left finishes even if it crosses zero — see canStartBuild.
+      const minutes = await canStartBuild(db, orgId);
+      if (!minutes.allowed) {
+        refuse(res, minutes);
+        return;
+      }
 
       // Check each staged upload out of the registry now — right before firing,
       // so nothing is consumed (and then orphaned) by a request that was going
@@ -385,7 +394,13 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
     }),
   );
 
-  // The live preview URL (brings the app server up if needed).
+  /**
+   * The live preview URL (brings the app server up if needed) — which means it
+   * starts a sandbox, which means it costs wall-clock time, which is why the
+   * quota applies here as well as to a build turn. A preview holds a sandbox
+   * open for as long as someone is looking at it; that is the single easiest
+   * way to spend an afternoon of minutes without noticing.
+   */
   router.get(
     '/api/projects/:projectId/workshop/preview',
     asyncHandler(async (req, res) => {
@@ -396,12 +411,27 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(resolved.status).json({ error: resolved.error });
         return;
       }
+      const minutes = await canStartBuild(db, orgId);
+      if (!minutes.allowed) {
+        refuse(res, minutes);
+        return;
+      }
       res.json(await preview(db, orgId, projectId, resolved.cfg));
     }),
   );
 
-  // Ship: the one moment the workshop touches the real world — gated on the
-  // actual changed files, sensitive changes need a confirmed backup.
+  /**
+   * Ship: the one moment the workshop touches the real world — gated on the
+   * actual changed files, sensitive changes need a confirmed backup.
+   *
+   * DELIBERATELY NOT GATED ON BUILD MINUTES, and neither is rollback below.
+   * Both are the completion of work the minutes were already spent on, and both
+   * are short. Refusing to ship because the month's quota ran out would strand
+   * finished changes in a sandbox that is about to be reaped — the owner's own
+   * work, held hostage to a meter. The same goes double for rollback, which is
+   * a safety operation: a plan limit must never stand between someone and
+   * undoing a bad deploy. Both still meter what they use.
+   */
   router.post(
     '/api/projects/:projectId/workshop/ship',
     asyncHandler(async (req, res) => {

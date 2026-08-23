@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import type { DeployCadence, InProgressItem } from '../../../shared/types/pack.js';
 import { resolveProjectId } from '../../resolution/resolveProject.js';
 import { archivedProjectIds, createPack, listPacks, updateMachineSections } from '../../packs/store.js';
+import { canCreateProject } from '../../billing/entitlements.js';
 import { scaffoldPackFromRepo } from '../../packs/scaffold.js';
 import { getInstallationOctokit, loadGithubAppConfig } from './app.js';
 import { listInstallations } from './health.js';
@@ -90,11 +91,26 @@ export async function backfillRepoForOrg(db: Db, orgId: string, repoFullName: st
  * (personal tier, marked as a draft for the owner to refine) — connecting
  * an account should populate Projects on its own, not hand the owner a
  * data-entry job. Then each repo backfills 30 days of history.
+ *
+ * THE PROJECT LIMIT APPLIES HERE, and this is the only place in the product
+ * where a plan limit bites something the owner didn't personally ask for.
+ * That is deliberate, and the alternative was worse in both directions: skip
+ * the check and connecting a GitHub account with twenty repos hands a free
+ * account twenty projects, which makes the limit a suggestion; drop the
+ * overflow repos and history silently goes missing.
+ *
+ * So the overflow lands in the unsorted tray instead, which is exactly what
+ * the tray is for — one row per source, named as the repo it is, with "watch
+ * it" waiting behind the same limit. Nothing is lost, nothing is hidden, and
+ * upgrading turns each of them into a project with everything that has been
+ * accumulating already attached. The history backfills either way: a repo
+ * without a pack still stores its events, they just resolve to no project yet.
  */
 export async function backfillInstallation(db: Db, octokit: Octokit, orgId: string): Promise<void> {
   const repos = await octokit.paginate(octokit.rest.apps.listReposAccessibleToInstallation, { per_page: 100 });
   const taken = new Set((await listPacks(db, orgId)).map((p) => p.identity.project_id));
   const archived = await archivedProjectIds(db, orgId);
+  let leftInTray = 0;
   for (const repo of repos as Array<{ full_name: string; archived?: boolean }>) {
     if (repo.archived) continue;
     const projectId = await resolveProjectId(db, orgId, 'github', repo.full_name);
@@ -102,10 +118,20 @@ export async function backfillInstallation(db: Db, octokit: Octokit, orgId: stri
     // re-scaffold it and don't re-populate its (tombstoned) pack.
     if (projectId && archived.has(projectId)) continue;
     if (!projectId) {
-      const draft = scaffoldPackFromRepo(repo.full_name, taken);
-      await createPack(db, orgId, draft);
-      taken.add(draft.identity.project_id);
+      // Asked per repo rather than once up front: this loop creates projects as
+      // it goes, so a count taken before it started would be stale by the
+      // second one.
+      if ((await canCreateProject(db, orgId)).allowed) {
+        const draft = scaffoldPackFromRepo(repo.full_name, taken);
+        await createPack(db, orgId, draft);
+        taken.add(draft.identity.project_id);
+      } else {
+        leftInTray += 1;
+      }
     }
     await backfillRepo(db, octokit, orgId, repo.full_name);
+  }
+  if (leftInTray > 0) {
+    console.log(`${orgId}: ${leftInTray} repo(s) past the plan's project limit — history kept, waiting in the unsorted tray.`);
   }
 }

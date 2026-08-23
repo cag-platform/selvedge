@@ -26,6 +26,8 @@ import { referenceLine } from '../../../shared/references.js';
 import { boundDocuments } from '../../../shared/documents.js';
 import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
+import { canStartBuild } from '../../billing/entitlements.js';
+import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -696,6 +698,22 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       }
       if (await activeRun(orgId, thread.projectId)) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
+        return;
+      }
+
+      /**
+       * BUILD MINUTES. Checked before a sandbox is asked for and nowhere after:
+       * a run that starts with minutes left is allowed to finish even if it
+       * crosses zero on the way. Killing a build mid-sentence to save thirty
+       * seconds of quota loses the owner's work to save us nothing.
+       *
+       * Plan mode is checked too. It changes nothing in the repo, but it runs
+       * in the same sandbox on the same wall clock, and wall clock is what this
+       * costs.
+       */
+      const minutes = await canStartBuild(db, orgId);
+      if (!minutes.allowed) {
+        refuse(res, minutes);
         return;
       }
 

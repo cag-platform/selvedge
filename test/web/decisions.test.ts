@@ -3,7 +3,7 @@ import request from 'supertest';
 import { ulid } from 'ulid';
 import { and, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, connectorCredentials, orgs } from '../../src/server/db/schema/index.js';
+import { agentMessages, connectorCredentials, orgs, subscriptions } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThread, getThread } from '../../src/server/threads/store.js';
@@ -12,6 +12,7 @@ import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/rout
 import { briefForThinkingThread } from '../../src/server/decisions/store.js';
 import { AnthropicLlmClient } from '../../src/server/llm/anthropic.js';
 import { appWithOrg } from './helpers.js';
+import { onPlan } from '../helpers/plan.js';
 
 /**
  * PAIRED THREADS, END TO END: think, decide, build — and the guard that stands
@@ -32,6 +33,10 @@ describe('web/routes/decisions — thinking, deciding, building', () => {
     db = t.db;
     close = t.close;
     await db.insert(orgs).values([{ orgId }, { orgId: 'org_2' }]);
+    // Decision briefs are a Pro feature, so the org that exercises them is on
+    // Pro. Said out loud rather than assumed: the gate itself is tested below.
+    await onPlan(db, orgId);
+    await onPlan(db, 'org_2');
     await createPack(
       db,
       orgId,
@@ -242,5 +247,79 @@ describe('web/routes/decisions — thinking, deciding, building', () => {
     expect((await request(theirs).get(`/api/threads/${thread.id}/decision`)).body.brief).toBeNull();
     expect((await request(theirs).patch(`/api/decisions/${brief.id}`).send({ decision: 'mine now' })).status).toBe(404);
     expect((await request(theirs).post(`/api/decisions/${brief.id}/build`).send({})).status).toBe(404);
+  });
+
+  /**
+   * THE PAYWALL, AND WHERE IT DELIBERATELY STOPS.
+   *
+   * Extracting a decision is the Pro feature. Everything that operates on a
+   * brief already made is NOT gated, and the reason is not generosity: the
+   * stale-decision check is a safety guard, and a lapsed subscription must
+   * never be more dangerous than no subscription. A brief that keeps feeding
+   * the builder while being hidden from the owner would be the screen and the
+   * work disagreeing about what is happening.
+   */
+  describe('what a Free account can and cannot do with a decision', () => {
+    const free = 'org_free';
+
+    beforeEach(async () => {
+      await db.insert(orgs).values({ orgId: free });
+      await createPack(
+        db,
+        free,
+        makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'A curtain shop.' } }),
+      );
+    });
+
+    it('refuses to extract one, with the price and a code the client can act on', async () => {
+      const thread = await createThread(db, free, 'loom', { kind: 'general', title: 'Checkout shape' });
+      await db.insert(agentMessages).values({
+        id: ulid(),
+        orgId: free,
+        projectId: 'loom',
+        threadId: thread.id,
+        role: 'owner',
+        content: 'should the checkout be one page?',
+      });
+
+      const res = await request(appWithOrg(free, createDecisionsRouter(db))).post(`/api/threads/${thread.id}/decision`).send({});
+      expect(res.status).toBe(402);
+      expect(res.body.code).toBe('limit_decision_briefs');
+      expect(res.body.error).toMatch(/\$12\/month/);
+    });
+
+    /** Refused before the model is ever called — a paywall that spends money is not a paywall. */
+    it('refuses before anything spends', async () => {
+      const thread = await createThread(db, free, 'loom', { kind: 'general', title: 'Checkout shape' });
+      await db.insert(agentMessages).values({ id: ulid(), orgId: free, projectId: 'loom', threadId: thread.id, role: 'owner', content: 'one page?' });
+
+      let called = false;
+      const proto = AnthropicLlmClient.prototype as unknown as { complete: unknown };
+      const original = proto.complete;
+      proto.complete = async () => {
+        called = true;
+        return { ok: true, json: DRAFT, tokensIn: 1, tokensOut: 1, model: 'x' };
+      };
+      try {
+        await request(appWithOrg(free, createDecisionsRouter(db))).post(`/api/threads/${thread.id}/decision`).send({});
+      } finally {
+        proto.complete = original;
+      }
+      expect(called).toBe(false);
+    });
+
+    it('still serves and still guards a brief made while the account was paying', async () => {
+      const thread = await createThread(db, free, 'loom', { kind: 'general', title: 'Checkout shape' });
+      await db.insert(agentMessages).values({ id: ulid(), orgId: free, projectId: 'loom', threadId: thread.id, role: 'owner', content: 'one page?' });
+      // Made on Pro, then the subscription lapsed.
+      await onPlan(db, free);
+      await withFakeModel(DRAFT, () => request(appWithOrg(free, createDecisionsRouter(db))).post(`/api/threads/${thread.id}/decision`).send({}));
+      await db.delete(subscriptions).where(eq(subscriptions.orgId, free));
+
+      const res = await request(appWithOrg(free, createDecisionsRouter(db))).get(`/api/threads/${thread.id}/decision`);
+      expect(res.status).toBe(200);
+      expect(res.body.brief).not.toBeNull();
+      expect(res.body.freshness).toBeTruthy();
+    });
   });
 });

@@ -5,6 +5,8 @@ import { PackValidationError } from '../../packs/validate.js';
 import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { canCreateProject } from '../../billing/entitlements.js';
+import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -43,6 +45,15 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
       }
       if (await getPack(db, orgId, projectId)) {
         res.status(409).json({ error: `a project with id "${projectId}" already exists` });
+        return;
+      }
+      // Checked here, before anything is made — and specifically before the
+      // start-from-nothing branch below creates a real repo on GitHub. A limit
+      // that bites after a side effect leaves the owner with a repo they didn't
+      // get to use and no project attached to it.
+      const room = await canCreateProject(db, orgId);
+      if (!room.allowed) {
+        refuse(res, room);
         return;
       }
       // Start-from-nothing: make the repo first, then map the project to it.

@@ -21,6 +21,8 @@ import {
   withFreshness,
 } from '../../decisions/store.js';
 import type { AgentId } from '../../../shared/agents.js';
+import { canUseDecisionBriefs } from '../../billing/entitlements.js';
+import { refuse } from '../middleware/limit.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -34,6 +36,23 @@ function orgIdOf(req: Request): string {
  * The feature's known failure is a settled-sounding statement whose settledness
  * nobody checked, and the only defence is that no surface can get hold of one
  * without also getting hold of how far behind the conversation it is.
+ *
+ * WHAT THE PLAN GATES, AND WHAT IT DELIBERATELY DOESN'T. Extracting a decision
+ * is the Pro feature and is refused on Free, at the top of the route, before
+ * anything spends. Reading, editing and building from a brief that already
+ * exists are NOT gated, for two reasons that are not about generosity:
+ *
+ *  - The stale-decision check in the message path is a SAFETY GUARD, not a
+ *    feature. It stops a builder acting on a decision the thinking has moved
+ *    past. Turning a guard off when someone stops paying would make a lapsed
+ *    subscription actively more dangerous than no subscription at all.
+ *  - A brief made during a Pro month keeps feeding the builder its opening
+ *    instruction. Hiding it from the owner while still handing it to the agent
+ *    would mean the screen and the work disagree about what is happening, which
+ *    is the one thing this product cannot do.
+ *
+ * So a lapsed owner keeps the briefs they made and cannot make new ones. That
+ * is a restriction on the feature, not on the record.
  */
 export function createDecisionsRouter(db: Db) {
   const router = Router();
@@ -50,6 +69,11 @@ export function createDecisionsRouter(db: Db) {
       }
       if (thread.kind !== 'general') {
         res.status(400).json({ error: 'A decision comes out of a thinking conversation, not a building one.' });
+        return;
+      }
+      const allowed = await canUseDecisionBriefs(db, orgId);
+      if (!allowed.allowed) {
+        refuse(res, allowed);
         return;
       }
 
