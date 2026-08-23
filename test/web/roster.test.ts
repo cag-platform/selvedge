@@ -28,8 +28,14 @@ describe('who could answer this, and what handing it over would cost', () => {
   const orgId = 'org_1';
   const engineOn = () => ({ claudeCodeOauthToken: 'c', githubToken: 'g', openaiApiKey: 'o' });
 
+  // Codex's fuel now resolves like every other key — the org's own first, the
+  // platform's second — so the platform's has to be absent for "no key
+  // anywhere" to mean what it says here.
+  const platformOpenAi = process.env.OPENAI_API_KEY;
+
   beforeEach(async () => {
     process.env.CREDENTIALS_KEY = 'x'.repeat(48);
+    delete process.env.OPENAI_API_KEY;
     const t = await createTestDb();
     db = t.db;
     close = t.close;
@@ -42,6 +48,8 @@ describe('who could answer this, and what handing it over would cost', () => {
   });
   afterEach(async () => {
     delete process.env.CREDENTIALS_KEY;
+    if (platformOpenAi === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = platformOpenAi;
     await close();
   });
 

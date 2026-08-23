@@ -52,7 +52,12 @@ export const FEATURES: FeatureSpec[] = [
   // The same key, a second job: the Inbox's second builder. Separate row
   // because they are separate promises — grading independence does not depend
   // on Codex existing, and Codex not running does not weaken a verdict.
-  { key: 'codex', label: 'Codex, the second builder', kind: 'feature', vars: ['OPENAI_API_KEY', 'DAYTONA_API_KEY'], gives: 'lets a workshop thread switch builders mid-task — Codex runs in the same sandbox and starts from the handoff; without it the switcher says plainly that Codex is not switched on here' },
+  //
+  // Here OPENAI_API_KEY is the FALLBACK, not the requirement: an org that has
+  // connected its own OpenAI key builds on that, exactly as it chats on it. So
+  // this row going `off` means "no key for orgs that haven't brought one",
+  // which is what a deployment-level report can honestly say.
+  { key: 'codex', label: 'Codex, the second builder', kind: 'feature', vars: ['OPENAI_API_KEY', 'DAYTONA_API_KEY'], gives: 'lets a workshop thread switch builders mid-task — Codex runs in the same sandbox and starts from the handoff. An org that has connected its own OpenAI key builds on that instead; this key covers the ones that haven’t' },
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */

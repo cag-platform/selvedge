@@ -2,6 +2,7 @@ import type { Db } from '../db/client.js';
 import { getPack } from '../packs/store.js';
 import type { AgentTurnConfig } from './agent.js';
 import { resolveRepoToken, type RepoToken } from './repoToken.js';
+import { resolveOpenAiKey } from './openaiKey.js';
 
 /**
  * "Can this project be worked on, and with what?" — one answer, shared by every
@@ -10,25 +11,31 @@ import { resolveRepoToken, type RepoToken } from './repoToken.js';
  * credentials-and-source check is how one of them ends up quietly out of date.
  */
 
-export type EngineEnv = { claudeCodeOauthToken: string; openaiApiKey?: string };
+export type EngineEnv = { claudeCodeOauthToken: string };
 
 /**
  * The build engine's platform credentials, or null when this deployment has no
  * engine.
  *
- * GitHub is deliberately NOT here. Reaching a repo is a per-org, per-repo
- * question answered by repoToken.ts against the org's own app installation;
- * a deployment-wide token in this shape was how the engine ended up able to
- * see repos it could not clone.
+ * TWO THINGS ARE DELIBERATELY NOT HERE, for the same reason.
+ *
+ * GitHub: reaching a repo is a per-org, per-repo question answered by
+ * repoToken.ts against the org's own app installation. A deployment-wide token
+ * in this shape was how the engine ended up able to see repos it could not
+ * clone.
+ *
+ * OpenAI: Codex's fuel is a per-org question answered by openaiKey.ts, the
+ * owner's connected key first. A deployment-wide key in this shape was how an
+ * owner with a working key still got a 401 out of the sandbox.
+ *
+ * What's left is what genuinely belongs to the deployment: the engine either
+ * runs here or it doesn't.
  */
 export function engineEnv(): EngineEnv | null {
   const claude = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   const daytona = process.env.DAYTONA_API_KEY?.trim();
   if (!claude || !daytona) return null;
-  const openai = process.env.OPENAI_API_KEY?.trim();
-  // Codex's fuel is optional: without it the second builder simply isn't
-  // offered, and everything else works exactly as before.
-  return { claudeCodeOauthToken: claude, ...(openai ? { openaiApiKey: openai } : {}) };
+  return { claudeCodeOauthToken: claude };
 }
 
 export type EngineConfig = { cfg: AgentTurnConfig; liveUrl: string | null };
@@ -41,6 +48,7 @@ export async function configFor(
   projectId: string,
   env: () => EngineEnv | null = engineEnv,
   resolveToken: (db: Db, orgId: string, repoFullName: string) => Promise<RepoToken> = resolveRepoToken,
+  resolveOpenAi: (db: Db, orgId: string) => Promise<string | null> = resolveOpenAiKey,
 ): Promise<EngineConfig | EngineRefusal> {
   const pack = await getPack(db, orgId, projectId);
   if (!pack) return { error: 'no such project', status: 404 };
@@ -56,8 +64,17 @@ export async function configFor(
   // machine started, a minute billed, and a clone that dies on authentication.
   const token = await resolveToken(db, orgId, source.resource_id);
   if (!token.ok) return { status: 409, error: token.reason };
+  // Optional in the same way it always was: without a key Codex simply isn't
+  // one of the builders on offer, and everything else works as before.
+  const openaiApiKey = await resolveOpenAi(db, orgId);
   return {
-    cfg: { ...creds, githubToken: token.token, repoFullName: source.resource_id, branch: 'main' },
+    cfg: {
+      ...creds,
+      ...(openaiApiKey ? { openaiApiKey } : {}),
+      githubToken: token.token,
+      repoFullName: source.resource_id,
+      branch: 'main',
+    },
     liveUrl: pack.identity.links?.live_url ?? null,
   };
 }

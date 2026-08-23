@@ -1,6 +1,7 @@
 import type { Db } from '../db/client.js';
 import { AGENTS, type AgentId } from '../../shared/agents.js';
 import { engineEnv, type EngineEnv } from '../build/engineConfig.js';
+import { resolveOpenAiKey } from '../build/openaiKey.js';
 import { resolveFuelFor } from '../connectors/fuel/resolve.js';
 import { quoteHandoff, quoteNote } from './switch.js';
 import type { Thread } from './store.js';
@@ -52,19 +53,28 @@ function does(changesFiles: boolean): string {
  * talker needs a connected key for its own provider. Every "no" here has a
  * sentence attached, because a greyed-out row with no explanation is the thing
  * that makes people think a product is broken.
+ *
+ * Codex's key is resolved exactly as GPT's is — the org's own connected key
+ * first. It used to be read from the deployment's environment alone, which
+ * meant this row could say "no OpenAI key" to an owner looking at their own
+ * connected OpenAI key on the next screen.
  */
 async function availability(
   db: Db,
   orgId: string,
   agent: (typeof AGENTS)[number],
   env: EngineEnv | null,
+  openAiKey: () => Promise<string | null>,
 ): Promise<{ available: boolean; note: string | null }> {
   if (agent.changesFiles) {
     if (!env) {
       return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected." };
     }
-    if (agent.id === 'codex' && !env.openaiApiKey) {
-      return { available: false, note: `${agent.name} builds on an OpenAI key, and there isn't one configured here yet.` };
+    if (agent.id === 'codex' && !(await openAiKey())) {
+      return {
+        available: false,
+        note: `${agent.name} builds on an OpenAI key. Add one under Connections and it can build here.`,
+      };
     }
     return { available: true, note: null };
   }
@@ -81,14 +91,18 @@ export async function agentRoster(
   orgId: string,
   thread: Thread,
   env: () => EngineEnv | null = engineEnv,
+  openAi: (db: Db, orgId: string) => Promise<string | null> = resolveOpenAiKey,
 ): Promise<AgentOffer[]> {
   const engine = env();
   const from = thread.agent as AgentId;
+  // Asked at most once for the whole roster, and only if something asks.
+  let pending: Promise<string | null> | null = null;
+  const openAiKey = () => (pending ??= openAi(db, orgId).catch(() => null));
 
   return Promise.all(
     AGENTS.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
-      const { available, note } = await availability(db, orgId, agent, engine);
+      const { available, note } = await availability(db, orgId, agent, engine, openAiKey);
 
       // Nobody quotes you a price for staying where you are.
       const quote = answeringNow ? null : await quoteHandoff(db, orgId, thread, from, agent.id);
