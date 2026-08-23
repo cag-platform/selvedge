@@ -420,9 +420,20 @@ export function Landing() {
             border a fabric finishes itself, the edge that cannot fray. The conversations, the code, the
             decisions between them &mdash; kept on one continuous cloth.
           </p>
-          <Link to="/sign-in" className="text-meta text-ink-quiet hover:text-ink-dim">
-            Sign in
-          </Link>
+          <div className="flex flex-wrap items-center gap-4 text-meta text-ink-quiet">
+            <Link to="/docs" className="hover:text-ink-dim">
+              Docs
+            </Link>
+            <Link to="/security" className="hover:text-ink-dim">
+              Security
+            </Link>
+            <Link to="/changelog" className="hover:text-ink-dim">
+              Changelog
+            </Link>
+            <Link to="/sign-in" className="hover:text-ink-dim">
+              Sign in
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

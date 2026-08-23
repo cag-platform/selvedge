@@ -26,6 +26,12 @@ const Connections = lazy(() => import('./pages/Connections.js').then((m) => ({ d
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
 const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
 const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide })));
+// Public, and split for the same reason the app is: a stranger reading the
+// landing should not download the docs, and a stranger reading the docs should
+// not download the workbench.
+const Docs = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Docs })));
+const Security = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Security })));
+const Changelog = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Changelog })));
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -186,6 +192,12 @@ export default function App() {
           </main>
         }
       />
+      {/* Public, signed in or out: documentation that vanishes once you have
+          an account is documentation nobody can link to. */}
+      <Route path="/docs" element={<Suspense fallback={null}><Docs /></Suspense>} />
+      <Route path="/docs/:page" element={<Suspense fallback={null}><Docs /></Suspense>} />
+      <Route path="/security" element={<Suspense fallback={null}><Security /></Suspense>} />
+      <Route path="/changelog" element={<Suspense fallback={null}><Changelog /></Suspense>} />
       <Route path="*" element={<AuthedApp />} />
     </Routes>
   );
