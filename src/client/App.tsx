@@ -23,6 +23,7 @@ const TrackRecord = lazy(() => import('./pages/TrackRecord.js').then((m) => ({ d
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
 const Connections = lazy(() => import('./pages/Connections.js').then((m) => ({ default: m.Connections })));
+const Billing = lazy(() => import('./pages/Billing.js').then((m) => ({ default: m.Billing })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
 const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
 const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide })));
@@ -137,6 +138,9 @@ function AuthedApp() {
               {/* Unsorted lives in Admin now — keep the address working. */}
               <Route path="/tray" element={<Navigate to="/admin" replace />} />
               <Route path="/connections" element={<Connections />} />
+              <Route path="/settings/billing" element={<Billing />} />
+              {/* The brief's path is /settings/billing; this is the short way people type it. */}
+              <Route path="/billing" element={<Navigate to="/settings/billing" replace />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
             </Suspense>
@@ -166,6 +170,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/record', 'Record'],
   ['/projects', 'Projects'],
   ['/connections', 'Connections'],
+  ['/settings/billing', 'Billing'],
   ['/admin', 'Settings'],
   ['/styleguide', 'Styleguide'],
 ];

@@ -6,6 +6,7 @@ import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/
 import { ImportHistory } from '../components/ImportHistory.js';
 import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
+import { UpgradeNote, limitCodeOf } from '../components/UpgradeNote.js';
 
 type Correction = { id: string; project_id: string | null; line: string };
 type StatusResponse = { corrections: Correction[]; live: SituationEvent[] };
@@ -115,7 +116,7 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
   const [tier, setTier] = useState('sandbox');
   const [touchesMoney, setTouchesMoney] = useState(false);
   const [downtime, setDowntime] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -145,7 +146,11 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
       });
       onCreated(brandNew ? pack.identity.project_id : undefined);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'something went wrong');
+      // The ERROR OBJECT is kept, not just its sentence: a plan limit answers
+      // 402 with a typed code, and flattening it to a string here would leave
+      // the owner reading "that is more than this plan allows" with no way to
+      // do anything about it.
+      setError(err);
     } finally {
       setSaving(false);
     }
@@ -236,7 +241,17 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
             {saving ? (brandNew ? 'Making the repo…' : 'Creating…') : brandNew ? 'Create & start building' : 'Create project'}
           </button>
         </div>
-        {error && <p className="mt-2 text-body text-thread">{error}</p>}
+        {/*
+          A plan limit is not a failure and must not be dressed as one: rust is
+          "this needs you", and spending it on a sales moment is how a colour
+          system stops meaning anything. A limit gets a plain line with a way
+          out; everything else is still an error.
+        */}
+        {limitCodeOf(error) ? (
+          <UpgradeNote error={error} />
+        ) : (
+          error != null && <p className="mt-2 text-body text-thread">{error instanceof Error ? error.message : 'something went wrong'}</p>
+        )}
       </form>
     </Pane>
   );

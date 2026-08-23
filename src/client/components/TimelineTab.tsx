@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { Reveal } from './Brief.js';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { whenShort } from '../lib/inbox.js';
+import { LockedOlder } from './UpgradeNote.js';
 import { EmptyState } from './ui.js';
 
 /**
@@ -45,14 +46,21 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // How much of the record this plan is holding back — on the list and on the
+  // search separately, because they are cut short independently.
+  const [lockedEntries, setLockedEntries] = useState(0);
+  const [lockedHits, setLockedHits] = useState(0);
 
   const load = useCallback(() => {
     setEntries(null);
     api
-      .get<{ entries: Entry[]; repo_url: string | null }>(`/api/projects/${encodeURIComponent(projectId)}/timeline?days=${days}`)
+      .get<{ entries: Entry[]; repo_url: string | null; locked_older_count?: number }>(
+        `/api/projects/${encodeURIComponent(projectId)}/timeline?days=${days}`,
+      )
       .then((r) => {
         setEntries(r.entries);
         setRepoUrl(r.repo_url);
+        setLockedEntries(r.locked_older_count ?? 0);
       })
       .catch((e: Error) => setError(e.message));
   }, [projectId, days]);
@@ -72,8 +80,11 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
     }
     const timer = setTimeout(() => {
       api
-        .get<{ hits: Hit[] }>(`/api/projects/${encodeURIComponent(projectId)}/search?q=${encodeURIComponent(q)}`)
-        .then((r) => setHits(r.hits))
+        .get<{ hits: Hit[]; locked_older_count?: number }>(`/api/projects/${encodeURIComponent(projectId)}/search?q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          setHits(r.hits);
+          setLockedHits(r.locked_older_count ?? 0);
+        })
         .catch(() => setHits([]));
     }, 200);
     return () => clearTimeout(timer);
@@ -111,12 +122,16 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
         >
           Nothing in {projectId} matches &lsquo;{query.trim()}&rsquo;. Search covers every thread, ask, and event in
           this project &mdash; not the code itself.
+          {/* The one thing worse than finding nothing is finding nothing while
+              matches sit behind a plan window nobody mentioned. */}
+          <LockedOlder count={lockedHits} />
         </EmptyState>
       ) : hits !== null ? (
         <div className="space-y-read">
           <p className="text-meta text-ink-quiet">
             {hits.length} {hits.length === 1 ? 'thing mentions' : 'things mention'} that.
           </p>
+          <LockedOlder count={lockedHits} />
           {hits.map((hit, i) => (
             <button
               key={`${hit.at}-${i}`}
@@ -143,7 +158,10 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
           {entries === null && <p className="text-body text-ink-quiet">Loading…</p>}
           {entries?.length === 0 && (
             <EmptyState>
-              Nothing has happened here yet. The first message, ship, or deploy starts the record.
+              {lockedEntries > 0
+                ? 'Nothing in the last thirty days. The record before that is still here.'
+                : 'Nothing has happened here yet. The first message, ship, or deploy starts the record.'}
+              <LockedOlder count={lockedEntries} />
             </EmptyState>
           )}
 
@@ -181,6 +199,11 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
               </li>
             ))}
           </ol>
+
+          {/* The end of the list is where "there is more" belongs — a
+              window that silently returns fewer rows is the same lie as a
+              truncated list that does not say it truncated. */}
+          <LockedOlder count={lockedEntries} />
 
           {/* The honest part, said out loud: this is the same record the export
               carries, and being able to leave is what makes it worth staying. */}

@@ -35,6 +35,9 @@ export function Nav() {
             <NavLink to="/connections" className={linkClass}>
               Connections
             </NavLink>
+            <NavLink to="/settings/billing" className={linkClass}>
+              Billing
+            </NavLink>
             <NavLink to="/admin" className={linkClass}>
               Admin
             </NavLink>
