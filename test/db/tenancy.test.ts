@@ -27,6 +27,11 @@ const GLOBAL_TABLES: Record<string, string> = {
     'Deliberately cross-org: one graduated phrasing serves every tenant, which is the point of a shared library. ' +
     'Per-org usage is recorded in narration_library_uses, which IS scoped. Rows store a {project} slot rather than ' +
     'any customer name or content, so nothing tenant-identifying lives here.',
+  stripe_events:
+    "Stripe's own event ids, kept only so a retried webhook cannot be applied twice. Stripe assigns them globally " +
+    'and sends them before we know whose org an event belongs to — the handler resolves the org FROM the event, so ' +
+    'requiring org_id here would mean writing the dedup row after the work it is meant to guard. Rows hold an ' +
+    'opaque id and an event type; no customer data, and nothing is ever read back per tenant.',
 };
 
 function allTables(): Array<{ name: string; columns: string[] }> {

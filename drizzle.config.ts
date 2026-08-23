@@ -1,5 +1,19 @@
 import { defineConfig } from 'drizzle-kit';
 
+/**
+ * READ THIS BEFORE RUNNING `npm run db:generate`.
+ *
+ * The `schema` list below is NOT the schema — it stopped tracking it long ago,
+ * and most tables in `src/server/db/schema/` are missing from it. Migrations
+ * here are hand-written: a generated one would compare today's code against a
+ * stale snapshot and emit a file that re-adds columns that already exist while
+ * silently omitting every table this list has never heard of.
+ *
+ * So: write the `.sql` by hand in `src/server/db/migrations/`, add its tag to
+ * `meta/_journal.json`, and let the test database (which applies the folder
+ * file by file) prove it runs. Do not trust drizzle-kit's output here without
+ * reading every line of it.
+ */
 export default defineConfig({
   schema: [
     './src/server/db/schema/orgs.ts',
