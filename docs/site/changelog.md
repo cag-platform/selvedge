@@ -6,9 +6,6 @@ exists to prevent.
 
 ## 23 August 2026
 
-- Grok Build is named in the picker and marked as coming rather than offered.
-  A builder needs a per-CLI driver, not a table row, so declaring it reserves
-  the name honestly instead of shipping a build that cannot run.
 - Five more models answer to `@`: Gemini, Kimi, Grok, DeepSeek and Mistral.
   They arrived as five table rows rather than five integrations, because every
   provider but Anthropic speaks the same protocol at a different address.

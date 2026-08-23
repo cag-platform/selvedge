@@ -329,16 +329,8 @@ export async function runAgentTurn(
   const agent: AgentId = cfg.agent ?? 'claude-code';
   const driver = driverFor(agent, { openaiApiKey: cfg.openaiApiKey });
   if (!driver) {
-    const descriptor = agentById(agent);
-    const name = descriptor?.name ?? agent;
-    // Two different "no", and they are not the same news. Codex without a key
-    // is fuel you can go and connect; an agent that isn't wired here is not
-    // something you can fix at all, and saying "there's no key for it" would
-    // send somebody to Connections to solve a problem that isn't there.
-    const reply =
-      descriptor && !descriptor.live
-        ? `${name} isn't wired up here yet — it's listed so you know it's coming, but it can't take a turn. Switch this thread back to Claude Code and I'll pick it up.`
-        : `${name} isn't switched on here yet — there's no key for it, so I can't run your message through it. Switch this thread back to Claude Code and I'll pick it up.`;
+    const name = agentById(agent)?.name ?? agent;
+    const reply = `${name} isn't switched on here yet — there's no key for it, so I can't run your message through it. Switch this thread back to Claude Code and I'll pick it up.`;
     const failedRunId = ulid();
     await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });

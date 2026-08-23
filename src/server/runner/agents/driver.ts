@@ -98,11 +98,6 @@ export function driverFor(agent: AgentId, cfg: { openaiApiKey?: string | null } 
     const key = cfg.openaiApiKey?.trim();
     return key ? codexDriver(key) : null;
   }
-  // Grok Build is declared in the registry and has no driver yet: the CLI's
-  // invocation and event stream are unknown, and three parsers written against
-  // a format nobody has seen would produce a turn that reports success it
-  // cannot see. Adding it is a file beside codexCommand.ts and a case here.
-  //
   // Chat agents don't run in a sandbox at all — chat/turn.ts is their path.
   return null;
 }
