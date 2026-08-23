@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { AgentChip } from './AgentChip.js';
-import { railPlaces, whenShort, type InboxData, type ThreadRow } from '../lib/inbox.js';
+import { railPlaces, splitPutAway, whenShort, type InboxData, type RailPlace, type ThreadRow } from '../lib/inbox.js';
+import { putAwayLine, PUT_AWAY, BRING_BACK, PUT_AWAY_NOTE } from '../../shared/putAway.js';
 
 /**
  * THE RAIL — everywhere you work. One row each, one conversation each.
@@ -19,10 +21,16 @@ import { railPlaces, whenShort, type InboxData, type ThreadRow } from '../lib/in
  * conversation; naming somebody moves it, and the chip on the row says who has
  * it now.
  *
- * It carries the product's oldest acceptance test into the new room: a
- * stranger reads the whole stack's health from the edges alone. So a place
- * with code keeps its selvedge edge and its plain health line — and a place
- * without gets NEITHER, because a status on it would be a claim about nothing.
+ * ONE LIST YOU CAN STILL READ. The list is the right length at four places and
+ * the wrong length at forty, and a rail you scroll past is a rail you stop
+ * reading — which costs the product's oldest acceptance test, that a stranger
+ * reads the whole stack's health from the edges alone. So a place you are not
+ * working in can be put away: it leaves the list, keeps everything else, and
+ * the count of what is folded is always on screen. See shared/putAway.ts.
+ *
+ * It carries that acceptance test into the new room: a place with code keeps
+ * its selvedge edge and its plain health line — and a place without gets
+ * NEITHER, because a status on it would be a claim about nothing.
  *
  * Two things left the rail. The morning brief, because it is retired; and the
  * unsorted line, because filing what Selvedge has seen is settings work and
@@ -37,6 +45,7 @@ export function Rail({
   onNewThread,
   onNewSubjectThread,
   onNewSubject,
+  onPutAway,
 }: {
   data: InboxData | null;
   activeThreadId: string | null;
@@ -46,8 +55,71 @@ export function Rail({
   onNewThread: (projectId: string) => void;
   onNewSubjectThread: (subjectId: string) => void;
   onNewSubject: () => void;
+  /** Fold a place away, or bring it back. */
+  onPutAway: (place: RailPlace, away: boolean) => void;
 }) {
+  const [showingPutAway, setShowingPutAway] = useState(false);
+
   if (!data) return <p className="p-work text-body text-ink-quiet">Loading…</p>;
+
+  const { atHand, putAway } = splitPutAway(railPlaces(data.projects, data.subjects ?? []));
+
+  function row(place: RailPlace) {
+    const active = (place.chat && place.chat.id === activeThreadId) || place.id === activeProjectId;
+    return (
+      // A container rather than one big button: the fold gesture is a button of
+      // its own, and a button inside a button is not a thing a browser will
+      // render.
+      <div
+        key={place.id}
+        className={`group relative mb-work-tight flex w-full items-center rounded-inset transition-colors duration-settle ease-settle ${
+          active ? 'bg-panel-soft' : 'hover:bg-panel-soft'
+        }`}
+      >
+        <button
+          data-thread-row={place.chat?.id}
+          onClick={() => (place.chat ? onOpen(place.chat) : place.hasCode ? onNewThread(place.id) : onNewSubjectThread(place.id))}
+          aria-current={place.chat && place.chat.id === activeThreadId ? 'true' : undefined}
+          className="flex min-w-0 flex-1 items-center gap-work px-work-tight py-work text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+        >
+          {/* Two different silences, one rule: say nothing. No code here to
+              be healthy or broken, or nothing has ever reported on the code
+              that is. A dashed edge is for "I looked and couldn't tell". */}
+          {place.status && <SelvedgeEdge status={place.status} />}
+
+          <span className="min-w-0 flex-1 pl-work">
+            <span className="flex items-baseline gap-work">
+              <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{place.name}</span>
+              {place.chat && (
+                <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</span>
+              )}
+            </span>
+            {/* Colour is never the only signal — but where there is no
+                signal, there is no sentence either. */}
+            {place.health && <span className="block truncate text-meta text-ink-quiet">{place.health}</span>}
+            {!place.chat && (
+              <span className="block truncate text-meta text-ink-quiet">Nothing said here yet — open it and start.</span>
+            )}
+          </span>
+
+          {/* Who is on it right now. One conversation per project, so this is
+              the whole answer rather than one row of a list. */}
+          {place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}
+        </button>
+
+        {/* Quiet until wanted, but never only on hover: focus reaches it too,
+            or the gesture would exist for mice alone. */}
+        <button
+          onClick={() => onPutAway(place, !place.putAway)}
+          title={place.putAway ? BRING_BACK : PUT_AWAY}
+          aria-label={`${place.putAway ? BRING_BACK : PUT_AWAY}: ${place.name}`}
+          className="mr-work-tight shrink-0 rounded-inset px-2 py-1 text-meta text-ink-quiet opacity-0 transition-opacity duration-settle ease-settle hover:text-ink focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright group-hover:opacity-100"
+        >
+          {place.putAway ? BRING_BACK : PUT_AWAY}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <nav aria-label="Projects and threads" className="flex h-full flex-col">
@@ -58,41 +130,29 @@ export function Rail({
           </p>
         )}
 
-        {railPlaces(data.projects, data.subjects ?? []).map((place) => (
-          <button
-            key={place.id}
-            data-thread-row={place.chat?.id}
-            onClick={() => (place.chat ? onOpen(place.chat) : place.hasCode ? onNewThread(place.id) : onNewSubjectThread(place.id))}
-            aria-current={place.chat && place.chat.id === activeThreadId ? 'true' : undefined}
-            className={`relative mb-work-tight flex w-full items-center gap-work rounded-inset px-work-tight py-work text-left transition-colors duration-settle ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
-              (place.chat && place.chat.id === activeThreadId) || place.id === activeProjectId ? 'bg-panel-soft' : 'hover:bg-panel-soft'
-            }`}
-          >
-            {/* Two different silences, one rule: say nothing. No code here to
-                be healthy or broken, or nothing has ever reported on the code
-                that is. A dashed edge is for "I looked and couldn't tell". */}
-            {place.status && <SelvedgeEdge status={place.status} />}
+        {atHand.map(row)}
 
-            <span className="min-w-0 flex-1 pl-work">
-              <span className="flex items-baseline gap-work">
-                <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{place.name}</span>
-                {place.chat && (
-                  <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</span>
-                )}
-              </span>
-              {/* Colour is never the only signal — but where there is no
-                  signal, there is no sentence either. */}
-              {place.health && <span className="block truncate text-meta text-ink-quiet">{place.health}</span>}
-              {!place.chat && (
-                <span className="block truncate text-meta text-ink-quiet">Nothing said here yet — open it and start.</span>
-              )}
-            </span>
-
-            {/* Who is on it right now. One conversation per project, so this is
-                the whole answer rather than one row of a list. */}
-            {place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}
-          </button>
-        ))}
+        {/* WHAT IS FOLDED IS NEVER HIDDEN. A row taken out of the list claims
+            nothing; a row taken out of the list you cannot find again is the
+            product lying about its own size. So the count is always here, and
+            one press brings them back into view with their health lines. */}
+        {putAway.length > 0 && (
+          <div className="mt-work">
+            <button
+              onClick={() => setShowingPutAway((v) => !v)}
+              aria-expanded={showingPutAway}
+              className="w-full rounded-inset px-work-tight py-work-tight text-left text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+            >
+              {putAwayLine(putAway.length)} · {showingPutAway ? 'hide' : 'show'}
+            </button>
+            {showingPutAway && (
+              <div className="mt-work-tight">
+                <p className="px-work-tight pb-work-tight text-meta text-ink-quiet">{PUT_AWAY_NOTE}</p>
+                {putAway.map(row)}
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={onNewSubject}

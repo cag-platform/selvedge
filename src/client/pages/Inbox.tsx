@@ -140,6 +140,23 @@ export function Inbox() {
   }, [loadInbox]);
 
   /**
+   * Fold a place out of the rail, or bring it back. One endpoint whichever
+   * kind of place it is — the rail is one list, and it should not have to know
+   * which rows have a repo behind them to act on them.
+   */
+  const putAway = useCallback(
+    async (place: { id: string; name: string }, away: boolean) => {
+      try {
+        await api.patch(`/api/inbox/places/${place.id}`, { put_away: away });
+        await loadInbox();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "that didn't go through");
+      }
+    },
+    [loadInbox],
+  );
+
+  /**
    * Pressing + starts the conversation. It does not ask a question first.
    *
    * There used to be a bar here that made you pick "Claude Code — builds" or
@@ -248,6 +265,7 @@ export function Inbox() {
             onNewThread={(id) => void createThread(id)}
             onNewSubjectThread={(id) => void createSubjectThread(id)}
             onNewSubject={() => void createSubject()}
+            onPutAway={(place, away) => void putAway(place, away)}
           />
         </div>
       )}

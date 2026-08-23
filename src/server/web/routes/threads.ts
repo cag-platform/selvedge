@@ -4,7 +4,7 @@ import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, threads } from '../../db/schema/index.js';
-import { getPack, listPacks } from '../../packs/store.js';
+import { getPack, listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
@@ -14,6 +14,7 @@ import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
 import { createSubjectThread, createThread, ensureWorkshopThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
 import { getSubject, listSubjects } from '../../threads/subjects.js';
+import { setPlacePutAway } from '../../threads/putAway.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
 import { agentRoster } from '../../threads/roster.js';
 import { raiseCeiling, threadCeiling } from '../../threads/ceiling.js';
@@ -85,10 +86,18 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     '/api/inbox',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
-      const [packs, subjectRows, threadRows] = await Promise.all([
+      // PUT-AWAY PLACES COME BACK IN THE PAYLOAD, FLAGGED.
+      //
+      // They are folded out of the rail, not withheld from it: the rail says
+      // how many are away and opens them on one tap, with their health lines
+      // intact. Fetching them only on demand would cost a second round trip to
+      // show a list the owner already has in their hand — and would make the
+      // count a separate query that could disagree with the list it counts.
+      const [packs, subjectRows, threadRows, awayProjects] = await Promise.all([
         listPacks(db, orgId),
-        listSubjects(db, orgId),
+        listSubjects(db, orgId, { includeArchived: true }),
         db.select().from(threads).where(eq(threads.orgId, orgId)),
+        mutedProjectIds(db, orgId),
       ]);
 
       // Last activity per thread, for "most-recent-first" — one grouped query
@@ -138,6 +147,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           status: hasHealthSignal(pack) ? edgeStatus(pack) : null,
           health: hasHealthSignal(pack) ? healthLine(pack) : null,
           threads,
+          put_away: awayProjects.has(id),
         };
       });
 
@@ -154,6 +164,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const subjectList = subjectRows.map((subject) => ({
         id: subject.id,
         name: subject.name,
+        // A subject is put away by the column that already meant exactly that
+        // — its own router calls archiving "put it away".
+        put_away: subject.archivedAt !== null,
         threads: (bySubject.get(subject.id) ?? [])
           .map((t) => ({
             id: t.id,
@@ -172,6 +185,31 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         subjects: subjectList,
         engine_on: env() !== null,
       });
+    }),
+  );
+
+  /**
+   * PUT A PLACE AWAY, OR BRING IT BACK.
+   *
+   * One route for either kind of place, because the rail is one list and the
+   * owner should not have to know whether a row has a repo behind it before
+   * they can fold it away. See threads/putAway.ts for the resolution, and
+   * shared/putAway.ts for what the gesture does and deliberately does not do.
+   */
+  router.patch(
+    '/api/inbox/places/:id',
+    asyncHandler(async (req, res) => {
+      const away = (req.body ?? {}).put_away;
+      if (typeof away !== 'boolean') {
+        res.status(400).json({ error: 'put_away (boolean) is required' });
+        return;
+      }
+      const result = await setPlacePutAway(db, orgIdOf(req), req.params.id ?? '', away);
+      if (!result.ok) {
+        res.status(404).json({ error: 'no such place' });
+        return;
+      }
+      res.json({ ok: true, put_away: away, kind: result.kind });
     }),
   );
 

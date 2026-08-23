@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { allThreads, matches, railOrder, railPlaces, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
+import { allThreads, matches, railOrder, railPlaces, splitPutAway, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
+import { putAwayLine } from '../../src/shared/putAway.js';
 
 const project = (over: Partial<ProjectRow>): ProjectRow => ({
   id: 'p',
@@ -122,5 +123,55 @@ describe('the rail, as one list', () => {
       [subject({ id: 'pricing', name: 'Pricing', threads: [{ id: 't2' } as never, { id: 't3' } as never] })],
     );
     expect(places.flatMap((p) => p.threads).map((t) => t.id)).toEqual(['t1', 't2', 't3']);
+  });
+});
+
+/**
+ * PUT AWAY — the fold in the rail.
+ *
+ * The rail is one list, and it is the right length at four places and the
+ * wrong length at forty. What is tested here is the property that makes the
+ * fold honest rather than a filter: what comes back keeps the order the rail
+ * already computed, so bringing a place back puts it where it belongs instead
+ * of at the end of the list.
+ */
+describe('a place folded out of the rail', () => {
+  const subject = (over: Partial<SubjectRow>): SubjectRow => ({ id: 's', name: 'S', threads: [], ...over });
+  const away = (row: ProjectRow) => ({ ...row, put_away: true });
+
+  it('separates what is at hand from what is folded, keeping the rail order', () => {
+    const places = railPlaces(
+      [
+        away(project({ id: 'old', name: 'Old thing', status: 'needs' })),
+        project({ id: 'live', name: 'Live', status: 'healthy' }),
+        project({ id: 'broken', name: 'Broken', status: 'needs' }),
+      ],
+      [],
+    );
+    const { atHand, putAway } = splitPutAway(places);
+    // "needs you" still outranks "healthy" among what is at hand...
+    expect(atHand.map((p) => p.id)).toEqual(['broken', 'live']);
+    // ...and the folded one is folded regardless of what its status says.
+    expect(putAway.map((p) => p.id)).toEqual(['old']);
+  });
+
+  it('folds a place with no repo the same way', () => {
+    const places = railPlaces([], [{ ...subject({ id: 'pricing', name: 'Pricing' }), put_away: true }]);
+    expect(splitPutAway(places).putAway.map((p) => p.id)).toEqual(['pricing']);
+  });
+
+  it('treats a row that says nothing about it as at hand', () => {
+    // An older server, or any payload that predates the flag. Silence means
+    // present: a place must never disappear because a field was absent.
+    const places = railPlaces([project({ id: 'loom', name: 'Loom' })], [subject({ id: 's', name: 'S' })]);
+    expect(splitPutAway(places).putAway).toEqual([]);
+    expect(splitPutAway(places).atHand).toHaveLength(2);
+  });
+
+  it('names the fold the way a person would count', () => {
+    expect(putAwayLine(1)).toBe('1 put away');
+    expect(putAwayLine(3)).toBe('3 put away');
+    // Nothing folded is nothing said — the rail shows no line at all.
+    expect(putAwayLine(0)).toBe('');
   });
 });

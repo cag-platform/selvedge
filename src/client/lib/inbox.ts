@@ -24,6 +24,8 @@ export type ProjectRow = {
   status: 'healthy' | 'working' | 'needs' | 'unknown' | null;
   health: string | null;
   threads: ThreadRow[];
+  /** Folded out of the rail by the owner — see shared/putAway.ts. */
+  put_away?: boolean;
 };
 
 /** A subject: conversations that belong to a topic rather than to a codebase. */
@@ -31,6 +33,8 @@ export type SubjectRow = {
   id: string;
   name: string;
   threads: ThreadRow[];
+  /** Folded out of the rail by the owner — see shared/putAway.ts. */
+  put_away?: boolean;
 };
 
 export type InboxData = {
@@ -141,6 +145,11 @@ export type RailPlace = {
    * back on in the rail. Null until the first one exists.
    */
   chat: ThreadRow | null;
+  /**
+   * Folded out of the rail. Still here, still watched, still reachable by `#`
+   * — see shared/putAway.ts for why this is a fold rather than a filter.
+   */
+  putAway: boolean;
 };
 
 export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): RailPlace[] {
@@ -154,6 +163,7 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
     threads: p.threads,
     hasCode: true,
     chat: p.threads[0] ?? null,
+    putAway: p.put_away === true,
   }));
   const withoutCode: RailPlace[] = [...subjects]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -165,8 +175,24 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
       threads: s.threads,
       hasCode: false,
       chat: s.threads[0] ?? null,
+      putAway: s.put_away === true,
     }));
   return [...withCode, ...withoutCode];
+}
+
+/**
+ * The rail, split in two: what is at hand, and what has been folded away.
+ *
+ * A pure function rather than a filter written inline in the component,
+ * because the one property that matters is testable and easy to get wrong —
+ * the order inside each half is the order the rail already computed, so
+ * bringing something back puts it where it belongs rather than at the end.
+ */
+export function splitPutAway(places: RailPlace[]): { atHand: RailPlace[]; putAway: RailPlace[] } {
+  return {
+    atHand: places.filter((p) => !p.putAway),
+    putAway: places.filter((p) => p.putAway),
+  };
 }
 
 /** A thread's date, said the way a person would in a list. */

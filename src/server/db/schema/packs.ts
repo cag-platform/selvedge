@@ -17,8 +17,13 @@ export const packs = pgTable(
     // be row-deleted — the next installation sync re-scaffolds it. `archivedAt`
     // is the permanent-delete tombstone: the row is kept so resolveProjectId
     // still maps the repo and backfill won't resurrect it, but it's filtered
-    // out of every user surface. `mutedAt` is the softer "deprioritize": the
-    // project stays visible (collapsed) but drops out of the daily digest.
+    // out of every user surface.
+    //
+    // `mutedAt` is PUT AWAY (see src/shared/putAway.ts) — a place the owner is
+    // not working in right now. It leaves the rail and drops out of the digest;
+    // it is not deleted, not unwatched, and still reachable by `#`. The column
+    // keeps its old name because renaming it would be a migration for a word,
+    // but "muted" is the narrower thing it used to mean.
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     mutedAt: timestamp('muted_at', { withTimezone: true }),
   },
