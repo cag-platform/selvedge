@@ -15,6 +15,7 @@ import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../
 import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
+import { getPreviewEnvSummary, setPreviewEnv, setPreviewDatabase } from '../../build/previewEnv.js';
 import { canStartBuild } from '../../billing/entitlements.js';
 import { refuse } from '../middleware/limit.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
@@ -417,6 +418,59 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
       res.json(await preview(db, orgId, projectId, resolved.cfg));
+    }),
+  );
+
+  /**
+   * THE PREVIEW'S ENVIRONMENT — what is set, never what it is set to.
+   *
+   * Names only, always. This holds the same class of secret as a model key, so
+   * it gets the same posture: write-only from the outside, decrypted once at
+   * the moment it is handed to a sandbox, and never readable back through an
+   * API. Somebody who wants to know a value looks in the place they got it.
+   */
+  router.get(
+    '/api/projects/:projectId/preview-env',
+    asyncHandler(async (req, res) => {
+      res.json(await getPreviewEnvSummary(db, orgIdOf(req), req.params.projectId ?? ''));
+    }),
+  );
+
+  router.put(
+    '/api/projects/:projectId/preview-env',
+    asyncHandler(async (req, res) => {
+      const text = (req.body as { env?: unknown })?.env;
+      if (typeof text !== 'string') {
+        res.status(400).json({ error: 'env must be the text of a .env file' });
+        return;
+      }
+      try {
+        res.json(await setPreviewEnv(db, orgIdOf(req), req.params.projectId ?? '', text));
+      } catch (err) {
+        // An unconfigured vault is a deployment problem said plainly, not a
+        // reason to store somebody's secrets in the clear.
+        res.status(503).json({ error: err instanceof Error ? err.message : 'preview secrets cannot be stored right now' });
+      }
+    }),
+  );
+
+  /**
+   * Turn the throwaway preview database on or off.
+   *
+   * Reached from the failure that would be fixed by it — the preview says an
+   * app wanted a database and there isn't one, and this is the answer to that
+   * sentence rather than a setting somebody has to go looking for.
+   */
+  router.put(
+    '/api/projects/:projectId/preview-database',
+    asyncHandler(async (req, res) => {
+      const wanted = (req.body as { enabled?: unknown })?.enabled;
+      if (typeof wanted !== 'boolean') {
+        res.status(400).json({ error: 'enabled (boolean) is required' });
+        return;
+      }
+      await setPreviewDatabase(db, orgIdOf(req), req.params.projectId ?? '', wanted);
+      res.json({ enabled: wanted });
     }),
   );
 

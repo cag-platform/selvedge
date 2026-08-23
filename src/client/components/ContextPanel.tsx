@@ -28,7 +28,17 @@ import type { ContextPack } from '../../shared/types/pack.js';
  */
 
 type Tab = 'now' | 'timeline' | 'pack';
-type Preview = { state: 'ready' | 'none' | 'error'; url: string | null; message: string | null };
+type Preview = {
+  state: 'ready' | 'none' | 'error';
+  url: string | null;
+  message: string | null;
+  /**
+   * Something the owner could turn on that would plausibly fix this. Set only
+   * when the failure actually points at it, so the offer arrives at the moment
+   * it is relevant rather than as a setting nobody goes looking for.
+   */
+  offer?: 'database';
+};
 
 function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -104,6 +114,28 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         ) : (
           <p className="p-work text-body text-ink-quiet">
             {busy ? 'Waking the workshop and starting the app — this can take a minute the first time.' : preview?.message ?? 'Press "Show the app" to see it running.'}
+            {/*
+              THE ANSWER TO THE SENTENCE ABOVE, next to it.
+              An app that stopped because it wanted a database is one tap from
+              having one — and the tap belongs here, beside the explanation,
+              not in a settings screen the reader would have to go find.
+            */}
+            {!busy && preview?.offer === 'database' && (
+              <button
+                className="mt-2 block text-meta text-action-bright hover:underline"
+                onClick={async () => {
+                  setNote(null);
+                  try {
+                    await api.put(`/api/projects/${data.project.id}/preview-database`, { enabled: true });
+                    await load();
+                  } catch (e) {
+                    setNote(e instanceof Error ? e.message : 'that did not work');
+                  }
+                }}
+              >
+                Give it a database and try again
+              </button>
+            )}
           </p>
         )}
       </div>

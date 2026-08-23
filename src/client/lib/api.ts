@@ -111,5 +111,8 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  // PUT for the routes that set a whole thing rather than nudging one field —
+  // a project's preview environment is written as a set, not patched.
+  put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
