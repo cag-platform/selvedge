@@ -45,6 +45,68 @@
   animation: settle var(--settle-duration) var(--settle-ease) both;
 }
 
+/* Landing: one continuous project history, composed with product fragments. */
+.landing-nav { background: var(--glass-fill); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.landing-hero { min-height: calc(100vh - var(--nav-height)); }
+.landing-hero-thread { width: min(920px, 92%); margin-left: auto; }
+.landing-thread { border-radius: var(--radius-card); box-shadow: 0 30px 80px rgba(0, 0, 0, .2); }
+.landing-message { position: relative; max-width: 46rem; padding-left: 1rem; }
+.landing-message::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--hairline); }
+.landing-message + .landing-message { margin-top: 1.5rem; }
+.landing-message-muted { opacity: .72; }
+.landing-answer-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+.landing-context-line { margin: 1.5rem 0; padding: .75rem 1rem; border-block: 1px solid var(--hairline); }
+.landing-scroll-cue { margin: 2.5rem 0 0 9%; padding-bottom: 2rem; }
+.landing-section { min-height: 760px; padding-block: 8rem; display: grid; align-items: center; gap: 7rem; border-top: 1px solid var(--hairline); }
+.landing-many { grid-template-columns: .75fr 1.25fr; }
+.landing-transcript { max-width: 700px; }
+.landing-transcript .landing-message { margin-top: 2rem; }
+.landing-import { grid-template-columns: 1.2fr .8fr; }
+.landing-import-stack { position: relative; min-height: 420px; }
+.landing-import-source { position: absolute; width: min(430px, 82%); border-top: 1px solid var(--hairline); background: var(--panel); padding: 1.25rem 1.5rem; box-shadow: 0 18px 45px rgba(0,0,0,.16); }
+.landing-import-source:nth-child(1) { top: 0; left: 0; transform: rotate(-2deg); }
+.landing-import-source:nth-child(2) { top: 105px; left: 9%; transform: rotate(1deg); }
+.landing-import-source:nth-child(3) { top: 210px; left: 18%; transform: rotate(-.5deg); }
+.landing-import-source span,.landing-import-source small { display:block; color:var(--ink-quiet); font: var(--text-tech)/1.6 var(--font-mono); }
+.landing-import-source strong { display:block; margin:.35rem 0; color:var(--ink); font-weight:500; }
+.landing-import-result { position:absolute; top:335px; left:27%; color:var(--ink-dim); }
+.landing-compare { grid-template-columns: .65fr 1.35fr; }
+.landing-compare-stage { border-top: 1px solid var(--hairline); padding-top: 2rem; }
+.landing-comparison { display:grid; grid-template-columns:1fr 1fr; }
+.landing-comparison > div { padding: 2rem; }
+.landing-comparison > div + div { border-left:1px solid var(--hairline); }
+.landing-comparison p { margin-top:1.25rem; color:var(--ink); font-size:var(--text-body-lg); line-height:1.65; }
+.landing-comparison span:not(.inline-flex) { display:block; margin-top:2rem; color:var(--action-bright); font:var(--text-tech)/1.6 var(--font-mono); }
+.landing-building { grid-template-columns:1.2fr .8fr; }
+.landing-code-run { border-left: 3px solid var(--healthy); background:var(--panel); }
+.landing-memory { grid-template-columns:.8fr 1.2fr; }
+.landing-history { position:relative; }
+.landing-history::before { content:''; position:absolute; top:.75rem; bottom:.75rem; left:5.1rem; width:1px; background:var(--hairline); }
+.landing-history > div { display:grid; grid-template-columns:4rem 1fr; gap:2.5rem; padding:1rem 0; color:var(--ink-dim); }
+.landing-history time { color:var(--ink-quiet); }
+.landing-history span { position:relative; }
+.landing-history span::before { content:''; position:absolute; left:-2.72rem; top:.45rem; width:.45rem; height:.45rem; border-radius:50%; background:var(--action-bright); }
+
+@media (max-width: 767px) {
+  .landing-hero { min-height: auto; }
+  .landing-hero-thread { width:100%; }
+  .landing-answer-pair { grid-template-columns:1fr; gap:1.5rem; }
+  .landing-scroll-cue { margin-left:0; }
+  .landing-section,.landing-many,.landing-import,.landing-compare,.landing-building,.landing-memory { grid-template-columns:1fr; min-height:0; gap:4rem; padding-block:6rem; }
+  .landing-import .landing-section-intro,.landing-building .landing-section-intro { order:-1; }
+  .landing-import-stack { min-height:390px; }
+  .landing-import-source { width:88%; }
+  .landing-import-source:nth-child(2) { left:5%; }
+  .landing-import-source:nth-child(3) { left:10%; }
+  .landing-import-result { left:14%; }
+  .landing-comparison { grid-template-columns:1fr; }
+  .landing-comparison > div { padding:1.5rem 0; }
+  .landing-comparison > div + div { border-left:0; border-top:1px solid var(--hairline); }
+  .landing-history::before { left:4.1rem; }
+  .landing-history > div { grid-template-columns:3rem 1fr; gap:2rem; }
+  .landing-history span::before { left:-2.22rem; }
+}
+
 /* THE ONE SANCTIONED EXCEPTION TO STILLNESS.
    A skeleton has to say "this is coming" and a static grey block says
    "this is broken", so it breathes — once every two seconds, opacity only,

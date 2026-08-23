@@ -6,19 +6,8 @@ import { Landing } from '../../src/client/pages/Landing.js';
 /**
  * THE LANDING PAGE, RENDERED.
  *
- * One assertion here earns its place above all the others: the rust ration.
- *
- * `--thread` is the colour that means "this needs you" and nothing else, in
- * the app and on this page. A marketing page needs nothing from you but a
- * click, so it has exactly one honest use for that colour — the "needs you"
- * edge in the four-state specimen strip, shown so a stranger learns the
- * vocabulary before they ever sign in. Every other use would be decoration
- * borrowed from a signal, and the cost is not on this page: it is the day
- * something in the product turns rust and the owner has already been taught
- * the colour is just how Selvedge draws things.
- *
- * A rule stated in a comment is a rule until somebody adds a highlight. So it
- * is counted.
+ * The landing now demonstrates the project layer directly: shared context,
+ * signed answers, imported history, and coding work in the same record.
  */
 function render(): string {
   return renderToStaticMarkup(
@@ -29,36 +18,26 @@ function render(): string {
 }
 
 describe('the landing page', () => {
-  it('spends rust exactly once, on the one thing that means "needs you"', () => {
-    // Counted by ELEMENT, not by occurrence: the needs edge names `--thread`
-    // twice in one style attribute (the seam and its glow), and counting raw
-    // occurrences would make the rule fail on a correct page and pass on a
-    // page with two half-coloured ones.
-    const wearingRust = (render().match(/style="[^"]*--thread[^"]*"/g) ?? []).length;
-    expect(wearingRust).toBe(1);
+  it('does not borrow the needs-you colour as decoration', () => {
+    expect(render()).not.toContain('--thread');
   });
 
-  it('shows the whole edge vocabulary, so "can\'t tell" is learned as its own state', () => {
+  it('makes existing project context visible before explaining it', () => {
     const html = render();
-    // The four specimens. The dashed one matters most: a stranger has to see
-    // that "I can't tell" is a different shape and not a paler version of fine.
-    for (const token of ['--healthy', '--brass', '--thread', '--ink-faint']) {
-      expect(html).toContain(token);
-    }
-    expect(html).toContain('repeating-linear-gradient');
+    expect(html).toContain('12 conversations in context');
+    expect(html).toContain('both answers used the same 12 imported conversations');
+    expect(html).toContain('3 conversations added to Loom');
   });
 
   it('says the one sentence the whole product is, and shows it being true', () => {
     const html = render();
-    expect(html).toContain('All your AI.');
-    // Both sigils, in the sample conversation rather than in a feature list —
-    // the page's argument is that you read the thread and get it.
+    expect(html).toContain('Your AI should know what the others already know.');
     expect(html).toContain('@claude');
-    expect(html).toContain('#stripe-timeouts');
-    // Two models, each answering as itself. Signed answers are the claim.
+    expect(html).toContain('@gpt');
+    expect(html).toContain('@codex');
     expect(html).toContain('CL');
     expect(html).toContain('GPT');
-    expect(html).toContain('CC');
+    expect(html).toContain('CX');
   });
 
   it('carries no vendor logo or brand colour, only text chips', () => {
@@ -77,7 +56,7 @@ describe('the landing page', () => {
     expect(withoutLockup).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     // And identity in the sample thread is the real chip: two or three
     // characters of mono text, nothing else.
-    for (const chip of ['>CL<', '>GPT<', '>CC<']) {
+    for (const chip of ['>CL<', '>GPT<', '>CX<']) {
       expect(html).toContain(chip);
     }
   });
