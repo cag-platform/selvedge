@@ -172,6 +172,19 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createCompanionKeysRouter(db));
 
   app.use(express.static(clientDir));
+
+  // AN /api PATH NEVER FALLS THROUGH TO THE APP'S HTML.
+  //
+  // The catch-all below exists so a deep link into the single-page app serves
+  // index.html rather than a 404. Before this line it caught unmatched /api
+  // paths too, so a typo'd or retired endpoint answered a fetch with a page of
+  // HTML — which the client then tried to parse as JSON and reported as a
+  // syntax error about an unexpected "<". A wrong path is a wrong path; say so
+  // in the shape every other refusal uses.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: "There's nothing at that address." });
+  });
+
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDir, 'index.html'));
   });
@@ -184,7 +197,12 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     // "internal error" report (even a screenshot) is diagnosable.
     const ref = Math.random().toString(36).slice(2, 8);
     console.error(`[err ${ref}] ${req.method} ${req.path}:`, err);
-    res.status(500).json({ error: `internal error (ref ${ref})` });
+    // Written to be read by the person it happens to, not by the person who
+    // wrote it. The reference stays, because it is the one technical detail
+    // that earns its place: it turns a screenshot into a log line.
+    res.status(500).json({
+      error: `The server hit a problem handling that. It's been logged as ${ref}; nothing you did was wrong.`,
+    });
   };
   app.use(onError);
 
