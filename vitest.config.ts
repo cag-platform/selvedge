@@ -6,6 +6,10 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
+    // Runs before any test file: clears every ambient credential and pins the
+    // few the suite needs, so the same program runs on a laptop and in CI. See
+    // test/setup.ts for what that cost us before it existed.
+    setupFiles: ['./test/setup.ts'],
     // .tsx too: the landing page's rust ration is a rule about rendered
     // output, so the only way to hold it is to render the component.
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
