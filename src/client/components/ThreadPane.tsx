@@ -255,6 +255,12 @@ export function ThreadPane({
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  /**
+   * The message you just sent, shown before the server has confirmed it.
+   * Cleared the moment the real one arrives on a poll — see the effect below,
+   * which matches on content rather than id because the server assigns the id.
+   */
+  const [optimistic, setOptimistic] = useState<ThreadMessage | null>(null);
   // Between pressing Stop and the server confirming. Suspending a sandbox
   // takes a beat, and a button that looks unpressed for that beat gets
   // pressed again.
@@ -401,6 +407,16 @@ export function ThreadPane({
    * button, having read what they were overriding. It is never carried over
    * from a previous send, and never defaulted on.
    */
+  useEffect(() => {
+    if (!optimistic) return;
+    // The server assigns the id, so the stand-in is matched on what it says.
+    // Anything older than a minute goes too: a send that neither succeeded nor
+    // reported a refusal must not leave a permanent ghost on the thread.
+    const landed = data.messages.some((m) => m.role === 'owner' && m.content === optimistic.content);
+    const stale = Date.now() - Date.parse(optimistic.at) > 60_000;
+    if (landed || stale) setOptimistic(null);
+  }, [data.messages, optimistic]);
+
   async function send(e: React.FormEvent | null, acknowledgeStale = false, raiseCap = false) {
     e?.preventDefault();
     const body = text.trim();
@@ -410,6 +426,27 @@ export function ThreadPane({
     if (body === '' || uploading) return;
     setSending(true);
     setNote(null);
+    // YOUR OWN WORDS APPEAR AT ONCE.
+    //
+    // The round trip is a few hundred milliseconds and the reload after it is
+    // another, so the sentence you just pressed send on used to sit in the
+    // composer, then vanish, then reappear above it. Putting it on the thread
+    // immediately costs nothing and removes the one wait a person notices
+    // most, because they are still looking at the words they wrote.
+    //
+    // Marked pending, and reconciled by the next poll: this is a picture of
+    // what was sent, not a claim that it arrived. If the send is refused it is
+    // taken straight back off and the text is returned to the composer, so the
+    // thread never keeps a message the server declined.
+    const pending: ThreadMessage = {
+      id: `pending-${Date.now()}`,
+      role: 'owner',
+      content: body,
+      at: new Date().toISOString(),
+      attachments: [],
+      ...(documents.length ? { documents: documents.map((d, index) => ({ index, name: d.name, chars: d.text.length })) } : {}),
+    };
+    setOptimistic(pending);
     try {
       const res = await api.post<{ started: boolean; warming: boolean }>(`/api/threads/${data.thread.id}/message`, {
         text: body,
@@ -428,6 +465,9 @@ export function ThreadPane({
       setWarming(res.warming);
       onReload();
     } catch (err) {
+      // Refused: take it back off the thread. A message the server declined
+      // must not sit there looking sent.
+      setOptimistic(null);
       // Both of these are refusals with a way through, not dead ends: keep what
       // was typed, say what is in the way, and let the owner choose. The
       // message is NOT sent by the act of being told.
@@ -526,6 +566,11 @@ export function ThreadPane({
         {data.messages.map((m) => (
           <Message key={m.id} message={m} data={data} />
         ))}
+        {optimistic && (
+          <div className="opacity-60">
+            <Message message={optimistic} data={data} />
+          </div>
+        )}
         {data.working && (
           <div className="flex items-start gap-work border-l-2 border-brass pl-work">
             <div className="flex-1">

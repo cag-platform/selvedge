@@ -1,16 +1,31 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
-import { TrackRecord } from './pages/TrackRecord.js';
-import { Inbox } from './pages/Inbox.js';
-import { WorkshopRedirect } from './pages/WorkshopRedirect.js';
-import { Connections } from './pages/Connections.js';
-import { Projects } from './pages/Projects.js';
-import { PackEditor } from './pages/PackEditor.js';
-import { Admin } from './pages/Admin.js';
-import { Styleguide } from './pages/Styleguide.js';
 import { Landing } from './pages/Landing.js';
+
+/**
+ * WHAT A STRANGER DOWNLOADS.
+ *
+ * Everything below is behind a session, and a first visitor has none — so
+ * shipping the workbench, the pack editor, and the styleguide inside the
+ * landing page's bundle is asking somebody to download an app they cannot open
+ * in order to read a page about it. The landing is the one route a stranger
+ * ever sees, so it is the one route that stays in the main chunk.
+ *
+ * The fallback is deliberately nothing rather than a spinner: these chunks
+ * arrive in milliseconds on a warm connection, and a flash of "loading" between
+ * two routes is the same jank the 150ms skeleton floor exists to avoid. The
+ * pane's own skeleton takes over once the component is running.
+ */
+const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
+const TrackRecord = lazy(() => import('./pages/TrackRecord.js').then((m) => ({ default: m.TrackRecord })));
+const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
+const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
+const Connections = lazy(() => import('./pages/Connections.js').then((m) => ({ default: m.Connections })));
+const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
+const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
+const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide })));
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -88,6 +103,7 @@ function AuthedApp() {
           <Nav />
           <main className={workbench ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
+            <Suspense fallback={null}>
             <Routes>
               {/* The workbench is the app. The daily brief was a page you had
                   to go and read before you could get to the work; what it
@@ -117,6 +133,7 @@ function AuthedApp() {
               <Route path="/connections" element={<Connections />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
+            </Suspense>
             </ErrorBoundary>
           </main>
         </div>
@@ -163,7 +180,9 @@ export default function App() {
         path="/styleguide"
         element={
           <main className="mx-auto max-w-3xl px-4 py-8">
-            <Styleguide />
+            <Suspense fallback={null}>
+              <Styleguide />
+            </Suspense>
           </main>
         }
       />
