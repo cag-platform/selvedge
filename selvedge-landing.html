@@ -1,0 +1,1019 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Selvedge — the place your app lives</title>
+<meta name="description" content="One project. Every model. Every decision. Every change that came after. Selvedge keeps conversations, code, deploys and outcomes around a single app." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..700&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<script>document.documentElement.classList.add('js');</script>
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   SELVEDGE — the landing page.
+
+   THE IDEA: the page is one continuous piece of cloth, and the selvedge
+   edge runs down its left side for the whole length. That edge is the
+   product's own status language — green healthy, brass working, rust
+   needs-you, dashed can't-tell — so as you scroll through the life of
+   one project, the edge changes with it. The structure of the page IS
+   the argument.
+
+   Everything else follows from that: a notebook gutter for dates and
+   markers, a narrow editorial measure for prose, and wide interface
+   surfaces that break out of the column. Printed, not rendered: flat
+   paper, hairlines, no shadows doing work colour should do.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Metric-matched fallback, so the page does not jump when Inter Tight
+   arrives. Measured against Arial, which is what most fallback stacks
+   land on. */
+@font-face{
+  font-family:'Inter Tight fallback';
+  src:local('Arial');
+  size-adjust:92%;
+  ascent-override:96%;
+  descent-override:24%;
+  line-gap-override:0%;
+}
+
+:root{
+  --paper:#E9EDF1;
+  --panel:#FBFCFD;
+  --ink:#28303A;
+  --ink-dim:#5B6672;
+  --ink-faint:#8A94A0;
+  --hairline:#D7DEE4;
+  --brass:#B07E22;
+  --green:#4F926F;
+  --rust:#D2442E;
+
+  --r-lg:20px;
+  --r-md:13px;
+  --r-sm:9px;
+
+  --display:'Fraunces',Georgia,'Times New Roman',serif;
+  --body:'Inter Tight','Inter Tight fallback',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+
+  --gutter:150px;
+  --edge:3px;
+  --wrap:1180px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:16px;
+  line-height:1.55;
+  font-synthesis-weight:none;
+  overflow-x:hidden;
+}
+img,svg{max-width:100%}
+
+::selection{background:#28303A;color:#FBFCFD}
+
+a{color:inherit}
+a:focus-visible,button:focus-visible,summary:focus-visible{
+  outline:2px solid var(--brass);
+  outline-offset:3px;
+  border-radius:2px;
+}
+
+/* ── The page's own frame ───────────────────────────────────────── */
+.wrap{max-width:var(--wrap);margin-inline:auto;padding-inline:clamp(14px,3.6vw,40px)}
+
+/* A band is one horizontal slab of the page. Bands stack with no gap,
+   so their left borders read as ONE continuous edge from the masthead
+   to the footer — the selvedge of the cloth. */
+.band{
+  border-left:var(--edge) solid var(--seam,var(--hairline));
+  display:grid;
+  grid-template-columns:var(--gutter) minmax(0,1fr);
+  padding-block:clamp(46px,7vw,104px);
+}
+.band--tight{padding-block:clamp(30px,4vw,56px)}
+.band[data-seam="healthy"]{--seam:var(--green)}
+.band[data-seam="working"]{--seam:var(--brass)}
+.band[data-seam="needs"]{--seam:var(--rust)}
+.band[data-seam="unknown"]{border-left-style:dashed;--seam:var(--ink-faint)}
+.band[data-seam="quiet"]{--seam:var(--hairline)}
+
+/* The gutter: dates, section numbers, marginal notes. Sticks so the
+   marker stays beside you while you read the section it names. */
+.gut{padding-left:clamp(14px,2.2vw,28px);padding-right:20px}
+.gut > .stick{position:sticky;top:26px}
+.mark{
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:500;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--ink-faint);
+  font-variant-numeric:tabular-nums;
+}
+.mark b{color:var(--ink-dim);font-weight:500;display:block}
+/* A conversation fragment left in the margin, the way a note gets left
+   in the margin of a working file. */
+.margin-note{
+  margin-top:18px;
+  font-size:13px;
+  line-height:1.45;
+  color:var(--ink-faint);
+  border-top:1px solid var(--hairline);
+  padding-top:12px;
+  max-width:150px;
+}
+.margin-note em{font-style:italic;color:var(--ink-dim)}
+
+.body-col{padding-left:clamp(14px,2.2vw,34px);min-width:0}
+
+/* ── Type ───────────────────────────────────────────────────────── */
+.eyebrow{
+  font-family:var(--mono);
+  font-size:11.5px;
+  font-weight:500;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color:var(--brass);
+  margin:0 0 22px;
+}
+h1{
+  font-family:var(--display);
+  font-optical-sizing:auto;
+  font-weight:400;
+  font-size:clamp(40px,7.3vw,84px);
+  line-height:.99;
+  letter-spacing:-.022em;
+  margin:0;
+  text-wrap:balance;
+}
+h2{
+  font-family:var(--display);
+  font-weight:400;
+  font-size:clamp(27px,3.9vw,44px);
+  line-height:1.08;
+  letter-spacing:-.018em;
+  margin:0 0 18px;
+  text-wrap:balance;
+  max-width:20ch;
+}
+h3{
+  font-family:var(--body);
+  font-weight:600;
+  font-size:15px;
+  letter-spacing:-.005em;
+  margin:0 0 6px;
+}
+p{margin:0 0 16px;max-width:58ch;color:var(--ink-dim)}
+p.lead{font-size:clamp(17px,1.5vw,19.5px);line-height:1.5;color:var(--ink);max-width:46ch}
+p strong{color:var(--ink);font-weight:500}
+.small{font-size:13.5px;color:var(--ink-faint)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── Controls ───────────────────────────────────────────────────── */
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:30px}
+.btn{
+  display:inline-block;
+  font:500 15px/1 var(--body);
+  padding:13px 22px;
+  border-radius:var(--r-sm);
+  text-decoration:none;
+  border:1px solid transparent;
+  transition:background-color .18s ease,color .18s ease,border-color .18s ease;
+}
+.btn--fill{background:var(--ink);color:var(--panel)}
+.btn--fill:hover{background:#1b222b}
+.btn--line{border-color:var(--ink);color:var(--ink)}
+.btn--line:hover{background:var(--ink);color:var(--panel)}
+.foot-note{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin-top:14px}
+
+/* ── Surfaces: the interface, quoted into the page ─────────────── */
+.surface{
+  background:var(--panel);
+  border:1px solid var(--hairline);
+  border-radius:var(--r-lg);
+  border-left:var(--edge) solid var(--s,var(--hairline));
+  overflow:hidden;
+}
+.surface[data-s="healthy"]{--s:var(--green)}
+.surface[data-s="working"]{--s:var(--brass)}
+.surface[data-s="needs"]{--s:var(--rust)}
+.surface[data-s="unknown"]{border-left-style:dashed;--s:var(--ink-faint)}
+.card{
+  background:var(--panel);
+  border:1px solid var(--hairline);
+  border-radius:var(--r-md);
+  border-left:var(--edge) solid var(--s,var(--hairline));
+}
+.card[data-s="healthy"]{--s:var(--green)}
+.card[data-s="working"]{--s:var(--brass)}
+.card[data-s="needs"]{--s:var(--rust)}
+.card[data-s="unknown"]{border-left-style:dashed;--s:var(--ink-faint)}
+
+.srf-head{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;justify-content:space-between;
+  padding:15px clamp(16px,2.4vw,26px);
+  border-bottom:1px solid var(--hairline);
+}
+.srf-title{font-family:var(--mono);font-size:13px;font-weight:500;letter-spacing:.01em}
+.srf-title span{color:var(--ink-faint)}
+.srf-state{font-family:var(--mono);font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-faint)}
+.srf-state.is-healthy{color:var(--green)}
+.srf-body{padding:clamp(16px,2.4vw,26px)}
+.srf-rule{border:0;border-top:1px solid var(--hairline);margin:0}
+.strip-label{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-faint);padding:14px clamp(16px,2.4vw,26px) 0;
+}
+
+/* ── Conversation ───────────────────────────────────────────────── */
+.turn{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px;padding:11px 0}
+.turn + .turn{border-top:1px solid var(--hairline)}
+.who{
+  font-family:var(--mono);font-size:11.5px;line-height:1.5;color:var(--ink-faint);
+  letter-spacing:.03em;padding-top:2px;
+}
+.who b{
+  color:var(--ink);font-weight:500;letter-spacing:.06em;
+  border:1px solid var(--hairline);border-radius:5px;padding:1px 4px;margin-right:6px;background:var(--paper);
+}
+.said{font-size:15px;line-height:1.5;color:var(--ink);margin:0}
+.at{color:var(--brass);font-family:var(--mono);font-size:13.5px}
+.hash{color:var(--brass);font-family:var(--mono);font-size:13.5px}
+.sys{
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-faint);
+  padding:11px 0;border-top:1px solid var(--hairline);
+}
+.sys .arrow{color:var(--ink-faint);margin-right:6px}
+
+/* ── Work strip: rows of state ─────────────────────────────────── */
+.rows{list-style:none;margin:0;padding:0}
+.rows li{
+  display:grid;grid-template-columns:106px minmax(0,1fr);gap:14px;align-items:baseline;
+  padding:9px clamp(16px,2.4vw,26px);
+  font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--ink-dim);
+}
+.rows li + li{border-top:1px solid var(--hairline)}
+.rows .k{color:var(--ink-faint);letter-spacing:.11em;text-transform:uppercase;font-size:10.5px}
+.rows .v{color:var(--ink);word-break:break-word}
+.rows li.is-good .v{color:var(--green)}
+.tick{color:var(--green)}
+
+/* ── Chips ─────────────────────────────────────────────────────── */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.chip{
+  font-family:var(--mono);font-size:12.5px;color:var(--brass);
+  border:1px solid var(--hairline);border-radius:var(--r-sm);
+  padding:5px 10px;background:var(--panel);
+}
+.chip .when{color:var(--ink-faint);margin-left:7px}
+
+/* ── Hero ──────────────────────────────────────────────────────── */
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(30px,4vw,54px)}
+@media (min-width:1000px){
+  .hero-grid{grid-template-columns:minmax(0,4.4fr) minmax(0,6.6fr);align-items:start;gap:clamp(30px,3.4vw,52px)}
+}
+/* The project object is allowed to run past the page's right measure —
+   an application surface is wider than a column of prose, and pretending
+   otherwise is how interfaces end up shown as postage stamps. */
+@media (min-width:1240px){
+  .hero-obj{margin-right:calc(-1 * clamp(0px,6vw,88px))}
+}
+
+/* ── Specimens: the four states ────────────────────────────────── */
+.specimens{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-top:6px}
+.spec{padding:18px 18px 20px}
+.spec .nm{font-family:var(--body);font-weight:600;font-size:15px;margin:0 0 4px}
+.spec .ds{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);margin:0}
+.spec .ex{margin:12px 0 0;font-size:13.5px;color:var(--ink-dim);line-height:1.45}
+
+/* ── The fragmentation diagram ─────────────────────────────────── */
+.frag{margin:0;padding:0;list-style:none;display:grid;gap:2px}
+.frag li{
+  display:grid;grid-template-columns:minmax(0,1fr);align-items:center;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);
+}
+.frag .seg{
+  border-top:2px solid var(--ink-faint);opacity:.55;
+  padding-top:9px;margin-bottom:16px;
+}
+/* Each fragment starts at a different place: the point is that they do
+   not line up, and never will, because nothing is holding them. */
+.frag li:nth-child(1) .seg{margin-left:0%;width:38%}
+.frag li:nth-child(2) .seg{margin-left:14%;width:34%}
+.frag li:nth-child(3) .seg{margin-left:31%;width:30%}
+.frag li:nth-child(4) .seg{margin-left:9%;width:26%}
+.frag li:nth-child(5) .seg{margin-left:44%;width:32%}
+.frag li:nth-child(6) .seg{margin-left:22%;width:29%}
+
+.joined{margin-top:34px;border-top:var(--edge) solid var(--green);padding-top:18px}
+.joined ol{
+  list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:0 26px;
+  font-family:var(--mono);font-size:12.5px;color:var(--ink-dim);
+}
+.joined li{position:relative;padding-top:2px}
+.joined li::before{
+  content:"";position:absolute;top:-25px;left:0;width:7px;height:7px;border-radius:50%;
+  background:var(--green);
+}
+
+/* ── Record entries ────────────────────────────────────────────── */
+.record{display:grid;gap:0;margin-top:8px}
+.record > div{padding:20px 0;border-top:1px solid var(--hairline)}
+.record > div:last-child{border-bottom:1px solid var(--hairline)}
+.record p{margin:0;max-width:52ch}
+
+/* ── Timeline ──────────────────────────────────────────────────── */
+.tl{list-style:none;margin:0;padding:0}
+.tl li{
+  display:grid;grid-template-columns:84px minmax(0,1fr);gap:clamp(14px,2vw,26px);
+  padding:0 0 0 0;
+}
+.tl .date{
+  font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-faint);font-variant-numeric:tabular-nums;padding-top:19px;
+}
+.tl .stem{
+  border-left:var(--edge) solid var(--tl,var(--hairline));
+  padding:18px 0 18px clamp(14px,2vw,24px);
+  min-height:64px;
+}
+.tl li[data-s="working"]{--tl:var(--brass)}
+.tl li[data-s="healthy"]{--tl:var(--green)}
+.tl li[data-s="needs"]{--tl:var(--rust)}
+.tl li[data-s="unknown"]{--tl:var(--ink-faint)}
+.tl li[data-s="unknown"] .stem,
+.tl li[data-s="unknown"] .date{border-left-style:dashed}
+.tl .actor{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin:0 0 3px;letter-spacing:.03em}
+.tl .actor b{color:var(--ink);font-weight:500;letter-spacing:.06em}
+.tl .what{margin:0;font-size:16px;color:var(--ink);max-width:44ch}
+.tl .what .hash{font-size:15px}
+
+/* ── Closing + footer ──────────────────────────────────────────── */
+.close h2{font-size:clamp(30px,5.4vw,58px);max-width:15ch}
+footer{border-top:1px solid var(--hairline);background:var(--panel)}
+.f-grid{display:grid;gap:26px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:820px){.f-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr)}}
+.f-name{font-family:var(--display);font-size:26px;letter-spacing:-.01em;margin:0}
+.f-etym{margin:0 0 14px;max-width:52ch;font-size:14.5px}
+.f-util{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--ink-faint);
+  border-top:1px solid var(--hairline);margin:30px 0 0;padding-top:18px;max-width:none;
+}
+
+/* ── Masthead ──────────────────────────────────────────────────── */
+.masthead{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:20px 0;
+}
+.logo{font-family:var(--display);font-size:19px;letter-spacing:-.012em;text-decoration:none}
+.logo i{font-style:normal;color:var(--green)}
+.mast-link{font-family:var(--mono);font-size:12px;color:var(--ink-dim);text-decoration:none}
+.mast-link:hover{color:var(--ink)}
+
+/* ── Motion: one load sequence, one-shot reveals, nothing loops ── */
+@keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+.js .rise{animation:rise .52s cubic-bezier(.22,.9,.32,1) both;animation-delay:calc(var(--i,0) * 68ms)}
+.js .reveal{opacity:0;transform:translateY(12px);transition:opacity .6s cubic-bezier(.22,.9,.32,1),transform .6s cubic-bezier(.22,.9,.32,1)}
+.js .reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .js .rise{animation:none}
+  .js .reveal{opacity:1;transform:none;transition:none}
+  *{scroll-behavior:auto!important}
+}
+
+/* ── Narrow ────────────────────────────────────────────────────── */
+@media (max-width:880px){
+  :root{--gutter:0px}
+  .band{grid-template-columns:minmax(0,1fr)}
+  .gut{padding:0 0 16px clamp(12px,3.4vw,20px)}
+  .gut > .stick{position:static}
+  .mark b{display:inline;margin-left:10px}
+  .margin-note{max-width:52ch;margin-top:12px;padding-top:10px}
+  .body-col{padding-left:clamp(12px,3.4vw,20px)}
+  .turn{grid-template-columns:minmax(0,1fr);gap:4px}
+  .rows li{grid-template-columns:minmax(0,1fr);gap:2px}
+  .tl li{grid-template-columns:64px minmax(0,1fr);gap:12px}
+}
+@media (max-width:420px){
+  .srf-head{padding:13px 15px}
+  .srf-body{padding:15px}
+  .rows li{padding:9px 15px}
+  .tl li{grid-template-columns:minmax(0,1fr);gap:0}
+  /* The date and the entry it labels share one stem, so the line down the
+     timeline stays continuous and changes colour where the project did. */
+  .tl .date{padding:16px 0 0 clamp(14px,4vw,20px);border-left:var(--edge) solid var(--tl,var(--hairline))}
+  .tl .stem{padding-top:4px}
+}
+</style>
+</head>
+
+<body>
+
+<div class="wrap">
+  <header class="masthead">
+    <a class="logo" href="#top">Se<i>l</i>vedge</a>
+    <a class="mast-link" href="#project">see a project ↓</a>
+  </header>
+</div>
+
+<main id="top">
+
+<!-- ═══ OPENING ════════════════════════════════════════════════════
+     The edge starts brass: something is in motion here. -->
+<div class="wrap">
+<section class="band" data-seam="working" aria-labelledby="h-open">
+  <div class="gut"><div class="stick">
+    <p class="mark">loom<b>22 AUG 2026</b></p>
+    <p class="margin-note">One home per project. Everything that happens to it happens <em>here.</em></p>
+  </div></div>
+
+  <div class="body-col">
+    <p class="eyebrow rise" style="--i:0">The place your app lives</p>
+    <h1 id="h-open" class="rise" style="--i:1">Build here.<br />Keep&nbsp;building here.</h1>
+
+    <div class="hero-grid" style="margin-top:clamp(30px,4vw,50px)">
+      <div>
+        <p class="lead rise" style="--i:2">
+          Talk with any model. Build with any agent. Bring the conversations you already have.
+        </p>
+        <p class="rise" style="--i:3">
+          Selvedge keeps the decisions, code, deploys, failures, fixes and history around one
+          project — so the reasoning behind a change is still there in August, and still there
+          the next time something breaks.
+        </p>
+        <div class="cta-row rise" style="--i:4">
+          <a class="btn btn--fill" href="#start">Start a project</a>
+          <a class="btn btn--line" href="#project">See a project</a>
+        </div>
+        <p class="foot-note rise" style="--i:5">uses your own model/API accounts</p>
+      </div>
+
+      <!-- THE PROJECT OBJECT. Conversation, historical context, coding
+           work, deployment and production outcome, visibly belonging to
+           one thing. This is the page's strongest visual claim. -->
+      <div class="hero-obj rise" style="--i:6" id="project">
+        <article class="surface" data-s="healthy" aria-label="The loom project, checkout">
+          <div class="srf-head">
+            <p class="srf-title">loom <span>/ checkout</span></p>
+            <p class="srf-state is-healthy">healthy</p>
+          </div>
+
+          <div class="srf-body" style="padding-block:6px">
+            <div class="turn">
+              <p class="who">You</p>
+              <p class="said">Checkout is dropping carts on the payment step.
+                <span class="at">@claude</span> <span class="at">@gpt</span> — thoughts?</p>
+            </div>
+
+            <div class="turn">
+              <p class="who"><b>CL</b>Claude</p>
+              <p class="said">The payment confirmation timeout is only 5s. Your processor’s weekend
+                p95 has been running above that.</p>
+            </div>
+
+            <div class="turn">
+              <p class="who"><b>GPT</b>GPT</p>
+              <p class="said">I agree with the confirm path, but I’d inspect the retry guard too.
+                An aggressive double-submit lock could produce the same symptom.</p>
+            </div>
+
+            <div class="turn">
+              <p class="who">You</p>
+              <p class="said">We dealt with this before. <span class="hash">#stripe-timeouts</span></p>
+            </div>
+
+            <p class="sys"><span class="arrow">↳</span>#stripe-timeouts attached · imported conversation · Mar&nbsp;2026</p>
+
+            <div class="turn">
+              <p class="who">You</p>
+              <p class="said">That’s it. <span class="at">@claudecode</span> use the same approach and fix it.</p>
+            </div>
+
+            <div class="turn">
+              <p class="who"><b>CC</b>Claude Code</p>
+              <p class="said mono" style="font-size:13.5px;color:var(--ink-dim)">change ready · 3 files · predicted&nbsp;$0.38</p>
+            </div>
+          </div>
+
+          <hr class="srf-rule" />
+          <p class="strip-label">Work</p>
+          <ul class="rows">
+            <li><span class="k">preview</span><span class="v">preview.selvedge.run/loom-83d1</span></li>
+            <li><span class="k">approved</span><span class="v">22 Aug · 14:12</span></li>
+            <li><span class="k">shipped</span><span class="v">main · a4f19c2</span></li>
+            <li><span class="k">watching</span><span class="v">production · 12 min</span></li>
+          </ul>
+
+          <hr class="srf-rule" />
+          <p class="strip-label">Outcome</p>
+          <ul class="rows">
+            <li class="is-good"><span class="k">08:40</span><span class="v"><span class="tick">✓</span> checkout success rate returned to baseline</span></li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ═══ TRANSITION ═════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band band--tight" data-seam="quiet" aria-labelledby="h-more">
+  <div class="gut"><div class="stick"><p class="mark">·</p></div></div>
+  <div class="body-col">
+    <h2 id="h-more" class="reveal" style="max-width:24ch">The conversation is only the beginning.</h2>
+    <p class="lead reveal">Your app has a memory.</p>
+    <p class="reveal">
+      Every conversation about it belongs somewhere. Every agent working on it should be able
+      to read that history. Every change should stay attached to the reasoning that caused it,
+      every deploy attached to the change, and every failure traceable backwards when the
+      evidence is there.
+    </p>
+    <p class="reveal"><strong>And when Selvedge can’t know something, it says so.</strong></p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 01 THINK ═══════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="quiet" aria-labelledby="h-think">
+  <div class="gut"><div class="stick">
+    <p class="mark">01<b>Think</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-think" class="reveal">Use whichever model is best for the question.</h2>
+    <p class="reveal">Ask Claude. Ask GPT. Ask both. Bring Kimi into the same discussion. Have Gemini
+      challenge the answer. They read the same project and answer in the same place.</p>
+
+    <div class="surface reveal" data-s="working" style="margin-top:26px;max-width:760px">
+      <div class="srf-head">
+        <p class="srf-title">loom <span>/ architecture</span></p>
+        <p class="srf-state">2 answers</p>
+      </div>
+      <div class="srf-body" style="padding-block:6px">
+        <div class="turn">
+          <p class="who">You</p>
+          <p class="said"><span class="at">@claude</span> <span class="at">@gpt</span> pressure-test this architecture</p>
+        </div>
+        <div class="turn">
+          <p class="who"><b>CL</b>Claude</p>
+          <p class="said">The queue is the weak point. One consumer, no dead-letter — a poison
+            message stops orders and nothing tells you.</p>
+        </div>
+        <div class="turn">
+          <p class="who"><b>GPT</b>GPT</p>
+          <p class="said">Agreed on the queue. I’d also question the shared database: two services
+            writing the same rows will eventually disagree about which one is right.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="reveal" style="margin-top:22px">
+      Each model speaks as itself, signed. Nobody silently becomes another model.
+    </p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 02 REMEMBER ════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="quiet" aria-labelledby="h-remember">
+  <div class="gut"><div class="stick">
+    <p class="mark">02<b>Remember</b></p>
+    <p class="margin-note"><em>“we decided per-order in March”</em> — and there it is, in March.</p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-remember" class="reveal">Stop rebuilding context from memory.</h2>
+    <p class="reveal">Selvedge takes the conversations you already have. Old discussions become
+      project context instead of files sitting in an export archive.</p>
+
+    <div class="reveal" style="margin-top:26px;display:grid;gap:0;max-width:620px">
+      <ul class="rows" style="border:1px solid var(--hairline);border-radius:var(--r-md);background:var(--panel)">
+        <li><span class="k">in</span><span class="v">chatgpt-export.zip</span></li>
+        <li><span class="k">in</span><span class="v">claude conversations</span></li>
+        <li><span class="k">in</span><span class="v">gemini history</span></li>
+      </ul>
+      <p class="mono" style="font-size:12.5px;color:var(--ink-faint);margin:14px 0 14px 2px">↓</p>
+      <div class="card" data-s="healthy" style="padding:16px 18px">
+        <p class="mono num" style="margin:0;font-size:14px;color:var(--ink)">1,284 conversations indexed</p>
+        <p class="mono" style="margin:4px 0 0;font-size:12px;color:var(--ink-faint)">one project record</p>
+      </div>
+    </div>
+
+    <p class="reveal" style="margin-top:28px;margin-bottom:12px">Then any of it is one keystroke away:</p>
+    <ul class="chips reveal">
+      <li class="chip">#pricing-rewrite <span class="when">Jan</span></li>
+      <li class="chip">#auth-decision <span class="when">Feb</span></li>
+      <li class="chip">#original-mvp <span class="when">Nov 2025</span></li>
+      <li class="chip">#stripe-timeouts <span class="when">Mar</span></li>
+    </ul>
+
+    <p class="lead reveal" style="margin-top:28px">
+      The decision you made with Claude in March can sit beside the agent writing the code in August.
+    </p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 03 THE TOOLS YOU ALREADY LIKE ══════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="quiet" aria-labelledby="h-tools">
+  <div class="gut"><div class="stick">
+    <p class="mark">03<b>Your tools</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-tools" class="reveal">Selvedge doesn’t ask you to pick a side.</h2>
+    <p class="reveal">Keep the tools you like. Selvedge sits around them, not in front of them.
+      One ordinary week on one ordinary project:</p>
+
+    <div class="surface reveal" data-s="working" style="margin-top:24px;max-width:760px">
+      <div class="srf-head">
+        <p class="srf-title">loom <span>/ activity</span></p>
+        <p class="srf-state">this week</p>
+      </div>
+      <ul class="rows">
+        <li><span class="k">Mon</span><span class="v"><b class="mono">CL</b> Claude — pricing tiers, talked through</span></li>
+        <li><span class="k">Mon</span><span class="v"><b class="mono">CU</b> Cursor — refactor of the cart reducer <span style="color:var(--ink-faint)">· outside</span></span></li>
+        <li><span class="k">Tue</span><span class="v"><b class="mono">CC</b> Claude Code — guest checkout, 7 files, shipped</span></li>
+        <li><span class="k">Wed</span><span class="v"><b class="mono">GM</b> Gemini — second opinion on the schema</span></li>
+        <li><span class="k">Wed</span><span class="v"><b class="mono">CX</b> Codex — retry guard, sandbox only</span></li>
+        <li><span class="k">Thu</span><span class="v"><b class="mono">KM</b> Kimi — long-context read of the API docs</span></li>
+        <li><span class="k">Fri</span><span class="v"><b class="mono">GPT</b> GPT — release note drafted</span></li>
+      </ul>
+    </div>
+
+    <h3 class="reveal" style="margin-top:34px">Sessions you run somewhere else</h3>
+    <p class="reveal">Work in your own terminal doesn’t fall out of the record. A watcher reads the
+      coding sessions those tools already write, and files a summary against the project.</p>
+    <div class="card reveal" style="padding:14px 18px;display:inline-block;margin-bottom:20px">
+      <p class="mono" style="margin:0;font-size:13.5px;color:var(--ink)">npx selvedge</p>
+    </div>
+    <p class="reveal"><strong>Summaries, not copied terminal transcripts.</strong> What you asked for,
+      which files it touched, how it ended, what it cost. Your code stays where you put it.</p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 04 BUILD ═══════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="working" aria-labelledby="h-build">
+  <div class="gut"><div class="stick">
+    <p class="mark">04<b>Build</b></p>
+    <p class="margin-note">The price is shown before the work, not after it.</p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-build" class="reveal">Talk becomes work.</h2>
+    <p class="reveal">A request inside the project can become a real coding task, in a real sandbox,
+      on a branch. You see what it will cost before it starts.</p>
+
+    <div class="surface reveal" data-s="working" style="margin-top:26px;max-width:720px">
+      <div class="srf-head">
+        <p class="srf-title">loom <span>/ raise the confirm timeout</span></p>
+        <p class="srf-state">working</p>
+      </div>
+      <ul class="rows">
+        <li><span class="k">request</span><span class="v">raise the confirm timeout, add the guard</span></li>
+        <li><span class="k">plan</span><span class="v">3 steps · 1 test to add</span></li>
+        <li><span class="k">files</span><span class="v">checkout/confirm.ts · checkout/guard.ts · confirm.test.ts</span></li>
+        <li><span class="k">estimate</span><span class="v num">$0.36 – $0.54</span></li>
+        <li><span class="k">sandbox</span><span class="v">warm · branch loom-83d1</span></li>
+      </ul>
+      <hr class="srf-rule" />
+      <ul class="rows">
+        <li><span class="k">ceiling</span><span class="v num">$5.00 <span style="color:var(--ink-faint)">this conversation</span></span></li>
+        <li><span class="k">spent</span><span class="v num">$1.12</span></li>
+      </ul>
+    </div>
+
+    <p class="reveal" style="margin-top:22px">If the ceiling is reached, the work stops and shows the
+      real number. It never quietly continues spending.</p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 05 SHIP ════════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="healthy" aria-labelledby="h-ship">
+  <div class="gut"><div class="stick">
+    <p class="mark">05<b>Ship</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-ship" class="reveal">Preview the real thing.</h2>
+    <p class="reveal">Not a description of the change. The change, running, at an address you can open.</p>
+
+    <div class="surface reveal" data-s="healthy" style="margin-top:26px;max-width:720px">
+      <ul class="rows">
+        <li><span class="k">preview</span><span class="v">preview.selvedge.run/loom-83d1</span></li>
+        <li><span class="k">ship</span><span class="v">approved by you · 14:12</span></li>
+        <li><span class="k">commit</span><span class="v">main · a4f19c2</span></li>
+        <li><span class="k">watch</span><span class="v">production · 12 min</span></li>
+      </ul>
+    </div>
+
+    <p class="reveal" style="margin-top:26px;margin-bottom:14px">Then one of two answers. Both are real answers:</p>
+    <div class="specimens reveal" style="max-width:720px">
+      <div class="card spec" data-s="healthy">
+        <p class="nm">No regression detected.</p>
+        <p class="ds">healthy</p>
+        <p class="ex">Error rate flat, checkout success back to baseline.</p>
+      </div>
+      <div class="card spec" data-s="unknown">
+        <p class="nm">I can’t tell yet.</p>
+        <p class="ds">can’t tell</p>
+        <p class="ex">Checkout traffic is too low to say anything either way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ═══ 06 KNOW WHAT HAPPENED ══════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="needs" aria-labelledby="h-after">
+  <div class="gut"><div class="stick">
+    <p class="mark">06<b>After</b></p>
+    <p class="margin-note">Rust means one thing only: <em>this needs you.</em></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-after" class="reveal">Shipping isn’t the end of the conversation.</h2>
+    <p class="reveal">Deploys, errors, health checks and the operational events that matter flow back
+      into the same project — beside the conversation that caused them.</p>
+
+    <div class="surface reveal" data-s="needs" style="margin-top:26px;max-width:720px">
+      <div class="srf-head">
+        <p class="srf-title">loom <span>/ production</span></p>
+        <p class="srf-state" style="color:var(--rust)">needs you</p>
+      </div>
+      <ul class="rows">
+        <li><span class="k">09:02</span><span class="v">deploy a4f19c2 · live</span></li>
+        <li><span class="k">09:05</span><span class="v" style="color:var(--rust)">checkout failures above baseline</span></li>
+        <li><span class="k">09:05</span><span class="v">began 3m after a4f19c2</span></li>
+        <li><span class="k">context</span><span class="v"><span class="hash">#stripe-timeouts</span> — the work behind that change</span></li>
+      </ul>
+    </div>
+
+    <h3 class="reveal" style="margin-top:34px">Never invent the culprit.</h3>
+    <p class="reveal">When the evidence doesn’t support a conclusion, Selvedge doesn’t reach for one.</p>
+    <div class="card reveal" data-s="unknown" style="padding:17px 19px;max-width:560px">
+      <p class="mono" style="margin:0;font-size:13.5px;color:var(--ink)">Two changes landed in that window.</p>
+      <p class="mono" style="margin:5px 0 0;font-size:13.5px;color:var(--ink-faint)">I can’t tell which. Both are here.</p>
+    </div>
+    <p class="reveal" style="margin-top:18px">That’s restraint, not failure. A guess that sounds
+      certain costs you a morning reading the wrong diff.</p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ THE FOUR STATES ════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="quiet" aria-labelledby="h-states">
+  <div class="gut"><div class="stick">
+    <p class="mark">·<b>States</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-states" class="reveal">Everything wears its state on its left edge.</h2>
+    <p class="reveal">One vocabulary, used everywhere: a project, a change, a deploy, a check.
+      You read the stack from the edges.</p>
+
+    <div class="specimens reveal" style="margin-top:26px">
+      <div class="card spec" data-s="healthy">
+        <p class="nm">Healthy</p>
+        <p class="ds">solid green</p>
+        <p class="ex">Ran, checked, holding.</p>
+      </div>
+      <div class="card spec" data-s="working">
+        <p class="nm">Working</p>
+        <p class="ds">solid brass</p>
+        <p class="ex">In motion right now.</p>
+      </div>
+      <div class="card spec" data-s="needs">
+        <p class="nm">Needs you</p>
+        <p class="ds">solid rust</p>
+        <p class="ex">Stopped, or waiting on a decision only you can make.</p>
+      </div>
+      <div class="card spec" data-s="unknown">
+        <p class="nm">Can’t tell</p>
+        <p class="ds">dashed grey</p>
+        <p class="ex">Said plainly. Never guessed.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ═══ WHY SELVEDGE EXISTS ════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="unknown" aria-labelledby="h-why">
+  <div class="gut"><div class="stick">
+    <p class="mark">·<b>Why</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-why" class="reveal" style="max-width:22ch">AI forgot the project because we put the project in the wrong place.</h2>
+
+    <div class="reveal" style="margin-top:30px;max-width:640px">
+      <ul class="frag">
+        <li><span class="seg">a conversation in ChatGPT</span></li>
+        <li><span class="seg">another one in Claude</span></li>
+        <li><span class="seg">the coding session in Cursor</span></li>
+        <li><span class="seg">the commit in GitHub</span></li>
+        <li><span class="seg">the deploy somewhere else</span></li>
+        <li><span class="seg">the production error somewhere else again</span></li>
+      </ul>
+      <p style="margin-top:6px">Then tomorrow you open another model and explain all of it from scratch.</p>
+
+      <div class="joined">
+        <ol>
+          <li>conversation</li>
+          <li>decision</li>
+          <li>code</li>
+          <li>deploy</li>
+          <li>outcome</li>
+          <li>next conversation</li>
+        </ol>
+      </div>
+      <p style="margin-top:20px">
+        Each AI product naturally remembers its own environment. Selvedge remembers
+        <strong>the project</strong> — the layer that was never anywhere.
+      </p>
+    </div>
+  </div>
+</section>
+</div>
+
+<!-- ═══ YOUR RECORD ════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band" data-seam="quiet" aria-labelledby="h-record">
+  <div class="gut"><div class="stick">
+    <p class="mark">·<b>Your record</b></p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-record" class="reveal">The longer you use it, the more it knows — and the easier it is to leave.</h2>
+
+    <div class="record reveal" style="max-width:640px">
+      <div>
+        <h3>It runs on your keys</h3>
+        <p>Your Claude subscription, your OpenAI account, your usage. Selvedge doesn’t make money
+          selling you model tokens, so it has no reason to want your conversations longer than
+          they need to be.</p>
+      </div>
+      <div>
+        <h3>Every model signs its answer</h3>
+        <p>You always know who said what. Two answers to one question stay two answers.</p>
+      </div>
+      <div>
+        <h3>Unknown means unknown</h3>
+        <p>Missing information doesn’t become zero. Unverified doesn’t become healthy.</p>
+      </div>
+      <div>
+        <h3>Your history can leave</h3>
+        <p>Conversations, project context, intent and outcome records, run information —
+          all of it exports, whenever you want it.</p>
+      </div>
+    </div>
+
+    <p class="lead reveal" style="margin-top:26px">A record you can’t leave with isn’t really yours.</p>
+  </div>
+</section>
+</div>
+
+<!-- ═══ THE TIMELINE — the whole thesis in one column ══════════════ -->
+<div class="wrap">
+<section class="band" data-seam="healthy" aria-labelledby="h-tl">
+  <div class="gut"><div class="stick">
+    <p class="mark">loom<b>six months</b></p>
+    <p class="margin-note">One object. Read top to bottom, it’s the entire product.</p>
+  </div></div>
+  <div class="body-col">
+    <h2 id="h-tl" class="reveal">One checkout bug, from the decision that caused it.</h2>
+
+    <ol class="tl reveal" style="margin-top:26px">
+      <li data-s="healthy">
+        <p class="date">Feb 12</p>
+        <div class="stem">
+          <p class="actor">Greg + <b>CL</b> Claude</p>
+          <p class="what">Original checkout architecture decided.</p>
+        </div>
+      </li>
+      <li data-s="working">
+        <p class="date">Mar 03</p>
+        <div class="stem">
+          <p class="actor">imported conversation</p>
+          <p class="what"><span class="hash">#stripe-timeouts</span> — timeout problem investigated.</p>
+        </div>
+      </li>
+      <li data-s="working">
+        <p class="date">Mar 04</p>
+        <div class="stem">
+          <p class="actor"><b>CX</b> Codex</p>
+          <p class="what">Retry guard changed.</p>
+        </div>
+      </li>
+      <li data-s="needs">
+        <p class="date">Aug 22</p>
+        <div class="stem">
+          <p class="actor">Greg + <b>CL</b> Claude + <b>GPT</b> GPT</p>
+          <p class="what">Checkout issue returns.</p>
+        </div>
+      </li>
+      <li data-s="working">
+        <p class="date">Aug 22</p>
+        <div class="stem">
+          <p class="actor">context</p>
+          <p class="what"><span class="hash">#stripe-timeouts</span> attached — five months later, still here.</p>
+        </div>
+      </li>
+      <li data-s="working">
+        <p class="date">Aug 22</p>
+        <div class="stem">
+          <p class="actor"><b>CC</b> Claude Code</p>
+          <p class="what">Fix prepared. 3 files, $0.38.</p>
+        </div>
+      </li>
+      <li data-s="working">
+        <p class="date">Aug 22</p>
+        <div class="stem">
+          <p class="actor">main</p>
+          <p class="what"><span class="mono" style="font-size:15px">a4f19c2</span> shipped.</p>
+        </div>
+      </li>
+      <li data-s="healthy">
+        <p class="date">Aug 22</p>
+        <div class="stem">
+          <p class="actor">production</p>
+          <p class="what">Healthy. And the next conversation starts here.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+</div>
+
+<!-- ═══ CLOSING ════════════════════════════════════════════════════ -->
+<div class="wrap">
+<section class="band close" data-seam="healthy" id="start" aria-labelledby="h-close">
+  <div class="gut"><div class="stick"><p class="mark">·</p></div></div>
+  <div class="body-col">
+    <h2 id="h-close" class="reveal">Your app shouldn’t forget how it became itself.</h2>
+    <p class="lead reveal">One project. Every model. Every decision. Every change that came after.</p>
+    <div class="cta-row reveal">
+      <a class="btn btn--fill" href="#start">Start a project</a>
+    </div>
+    <p class="foot-note reveal">Bring the history you already have.</p>
+  </div>
+</section>
+</div>
+
+</main>
+
+<footer>
+  <div class="wrap" style="padding-block:clamp(34px,5vw,60px)">
+    <div class="f-grid">
+      <div>
+        <p class="f-name">Se<span style="color:var(--green)">l</span>vedge</p>
+      </div>
+      <div>
+        <p class="f-etym">From <em>self</em> + <em>edge</em>: the woven border where fabric finishes
+          itself — the edge that cannot fray.</p>
+        <p class="f-etym" style="color:var(--ink-dim)">The conversations, code, decisions and outcomes
+          kept on one continuous cloth.</p>
+      </div>
+    </div>
+    <p class="f-util">© 2026 Selvedge · runs on your keys · exports everything · flat price</p>
+  </div>
+</footer>
+
+<script>
+/* One-shot reveals. Nothing loops, nothing re-triggers, nothing moves on
+   scroll — an element fades up once when it first arrives and then holds
+   still. Under prefers-reduced-motion the CSS above neutralises all of
+   it, so this observer becomes a no-op that simply marks things seen. */
+(function () {
+  var targets = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    for (var i = 0; i < targets.length; i++) targets[i].classList.add('in');
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  targets.forEach(function (t) { io.observe(t); });
+})();
+</script>
+
+</body>
+</html>
