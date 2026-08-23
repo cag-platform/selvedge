@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Db } from '../../db/client.js';
 import { orgs } from '../../db/schema/index.js';
-import { tenantOf } from './tenant.js';
+import { tenantOf, userOf } from './tenant.js';
 
 /**
  * Multi-tenancy from the first table (brief, stack section): every authenticated
@@ -24,6 +24,9 @@ export function ensureOrg(db: Db) {
     }
     await db.insert(orgs).values({ orgId: tenant }).onConflictDoNothing();
     (req as Request & { orgId: string }).orgId = tenant;
+    // Who is looking, as distinct from whose data it is. Only billing reads it,
+    // and only to record which person put the card in.
+    (req as Request & { userId: string | null }).userId = userOf(req);
     next();
   };
 }

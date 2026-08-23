@@ -12,3 +12,15 @@ export function tenantOf(req: Request): string | null {
   const { orgId, userId } = getAuth(req);
   return orgId ?? userId ?? null;
 }
+
+/**
+ * The signed-in PERSON, which is not the tenant.
+ *
+ * For a solo owner the two strings are equal and it is tempting to treat them
+ * as one thing. They are not: the tenant is who the data belongs to, and this
+ * is who is looking at it. Billing uses this for attribution — which human put
+ * the card in — and nothing else. Anything that scopes data uses `tenantOf`.
+ */
+export function userOf(req: Request): string | null {
+  return getAuth(req).userId ?? null;
+}

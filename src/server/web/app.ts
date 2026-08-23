@@ -15,6 +15,8 @@ import { buildPushSender } from '../push/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
+import { createBillingRouter } from './routes/billing.js';
+import { createStripeWebhookRouter } from './routes/stripeWebhook.js';
 import { createTrayRouter } from './routes/tray.js';
 import { createStatusRouter } from './routes/status.js';
 import { createTodayRouter } from './routes/today.js';
@@ -91,6 +93,16 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // general parser sees the body already set and skips re-parsing it.
   app.use('/api/projects/:projectId/workshop/message', express.json({ limit: '100mb' }));
 
+  // STRIPE'S WEBHOOK, MOUNTED HERE AND NOWHERE ELSE.
+  //
+  // Two things about this position are load-bearing. It is ahead of
+  // express.json() because the signature is computed over the exact bytes
+  // Stripe sent, and a body that has been parsed and re-serialised will not
+  // verify. And it is ahead of the /api org guard because Stripe has no
+  // session — the signature IS the authentication, which is why the route
+  // refuses anything it cannot verify and reads nothing before it does.
+  app.use(createStripeWebhookRouter(db));
+
   // Clerk keys are deploy-time configuration; a fresh service must still
   // boot (healthz green, webhooks accepted) before they exist, so an
   // unconfigured deploy degrades to a clear 503 on /api instead of a
@@ -128,6 +140,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
       ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}),
     }),
   );
+  app.use(createBillingRouter(db));
   app.use(createProjectsRouter(db));
   app.use(createTrayRouter(db, { backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo) }));
   app.use(createTodayRouter(db, (orgId) => buildComposeDeps(db, orgId)));
