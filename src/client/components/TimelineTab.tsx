@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { Reveal } from './Brief.js';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { whenShort } from '../lib/inbox.js';
+import { EmptyState } from './ui.js';
 
 /**
  * WHAT HAPPENED TO THIS PROJECT — the record, finally with a face.
@@ -97,10 +98,24 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
 
       {error && <p className="text-body text-thread">{error}</p>}
 
-      {hits !== null ? (
+      {hits !== null && hits.length === 0 ? (
+        // What the search DOESN'T cover is the useful half of this sentence:
+        // somebody searching a project for a function name needs to know they
+        // are looking in the wrong place, not that their project is empty.
+        <EmptyState
+          action={
+            <button onClick={() => setQuery('')} className="text-meta text-action-bright hover:underline">
+              Clear the search
+            </button>
+          }
+        >
+          Nothing in {projectId} matches &lsquo;{query.trim()}&rsquo;. Search covers every thread, ask, and event in
+          this project &mdash; not the code itself.
+        </EmptyState>
+      ) : hits !== null ? (
         <div className="space-y-read">
           <p className="text-meta text-ink-quiet">
-            {hits.length === 0 ? 'Nothing in this project says that.' : `${hits.length} ${hits.length === 1 ? 'thing mentions' : 'things mention'} that.`}
+            {hits.length} {hits.length === 1 ? 'thing mentions' : 'things mention'} that.
           </p>
           {hits.map((hit, i) => (
             <button
@@ -127,10 +142,9 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
 
           {entries === null && <p className="text-body text-ink-quiet">Loading…</p>}
           {entries?.length === 0 && (
-            <p className="text-body text-ink-quiet">
-              Nothing here yet in this window. When something happens — an ask, a ship, a break, a fix — it turns up here in
-              plain words.
-            </p>
+            <EmptyState>
+              Nothing has happened here yet. The first message, ship, or deploy starts the record.
+            </EmptyState>
           )}
 
           <ol className="space-y-read">

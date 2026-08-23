@@ -4,6 +4,7 @@ import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { entryEdge, outcomeLabel, formatCents, type LedgerEntryData, type LedgerSummaryData } from '../lib/ledger.js';
 import { Reveal } from '../components/Brief.js';
 import { describeAct, type ActView } from '../lib/replay.js';
+import { EmptyState } from '../components/ui.js';
 
 /**
  * The track record — what Selvedge has actually done, what it cost, and how it
@@ -49,10 +50,10 @@ export function TrackRecord() {
       )}
 
       {entries.length === 0 ? (
-        <p className="text-body text-ink-quiet">
-          Nothing finished yet. Every change I complete lands here with what it cost and how it turned out — the good and
-          the honest misses.
-        </p>
+        <EmptyState>
+          Nothing finished yet. Every change I complete lands here with what it cost and how it turned out &mdash; the
+          good and the honest misses.
+        </EmptyState>
       ) : (
         <section>
           <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">History</p>

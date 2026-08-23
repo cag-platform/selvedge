@@ -34,3 +34,39 @@ export const eyebrowCls = 'text-label font-body uppercase tracking-widest text-i
 export function Pane({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={`relative rounded-card border border-hairline bg-panel p-4 ${className}`}>{children}</div>;
 }
+
+/**
+ * AN EMPTY SCREEN IS AN INVITATION TO ACT.
+ *
+ * Every pane in Selvedge has a state where there is nothing in it yet, and
+ * that state is reached most often by the person who has been here least. A
+ * blank rectangle teaches them the product is broken; a spinner teaches them
+ * to wait for something that is never coming; developer placeholder text
+ * teaches them it is unfinished. So each one says what this place is for and
+ * offers at most one thing to do.
+ *
+ * THE RULES, which are as much about restraint as about copy:
+ *
+ *  - No illustration, no icon, no sad face. The reading register is text, and
+ *    a drawing here is decoration standing in for an explanation.
+ *  - At most ONE action. Two choices in an empty room is a menu, and a menu is
+ *    what somebody with nothing yet least needs.
+ *  - Rust never appears. `--thread` means "this needs you"; nothing being here
+ *    yet is not a problem, and colouring it like one would spend the product's
+ *    single loudest signal on the calmest moment it has.
+ */
+export function EmptyState({
+  children,
+  action,
+}: {
+  children: ReactNode;
+  /** At most one. A second would make this a menu. */
+  action?: ReactNode;
+}) {
+  return (
+    <div className="max-w-prose py-work">
+      <p className="text-body text-ink-dim">{children}</p>
+      {action && <div className="mt-work">{action}</div>}
+    </div>
+  );
+}

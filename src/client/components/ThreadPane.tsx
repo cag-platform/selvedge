@@ -24,6 +24,7 @@ import {
 } from '../../shared/documents.js';
 import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
+import { EmptyState } from './ui.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 
@@ -504,11 +505,23 @@ export function ThreadPane({
 
       <div className="flex-1 space-y-work-loose overflow-y-auto px-work-loose py-work">
         {data.messages.length === 0 && (
-          <p className="text-body text-ink-quiet">
-            {workshop
-              ? 'Say what you want in plain words — "add a contact form", "fix the broken checkout button". I build it in the sandbox and you see it before anything goes live.'
-              : 'Think out loud here. Nothing gets built in this thread — it is for deciding what to build, and it stays with the project so you never explain it twice.'}
-          </p>
+          // Names where you are, then teaches the two marks — which is the
+          // whole interface, and the one thing a first conversation cannot
+          // discover on its own.
+          <EmptyState
+            action={
+              <button
+                onClick={() => composerRef.current?.focus()}
+                className="text-meta text-action-bright hover:underline"
+              >
+                Start typing
+              </button>
+            }
+          >
+            This conversation belongs to {data.project?.name ?? data.subject?.name ?? 'this project'}. Type{' '}
+            <span className="font-mono text-tech">@</span> to pick who answers;{' '}
+            <span className="font-mono text-tech">#</span> to bring in what you&rsquo;ve already decided.
+          </EmptyState>
         )}
         {data.messages.map((m) => (
           <Message key={m.id} message={m} data={data} />

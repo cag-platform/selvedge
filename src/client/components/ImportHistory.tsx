@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
-import { Pane, btnPrimary, inputCls } from './ui.js';
+import { Pane, btnPrimary, inputCls, EmptyState } from './ui.js';
 
 /**
  * BRING AN OLD HISTORY IN — the mirror of "export my context", and the same
@@ -69,24 +69,39 @@ export function ImportHistory() {
       // Multipart, so this one goes around the JSON helper rather than
       // through it — the browser has to set its own boundary header.
       const res = await fetch('/api/import/history', { method: 'POST', credentials: 'same-origin', body });
-      const json = (await res.json()) as Result & { error?: string };
-      if (!res.ok) setError(json.error ?? 'that import did not go through');
+      // This upload goes around lib/api.ts (the browser has to set its own
+      // multipart boundary), so it repeats that module's one guarantee by
+      // hand: a body that isn't JSON must not become a parse error on screen.
+      const json = (await res.json().catch(() => ({}))) as Partial<Result> & { error?: string };
+      if (!res.ok) setError(json.error ?? "That import didn't go through. The file may not be an export Selvedge can read.");
       else {
-        setResult(json);
+        setResult(json as Result);
         setFile(null);
       }
     } catch {
-      setError('that import did not go through');
+      setError("I couldn't reach the server to send that. Your connection may be down; nothing was uploaded.");
     } finally {
       setBusy(false);
     }
   }
 
   if (!open) {
+    // Nothing imported yet. Says what would happen rather than naming the
+    // gesture — "bring in chats" is an instruction, "they become ordinary
+    // threads here" is a reason.
     return (
-      <button onClick={() => setOpen(true)} className="mt-3 block text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright">
-        Bring in ChatGPT or Claude chats →
-      </button>
+      <EmptyState
+        action={
+          <button
+            onClick={() => setOpen(true)}
+            className="text-meta text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+          >
+            Import an export
+          </button>
+        }
+      >
+        Bring your ChatGPT, Claude, or Gemini export and old conversations become ordinary threads here.
+      </EmptyState>
     );
   }
 

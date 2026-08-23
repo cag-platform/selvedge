@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { TimelineTab } from './TimelineTab.js';
-import { btnPrimary } from './ui.js';
+import { btnPrimary, EmptyState } from './ui.js';
 import { formatCents } from '../lib/ledger.js';
 import { inMotion, stateLabel, type WorkCardData } from '../lib/card.js';
 import type { ThreadData } from '../lib/inbox.js';
@@ -135,7 +135,7 @@ function InMotion({ projectId }: { projectId: string }) {
       {cards === null ? (
         <p className="text-body text-ink-quiet">Loading…</p>
       ) : cards.length === 0 ? (
-        <p className="text-body text-ink-quiet">Nothing running on this project right now.</p>
+        <EmptyState>No work in flight. Ask for a change in the conversation and the card appears here.</EmptyState>
       ) : (
         <ul className="space-y-work-tight">
           {cards.map((card) => (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
-import { btnPrimary } from './ui.js';
+import { btnPrimary, EmptyState } from './ui.js';
 
 /**
  * YOUR MACHINES — where the loop is switched on.
@@ -101,6 +101,14 @@ export function CompanionKeys() {
         </button>
         {error && <span className="text-meta text-thread">{error}</span>}
       </form>
+
+      {keys && keys.length === 0 && (
+        <EmptyState>
+          The companion hasn&rsquo;t seen a session yet. Install with{' '}
+          <span className="font-mono text-tech">npx selvedge</span> &mdash; summaries appear here, code never leaves
+          your machine.
+        </EmptyState>
+      )}
 
       {keys && keys.length > 0 && (
         <ul className="divide-y divide-hairline rounded-card border border-hairline bg-panel">

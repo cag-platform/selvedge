@@ -4,6 +4,7 @@ import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { AgentChip } from './AgentChip.js';
 import { railPlaces, splitPutAway, whenShort, type InboxData, type RailPlace, type ThreadRow } from '../lib/inbox.js';
 import { putAwayLine, PUT_AWAY, BRING_BACK, PUT_AWAY_NOTE } from '../../shared/putAway.js';
+import { EmptyState } from './ui.js';
 
 /**
  * THE RAIL — everywhere you work. One row each, one conversation each.
@@ -124,10 +125,19 @@ export function Rail({
   return (
     <nav aria-label="Projects and threads" className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-work">
-        {data.projects.length === 0 && (
-          <p className="px-work-tight text-body text-ink-quiet">
-            Nothing to watch yet. <Link to="/projects" className="text-action-bright hover:underline">Bring an app in</Link> and it turns up here.
-          </p>
+        {atHand.length === 0 && putAway.length === 0 && (
+          <div className="px-work-tight">
+            <EmptyState
+              action={
+                <Link to="/projects" className="text-meta text-action-bright hover:underline">
+                  Bring a repo in
+                </Link>
+              }
+            >
+              Nothing here yet. Bring a repo, or start with a question &mdash; a subject works before any code
+              exists.
+            </EmptyState>
+          </div>
         )}
 
         {atHand.map(row)}
