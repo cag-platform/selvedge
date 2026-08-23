@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { Landing } from '../../src/client/pages/Landing.js';
+import { planBullets, priceLine } from '../../src/shared/plans.js';
 
 /**
  * THE LANDING PAGE, RENDERED.
@@ -66,5 +67,67 @@ describe('the landing page', () => {
     for (const banned of ['observability', 'nobody does this', 'nobody else']) {
       expect(html).not.toContain(banned);
     }
+  });
+});
+
+/**
+ * THE PRICING SECTION.
+ *
+ * The bug this section could have is a page that says "60 build minutes" while
+ * the server allows 30. So none of these tests assert a price — they assert
+ * that what the page renders IS what the plan table holds, which is what the
+ * entitlements module enforces. A price change should not have to be typed
+ * twice, here included.
+ */
+describe('the pricing section', () => {
+  const html = () => render();
+
+  it('is reachable from the nav by the anchor the brief names', () => {
+    expect(html()).toContain('id="pricing"');
+    expect(html()).toContain('href="#pricing"');
+  });
+
+  it('renders every number from the plan table rather than from a copywriter', () => {
+    const page = html();
+    for (const line of [...planBullets('free'), ...planBullets('pro')]) {
+      expect(page).toContain(line);
+    }
+    expect(page).toContain(priceLine('pro'));
+    expect(page).toContain(priceLine('free'));
+  });
+
+  it('says whose the model costs are, and never implies they are included', () => {
+    const page = html();
+    expect(page).toContain('your own AI keys');
+    expect(page).toContain('spend ceilings');
+    // "Unlimited AI" is the claim this product must never make.
+    expect(page.toLowerCase()).not.toContain('unlimited ai');
+  });
+
+  /**
+   * The founding-member line is a promise kept in a database column. Dressing
+   * it as scarcity would make the one true thing on the page look like the
+   * fake ones everywhere else.
+   */
+  it('makes the founding-member promise a price, not a countdown', () => {
+    const page = html().toLowerCase();
+    expect(page).toContain('founding member');
+    for (const hype of ['% off', 'limited time', 'hurry', 'act now', 'expires']) {
+      expect(page).not.toContain(hype);
+    }
+  });
+
+  it('answers the three questions somebody has before paying, in the page itself', () => {
+    const page = html();
+    // <details>, so the answers are in the markup whether or not anyone clicks
+    // — readable without JavaScript and visible to a crawler.
+    expect(page).toContain('What happens to my data on Free?');
+    expect(page).toContain('What are build minutes?');
+    expect(page).toContain('Will the price go up?');
+    expect(page).toMatch(/[Nn]othing is deleted/);
+  });
+
+  it('keeps the free tier honest about being free', () => {
+    expect(html()).toContain('No card. No trial timer.');
   });
 });

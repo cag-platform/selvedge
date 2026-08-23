@@ -87,12 +87,46 @@
 .landing-history span { position:relative; }
 .landing-history span::before { content:''; position:absolute; left:-2.72rem; top:.45rem; width:.45rem; height:.45rem; border-radius:50%; background:var(--action-bright); }
 
+/* Pricing. Two cards in the page's own register: hairlines and paper, no
+   shadows or rounded chips borrowed from somewhere else. Pro is primary by
+   weight and a single accent rule, never by a louder colour — the palette
+   still means status. */
+.landing-pricing { grid-template-columns: .75fr 1.25fr; }
+.landing-plans { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--hairline); }
+.landing-plan { padding: 2rem; }
+.landing-plan + .landing-plan { border-left: 1px solid var(--hairline); }
+.landing-plan-primary { border-top: 3px solid var(--action-bright); margin-top: -3px; background: var(--panel); }
+.landing-plan-price { margin-top: 1rem; }
+.landing-plan-badge { margin-top: .5rem; color: var(--action-bright); }
+/* The same slot on the Free card, deliberately NOT emerald: the accent is how
+   Pro is made primary, and spending it on both cards would leave neither
+   leading. */
+.landing-plan-note { margin-top: .5rem; color: var(--ink-quiet); }
+.landing-plan-list { margin-top: 1.75rem; display: grid; gap: .6rem; color: var(--ink-dim); font-size: var(--text-body); line-height: 1.6; }
+.landing-plan-cta { margin-top: 2rem; display: inline-block; }
+/* The free tier's CTA. Bordered rather than solid — the emerald is the one
+   "doing" colour and Pro has it — but a real button, because a ghost link
+   beside a solid one reads as body text, and this is the action the page most
+   wants a stranger to take. */
+.landing-plan-cta-quiet { border: 1px solid var(--hairline); padding: .375rem 1rem; color: var(--ink); font-size: var(--text-body); font-weight: 500; }
+.landing-plan-cta-quiet:hover { background: var(--panel-soft); }
+.landing-plans-note { margin-top: 1.5rem; max-width: 46ch; }
+.landing-faq { margin-top: 2.5rem; border-top: 1px solid var(--hairline); }
+.landing-faq details { border-bottom: 1px solid var(--hairline); padding: 1.1rem 0; }
+.landing-faq summary { cursor: pointer; list-style: none; }
+.landing-faq summary::-webkit-details-marker { display: none; }
+.landing-faq summary::after { content: '+'; float: right; color: var(--ink-quiet); font-family: var(--font-mono); }
+.landing-faq details[open] summary::after { content: '\2212'; }
+
 @media (max-width: 767px) {
   .landing-hero { min-height: auto; }
   .landing-hero-thread { width:100%; }
   .landing-answer-pair { grid-template-columns:1fr; gap:1.5rem; }
   .landing-scroll-cue { margin-left:0; }
-  .landing-section,.landing-many,.landing-import,.landing-compare,.landing-building,.landing-memory { grid-template-columns:1fr; min-height:0; gap:4rem; padding-block:6rem; }
+  .landing-section,.landing-many,.landing-import,.landing-compare,.landing-building,.landing-memory,.landing-pricing { grid-template-columns:1fr; min-height:0; gap:4rem; padding-block:6rem; }
+  .landing-plans { grid-template-columns:1fr; }
+  .landing-plan + .landing-plan { border-left:0; border-top:1px solid var(--hairline); }
+  .landing-plan-primary { margin-top:0; }
   .landing-import .landing-section-intro,.landing-building .landing-section-intro { order:-1; }
   .landing-import-stack { min-height:390px; }
   .landing-import-source { width:88%; }
