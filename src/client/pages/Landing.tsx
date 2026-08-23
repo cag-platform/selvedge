@@ -141,7 +141,14 @@ function SystemLine({ index, children }: { index: number; children: React.ReactN
   );
 }
 
-function SampleThread() {
+/**
+ * `short` exists for one caller: the OG card (scripts/shoot-og.ts), which
+ * shows the first three messages — the question and the two signed answers.
+ * The card is rendered from THIS component rather than drawn to look like it,
+ * so a link preview can never be a picture of a product that no longer exists.
+ */
+export function SampleThread({ short = false, caption = true }: { short?: boolean; caption?: boolean } = {}) {
+  const rest = !short;
   return (
     <div>
       <Pane className="pl-5">
@@ -166,6 +173,11 @@ function SampleThread() {
             guard that&rsquo;s too eager would look identical in your numbers.
           </Message>
 
+          {/* The rest of the conversation. The OG card stops above this line:
+              the question and the two signed answers are the whole argument,
+              and a link preview has room for three messages, not seven. */}
+          {rest && (
+            <>
           <Message who="You" index={3}>
             We hit something like this in March &mdash; <Sigil>#stripe-timeouts</Sigil>
           </Message>
@@ -193,11 +205,15 @@ function SampleThread() {
               &middot; $0.42 &middot; preview held &middot; watching for 12 min
             </p>
           </div>
+            </>
+          )}
         </div>
       </Pane>
-      <p className="mt-2 text-meta text-ink-quiet">
-        A sample conversation. The names are how you actually type them.
-      </p>
+      {caption && (
+        <p className="mt-2 text-meta text-ink-quiet">
+          A sample conversation. The names are how you actually type them.
+        </p>
+      )}
     </div>
   );
 }

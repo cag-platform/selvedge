@@ -14,6 +14,7 @@ import { Landing } from './pages/Landing.js';
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
+import { DEFAULT_TITLE, titleFor } from './components/Head.js';
 
 /**
  * First sign-in from any browser teaches the org its timezone, so the
@@ -39,7 +40,9 @@ function AutoTimezone() {
 function AuthedApp() {
   // The Inbox is the workbench: three panes, full bleed, its own scrolling.
   // Every other page keeps the calm single-column measure it always had.
-  const workbench = useLocation().pathname.startsWith('/inbox');
+  const pathname = useLocation().pathname;
+  const workbench = pathname.startsWith('/inbox');
+  useRouteTitle(pathname);
   return (
     <>
       <SignedOut>
@@ -120,6 +123,35 @@ function AuthedApp() {
       </SignedIn>
     </>
   );
+}
+
+/**
+ * WHAT THE TAB SAYS, DECIDED IN ONE PLACE.
+ *
+ * A per-page hook would work and would also be a rule five components have to
+ * remember; the sixth one added later inherits whatever the last route set.
+ * Here the path IS the answer, so a route that doesn't appear below falls back
+ * to the product's own name rather than to a stale one.
+ *
+ * A PROJECT NAME NEVER APPEARS. A tab title is read by anyone at the screen
+ * and copied into any link someone shares — "Loom · Selvedge" in a shared tab
+ * strip leaks a customer's project to the room. The surface is named; its
+ * contents are not.
+ */
+const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ['/inbox', 'Inbox'],
+  ['/record', 'Record'],
+  ['/projects', 'Projects'],
+  ['/connections', 'Connections'],
+  ['/admin', 'Settings'],
+  ['/styleguide', 'Styleguide'],
+];
+
+function useRouteTitle(pathname: string): void {
+  useEffect(() => {
+    const match = SURFACE_NAMES.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+    document.title = match ? titleFor(match[1]) : DEFAULT_TITLE;
+  }, [pathname]);
 }
 
 export default function App() {

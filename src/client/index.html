@@ -3,8 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Selvedge — keeps your apps running</title>
-    <meta name="description" content="Selvedge keeps your apps running. A calm place to own software you didn't write by hand — one morning brief in plain English, honest fixes with a hard limit, verified by a different model than wrote the change." />
+
+    <!--
+      THE CARD LIVES HERE, NOT IN REACT.
+
+      Slack, X, and iMessage fetch this file and never run the JavaScript, so a
+      tag written by a component is invisible to every one of them. The landing
+      is the root URL, and every other route is behind auth where there is
+      nothing a stranger could be shown — so one static card is not a
+      compromise, it is the whole honest surface. The tab title per authed
+      route is set by the app (components/Head.tsx), which is the half that
+      genuinely needs to run.
+    -->
+    <title>Selvedge — All your AI. One conversation.</title>
+    <meta
+      name="description"
+      content="One window per project for every AI you work with. Claude, GPT, Claude Code, and Codex in the same thread, reading the same history."
+    />
 
     <!-- Favicon: SVG (theme-aware via media), PNG fallbacks, app + apple icons -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" media="(prefers-color-scheme: light)" />
@@ -16,15 +31,29 @@
     <meta name="theme-color" content="#0F1B2D" />
 
     <!-- Social card -->
-    <meta property="og:title" content="Selvedge — keeps your apps running" />
-    <meta property="og:description" content="A calm place to own software you didn't write by hand. One morning brief in plain English — the important things, first." />
+    <meta property="og:title" content="Selvedge — All your AI. One conversation." />
+    <meta
+      property="og:description"
+      content="One window per project for every AI you work with. Claude, GPT, Claude Code, and Codex in the same thread, reading the same history."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://tryselvedge.com" />
-    <meta property="og:image" content="https://tryselvedge.com/og-image.png" />
+    <meta property="og:image" content="https://tryselvedge.com/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <!-- What a screen reader announces in a feed, and what shows if the image
+         404s after a deploy. -->
+    <meta
+      property="og:image:alt"
+      content="A Selvedge conversation: one question, answered by Claude and GPT, each signed with its own name."
+    />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Selvedge — keeps your apps running" />
-    <meta name="twitter:description" content="A calm place to own software you didn't write by hand. One morning brief in plain English — the important things, first." />
-    <meta name="twitter:image" content="https://tryselvedge.com/og-image.png" />
+    <meta name="twitter:title" content="Selvedge — All your AI. One conversation." />
+    <meta
+      name="twitter:description"
+      content="One window per project for every AI you work with. Claude, GPT, Claude Code, and Codex in the same thread, reading the same history."
+    />
+    <meta name="twitter:image" content="https://tryselvedge.com/og.png" />
   </head>
   <body>
     <div id="root"></div>
