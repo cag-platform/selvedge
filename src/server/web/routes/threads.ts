@@ -47,6 +47,15 @@ function orgIdOf(req: Request): string {
  * that is the work itself arriving on the thread, not a spinner.
  */
 
+/**
+ * How many of a subject's own conversations a question asked inside it may
+ * bring. More than the account-wide default, because the owner narrowed the
+ * search themselves by choosing where to ask — and still bounded, because an
+ * answer built from thirty half-matches is worse than one built from six good
+ * ones.
+ */
+const MAX_IN_SUBJECT_THREAD = 6;
+
 /** A run this old still marked running is a crashed process, not real work. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
 
@@ -647,9 +656,35 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * Skipped entirely when a `#` is present: they named it, there is
        * nothing left to guess.
        */
+      /**
+       * AND WHERE IT LOOKS FIRST DEPENDS ON WHERE YOU ARE STANDING.
+       *
+       * A conversation filed under a subject is a conversation ABOUT that
+       * subject — "Claude history" is not a label on a drawer, it is the three
+       * hundred and sixty chats you are sitting inside. So a question asked
+       * there searches those first, and brings back more of them than an
+       * account-wide sweep would, because the owner has already narrowed it by
+       * choosing where to ask.
+       *
+       * It falls back to the whole account when nothing under the subject
+       * matched, rather than answering "I found nothing" while the answer sits
+       * in a project. Either way the reference line names every conversation
+       * used and marks it as something the database found rather than
+       * something the owner pointed at.
+       */
       const found = named.resolved.length
         ? []
-        : await findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
+        : await (async () => {
+            if (thread.subjectId) {
+              const inSubject = await findRelatedConversations(db, orgId, text, {
+                excludeThreadId: thread.id,
+                subjectId: thread.subjectId,
+                limit: MAX_IN_SUBJECT_THREAD,
+              }).catch(() => []);
+              if (inSubject.length) return inSubject;
+            }
+            return findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
+          })();
       const references = { resolved: [...named.resolved, ...found], missed: named.missed };
       const referenced = renderReferences(references);
       const referenceNote = references.resolved.length

@@ -183,16 +183,48 @@ export async function resolveReferences(db: Db, orgId: string, text: string): Pr
 
     const subject = subjectRows.find((s) => matches(name, s.name));
     if (subject) {
-      const under = threadRows.filter((t) => t.subjectId === subject.id).slice(0, MAX_SUBJECT_THREADS);
+      /**
+       * NAMING A SUBJECT IS A QUESTION ABOUT WHAT IS IN IT.
+       *
+       * This used to answer with five thread TITLES and none of their
+       * contents, which made the one gesture meaning "ask my whole imported
+       * history" the weakest thing you could type. Three hundred and sixty
+       * conversations, and pointing at them got you a list of five names.
+       *
+       * So the rest of the sentence is searched INSIDE the subject, with the
+       * same ranking and the same stopword discipline the account-wide finder
+       * uses. What comes back is what was actually said, in the conversations
+       * that were actually about it.
+       */
+      const held = threadRows.filter((t) => t.subjectId === subject.id);
+      const matched = await findRelatedConversations(db, orgId, text, {
+        subjectId: subject.id,
+        limit: MAX_IN_SUBJECT,
+      }).catch(() => []);
+
       resolved.push({
         kind: 'subject',
         id: subject.id,
         label: subject.name,
         text: [
-          `"${subject.name}" is somewhere the owner keeps work that isn't a codebase.`,
-          under.length
-            ? ['Conversations filed under it:', ...under.map((t) => `- ${t.title}${threadNote(t) ? ` (${threadNote(t)})` : ''}`)].join('\n')
-            : 'Nothing has been filed under it yet.',
+          `"${subject.name}" is somewhere the owner keeps work that isn't a codebase. ${held.length} ${held.length === 1 ? 'conversation is' : 'conversations are'} filed under it.`,
+          matched.length
+            ? // WHAT WAS READ, AND OUT OF WHAT. Never "here is your history" —
+              // a handful of matches presented as the whole is the same lie as
+              // a silent truncation, with the volume turned down.
+              [
+                `All ${held.length} were searched for what the owner is asking about. ${matched.length} matched, and ${matched.length === 1 ? 'it is' : 'they are'} below. The rest did not, so nothing in this answer may claim to speak for them.`,
+                ...matched.map((m) => m.text),
+              ].join('\n\n')
+            : held.length
+              ? // NOTHING MATCHED IS AN ANSWER. The titles come back here and
+                // only here — as evidence for saying "I looked and found
+                // nothing about that", rather than as a substitute for looking.
+                [
+                  `All ${held.length} were searched and none of them matched what the owner is asking about. Say that plainly rather than answering from the titles below, which are listed only so the answer can describe what IS in here.`,
+                  ...held.slice(0, MAX_SUBJECT_THREADS).map((t) => `- ${t.title}${threadNote(t) ? ` (${threadNote(t)})` : ''}`),
+                ].join('\n')
+              : 'Nothing has been filed under it yet.',
         ].join('\n\n'),
       });
       continue;
@@ -324,6 +356,16 @@ const MIN_TERMS_MATCHED = 2;
 const MAX_TERMS_REQUIRED = 4;
 /** How many the database may bring on its own. Deliberately fewer than you may name. */
 const MAX_FOUND = 3;
+/**
+ * How many a search INSIDE a named subject may bring.
+ *
+ * More than the account-wide three, because the question is narrower and the
+ * owner pointed at the place themselves. Still bounded: a year of chats about
+ * one subject would fill a context window with the least relevant half of
+ * itself, and an answer built from thirty half-matches is worse than one built
+ * from six good ones.
+ */
+const MAX_IN_SUBJECT = 6;
 /** Too short to be about anything: "yes", "do it", "make it darker". */
 const MIN_QUERY_CHARS = 12;
 
@@ -338,7 +380,20 @@ export async function findRelatedConversations(
   db: Db,
   orgId: string,
   text: string,
-  { excludeThreadId, limit = MAX_FOUND }: { excludeThreadId?: string; limit?: number } = {},
+  {
+    excludeThreadId,
+    limit = MAX_FOUND,
+    /**
+     * Search only the conversations filed under one subject.
+     *
+     * This is what turns a subject from a label into something you can ask.
+     * The account-wide search brings three conversations from everywhere;
+     * scoped, the same ranking is answering a narrower question — "of the
+     * three hundred old chats in here, which ones are about this" — and can
+     * afford to bring more of them.
+     */
+    subjectId,
+  }: { excludeThreadId?: string; limit?: number; subjectId?: string } = {},
 ): Promise<ResolvedReference[]> {
   const query = text
     // An explicit `#reference` is handled elsewhere, and an `@mention` decides
@@ -390,6 +445,7 @@ export async function findRelatedConversations(
         and(
           eq(agentMessages.orgId, orgId),
           isNull(threads.archivedAt),
+          subjectId ? eq(threads.subjectId, subjectId) : undefined,
           excludeThreadId ? sql`${threads.id} <> ${excludeThreadId}` : undefined,
           sql`to_tsvector('english', ${agentMessages.content}) @@ to_tsquery('english', ${expression})`,
         ),
