@@ -6,6 +6,7 @@ import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
+import { touchProjectSandbox } from './metering.js';
 import { ensureWorkshopThread } from '../threads/store.js';
 import { driverFor } from '../runner/agents/driver.js';
 import { agentById, type AgentId } from '../../shared/agents.js';
@@ -473,6 +474,14 @@ export async function runAgentTurn(
       await sleep(POLL_MS);
       const poll = await execute(pollCommand(log, pid), 60).catch(() => null);
       if (!poll) continue; // a flaky poll is not a failed turn
+      // PROOF OF LIFE, every few seconds, for as long as the turn runs.
+      //
+      // The metering sweep uses the last time it knew a sandbox was alive as
+      // the end of any segment whose stop it never saw. Without this, a
+      // half-hour build has no proof of life after its first second, and a
+      // process that died mid-build would meter that half hour as nothing —
+      // which is the "unknown is not zero" rule, with money attached.
+      await touchProjectSandbox(db, orgId, projectId).catch(() => undefined);
       const { log: soFar, done } = splitPoll(poll.result ?? '');
       await showActivity(soFar).catch(() => undefined);
       if (done) return soFar;

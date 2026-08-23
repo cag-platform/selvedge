@@ -1,6 +1,7 @@
 import { Daytona, DaytonaNotFoundError, type Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
+import { SANDBOX_AUTOSTOP_MINUTES, closeSandboxRun, openSandboxRun, type EndReason } from './metering.js';
 
 /**
  * The persistent per-project sandbox — the workshop's engine. Ported from
@@ -20,8 +21,17 @@ import { getBuild, setBuild, clearSandbox } from './store.js';
 
 export const WORKDIR = '/workspace/app';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
-/** Idle minutes before a sandbox stops itself. The core sandbox-cost guard. */
-export const SANDBOX_IDLE_MINUTES = 15;
+/**
+ * Idle minutes before a sandbox stops itself.
+ *
+ * Down from fifteen, and no longer the main guard: `build/metering.ts` runs a
+ * sweep every minute that knows whether a turn is actually in flight, and stops
+ * a sandbox within a minute of its work finishing. Daytona's own timer is the
+ * backstop for when this server isn't running to sweep, which is why it is not
+ * set as tight as the sweep — a native auto-stop firing between two commands of
+ * one turn would destroy work to save pennies.
+ */
+export const SANDBOX_IDLE_MINUTES = SANDBOX_AUTOSTOP_MINUTES;
 
 const DEAD_STATES = new Set(['destroyed', 'destroying', 'error', 'build_failed']);
 
@@ -110,10 +120,18 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
     },
     { timeout: 300 },
   );
+  // Metered from the moment it exists, not from the moment it is useful. A
+  // clone that takes four minutes and then fails cost four minutes of a running
+  // machine, and a meter that only counted successful sandboxes would report
+  // the cheapest possible version of a bad afternoon.
+  await openSandboxRun(db, orgId, projectId, sandbox.id).catch((err) =>
+    console.error(`could not open a metering segment for ${orgId}/${projectId} (${sandbox.id}):`, err),
+  );
   try {
     await prepare(sandbox, cfg);
   } catch (err) {
     await sandbox.delete(60).catch(() => undefined);
+    await closeSandboxRun(db, sandbox.id, 'failed').catch(() => null);
     throw err;
   }
   await setBuild(db, orgId, projectId, { sandboxId: sandbox.id, repoFullName: cfg.repoFullName, branch: cfg.branch });
@@ -126,6 +144,18 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
  *   - stopped/archived → resume (start)
  *   - deleted upstream → clear and recreate transparently
  * The idle auto-stop means "resume" is the common path, and it's cheap.
+ *
+ * THE ONE PLACE A SANDBOX CAN START, WHICH IS WHY METERING BEGINS HERE.
+ *
+ * Every path that could bring one up — a build turn, a plan turn, a preview, a
+ * ship — comes through this function. Opening the metering segment here rather
+ * than in each of those callers is what makes "never let a sandbox exist that
+ * we aren't metering" a property of the code rather than a rule someone has to
+ * remember on the day they add the fifth caller.
+ *
+ * `openSandboxRun` is idempotent per sandbox: this runs on every turn and
+ * usually finds one already started, so it refreshes the segment's proof of
+ * life rather than opening a second one.
  */
 export async function ensureSandbox(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {
   const build = await getBuild(db, orgId, projectId);
@@ -136,6 +166,11 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
     sandbox = await daytona().get(build.sandboxId);
   } catch (err) {
     if (err instanceof DaytonaNotFoundError) {
+      // Deleted upstream while we thought it was running. Whatever we had open
+      // is closed at the last moment we knew it was alive rather than left to
+      // the sweep, so the replacement below cannot be the second open segment
+      // for this project.
+      await closeSandboxRun(db, build.sandboxId, 'reaper').catch(() => null);
       await clearSandbox(db, orgId, projectId);
       return create(db, orgId, projectId, cfg);
     }
@@ -143,21 +178,36 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
   }
 
   if (sandbox.state && DEAD_STATES.has(sandbox.state)) {
+    // Gone at Daytona, so whatever segment we still had open ended when we last
+    // knew it was alive. Closed before the replacement opens its own, because
+    // two open segments for one project is how the same seconds get counted
+    // twice.
+    await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
     await clearSandbox(db, orgId, projectId);
     return create(db, orgId, projectId, cfg);
   }
   if (sandbox.state !== 'started') await sandbox.start(300);
+  await openSandboxRun(db, orgId, projectId, sandbox.id).catch((err) => {
+    // A meter that fails must not take the turn down with it. It is loud
+    // instead, and the daily reconciliation catches the sandbox either way.
+    console.error(`could not open a metering segment for ${orgId}/${projectId} (${sandbox.id}):`, err);
+  });
   return sandbox;
 }
 
 /** Stop a project's sandbox now (owner left / done). Idle auto-stop is the backstop; this is the explicit one. */
-export async function stopSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
+export async function stopSandbox(db: Db, orgId: string, projectId: string, reason: EndReason = 'user_stop'): Promise<void> {
   const build = await getBuild(db, orgId, projectId);
   if (!build?.sandboxId) return;
   await daytona()
     .get(build.sandboxId)
     .then((s) => (s.state === 'started' ? s.stop() : undefined))
     .catch(() => undefined);
+  // Metered on the way out, and metered even if the stop above failed: the
+  // seconds were spent whether or not Daytona took our word for it.
+  await closeSandboxRun(db, build.sandboxId, reason).catch((err) =>
+    console.error(`could not close the metering segment for ${orgId}/${projectId}:`, err),
+  );
 }
 
 /** Permanently delete a project's sandbox and clear its build state. */
@@ -168,6 +218,7 @@ export async function deleteSandbox(db: Db, orgId: string, projectId: string): P
       .get(build.sandboxId)
       .then((s) => s.delete(60))
       .catch(() => undefined);
+    await closeSandboxRun(db, build.sandboxId, 'user_stop').catch(() => null);
   }
   await clearSandbox(db, orgId, projectId);
 }

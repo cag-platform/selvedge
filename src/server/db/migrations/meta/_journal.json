@@ -225,6 +225,13 @@
       "when": 1787000900000,
       "tag": "0031_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787001000000,
+      "tag": "0032_sandbox_run_segments",
+      "breakpoints": true
     }
   ]
 }

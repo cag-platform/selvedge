@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, text, integer, boolean, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /**
@@ -82,14 +83,21 @@ export const usageBuildMinutes = pgTable(
 );
 
 /**
- * One row per sandbox we ever start, whether or not anything came of it.
+ * One row per PERIOD A SANDBOX WAS RUNNING — not one per sandbox.
  *
- * Daytona bills wall-clock time, so wall-clock time is what this records: from
- * creation to confirmed stop, not CPU time and not the time an agent was
- * actively working. The row exists so that two things are true — we never lose
- * track of a sandbox we started (the reaper reads this table, not Daytona's),
- * and a sandbox that cost money always lands in the meter, including the ones
- * that ended badly.
+ * That distinction is the whole design. A sandbox here belongs to a project and
+ * lives for months: it is created once and then stopped and resumed on every
+ * turn, because a stopped sandbox bills only cheap storage while a running one
+ * bills compute. So the thing that costs money is a start→stop segment, and
+ * that is what gets a row and what gets metered.
+ *
+ * Wall-clock seconds, not CPU time and not the time an agent was actively
+ * working, because wall-clock is what Daytona charges us for.
+ *
+ * The row exists so that two things stay true: we never lose track of a sandbox
+ * we started (the reaper reads THIS table, not Daytona's, so a sandbox we
+ * forgot about is impossible rather than merely unlikely), and a segment that
+ * cost money always lands in the meter — including the ones that ended badly.
  */
 export const sandboxRuns = pgTable(
   'sandbox_runs',
@@ -120,7 +128,11 @@ export const sandboxRuns = pgTable(
     index('sandbox_runs_org_idx').on(t.orgId, t.startedAt),
     // The reaper's query: everything still open, cheaply.
     index('sandbox_runs_open_idx').on(t.endedAt),
-    uniqueIndex('sandbox_runs_sandbox_idx').on(t.daytonaSandboxId),
+    // At most one OPEN segment per sandbox. Two would mean two reapers each
+    // closing "the" run and metering the same seconds twice; the closed history
+    // is free to grow as long as it likes.
+    uniqueIndex('sandbox_runs_open_sandbox_idx').on(t.daytonaSandboxId).where(sql`${t.endedAt} is null`),
+    index('sandbox_runs_sandbox_history_idx').on(t.daytonaSandboxId, t.startedAt),
   ],
 );
 

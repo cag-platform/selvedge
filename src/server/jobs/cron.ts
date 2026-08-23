@@ -13,6 +13,7 @@ import { pollDeployStates } from '../connectors/host/poller.js';
 import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
+import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -55,8 +56,41 @@ export function startCronJobs(db: Db): void {
     }).catch((err) => console.error('deploy poll failed:', err));
   });
 
+  /**
+   * THE SANDBOX SWEEP — every minute, and the reason infra cost is predictable.
+   *
+   * Daytona bills wall-clock time and is roughly three quarters of what this
+   * product costs to run, so the expensive failure is not a sandbox that runs
+   * too long — it is one that finished and stayed up. This closes those within
+   * a minute of the work ending, and meters what they used.
+   *
+   * It reads `sandbox_runs` rather than any in-process state, which is what
+   * makes it survive a restart: a deploy in the middle of a build leaves a
+   * sandbox running and a row open, and the next tick after boot finds it.
+   *
+   * Only fired where Daytona is actually configured — on a deployment without
+   * it there is nothing to sweep and the API calls would just log failures.
+   */
+  if (process.env.DAYTONA_API_KEY) {
+    cron.schedule('* * * * *', () => {
+      runSandboxSweep(db).catch((err) => console.error('sandbox sweep failed:', err));
+    });
+  }
+
   cron.schedule('0 3 * * *', () => {
     runStallSweep(db).catch((err) => console.error('stall sweep failed:', err));
+    // The no-silent-leak check: what Daytona says it is running, against what
+    // we think. Anything it is running that we have no row for is money leaving
+    // with nothing to attribute it to.
+    if (process.env.DAYTONA_API_KEY) {
+      runSandboxReconciliation(db)
+        .then(({ strays, ghosts }) => {
+          if (strays.length || ghosts.length) {
+            console.error(`sandbox reconciliation: ${strays.length} unaccounted-for running, ${ghosts.length} gone without a stop`);
+          }
+        })
+        .catch((err) => console.error('sandbox reconciliation failed:', err));
+    }
     // Handshakes nobody came back from. Consumed states delete themselves; this
     // is only for the owner who closed the popup.
     sweepOAuthStates(db).catch((err) => console.error('oauth state sweep failed:', err));
