@@ -7,9 +7,25 @@ import './index.css';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
-// /styleguide is tokens-only and public; it must render (and be
-// screenshot-testable in dev) with no Clerk configured at all.
-if (!publishableKey && window.location.pathname.startsWith('/styleguide')) {
+/**
+ * PAGES THAT DO NOT NEED AN AUTH PROVIDER TO EXIST.
+ *
+ * The styleguide was here first, so it could be screenshot-tested with no
+ * Clerk configured. The same argument turns out to apply to everything else
+ * public: documentation that disappears when the auth vendor's key is missing
+ * is documentation you cannot link to from an incident, and a security page
+ * that requires a third party's script to load is making a claim it can't
+ * keep.
+ *
+ * These routes are matched in App.tsx BEFORE the authed tree, so they render
+ * perfectly well without a provider. The landing is deliberately NOT in this
+ * list: it renders inside <SignedOut>, which is Clerk's, and a landing page
+ * that loaded but whose "Start free" button did nothing would be worse than
+ * the honest configuration notice below.
+ */
+const PUBLIC_WITHOUT_AUTH = ['/styleguide', '/docs', '/security', '/changelog'];
+
+if (!publishableKey && PUBLIC_WITHOUT_AUTH.some((p) => window.location.pathname.startsWith(p))) {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <BrowserRouter>

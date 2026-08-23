@@ -76,7 +76,13 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
 
 export function Prose({ markdown }: { markdown: string }) {
   const blocks: ReactNode[] = [];
-  const lines = markdown.split('\n');
+  // HTML comments are for whoever edits the file, not for whoever reads the
+  // page. The security page carries a code reference after every claim so the
+  // next person to change that file can see what it promises — those belong in
+  // the source and nowhere else. (Rendering them was visible on the page
+  // before this line existed, which is what looking at it caught and the tests
+  // did not.)
+  const lines = markdown.replace(/<!--[\s\S]*?-->/g, '').split('\n');
   let i = 0;
   let key = 0;
 

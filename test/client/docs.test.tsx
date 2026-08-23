@@ -66,6 +66,17 @@ describe('the docs, security and changelog pages', () => {
       expect(html).toContain('id="what-it-can-t-read"');
     });
 
+    it('keeps the source comments in the source', () => {
+      // The security page carries a code reference after every claim, for
+      // whoever changes that file next. They rendered as visible text on the
+      // page until somebody looked at it — which no test here had caught,
+      // because every one of them asked whether content was PRESENT.
+      const html = renderToStaticMarkup(<Prose markdown={'Claim.\n\n<!-- src/server/x.ts -->\n\nNext.\n'} />);
+      expect(html).not.toContain('src/server/x.ts');
+      expect(html).toContain('Claim.');
+      expect(html).toContain('Next.');
+    });
+
     it('never renders raw HTML from a document', () => {
       // The reason this is ours rather than a library's: HTML passthrough on a
       // page rendered from repo files is not a feature, it is a way for a
