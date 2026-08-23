@@ -3,9 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/clerk-react';
 import App from './App.js';
+import { Landing } from './pages/Landing.js';
 import './index.css';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+
+// A local-only route for visual QA when a Clerk key is intentionally absent.
+// It never exists in a production build and does not alter authenticated routing.
+const landingPreview = import.meta.env.DEV && window.location.pathname === '/landing-preview';
 
 /**
  * PAGES THAT DO NOT NEED AN AUTH PROVIDER TO EXIST.
@@ -25,7 +30,11 @@ const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | un
  */
 const PUBLIC_WITHOUT_AUTH = ['/styleguide', '/docs', '/security', '/changelog'];
 
-if (!publishableKey && PUBLIC_WITHOUT_AUTH.some((p) => window.location.pathname.startsWith(p))) {
+if (landingPreview) {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode><BrowserRouter><Landing /></BrowserRouter></React.StrictMode>,
+  );
+} else if (!publishableKey && PUBLIC_WITHOUT_AUTH.some((p) => window.location.pathname.startsWith(p))) {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <BrowserRouter>

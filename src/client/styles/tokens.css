@@ -62,9 +62,9 @@
 
   /* Landing scale — the marketing page only. The app never shouts; the one
      page allowed a raised voice still speaks in tokens. */
-  --text-section: 26px; /* landing section headings (Fraunces) */
+  --text-section: clamp(34px, 5vw, 58px); /* landing editorial section headings */
   --text-hero-sub: clamp(17px, 2.2vw, 21px); /* hero subline */
-  --text-hero: clamp(34px, 5.5vw, 54px); /* the hero claim (Fraunces) */
+  --text-hero: clamp(48px, 7.5vw, 88px); /* the hero claim (Fraunces) */
 
   /* ---- DENSITY: two settings of the same cloth ----
      The reading register (Today, the brief, a project card) keeps the airy

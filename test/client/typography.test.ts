@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, globSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { globSync } from 'glob';
 
 /**
  * THE DIFFERENCE BETWEEN FRAUNCES SET WELL AND FRAUNCES SET CARELESSLY.
