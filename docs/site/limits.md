@@ -2,7 +2,7 @@
 
 This is the page most products don't write. It is here because a tool that
 tells you when something is wrong is only worth having if you know what it is
-not looking at — otherwise silence means two different things and you can't
+not looking at. Otherwise silence means two different things, and you can't
 tell which one you're getting.
 
 The rule underneath all of it: **a confidently wrong "everything's fine" is the
@@ -14,9 +14,8 @@ seriously.
 Every project wears a status edge. Three of them are solid and say something.
 The fourth is **dashed**, and it means "I looked and I can't tell".
 
-It is a different shape rather than a paler colour on purpose. A greyed-out
-version of "fine" reads as fine; a dashed seam does not read as anything but
-itself.
+It is a different shape, not a paler colour, on purpose. A greyed-out version
+of "fine" reads as fine; a dashed seam reads as nothing but itself.
 
 You will see it when:
 
@@ -35,7 +34,7 @@ strongest one, **verified**, requires that a different model than the one that
 wrote the change read the actual diff and agree.
 
 Without a second provider's key connected, that check cannot happen — so
-verdicts honestly top out at **probably**, and never claim more. The card says
+verdicts top out at **probably**, and never claim more. The card says
 which one it was and when the check happened.
 
 ## When Selvedge stays silent about what caused a break
@@ -53,7 +52,7 @@ It refuses to guess. Specifically:
 - **Ambiguity is named, never resolved.** If two changes could equally be
   behind it, it says two, and says it can't tell which. That is a correct
   answer, and a coin toss dressed as a diagnosis is not.
-- **It never says "caused".** "Began after" is what the evidence supports — a
+- **It never says "caused".** "Began after" is what the evidence supports: a
   commit landed, then something broke. That is a lead worth following, not a
   verdict.
 
@@ -71,7 +70,7 @@ It refuses to guess. Specifically:
 ## What it never touches
 
 - **Your code never leaves your machine through the companion.** Summaries
-  only — the field list is on [the companion page](/docs/companion), and there
+  only; the field list is on [the companion page](/docs/companion), and there
   is nowhere in Selvedge to put a transcript or a diff.
 - **The sandbox is not your production.** Builders work on a branch in a
   container. Nothing reaches your main branch until you ship it.

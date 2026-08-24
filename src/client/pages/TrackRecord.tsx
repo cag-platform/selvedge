@@ -51,8 +51,8 @@ export function TrackRecord() {
 
       {entries.length === 0 ? (
         <EmptyState>
-          Nothing finished yet. Every change I complete lands here with what it cost and how it turned out &mdash; the
-          good and the honest misses.
+          Nothing finished yet. Every change I complete lands here with what it cost and how it turned out, the
+          good and the misses both.
         </EmptyState>
       ) : (
         <section>

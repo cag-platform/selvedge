@@ -1,8 +1,8 @@
 # Security
 
 Written by the person who built it, saying where your data is and what can
-reach it. Not a badge wall — there are no badges to show, and the last section
-says so plainly.
+reach it. There is no badge wall because there are no badges to show; the last
+section says so.
 
 <!-- Every claim on this page is checked against the code before it ships.
      The reference after each is the file that makes it true, so the next
@@ -14,7 +14,7 @@ Postgres, on Railway, in the United States. One database, one row per thing,
 every query scoped to your workspace.
 
 What is in it: your conversations, the summaries your terminal sessions
-reported, the events the watching recorded, and the "pack" — Selvedge's written
+reported, the events the watching recorded, and the "pack", Selvedge's written
 understanding of each project.
 
 What is not in it: **your code**, and **your transcripts from other tools**.
@@ -26,8 +26,8 @@ what persists afterwards is the commit, not a copy.
 ## Your keys
 
 Encrypted before they touch the database, with AES-256-GCM under a key derived
-per organisation — the workspace id is part of the derivation, so a credential
-row moved to another workspace decrypts to nothing rather than to a usable key.
+per organisation. The workspace id is part of the derivation, so a credential
+row moved to another workspace decrypts to nothing.
 
 There is exactly one code path that decrypts, and it hands the secret straight
 to the call being made. Nothing lists them, nothing displays them, nothing logs
@@ -43,8 +43,8 @@ it worked. Removing one takes effect immediately.
 ## The companion
 
 Summaries only. The exact field list is on [the companion
-page](/docs/companion), and the honest version of "could it send my code?" is
-that there is no field for a transcript and no field for a diff — there is
+page](/docs/companion), and the straight answer to "could it send my code?" is
+that there is no field for a transcript and no field for a diff: there is
 nowhere in Selvedge to put one.
 
 `selvedge watch --dry-run` prints exactly what would be sent, and sends
@@ -52,7 +52,7 @@ nothing.
 
 The key it authenticates with is **hashed with SHA-256 before storage**. The
 plaintext is shown once, at the moment you make it, and is not recoverable
-afterwards — if you lose it, you make another and revoke the old one. Revoking
+afterwards. If you lose one, make another and revoke the old. Revoking
 takes effect immediately.
 
 <!-- src/server/companion/tokens.ts — createHash('sha256'), timingSafeEqual on
@@ -61,7 +61,7 @@ takes effect immediately.
 ## What Selvedge's own agent can touch
 
 A builder works in a **Daytona sandbox**: a container with a clone of your
-repo, on a branch. It has the repo and nothing else — no access to your other
+repo, on a branch. It has the repo and nothing else: no access to your other
 projects, your keys, or anything else in your workspace.
 
 The credential it clones with is a **short-lived GitHub App installation
@@ -72,9 +72,8 @@ deployment-wide one.
 Nothing reaches your main branch until you ship it. Before that:
 
 - **A sensitive diff is hard-gated.** Anything touching payments, auth, or user
-  data requires a confirmed backup — and the gate fires on any one of those
-  signals, so a change labelled "just copy" that also touches auth is still
-  gated.
+  data requires a confirmed backup. The gate fires on any one of those signals:
+  a change labelled "just copy" that also touches auth is still gated.
 - **Caps genuinely stop work.** A conversation's spend ceiling pauses the next
   turn and shows the real figures. Raising it is deliberate and recorded.
 - **A ship can be undone.** Undo is a real `git revert`, and a confirmed break
@@ -87,7 +86,7 @@ Nothing reaches your main branch until you ship it. Before that:
 ## Signing in, and what arrives with you
 
 Sign-in is handled by Clerk, with GitHub and Google alongside email. A social
-sign-in proves **identity only** — your name, email and avatar. It does not
+sign-in proves **identity only**: your name, email and avatar. It does not
 grant access to your repositories: that stays a separate, explicit step (the
 GitHub App install), scoped to the repos you pick and revocable per repo.
 
@@ -96,12 +95,12 @@ one thing: greeting you with your public repos so bringing them in is one
 step. The token is fetched from Clerk per request, sent to GitHub as a header,
 and never stored, logged, or shown to a browser.
 
-The imports follow the same shape — each one moves something that is already
+The imports follow the same shape. Each moves something that is already
 yours, once, from a file or grant you chose:
 
 - **A Replit zip** is validated before anything is created. Its files land in
   a **private repo under your GitHub**, workspace junk is left behind and
-  named, and secrets never ride along — a Repl's env lives in Replit's vault,
+  named, and secrets never ride along: a Repl's env lives in Replit's vault,
   not its filesystem, so there is nothing in the zip to leak.
 - **Cursor chats** are read on your own machine, by the companion, from the
   local file Cursor keeps them in. They travel over the same hashed-key
@@ -110,7 +109,7 @@ yours, once, from a file or grant you chose:
 - **A database Selvedge provisioned** sits on Selvedge's Neon account until
   you claim it. The claim link expires after seven days, the accept happens in
   your browser with your own Neon login, and after the move Selvedge keeps
-  nothing — the connection string keeps working, so your app never notices.
+  nothing; the connection string keeps working, so your app never notices.
 
 <!-- src/server/connectors/github/personal.ts — token per-request, header-only;
      src/server/import/replitApp.ts + web/routes/importReplit.ts — validate
@@ -122,20 +121,19 @@ yours, once, from a file or grant you chose:
 ## Leaving
 
 Everything Selvedge knows exports as one JSON file, whenever you like, from
-Projects. It carries the project packs, the learned meanings, and the timeline
-— in the same sentences the product shows you. Being able to leave is what
+Projects. It carries the project packs, the learned meanings, and the timeline,
+in the same sentences the product shows you. Being able to leave is what
 makes the record worth keeping.
 
 Deleting a **project** deletes it: its events and its narrations are purged in
 one transaction. A row is kept as a tombstone with nothing in it, because a
 project created from a GitHub repo would otherwise be recreated by the next
-sync — it exists so the repo stays deleted.
+sync; the tombstone keeps it deleted.
 
 **Deleting your whole account is not a button yet.** Today it is a request:
-email the address below and I do it by hand, within a working day. That is the
-truth rather than a softer version of it, and it is on the roadmap precisely
-because "email the founder" does not scale past the number of customers this
-has.
+email the address below and I do it by hand, within a working day. It is on
+the roadmap because "email the founder" does not scale past the number of
+customers this has.
 
 <!-- src/server/web/routes/portability.ts — GET /api/export;
      src/server/packs/store.ts — deletePack purges narrations + events in a

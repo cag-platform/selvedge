@@ -152,7 +152,7 @@ function Ask() {
           {/* The way out of "just talking" is named where the talking starts:
               the same @-mention that moves any conversation to a builder. */}
           <p className="px-1 text-meta text-ink-quiet">
-            Name a builder when it should become code &mdash; <span className="font-mono text-tech">@claudecode</span> takes it from
+            Name a builder when it should become code: <span className="font-mono text-tech">@claudecode</span> takes it from
             there.
           </p>
           <button

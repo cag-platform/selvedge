@@ -91,7 +91,7 @@ function Walkthrough({ projects }: { projects: ProjectCardData[] }) {
   return (
     <Pane className="mb-6 p-6">
       <p className="text-body-lg text-ink">
-        {projects.length === 0 ? 'Nothing to watch yet — three steps and the watching begins.' : 'Almost there.'}
+        {projects.length === 0 ? 'Nothing to watch yet. Three steps and the watching begins.' : 'Almost there.'}
       </p>
       <ol className="mt-4 space-y-4">
         {steps.map((step) => (
@@ -204,7 +204,7 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
             {brandNew && (
               <span className="mt-1 block text-body text-ink-quiet">
                 A private repo named after the project, made for you on GitHub. It starts as a
-                sandbox — you land in the Workshop and just start building.
+                sandbox: you land in the Workshop and just start building.
               </span>
             )}
             {repo === '__manual__' && (

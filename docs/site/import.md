@@ -2,7 +2,7 @@
 
 The conversations you have already had elsewhere are yours. Selvedge takes the
 export those tools already give you and turns those chats into ordinary threads
-here — searchable, part of the record, and reachable from any conversation with
+here: searchable, part of the record, reachable from any conversation with
 `#`.
 
 It happens once, from a file you choose. Nothing is connected, and nothing
@@ -26,9 +26,9 @@ file.
 
 ## What comes in
 
-Every conversation becomes a thread, marked **imported** — because none of it
-was said to Selvedge, and a record that blurred that line would be worth less
-than one that doesn't.
+Every conversation becomes a thread, marked **imported**, because none of it
+was said to Selvedge. A record that blurred that line would be worth less than
+one that doesn't.
 
 By default they are filed under the account rather than inside a project. A
 year of thinking about six different things is not "about Loom", and the point
@@ -38,14 +38,13 @@ subject at upload time when a history really is about one thing.
 ## What can't be read, and how you are told
 
 Whatever could not be read is **listed with a reason**, beside the count of
-what came in. Not summarised, not counted-and-forgotten: an import that
-silently drops three hundred entries and reports success is the same shape of
-lie as a health check that reports fine because it never ran.
+what came in. An import that drops three hundred entries and reports success
+is lying about your history, so this one lists them.
 
 ## What the format itself can't carry
 
 Some limits are the export's, not Selvedge's, and they are stated whether or
-not anything went wrong — because they apply to the successful import too:
+not anything went wrong, because they apply to the successful import too:
 
 - **Google's export records what you asked Gemini, not what Gemini answered.**
   You get your side of the conversation.
@@ -78,9 +77,9 @@ other import.
 A different kind of import: not chats, a **working app** on its way from a
 workspace you rent to a repo you own. In Replit, download the Repl as a zip
 (files pane → ⋮ → Download as zip), then use **Import from Replit** on the
-Projects page. Selvedge filters out the workspace junk — node_modules, caches,
-virtualenvs — names what it left behind, creates a private repo under your
-GitHub, lands the files as one commit, and opens the project's workshop.
+Projects page. Selvedge filters out the workspace junk (node_modules, caches, virtualenvs),
+names what it left behind, creates a private repo under your GitHub, lands the
+files as one commit, and opens the project's workshop.
 
 Two things it tells you up front, because they are true: secrets never travel
 in the zip (a Repl's env lives in Replit's vault, so paste it into the preview

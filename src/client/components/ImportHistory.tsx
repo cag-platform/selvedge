@@ -186,7 +186,7 @@ export function ImportHistory() {
           )}
           {result.unreadable.length > 0 && (
             <div>
-              <p className="text-label font-body uppercase tracking-widest text-thread">Not imported — I couldn’t read these</p>
+              <p className="text-label font-body uppercase tracking-widest text-thread">Not imported: I couldn’t read these</p>
               <ul className="mt-1 font-mono text-tech text-ink-quiet">
                 {result.unreadable.map((u) => (
                   <li key={u.ref}>

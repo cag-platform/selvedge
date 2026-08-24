@@ -1,8 +1,8 @@
 # Keys and spending
 
 Selvedge runs on your own model access. It charges for the window and the
-record, not for the tokens — which means it has no reason to want your
-conversations longer than they need to be.
+record, not for the tokens, so it has no reason to want your conversations
+longer than they need to be.
 
 ## Which key goes where
 
@@ -17,9 +17,9 @@ conversations longer than they need to be.
 - **DeepSeek** — powers `@deepseek`.
 - **Mistral** — powers `@mistral`.
 
-Connect one and that agent answers. Connect none and it says so plainly rather
-than quietly answering as somebody else — which is the only reason the list can
-be this long without becoming a list of promises.
+Connect one and that agent answers. Connect none and it says so, instead of
+quietly answering as somebody else. That is what lets the list be this long
+without becoming a list of promises.
 - **Railway / Vercel** — read-only enough to see whether your deploys went live
   or failed.
 - **Supabase, Neon** — only if you ask Selvedge to put something online that
@@ -31,8 +31,8 @@ save it, so "connected" means it worked, not that the field was filled in.
 ## How they are stored
 
 Encrypted before they touch the database, with AES-256-GCM, under a key derived
-per organisation — so a credential is bound to both the workspace and the
-provider it was saved for, and a row moved between the two decrypts to nothing.
+per organisation. A credential is bound to both the workspace and the provider
+it was saved for; a row moved between the two decrypts to nothing.
 
 There is exactly one code path that decrypts, and it hands the secret straight
 to the call being made. Nothing lists them, nothing displays them, and nothing
@@ -62,16 +62,15 @@ gets a stricter one.
 
 **The ceiling is a pause, not a wall.** When it is reached, the next turn stops
 and the conversation tells you what it has spent and what it was allowed to
-spend — the real figures. Carrying on is one press, which raises the ceiling by
+spend: the real figures. Carrying on is one press, which raises the ceiling by
 one more ceiling's worth, and the raise is recorded on the conversation. A limit
 that can be lifted invisibly is the same as no limit at all.
 
 ## Why an unreported cost shows as unknown, not zero
 
-Some work costs money that Selvedge cannot see — a session your terminal ran
+Some work costs money that Selvedge cannot see: a session your terminal ran
 that did not report its cost, a provider that returned no usage figure.
 
-Those show as **unknown**, and are never folded in as zero. A total that
-quietly treats missing numbers as nothing is a total that goes down when
-Selvedge loses track, which is precisely backwards, and it is the kind of
-comfortable arithmetic this product does not do.
+Those show as **unknown**, never folded in as zero. A total that treats
+missing numbers as nothing goes down exactly when Selvedge loses track, which
+is backwards.

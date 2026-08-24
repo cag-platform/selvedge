@@ -367,7 +367,7 @@ function BeaconSection({ projectId }: { projectId: string }) {
 
       {token && (
         <div className="space-y-1 rounded-inset border border-hairline bg-panel-soft px-3 py-2">
-          <p className="text-meta text-ink-dim">Your beacon token — copy it now, it won’t be shown again:</p>
+          <p className="text-meta text-ink-dim">Your beacon token. Copy it now; it won’t be shown again:</p>
           <code className="block break-all font-mono text-tech text-ink">{token}</code>
           <p className="text-meta text-ink-quiet">
             Have your app POST {`{ errors, requests }`} per window to <span className="font-mono">/beacons/errors</span> with

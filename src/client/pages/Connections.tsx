@@ -39,8 +39,8 @@ export function Connections() {
       <div>
         <h1 className="text-display font-display font-medium text-ink">Connections</h1>
         <p className="mt-2 max-w-xl text-body text-ink-dim">
-          Connect your own AI model key to turn on the voice. Selvedge charges for the layer — the watching, the
-          explaining, the caps and checkpoints — not for the model. The key is yours, checked before it’s saved, and you
+          Connect your own AI model key to turn on the voice. Selvedge charges for the layer (the watching, the
+          explaining, the caps and checkpoints), not for the model. The key is yours, checked before it’s saved, and you
           can remove it any time.
         </p>
       </div>
@@ -48,7 +48,7 @@ export function Connections() {
       <section>
         <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Connected</p>
         {state.connected.length === 0 ? (
-          <p className="text-body text-ink-quiet">Nothing connected yet — add a key below and the brief gains its voice.</p>
+          <p className="text-body text-ink-quiet">Nothing connected yet. Add a key below and the brief gains its voice.</p>
         ) : (
           <div className="space-y-2">
             {state.connected.map((c) => (
@@ -362,7 +362,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
         */}
         {effectiveKind === 'subscription' ? (
           <p className="text-meta text-ink-quiet">
-            Your Claude subscription — run <code className="font-mono text-tech">claude setup-token</code> and paste what it prints. It
+            Your Claude subscription: run <code className="font-mono text-tech">claude setup-token</code> and paste what it prints. It
             can’t be checked from here the way a key can; your first build will prove it.
           </p>
         ) : (

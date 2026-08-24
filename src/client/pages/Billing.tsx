@@ -98,7 +98,7 @@ export function Billing() {
       {state.needs_attention && (
         <Pane className="border-thread">
           <p className="text-body text-ink">
-            Your last payment didn’t go through. Everything still works for now — update your card and nothing changes.
+            Your last payment didn’t go through. Everything still works for now; update your card and nothing changes.
           </p>
           <button className={`${btnPrimary} mt-3`} disabled={busy} onClick={() => void go('/api/billing/portal')}>
             Update card

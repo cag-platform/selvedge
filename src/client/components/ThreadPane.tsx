@@ -715,7 +715,7 @@ export function ThreadPane({
             {/* What survives the move, said before it happens — because the
                 whole reason to have had the idea here is that it does. */}
             <p className="text-meta text-ink-quiet">
-              This conversation moves with it — everything said here stays, and the next turn builds.
+              This conversation moves with it: everything said here stays, and the next turn builds.
             </p>
 
             {needsProject.refusal.projects.length > 0 && (
@@ -895,7 +895,7 @@ export function ThreadPane({
             couldn't also change its mind halfway. */}
         {!data.engine_on && workshop && (
           <p className="mt-work-tight text-meta text-ink-quiet">
-            The workshop isn’t switched on here yet — the build engine’s credentials aren’t configured. The watching is unaffected, and talking still works.
+            The workshop isn’t switched on here yet: the build engine’s credentials aren’t configured. The watching is unaffected, and talking still works.
           </p>
         )}
       </div>

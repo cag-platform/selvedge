@@ -1,12 +1,12 @@
 # Changelog
 
 What changed, in the same words the commits use. An entry ships with every
-deploy that changes behaviour — an empty month here is the thing this page
+deploy that changes behaviour; an empty month here is the thing this page
 exists to prevent.
 
 ## 24 August 2026
 
-- Sign in with GitHub or Google — the same two doors on the web and the phone,
+- Sign in with GitHub or Google: the same two doors on the web and the phone,
   with email still there for everyone else.
 - Arrive through GitHub and Selvedge greets you as your GitHub self: your
   repos, freshest first, and one step from each becoming a project.
@@ -27,12 +27,12 @@ exists to prevent.
 - A conversation names itself after the first thing you say in it, until you
   name it yourself.
 - Search looks where you are before it looks everywhere, and says which it
-  did — "found nothing in ringrunner, so searched everything" is a different
-  sentence from "found this in ringrunner".
+  did: "found nothing in ringrunner, so searched everything" and "found this
+  in ringrunner" are different answers.
 - A project that cannot be previewed says what it is instead: an Xcode project
   gets a sentence, not a directory listing.
 - 111 incidents that never happened are deleted, and a test now walks every
-  event the tripwire counts as "users affected" through the real templates —
+  event the tripwire counts as "users affected" through the real templates,
   so a contradiction can only be declared about something that contradicts.
 
 ## 23 August 2026
@@ -46,7 +46,7 @@ exists to prevent.
 - The landing stops shipping the app it is describing: everything behind a
   session is split per route, so a first visitor no longer downloads a
   workbench they cannot open.
-- Set, not just typed — real apostrophes, tabular figures, balanced headings,
+- Set, not just typed: real apostrophes, tabular figures, balanced headings,
   and a test that will still be switched on in a year.
 - Panes hold their shape while they fill. Shaped skeletons, a 150ms floor so
   the shape never flashes, and an honest sentence past eight seconds instead of
@@ -60,7 +60,7 @@ exists to prevent.
 - One product, one sentence: the documents and the landing page catch up with
   what the code has been for months.
 - A place you are not working in can be put away. It leaves the rail and
-  nothing else — still watched, still reachable by `#`, and the count of what
+  nothing else: still watched, still reachable by `#`, and the count of what
   is folded is always on screen.
 - Codex builds on the key you connected, not the one in the environment.
 - A long paste becomes an attachment rather than a wall of text, on both the

@@ -51,7 +51,7 @@ if (landingPreview) {
       <h1 style={{ fontSize: 20, marginBottom: 8 }}>Selvedge isn’t finished configuring.</h1>
       <p style={{ lineHeight: 1.5, color: '#5f6a77' }}>
         Sign-in can’t load because <code>VITE_CLERK_PUBLISHABLE_KEY</code> wasn’t set when this build was made.
-        It has to be present at build time, not just at runtime — set it in the service’s build variables and redeploy.
+        It has to be present at build time, not just at runtime. Set it in the service’s build variables and redeploy.
       </p>
     </div>,
   );

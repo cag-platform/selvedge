@@ -16,15 +16,15 @@ selvedge watch
 ```
 
 Make the key under **Connections → Your machines**. It is shown once, and only
-once — see [Security](/security) for why.
+once; the [Security](/security) page explains why.
 
 ## What it reads
 
 Session files that these tools already write on your own disk:
 
 - **Claude Code** and **Codex** — proven, and what most people run.
-- **Cursor** and **Gemini CLI** — marked plainly as unproven in the product,
-  because they are read from formats that have changed under us before.
+- **Cursor** and **Gemini CLI** — marked as unproven in the product; their
+  formats have changed under us before.
 
 It reads the files those tools leave behind. It does not attach to a process,
 watch your keystrokes, or read anything you did not run through one of them.
@@ -46,7 +46,7 @@ One summary per session, with these fields and no others:
 - `detail` — one line when the outcome needs explaining
 
 That is the whole list. There is no field for a transcript and no field for a
-diff, which is the real answer to "could it send my code?" — there is nowhere
+diff. That is the real answer to "could it send my code?": there is nowhere
 in Selvedge to put it.
 
 If you would rather see it than take this page's word for it:
@@ -59,15 +59,15 @@ prints exactly what would be sent, and sends nothing.
 
 ## What it can't read
 
-A session it could not parse is **said out loud** rather than quietly skipped.
-A tool that changes its session format will produce sessions Selvedge can't
-read, and you will be told that happened rather than shown a shorter history
-than you actually have.
+A session it could not parse is **listed, with a reason**. A tool that changes
+its session format will produce sessions Selvedge can't read; when that
+happens you are told, instead of being shown a shorter history than you
+actually have.
 
 ## Context, served back
 
-The same program is an MCP server, so any agent that speaks MCP — Claude Code,
-Codex, anything else — can mount your project's context and start a session
+The same program is an MCP server, so any agent that speaks MCP (Claude Code,
+Codex, anything else) can mount your project's context and start a session
 already knowing what the project is:
 
 ```
@@ -75,7 +75,7 @@ claude mcp add selvedge-context -- selvedge context
 ```
 
 Three read-only tools: what this project is, what changed lately, what is open.
-Read-only on purpose — agents consume context here, they never edit what
+Read-only on purpose: agents consume context here, and never edit what
 Selvedge believes.
 
 ## How to stop it

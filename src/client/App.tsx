@@ -78,7 +78,7 @@ function AuthedApp() {
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
                   <p className="max-w-sm text-body text-ink-dim">
-                    Every project&rsquo;s conversations, agents, and record &mdash; one window.
+                    Every project&rsquo;s conversations, agents, and record, in one window.
                   </p>
                 </div>
                 <SignIn signUpUrl="/sign-up" />
