@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { AgentChip } from './AgentChip.js';
-import { railPlaces, splitPutAway, whenShort, type InboxData, type RailPlace, type ThreadRow } from '../lib/inbox.js';
+import { placeLines, railPlaces, splitPutAway, whenShort, type InboxData, type RailPlace, type ThreadRow } from '../lib/inbox.js';
 import { putAwayLine, PUT_AWAY, BRING_BACK, PUT_AWAY_NOTE } from '../../shared/putAway.js';
 import { EmptyState } from './ui.js';
 
@@ -12,8 +12,8 @@ import { EmptyState } from './ui.js';
  * ONE LIST. It used to carry two, under two headings, and the owner had to
  * know whether a thing was a "project" or a "subject" before they could start
  * a conversation about it. They are the same thing; one of them has code. So
- * the rail is one list ordered by what needs you, and the only difference is
- * what it can honestly say about each place.
+ * the rail is one list ordered by where you were last, and the only difference
+ * is what it can honestly say about each place.
  *
  * ONE CHAT. It also used to nest a list of threads under every project, which
  * in practice split by agent — "GPT Workshop" above "CC Workshop", the same
@@ -24,14 +24,12 @@ import { EmptyState } from './ui.js';
  *
  * ONE LIST YOU CAN STILL READ. The list is the right length at four places and
  * the wrong length at forty, and a rail you scroll past is a rail you stop
- * reading — which costs the product's oldest acceptance test, that a stranger
- * reads the whole stack's health from the edges alone. So a place you are not
- * working in can be put away: it leaves the list, keeps everything else, and
- * the count of what is folded is always on screen. See shared/putAway.ts.
+ * reading. So a place you are not working in can be put away: it leaves the
+ * list, keeps everything else, and the count of what is folded is always on
+ * screen. See shared/putAway.ts.
  *
- * It carries that acceptance test into the new room: a place with code keeps
- * its selvedge edge and its plain health line — and a place without gets
- * NEITHER, because a status on it would be a claim about nothing.
+ * A place with code keeps its selvedge edge — and a place without gets none,
+ * because a status on it would be a claim about nothing.
  *
  * Two things left the rail. The morning brief, because it is retired; and the
  * unsorted line, because filing what Selvedge has seen is settings work and
@@ -72,6 +70,7 @@ export function Rail({
 
   function row(place: RailPlace) {
     const active = (place.chat && place.chat.id === activeThreadId) || place.id === activeProjectId;
+    const lines = placeLines(place);
     return (
       // A container rather than one big button: the fold gesture is a button of
       // its own, and a button inside a button is not a thing a browser will
@@ -100,12 +99,17 @@ export function Rail({
                 <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</span>
               )}
             </span>
-            {/* Colour is never the only signal — but where there is no
-                signal, there is no sentence either. */}
-            {place.health && <span className="block truncate text-meta text-ink-quiet">{place.health}</span>}
-            {!place.chat && (
-              <span className="block truncate text-meta text-ink-quiet">Nothing said here yet — open it and start.</span>
-            )}
+            {/* WHAT THIS PLACE IS, in the owner's own words. The second line
+                used to be the health line and only the health line, so a
+                project that had never reported carried a name, a time and a
+                chip — which is almost every project, because a health signal
+                needs a host connector or the app to have been put online
+                through Selvedge. See placeLines. */}
+            <span className="block truncate text-meta text-ink-quiet">{lines.said}</span>
+            {/* And a third line only where colour cannot carry it. The edge
+                already says healthy, working and can't-tell; "needs you" is the
+                one that has to be readable as a sentence. */}
+            {lines.note && <span className="block truncate text-meta text-thread">{lines.note}</span>}
           </span>
 
           {/* Who is on it right now. One conversation per project, so this is

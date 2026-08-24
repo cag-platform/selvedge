@@ -145,8 +145,8 @@ export function byRecency<T extends { name: string; chat: { last_at?: string | n
  *
  * A place with no code gets no edge and no health line, because a status on it
  * would be a claim about nothing — the false-calm rule, applied to absence
- * rather than to uncertainty. And it sorts after everything that has one: a
- * place that cannot be broken must never outrank one that is.
+ * rather than to uncertainty. That is now the ONLY difference between the two:
+ * they share one order, by when you were last there. See byRecency.
  */
 export type RailPlace = {
   id: string;
@@ -221,6 +221,43 @@ export function splitPutAway(places: RailPlace[]): { atHand: RailPlace[]; putAwa
     putAway: places.filter((p) => p.putAway),
   };
 }
+
+/**
+ * WHAT A ROW ACTUALLY SAYS, which for most rows was nothing.
+ *
+ * The second line used to be the health line, and only the health line. A
+ * project that has never reported has no health line, so those rows carried a
+ * name, a timestamp and a two-letter chip — and since almost nothing reports
+ * (a health signal needs a host connector delivering deploy events, or the app
+ * to have been put online through Selvedge), that was almost every row. Twelve
+ * names in a column with no way to tell one from another without opening it.
+ *
+ * The conversation's own title is the obvious thing to say and was sitting
+ * right there in the payload, unused. "Checkout rework" tells you what that
+ * place IS in a way "Loom" never can.
+ *
+ * HEALTH DROPS TO A THIRD LINE, AND ONLY WHEN IT NEEDS WORDS. The edge already
+ * carries the status for every other case — that is what the edge is for — and
+ * spending a whole line on "Everything users touch is healthy." to push what
+ * you were doing off the row is the wrong trade. `needs` keeps its sentence,
+ * because that is the one a colour alone cannot make actionable.
+ */
+export type PlaceLines = {
+  /** The second line: what this place is, in the owner's own words. */
+  said: string;
+  /** A third line, or nothing. Present only where colour is not enough. */
+  note: string | null;
+};
+
+export function placeLines(place: Pick<RailPlace, 'chat' | 'health' | 'status'>): PlaceLines {
+  return {
+    said: place.chat?.title?.trim() || NOTHING_SAID,
+    note: place.status === 'needs' && place.health ? place.health : null,
+  };
+}
+
+/** Said where a place exists but nobody has opened the conversation yet. */
+export const NOTHING_SAID = 'Nothing said here yet — open it and start.';
 
 /** A thread's date, said the way a person would in a list. */
 export function whenShort(iso: string, now: Date = new Date()): string {

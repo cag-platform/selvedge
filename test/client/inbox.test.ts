@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { allThreads, matches, railPlaces, splitPutAway, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
+import {
+  allThreads,
+  matches,
+  placeLines,
+  railPlaces,
+  splitPutAway,
+  whenShort,
+  NOTHING_SAID,
+  type ProjectRow,
+  type SubjectRow,
+} from '../../src/client/lib/inbox.js';
 import { putAwayLine } from '../../src/shared/putAway.js';
 
 const project = (over: Partial<ProjectRow>): ProjectRow => ({
@@ -193,5 +203,52 @@ describe('a place folded out of the rail', () => {
     expect(putAwayLine(3)).toBe('3 put away');
     // Nothing folded is nothing said — the rail shows no line at all.
     expect(putAwayLine(0)).toBe('');
+  });
+});
+
+/**
+ * WHAT A ROW ACTUALLY SAYS, which for most rows was nothing.
+ *
+ * The second line used to be the health line and only the health line. A
+ * health signal needs a host connector delivering deploy events, or the app to
+ * have been put online through Selvedge — so on a real account almost nothing
+ * has one, and almost every row carried a name, a timestamp and a two-letter
+ * chip. Twelve names in a column with no way to tell them apart.
+ */
+describe('the second line of a row', () => {
+  const chat = (title: string) => ({ id: 't', kind: 'general' as const, title, agent: 'claude', chip: 'CL', working: false, last_at: '2026-08-24T09:00:00Z' });
+
+  it('says what the place is, in the words the conversation was given', () => {
+    expect(placeLines({ chat: chat('Checkout rework'), health: null, status: null }).said).toBe('Checkout rework');
+  });
+
+  it('says the same thing whether or not health has ever reported', () => {
+    // The row must not go blank just because nothing is watching the project —
+    // which was the whole bug.
+    const quiet = placeLines({ chat: chat('Checkout rework'), health: null, status: null });
+    const watched = placeLines({ chat: chat('Checkout rework'), health: 'Everything users touch is healthy.', status: 'healthy' });
+    expect(watched.said).toBe(quiet.said);
+    // And a calm health line never gets a line of its own: the edge already
+    // says it, and spending a row on it pushes off what you were doing.
+    expect(watched.note).toBeNull();
+  });
+
+  it('gives a needs-you sentence its own line, because colour alone is not actionable', () => {
+    const line = placeLines({ chat: chat('Checkout rework'), health: 'Looks down right now.', status: 'needs' });
+    expect(line.said).toBe('Checkout rework');
+    expect(line.note).toBe('Looks down right now.');
+  });
+
+  it('never promotes working or cannot-tell to a sentence — that is what the edge is for', () => {
+    expect(placeLines({ chat: chat('x'), health: 'Two branches in motion.', status: 'working' }).note).toBeNull();
+    expect(placeLines({ chat: chat('x'), health: "I can't fully verify this.", status: 'unknown' }).note).toBeNull();
+  });
+
+  it('invites you in when nobody has said anything yet', () => {
+    expect(placeLines({ chat: null, health: null, status: null }).said).toBe(NOTHING_SAID);
+  });
+
+  it('treats a blank or whitespace title as nothing said, rather than printing an empty line', () => {
+    expect(placeLines({ chat: chat('   '), health: null, status: null }).said).toBe(NOTHING_SAID);
   });
 });
