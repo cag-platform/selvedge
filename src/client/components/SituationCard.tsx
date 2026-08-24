@@ -33,17 +33,52 @@ function ConfidenceNote({ confidence }: { confidence?: 'high' | 'medium' | 'low'
  * positive signal. Collapsed to a single, near-invisible "wasn't helpful?"
  * so a page of ten items doesn't read as twenty links of chrome; the two
  * real options appear only once the owner reaches for them.
+ *
+ * "NOTED" USED TO BE UNCONDITIONAL. The send sat in a try/finally with no
+ * catch, so a request that never reached the server still printed the word —
+ * and the word is permanent, so there was no second chance to notice. That is
+ * the worst shape a failure can take here: a tap does real work on the way in
+ * (it retires the library entry that produced the wording, so the next
+ * identical event is narrated afresh), and losing one silently means the same
+ * sentence keeps coming back to somebody who believes they have already said
+ * it doesn't work.
+ *
+ * The optimism is kept, because it was right — a person should not watch a
+ * spinner to complain about a sentence. What changed is that a failure is
+ * allowed to arrive late and say so, with the tap still in hand.
  */
+type TapPhase = 'idle' | 'offering' | 'noting' | 'sent' | 'failed';
+
 export function FeedbackTaps({ narrationId }: { narrationId: string }) {
-  const [state, setState] = useState<'idle' | 'offering' | 'noting' | 'sent'>('idle');
+  const [state, setState] = useState<TapPhase>('idle');
   const [note, setNote] = useState('');
+  // Held only so a failure can be retried with exactly what was typed rather
+  // than asking somebody to write their sentence a second time.
+  const [pending, setPending] = useState<{ kind: 'didnt_help' | 'explain_differently'; noteText?: string } | null>(null);
 
   async function send(kind: 'didnt_help' | 'explain_differently', noteText?: string) {
+    setState('sent');
+    setPending({ kind, noteText });
     try {
       await api.post('/api/feedback', { narration_id: narrationId, kind, ...(noteText ? { note: noteText } : {}) });
-    } finally {
-      setState('sent');
+      setPending(null);
+    } catch {
+      setState('failed');
     }
+  }
+
+  if (state === 'failed') {
+    return (
+      <span className="flex items-center gap-2 text-meta text-thread">
+        that didn’t send
+        <button
+          className="text-ink-quiet underline hover:text-ink-dim"
+          onClick={() => pending && void send(pending.kind, pending.noteText)}
+        >
+          try again
+        </button>
+      </span>
+    );
   }
 
   if (state === 'sent') return <span className="text-meta text-ink-quiet">noted</span>;

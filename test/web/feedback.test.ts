@@ -148,4 +148,52 @@ describe('feedback taps (acceptance gate 4)', () => {
     const res = await request(app).post('/api/feedback').send({ narration_id: 'x', kind: 'thumbs_up' });
     expect(res.status).toBe(400);
   });
+
+  /**
+   * THE RETRY HAS TO BE SAFE, BECAUSE BOTH CLIENTS NOW OFFER ONE.
+   *
+   * "noted" used to print whether or not the request landed. It says so now
+   * when it didn't, and hands the tap back — which means the same tap can
+   * arrive twice, and the commonest way is the one nobody can prevent: the
+   * insert succeeded and the response was lost on the way home, so the person
+   * retries something that already worked.
+   *
+   * What must survive that: no error, and the work a tap does on the way in —
+   * retiring the wording and flagging it for review — must still be done
+   * rather than half-done. A duplicate row is the accepted cost; a 500 in
+   * front of somebody trying to complain is not.
+   */
+  it('takes the same tap twice without breaking, because a lost response looks like a failure', async () => {
+    await db.insert(narrations).values({
+      id: 'narr_retry',
+      orgId,
+      projectId: 'p',
+      eventId: 'e',
+      eventType: 'code.pr_opened',
+      occurredAt: new Date(),
+      path: 'TEMPLATE',
+      intendedPath: 'TEMPLATE',
+      delivery: 'DIGEST',
+      fragment: 'x',
+    });
+    const app = appWithOrg(orgId, createFeedbackRouter(db));
+    const send = () =>
+      request(app).post('/api/feedback').send({ narration_id: 'narr_retry', kind: 'explain_differently', note: 'say it plainly' });
+
+    expect((await send()).status).toBe(200);
+    expect((await send()).status).toBe(200);
+
+    // Both were recorded — the count is the honest one, not a deduplicated
+    // guess about which tap the person meant.
+    const rows = await db.select().from(feedback).where(eq(feedback.narrationId, 'narr_retry'));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.note === 'say it plainly')).toBe(true);
+
+    // And the flag the tap exists to set is set, not toggled off by the second.
+    const [narration] = await db
+      .select()
+      .from(narrations)
+      .where(and(eq(narrations.orgId, orgId), eq(narrations.id, 'narr_retry')));
+    expect((narration.meta as { needs_review?: boolean } | null)?.needs_review).toBe(true);
+  });
 });
