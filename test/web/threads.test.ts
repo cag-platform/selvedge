@@ -10,6 +10,7 @@ import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/rout
 import { createThread, ensureWorkshopThread, getThread, listThreads } from '../../src/server/threads/store.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 describe('web/routes/threads — the Inbox surface', () => {
   let db: TestDb;
@@ -33,7 +34,7 @@ describe('web/routes/threads — the Inbox surface', () => {
   });
   afterEach(async () => close());
 
-  const app = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, ...deps }));
+  const app = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...deps }));
 
   it('the rail: every project with its threads newest-first', async () => {
     const first = await ensureWorkshopThread(db, orgId, 'loom');
@@ -148,7 +149,7 @@ describe('web/routes/threads — the Inbox surface', () => {
 
   it('is org-scoped: another org cannot read a thread, or even learn it exists', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
-    const otherOrg = appWithOrg('org_2', createThreadsRouter(db, { env: engineOn }));
+    const otherOrg = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     expect((await request(otherOrg).get(`/api/threads/${thread.id}`)).status).toBe(404);
     expect((await request(otherOrg).patch(`/api/threads/${thread.id}`).send({ title: 'mine now' })).status).toBe(400);
     expect((await request(otherOrg).post(`/api/threads/${thread.id}/message`).send({ text: 'hi' })).status).toBe(404);
@@ -292,7 +293,7 @@ describe('web/routes/threads — the Inbox surface', () => {
 
   it('is honest when the engine is not configured', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
-    const off = appWithOrg(orgId, createThreadsRouter(db, { env: () => null }));
+    const off = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: () => null }));
     const res = await request(off).post(`/api/threads/${thread.id}/message`).send({ text: 'hi' });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/isn't switched on/i);

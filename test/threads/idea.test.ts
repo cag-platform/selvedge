@@ -11,6 +11,7 @@ import { getThread } from '../../src/server/threads/store.js';
 import { listSubjects } from '../../src/server/threads/subjects.js';
 import { appWithOrg } from '../web/helpers.js';
 import { onPlan } from '../helpers/plan.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * FROM AN IDEA TO A THING.
@@ -48,7 +49,7 @@ describe('an idea, and what becomes of it', () => {
 
   const subjectsApp = (org = orgId) => appWithOrg(org, createSubjectsRouter(db));
   const threadsApp = (org = orgId, made?: (n: string, d: string) => Promise<{ fullName: string }>) =>
-    appWithOrg(org, createThreadsRouter(db, { env: engineOn, ...(made ? { createRepo: made } : {}) }));
+    appWithOrg(org, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...(made ? { createRepo: made } : {}) }));
 
   async function anIdea(): Promise<string> {
     const res = await request(subjectsApp()).post('/api/ideas').send({}).expect(201);

@@ -10,6 +10,7 @@ import { appWithOrg } from './helpers.js';
 import { onPlan } from '../helpers/plan.js';
 import { planLimits } from '../../src/shared/plans.js';
 import { monthStartUtc } from '../../src/server/billing/entitlements.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 describe('web/routes/workshop — the workshop surface', () => {
   let db: TestDb;
@@ -33,7 +34,7 @@ describe('web/routes/workshop — the workshop surface', () => {
   });
   afterEach(async () => close());
 
-  const app = (deps: WorkshopDeps = {}) => appWithOrg(orgId, createWorkshopRouter(db, { env: engineOn, ...deps }));
+  const app = (deps: WorkshopDeps = {}) => appWithOrg(orgId, createWorkshopRouter(db, { lookup: stubRepoLookup, env: engineOn, ...deps }));
 
   it('serves the page data: project, engine state, empty thread, zero cost', async () => {
     const res = await request(app()).get('/api/projects/loom/workshop');
@@ -96,7 +97,7 @@ describe('web/routes/workshop — the workshop surface', () => {
 
   it('is org-scoped: another org gets a 404, and never the thread', async () => {
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId: 'loom', role: 'owner', content: 'secret plans' });
-    const other = appWithOrg('org_2', createWorkshopRouter(db, { env: engineOn }));
+    const other = appWithOrg('org_2', createWorkshopRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     expect((await request(other).get('/api/projects/loom/workshop')).status).toBe(404);
   });
 
@@ -238,12 +239,12 @@ describe('web/routes/workshop — the workshop surface', () => {
     expect(ok.body).toEqual(Buffer.from('png-bytes'));
 
     // Another org can't fetch it, even knowing the attachment id.
-    const other = appWithOrg('org_2', createWorkshopRouter(db, { env: engineOn }));
+    const other = appWithOrg('org_2', createWorkshopRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     expect((await request(other).get(`/api/projects/loom/workshop/attachments/${att!.id}`)).status).toBe(404);
   });
 
   function appAndPost(dbx: TestDb, deps: WorkshopDeps) {
-    return request(appWithOrg(orgId, createWorkshopRouter(dbx, deps))).post('/api/projects/loom/workshop/message').send({ text: 'x' });
+    return request(appWithOrg(orgId, createWorkshopRouter(dbx, { lookup: stubRepoLookup, ...deps }))).post('/api/projects/loom/workshop/message').send({ text: 'x' });
   }
 
   /**

@@ -2,6 +2,7 @@ import type { Db } from '../db/client.js';
 import { getPack } from '../packs/store.js';
 import type { AgentTurnConfig } from './agent.js';
 import { resolveRepoToken, type RepoToken } from './repoToken.js';
+import { lookupRepoInfo, type RepoInfo } from './repoInfo.js';
 
 /**
  * "Can this project be worked on, and with what?" — one answer, shared by every
@@ -65,6 +66,7 @@ export async function configFor(
   projectId: string,
   env: () => EngineEnv | null = engineEnv,
   resolveToken: (db: Db, orgId: string, repoFullName: string) => Promise<RepoToken> = resolveRepoToken,
+  lookup: (token: string, repoFullName: string) => Promise<RepoInfo> = lookupRepoInfo,
 ): Promise<EngineConfig | EngineRefusal> {
   const pack = await getPack(db, orgId, projectId);
   if (!pack) return { error: 'no such project', status: 404 };
@@ -79,11 +81,20 @@ export async function configFor(
   // machine started, a minute billed, and a clone that dies on authentication.
   const token = await resolveToken(db, orgId, source.resource_id);
   if (!token.ok) return { status: 409, error: token.reason };
+  // THE BRANCH IS A FACT, NOT A CONVENTION. This used to say 'main' for every
+  // project, and every repo whose default branch is anything else — most repos
+  // whose first push came from a Claude Code session, and everything older on
+  // `master` — died at the clone with "Remote branch main not found". The
+  // repo's own default is looked up with the same token the clone will use;
+  // see repoInfo.ts for the empty-repo case.
+  const info = await lookup(token.token, source.resource_id);
+  if (!info.ok) return { status: 409, error: info.reason };
   return {
     cfg: {
       githubToken: token.token,
       repoFullName: source.resource_id,
-      branch: 'main',
+      branch: info.defaultBranch,
+      emptyRepo: info.empty,
     },
     liveUrl: pack.identity.links?.live_url ?? null,
   };

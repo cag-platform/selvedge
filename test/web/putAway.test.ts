@@ -9,6 +9,7 @@ import { createSubject } from '../../src/server/threads/subjects.js';
 import { ensureWorkshopThread } from '../../src/server/threads/store.js';
 import { listReferenceCandidates } from '../../src/server/references/resolve.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * PUT AWAY — a place you are not working in right now.
@@ -27,7 +28,7 @@ describe('a place you are not working in right now', () => {
   let close: () => Promise<void>;
   const orgId = 'org_1';
   const engineOn = () => ({ claudeCodeOauthToken: 'c' });
-  const app = () => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn }));
+  const app = () => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
 
   beforeEach(async () => {
     const t = await createTestDb();
@@ -102,7 +103,7 @@ describe('a place you are not working in right now', () => {
   });
 
   it('refuses a place that is not yours, and one that is not there', async () => {
-    const theirs = appWithOrg('org_2', createThreadsRouter(db, { env: engineOn }));
+    const theirs = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     expect((await request(theirs).patch('/api/inbox/places/loom').send({ put_away: true })).status).toBe(404);
     expect((await request(app()).patch('/api/inbox/places/nonesuch').send({ put_away: true })).status).toBe(404);
     // And the refusal did nothing on the way past.

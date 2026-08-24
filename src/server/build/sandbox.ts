@@ -53,8 +53,26 @@ function shellQuote(v: string): string {
 export type SandboxConfig = {
   githubToken: string;
   repoFullName: string;
+  /** The repo's OWN default branch, looked up per build — never assumed. */
   branch: string;
+  /** True when the repo has no commits yet, so `branch` doesn't exist to clone. */
+  emptyRepo?: boolean;
 };
+
+/**
+ * The clone, as a string a test can hold. Two shapes: a repo with history is
+ * cloned at its default branch by name; a repo with NO commits has no branch
+ * to ask for — `--branch` fails against it whatever the name — so it is
+ * cloned bare and its default branch is created in the sandbox, making a
+ * brand-new repo a place a builder can start rather than a cryptic failure.
+ */
+export function cloneCommand(cfg: SandboxConfig): string {
+  const url = `https://github.com/${cfg.repoFullName}.git`;
+  if (cfg.emptyRepo) {
+    return `git clone ${url} ${WORKDIR} && cd ${WORKDIR} && git checkout -b ${shellQuote(cfg.branch)}`;
+  }
+  return `git clone --branch ${shellQuote(cfg.branch)} ${url} ${WORKDIR}`;
+}
 
 /**
  * `env` is how the GitHub token reaches a command, and the only way it should.
@@ -101,13 +119,7 @@ async function prepare(sandbox: Sandbox, cfg: SandboxConfig): Promise<void> {
     `git config --global user.name "Selvedge" && git config --global user.email "selvedge@users.noreply.github.com" && git config --global credential.helper ${shellQuote(helper)}`,
     30,
   );
-  await run(
-    sandbox,
-    'clone',
-    `git clone --branch ${shellQuote(cfg.branch)} https://github.com/${cfg.repoFullName}.git ${WORKDIR}`,
-    600,
-    { GITHUB_TOKEN: cfg.githubToken },
-  );
+  await run(sandbox, 'clone', cloneCommand(cfg), 600, { GITHUB_TOKEN: cfg.githubToken });
 }
 
 async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {

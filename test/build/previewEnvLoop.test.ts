@@ -8,6 +8,7 @@ import { createWorkshopRouter } from '../../src/server/web/routes/workshop.js';
 import { diagnoseStartFailure } from '../../src/server/build/previewDiagnosis.js';
 import { previewEnvFile } from '../../src/server/build/previewEnv.js';
 import { appWithOrg } from '../web/helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * THE LOOP THAT WAS OPEN AT ONE END.
@@ -47,7 +48,7 @@ describe('the preview environment, end to end', () => {
     await close();
   });
 
-  const app = (org = orgId) => appWithOrg(org, createWorkshopRouter(db, { env: () => ({ daytonaApiKey: 'd' }) }));
+  const app = (org = orgId) => appWithOrg(org, createWorkshopRouter(db, { lookup: stubRepoLookup, env: () => ({ daytonaApiKey: 'd' }) }));
 
   /**
    * THE HINT NOW POINTS SOMEWHERE. A diagnosis that names a variable has to be

@@ -127,7 +127,51 @@ describe('the credential that clones is the one that watches', () => {
       'balance',
       () => ({ claudeCodeOauthToken: 'cc' }),
       async () => ({ ok: true, token: 'ghs_live', source: 'installation' }),
+      async () => ({ ok: true, defaultBranch: 'main', empty: false }),
     );
     expect(resolved).toMatchObject({ cfg: { githubToken: 'ghs_live', repoFullName: 'cag-platform/balance' } });
+  });
+
+  /**
+   * THE BUG THIS BLOCK KEEPS DEAD: every clone used to ask for `main`, so any
+   * repo whose default branch is anything else — most repos whose first push
+   * came from a Claude Code working branch, and everything older on `master` —
+   * died in the sandbox with "Remote branch main not found", after the machine
+   * had been started and the minute billed. The branch is a looked-up fact now.
+   */
+  describe('the branch is the repo\'s own, never an assumption', () => {
+    const okToken = async () => ({ ok: true, token: 'ghs_live', source: 'installation' }) as const;
+
+    it('builds on whatever GitHub says the default branch is', async () => {
+      await createPack(db, 'mine', scaffoldPack({ name: 'yoke', repo: 'cag-platform/yoke', tier: 'personal' }));
+      const asked: string[] = [];
+      const resolved = await configFor(db, 'mine', 'yoke', () => ({ claudeCodeOauthToken: 'cc' }), okToken, async (token, full) => {
+        asked.push(`${token} ${full}`);
+        return { ok: true, defaultBranch: 'claude/first-build', empty: false };
+      });
+      expect(resolved).toMatchObject({ cfg: { branch: 'claude/first-build', emptyRepo: false } });
+      // Looked up with the same credential the clone will use.
+      expect(asked).toEqual(['ghs_live cag-platform/yoke']);
+    });
+
+    it('flags a repo with no commits instead of asking to clone a branch that is not there', async () => {
+      await createPack(db, 'mine', scaffoldPack({ name: 'bare', repo: 'cag-platform/bare', tier: 'personal' }));
+      const resolved = await configFor(db, 'mine', 'bare', () => ({ claudeCodeOauthToken: 'cc' }), okToken, async () => ({
+        ok: true,
+        defaultBranch: 'main',
+        empty: true,
+      }));
+      expect(resolved).toMatchObject({ cfg: { branch: 'main', emptyRepo: true } });
+    });
+
+    it('refuses with the lookup\'s own sentence when the repo cannot be read', async () => {
+      await createPack(db, 'mine', scaffoldPack({ name: 'gone', repo: 'cag-platform/gone', tier: 'personal' }));
+      const refusal = await configFor(db, 'mine', 'gone', () => ({ claudeCodeOauthToken: 'cc' }), okToken, async () => ({
+        ok: false,
+        reason: 'GitHub answered 404 for cag-platform/gone — the repo may have been renamed, deleted, or dropped from the installation.',
+      }));
+      expect(refusal).toMatchObject({ status: 409 });
+      expect((refusal as { error: string }).error).toContain('cag-platform/gone');
+    });
   });
 });

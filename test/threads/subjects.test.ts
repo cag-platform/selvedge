@@ -19,6 +19,7 @@ import { createSubjectsRouter } from '../../src/server/web/routes/subjects.js';
 import { createThreadsRouter } from '../../src/server/web/routes/threads.js';
 import { appWithOrg } from '../web/helpers.js';
 import { eq } from 'drizzle-orm';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * Somewhere to put work that isn't a repository.
@@ -107,7 +108,7 @@ describe('subjects on the rail and over HTTP', () => {
   afterEach(async () => close());
 
   const subjectsApp = () => appWithOrg(orgId, createSubjectsRouter(db));
-  const threadsApp = () => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn }));
+  const threadsApp = () => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
 
   it('makes a subject, starts a conversation in it, and shows both on the rail', async () => {
     const made = await request(subjectsApp()).post('/api/subjects').send({ name: 'Pricing' });

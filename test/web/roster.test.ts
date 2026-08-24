@@ -14,6 +14,7 @@ import { connectCredential } from '../../src/server/connectors/credentials/store
 import type { AgentOffer } from '../../src/server/threads/roster.js';
 import { AGENTS } from '../../src/shared/agents.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * THE PICKER'S PRICE TAG.
@@ -61,7 +62,7 @@ describe('who could answer this, and what handing it over would cost', () => {
     await close();
   });
 
-  const app = (env = engineOn) => appWithOrg(orgId, createThreadsRouter(db, { env }));
+  const app = (env = engineOn) => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env }));
 
   /** A conversation with something in it, so a handover has something to carry. */
   async function conversation() {
@@ -216,7 +217,7 @@ describe('who could answer this, and what handing it over would cost', () => {
 
   it('is org-scoped', async () => {
     const thread = await conversation();
-    const theirs = appWithOrg('org_2', createThreadsRouter(db, { env: engineOn }));
+    const theirs = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     await request(theirs).get(`/api/threads/${thread.id}/agents`).expect(404);
   });
 });

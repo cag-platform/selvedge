@@ -12,6 +12,7 @@ import { threadCeiling } from '../../src/server/threads/ceiling.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { defaultEstimateAndCap } from '../../src/server/cards/triggers.js';
 import { appWithOrg } from '../web/helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * NOTHING SPENDS PAST WHAT YOU APPROVED — in a conversation, at last.
@@ -52,7 +53,7 @@ describe('what a conversation is allowed to spend', () => {
   const app = () =>
     appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: engineOn,
         runTurn: (async (_db, _org, _projectId, _text, cfg) => {
           turns += 1;

@@ -8,6 +8,7 @@ import { getPack, listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
+import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
 import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
@@ -77,6 +78,8 @@ export type ThreadsDeps = {
   runTurn?: typeof runAgentTurn;
   chatTurn?: typeof runChatTurn;
   env?: () => EngineEnv | null;
+  /** How the repo's default branch is looked up; injected for tests. */
+  lookup?: LookupRepoInfo;
   /**
    * Make a fresh private repo for an idea that turned into a thing. Absent
    * when the deployment has no GITHUB_TOKEN — in which case "start a new one"
@@ -90,6 +93,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   const runTurn = deps.runTurn ?? runAgentTurn;
   const chatTurn = deps.chatTurn ?? runChatTurn;
   const env = deps.env ?? engineEnv;
+  const lookup = deps.lookup ?? lookupRepoInfo;
   // WIRED BY THE APP, never reached for here — the same way the packs router
   // gets it. A router that reaches into process.env for a capability is a
   // router that behaves differently in a test than in production, and this one
@@ -1011,7 +1015,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(409).json({ error: 'That conversation has no project to build in.', code: 'needs_project' });
         return;
       }
-      const resolved = await configFor(db, orgId, buildIn, env);
+      const resolved = await configFor(db, orgId, buildIn, env, undefined, lookup);
       if ('error' in resolved) {
         res.status(resolved.status).json({ error: resolved.error });
         return;

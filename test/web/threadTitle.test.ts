@@ -7,6 +7,7 @@ import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/routes/threads.js';
 import { ensureWorkshopThread, getThread, renameThread } from '../../src/server/threads/store.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * TWELVE ROWS READING "WORKSHOP".
@@ -55,7 +56,7 @@ describe('a conversation is named by what is said in it', () => {
     await close();
   });
 
-  const app = () => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+  const app = () => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
   const say = (threadId: string, text: string) => request(app()).post(`/api/threads/${threadId}/message`).send({ text });
 
   it('names the thread after the first thing said in it', async () => {

@@ -10,6 +10,7 @@ import { createThread, getThread } from '../../src/server/threads/store.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { MAX_CONSULTED } from '../../src/shared/mentions.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * @-MENTIONS, THROUGH THE ROUTE.
@@ -47,7 +48,7 @@ describe('choosing who answers by naming them', () => {
   const app = () =>
     appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: () => ({ claudeCodeOauthToken: 'c', githubToken: 'g' }),
         chatTurn: async (_db, _orgId, _thread, text, deps) => {
           takes.push({

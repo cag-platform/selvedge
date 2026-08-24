@@ -14,6 +14,7 @@ import type { LlmClient } from '../../src/server/llm/types.js';
 import type { Thread } from '../../src/server/threads/store.js';
 import { AGENTS } from '../../src/shared/agents.js';
 import { appWithOrg } from '../web/helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * IS THE CHAT HALF ACTUALLY LIVE?
@@ -73,7 +74,7 @@ describe('the chat half, end to end', () => {
   const app = () =>
     appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: () => ({ claudeCodeOauthToken: 'c', githubToken: 'g' }),
         chatTurn: async (_db, _orgId, thread, text, deps) => {
           handed = { thread, text, client: deps?.client ?? null };

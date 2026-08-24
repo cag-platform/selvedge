@@ -9,6 +9,7 @@ import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/routes/threads.js';
 import { ensureWorkshopThread, createThread } from '../../src/server/threads/store.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * The whole point of a reference: a conversation about one thing can read
@@ -70,7 +71,7 @@ describe('web/routes/threads — #references reach the turn', () => {
   it('hands a build turn what the other project is, and says so on the thread', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'mirror');
     const { runTurn, called } = captureTurn();
-    const app = appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
 
     const res = await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'match how #loom does refunds' });
     expect(res.status).toBe(202);
@@ -93,7 +94,7 @@ describe('web/routes/threads — #references reach the turn', () => {
       env: engineOn,
       runTurn: (async () => ({ runId: 'r', agent: 'claude-code', status: 'succeeded', costCents: 0, reply: 'ok', stagedChangesReady: false })) as ThreadsDeps['runTurn'],
     };
-    const app = appWithOrg(orgId, createThreadsRouter(db, deps));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, ...deps }));
     await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'like #loom' });
 
     // The real runTurn writes both rows; the stub above writes neither, so this
@@ -101,7 +102,7 @@ describe('web/routes/threads — #references reach the turn', () => {
     const chat = await createThread(db, orgId, 'mirror', { kind: 'general', title: 'Thinking', agent: 'claude' });
     const chatApp = appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: engineOn,
         chatTurn: (async () => ({ ok: true, reply: 'sure', model: 'm', costed: false })) as ThreadsDeps['chatTurn'],
       }),
@@ -135,7 +136,7 @@ describe('web/routes/threads — #references reach the turn', () => {
     await db.insert(agentMessages).values({ id: ulid(), orgId, threadId: imported, role: 'owner', content: 'what would make it useful?' });
 
     const { runTurn, called } = captureTurn();
-    const app = appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
     await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'build on #"app ideas"' });
     const options = await called;
 
@@ -146,7 +147,7 @@ describe('web/routes/threads — #references reach the turn', () => {
   it('says nothing when a message references nothing', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'mirror');
     const { runTurn, called } = captureTurn();
-    const app = appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
     await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'just build the thing' });
     const options = await called;
     expect(options.handoff).toBeUndefined();

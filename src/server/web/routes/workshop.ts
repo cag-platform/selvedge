@@ -12,6 +12,7 @@ import { getBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
 import { runAgentTurn, type AttachedImage, type AttachedFile } from '../../build/agent.js';
 import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
+import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
 import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
@@ -101,6 +102,8 @@ export type WorkshopDeps = {
   goLive?: typeof goLive;
   preview?: (db: Db, orgId: string, projectId: string, cfg: SandboxConfig) => Promise<PreviewStatus>;
   env?: () => EngineEnv | null;
+  /** How the repo's default branch is looked up; injected for tests. */
+  lookup?: LookupRepoInfo;
 };
 
 export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
@@ -110,7 +113,8 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   const env = deps.env ?? engineEnv;
 
   /** The pack's GitHub source + engine creds, or a plain reason why not. */
-  const configFor = (orgId: string, projectId: string) => resolveEngineConfig(db, orgId, projectId, env);
+  const lookup = deps.lookup ?? lookupRepoInfo;
+  const configFor = (orgId: string, projectId: string) => resolveEngineConfig(db, orgId, projectId, env, undefined, lookup);
 
   async function activeRun(orgId: string, projectId: string) {
     const cutoff = new Date(Date.now() - STUCK_RUN_MS);

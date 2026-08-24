@@ -13,6 +13,7 @@ import { briefForThinkingThread } from '../../src/server/decisions/store.js';
 import { AnthropicLlmClient } from '../../src/server/llm/anthropic.js';
 import { appWithOrg } from './helpers.js';
 import { onPlan } from '../helpers/plan.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * PAIRED THREADS, END TO END: think, decide, build — and the guard that stands
@@ -54,7 +55,7 @@ describe('web/routes/decisions — thinking, deciding, building', () => {
   });
 
   const decisions = () => appWithOrg(orgId, createDecisionsRouter(db));
-  const threadsApp = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, ...deps }));
+  const threadsApp = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...deps }));
 
   async function aThinkingThread(messages: string[] = ['should the checkout be one page?', 'One page usually converts better.']) {
     const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Checkout shape' });

@@ -10,6 +10,7 @@ import { createThread, ensureWorkshopThread } from '../../src/server/threads/sto
 import { createSubject } from '../../src/server/threads/subjects.js';
 import { createSubjectThread } from '../../src/server/threads/store.js';
 import { appWithOrg } from './helpers.js';
+import { stubRepoLookup } from '../helpers/repoLookup.js';
 
 /**
  * A paste too long to be a sentence rides beside the message. Three things
@@ -57,7 +58,7 @@ describe('web/routes/threads — attached documents', () => {
   it('hands the whole document to a build turn, not its opening', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
     const { runTurn, called } = captureTurn();
-    const app = appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
 
     const res = await request(app)
       .post(`/api/threads/${thread.id}/message`)
@@ -74,7 +75,7 @@ describe('web/routes/threads — attached documents', () => {
     const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Thinking', agent: 'claude' });
     const app = appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: engineOn,
         chatTurn: (async () => ({ ok: true, reply: 'noted', model: 'm', costed: false })) as ThreadsDeps['chatTurn'],
       }),
@@ -112,7 +113,7 @@ describe('web/routes/threads — attached documents', () => {
     const thread = await createSubjectThread(db, orgId, subject.id, { title: 'Thinking', agent: 'claude' });
     const app = appWithOrg(
       orgId,
-      createThreadsRouter(db, {
+      createThreadsRouter(db, { lookup: stubRepoLookup,
         env: engineOn,
         chatTurn: (async () => ({ ok: true, reply: 'noted', model: 'm', costed: false })) as ThreadsDeps['chatTurn'],
       }),
@@ -133,13 +134,13 @@ describe('web/routes/threads — attached documents', () => {
     const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Thinking', agent: 'claude' });
     const mine = appWithOrg(
       orgId,
-      createThreadsRouter(db, { env: engineOn, chatTurn: (async () => ({ ok: true, reply: 'x', model: 'm', costed: false })) as ThreadsDeps['chatTurn'] }),
+      createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, chatTurn: (async () => ({ ok: true, reply: 'x', model: 'm', costed: false })) as ThreadsDeps['chatTurn'] }),
     );
     await request(mine).post(`/api/threads/${thread.id}/message`).send({ text: '@claude @gpt ?', documents: [{ text: rundown }] });
     const view = await request(mine).get(`/api/threads/${thread.id}`);
     const message = view.body.messages.find((m: { role: string }) => m.role === 'owner');
 
-    const theirs = appWithOrg('org_2', createThreadsRouter(db, { env: engineOn }));
+    const theirs = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     const denied = await request(theirs).get(`/api/threads/${thread.id}/documents/${message.id}/0`);
     expect(denied.status).toBe(404);
   });
@@ -147,7 +148,7 @@ describe('web/routes/threads — attached documents', () => {
   it('says nothing when nothing was attached', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
     const { runTurn, called } = captureTurn();
-    const app = appWithOrg(orgId, createThreadsRouter(db, { env: engineOn, runTurn }));
+    const app = appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, runTurn }));
     await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'just build it' });
     expect((await called).documents).toBeUndefined();
   });
