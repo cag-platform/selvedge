@@ -10,7 +10,8 @@ import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
 import { getBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
-import { runAgentTurn, type AttachedImage, type AttachedFile } from '../../build/agent.js';
+import { runAgentTurn, type AttachedFile } from '../../build/agent.js';
+import { MAX_STAGED_FILE_BYTES, validateFileRefs, validateImages } from '../attachments.js';
 import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
 import { failActiveRun } from '../../build/stopRun.js';
@@ -52,48 +53,7 @@ const STUCK_RUN_MS = 45 * 60 * 1000;
 // staged upload by id, and the turn streams it from disk into the sandbox —
 // the whole file is never held at once in this process's memory or a JSON
 // string.
-const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const MAX_IMAGES = 4;
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024; // ~8M base64 chars, inline in the message body
-const MAX_FILES = 5;
-/** Generous — disk-streamed, not memory-buffered, so size isn't the risk a JSON body would make it. */
-const MAX_STAGED_FILE_BYTES = 300 * 1024 * 1024;
-
-function base64ByteLength(s: string): number {
-  return Math.floor((s.length * 3) / 4);
-}
-
-/** Validate the message body's inline images; returns a plain-English error, or none. */
-function validateImages(images: unknown): { error: string } | { images: AttachedImage[] } {
-  const out: AttachedImage[] = [];
-  if (images !== undefined) {
-    if (!Array.isArray(images)) return { error: 'images must be a list' };
-    if (images.length > MAX_IMAGES) return { error: `at most ${MAX_IMAGES} images per message` };
-    for (const img of images) {
-      const mime = (img as { mime?: unknown })?.mime;
-      const dataBase64 = (img as { dataBase64?: unknown })?.dataBase64;
-      if (typeof mime !== 'string' || !IMAGE_MIMES.has(mime)) return { error: 'images must be PNG, JPEG, WebP, or GIF' };
-      if (typeof dataBase64 !== 'string' || dataBase64.length === 0) return { error: 'an image is missing its data' };
-      if (base64ByteLength(dataBase64) > MAX_IMAGE_BYTES) return { error: `an image is over ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB` };
-      out.push({ mime, dataBase64 });
-    }
-  }
-  return { images: out };
-}
-
-/** Validate the message body's file refs are shaped right (ids to resolve later); returns a plain-English error, or none. */
-function validateFileRefs(files: unknown): { error: string } | { ids: string[] } {
-  if (files === undefined) return { ids: [] };
-  if (!Array.isArray(files)) return { error: 'files must be a list' };
-  if (files.length > MAX_FILES) return { error: `at most ${MAX_FILES} files per message` };
-  const ids: string[] = [];
-  for (const f of files) {
-    const id = (f as { id?: unknown })?.id;
-    if (typeof id !== 'string' || id.trim() === '') return { error: 'a file is missing its upload id — try attaching it again' };
-    ids.push(id);
-  }
-  return { ids };
-}
+// Attachment rules are shared with the Inbox message route — see web/attachments.ts.
 
 export type WorkshopDeps = {
   /** Injected for tests; defaults to the real agent turn. */

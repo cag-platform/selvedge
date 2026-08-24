@@ -209,9 +209,9 @@ describe('web/routes/workshop — the workshop surface', () => {
 
     const tooMany = await request(app())
       .post('/api/projects/loom/workshop/message')
-      .send({ text: 'x', images: Array.from({ length: 5 }, () => ({ mime: 'image/png', dataBase64: 'abc' })) });
+      .send({ text: 'x', images: Array.from({ length: 11 }, () => ({ mime: 'image/png', dataBase64: 'abc' })) });
     expect(tooMany.status).toBe(400);
-    expect(tooMany.body.error).toMatch(/at most 4/i);
+    expect(tooMany.body.error).toMatch(/at most 10/i);
 
     const badFileRef = await request(app())
       .post('/api/projects/loom/workshop/message')

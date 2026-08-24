@@ -3,7 +3,7 @@ import request from 'supertest';
 import { ulid } from 'ulid';
 import { eq, and } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, agentRuns, digests, orgs } from '../../src/server/db/schema/index.js';
+import { agentMessages, agentRuns, digests, orgs, threads } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/routes/threads.js';
@@ -337,6 +337,77 @@ describe('GET /api/threads/:id/build/options', () => {
       const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup }));
       const res = await request(app).get(`/api/threads/${thread.id}/build/options`);
       expect(res.body).toEqual({ has_project: true, projects: [], can_create: false });
+    } finally {
+      await t.close();
+    }
+  });
+});
+
+/**
+ * ATTACHMENTS AT THE DOOR EVERYONE USES. This route quietly dropped `images`
+ * and `files` while only the old workshop route read them: the composer
+ * offered the buttons, the server read neither key, and a screenshot attached
+ * to an Inbox conversation never arrived. Held here so it cannot regress.
+ */
+describe('attachments on the Inbox message route', () => {
+  const png = Buffer.from('fake png bytes').toString('base64');
+
+  it('carries inline images into the build turn', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
+      const thread = await ensureWorkshopThread(t.db, 'org_1', 'loom');
+      await t.db.update(threads).set({ agent: 'claude-code' }).where(eq(threads.id, thread.id));
+
+      let seen: Record<string, unknown> = {};
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, {
+        lookup: stubRepoLookup,
+        env: () => ({ daytonaApiKey: 'd' }),
+        runTurn: (async (_db, _org, _p, _t2, _cfg, options) => {
+          seen = { images: options?.images, files: options?.files };
+          return { runId: 'r', agent: 'claude-code', status: 'succeeded', costCents: 0, reply: '', stagedChangesReady: false };
+        }) as ThreadsDeps['runTurn'],
+      }));
+      const res = await request(app)
+        .post(`/api/threads/${thread.id}/message`)
+        .send({ text: 'look at this screenshot', images: [{ mime: 'image/png', dataBase64: png }] });
+      expect(res.status).toBe(202);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(seen.images).toEqual([{ mime: 'image/png', dataBase64: png }]);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('refuses an attachment to a talker with the way through, before the send', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
+      const thread = await createThread(t.db, 'org_1', 'loom', { kind: 'general', title: 'x', agent: 'claude' });
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup }));
+      const res = await request(app)
+        .post(`/api/threads/${thread.id}/message`)
+        .send({ text: 'see attached', images: [{ mime: 'image/png', dataBase64: png }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('@claudecode');
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('refuses over the caps with the number, never trimming', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
+      const thread = await ensureWorkshopThread(t.db, 'org_1', 'loom');
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup }));
+      const eleven = Array.from({ length: 11 }, () => ({ mime: 'image/png', dataBase64: png }));
+      const res = await request(app).post(`/api/threads/${thread.id}/message`).send({ text: 'x', images: eleven });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('10');
     } finally {
       await t.close();
     }

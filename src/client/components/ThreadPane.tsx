@@ -301,6 +301,9 @@ export function ThreadPane({
   // rather than a permission: this idea has nowhere to build yet.
   const [needsProject, setNeedsProject] = useState<{ refusal: NeedsProject; message: string } | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
+  // Narrows the join-or-create list — on a real account it is twenty-eight
+  // projects long, and scrolling a list is slower than typing three letters.
+  const [projectFilter, setProjectFilter] = useState('');
   const [moving, setMoving] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -742,11 +745,21 @@ export function ThreadPane({
               This conversation moves with it: everything said here stays, and the next turn builds.
             </p>
 
+            {needsProject.refusal.projects.length > 8 && (
+              <input
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                placeholder="type to narrow the list"
+                className="block w-full rounded-inset border border-hairline bg-panel px-3 py-1.5 text-body text-ink placeholder:text-ink-quiet focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              />
+            )}
             {needsProject.refusal.projects.length > 0 && (
               // Bounded for the same reason as the phone's card: twenty-eight
               // projects unbounded push "start a new one" out of reach.
               <div className="flex max-h-40 flex-wrap gap-work-tight overflow-y-auto">
-                {needsProject.refusal.projects.map((p) => (
+                {needsProject.refusal.projects
+                  .filter((p) => p.name.toLowerCase().includes(projectFilter.trim().toLowerCase()))
+                  .map((p) => (
                   <button
                     key={p.id}
                     disabled={moving}

@@ -9,6 +9,10 @@ import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
+import { validateFileRefs, validateImages } from '../attachments.js';
+import { consumeStagedUpload } from '../../build/uploads.js';
+import type { AttachedFile } from '../../build/agent.js';
+import { promises as fsp } from 'node:fs';
 import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
@@ -778,7 +782,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -824,6 +828,21 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // inside it — see shared/documents.ts. Bounded here, where the request
       // arrives, because everything downstream trusts what this route accepted.
       const documents = boundDocuments(Array.isArray(body.documents) ? (body.documents as Array<{ name?: unknown; text?: unknown }>) : []);
+
+      // ATTACHMENTS, AT THE DOOR EVERYONE USES. This route quietly dropped
+      // `images` and `files` while only the old workshop route read them — the
+      // composer offered the buttons and the server read neither key. Same
+      // validators as that route now (web/attachments.ts), same meaning.
+      const images = validateImages(body.images);
+      if ('error' in images) {
+        res.status(400).json({ error: images.error });
+        return;
+      }
+      const fileRefs = validateFileRefs(body.files);
+      if ('error' in fileRefs) {
+        res.status(400).json({ error: fileRefs.error });
+        return;
+      }
 
       /**
        * WHAT THEY POINTED AT — resolved once, here, from the stored text.
@@ -1012,6 +1031,16 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * a second conversation.
        */
       if (!changesFiles(thread.agent)) {
+        // A talker has no sandbox to put a file in and no eyes for an image
+        // yet — said now, before the send, with the way through. Refusing
+        // beats accepting-and-ignoring: an attachment that silently vanishes
+        // reads as "it saw the screenshot and had nothing to say".
+        if (images.images.length > 0 || fileRefs.ids.length > 0) {
+          res.status(400).json({
+            error: `${agentById(thread.agent as AgentId)?.name ?? 'This agent'} can't take attachments yet — a builder can. Name @claudecode or @codex and the files ride along.`,
+          });
+          return;
+        }
         const provider = chatProviderFor(thread.agent as AgentId);
         const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
         // The turn runs in the background like every other turn, so a slow
@@ -1145,6 +1174,22 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       }
 
       const projectId = buildIn;
+      // Staged uploads are checked out right before firing — nothing consumed
+      // by a request that was going to fail an earlier check. Any missing id
+      // fails the whole message; already-consumed temp files are cleaned up.
+      const consumed: Array<{ path: string }> = [];
+      const attachedFiles: AttachedFile[] = [];
+      for (const id of fileRefs.ids) {
+        const staged = consumeStagedUpload(orgId, buildIn, id);
+        if (!staged) {
+          await Promise.all(consumed.map((f) => fsp.unlink(f.path).catch(() => undefined)));
+          res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
+          return;
+        }
+        consumed.push(staged);
+        attachedFiles.push({ name: staged.name, mime: staged.mime, localPath: staged.path });
+      }
+
       void runTurn(
         db,
         orgId,
@@ -1162,6 +1207,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             : {}),
           ...(referenceNote ? { referenceNote } : {}),
           ...(documents.length ? { documents } : {}),
+          ...(images.images.length ? { images: images.images } : {}),
+          ...(attachedFiles.length ? { files: attachedFiles } : {}),
         },
       ).catch(async (err) => {
         console.error(`thread turn failed to start for ${orgId}/${thread.id}:`, err);

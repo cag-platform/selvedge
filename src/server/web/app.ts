@@ -94,6 +94,8 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // just this path, mounted before the general one below, covers that; the
   // general parser sees the body already set and skips re-parsing it.
   app.use('/api/projects/:projectId/workshop/message', express.json({ limit: '100mb' }));
+  // The Inbox message route carries the same inline base64 images now.
+  app.use('/api/threads/:threadId/message', express.json({ limit: '100mb' }));
   // A batch of imported conversations is bigger than a chat message and
   // smaller than an export zip; the CLI chunks to 200 conversations per call.
   app.use('/api/companion/import/conversations', express.json({ limit: '25mb' }));

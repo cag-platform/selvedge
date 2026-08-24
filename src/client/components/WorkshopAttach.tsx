@@ -21,10 +21,10 @@ import { sayLength, type PastedDocument } from '../../shared/documents.js';
 export type PendingImage = { mime: string; dataBase64: string; previewUrl: string; name: string };
 export type PendingFile = { id: string; name: string; size: number };
 
-export const MAX_IMAGES = 4;
+export const MAX_IMAGES = 10;
 export const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 export const ALLOWED_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-export const MAX_FILES = 5;
+export const MAX_FILES = 10;
 
 function readImage(file: File): Promise<PendingImage> {
   return new Promise((resolve, reject) => {
