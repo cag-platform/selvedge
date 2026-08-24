@@ -9,3 +9,7 @@ coverage/
 
 # Throwaway visual-audit harness (fixtures + screenshots). Never shipped.
 .audit/
+
+# QA fixtures emitted by `npm run fixtures` (scripts/make-fixtures.ts). The
+# generator is versioned; its output is scratch.
+fixtures/

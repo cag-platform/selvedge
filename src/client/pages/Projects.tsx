@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { ImportReplit } from '../components/ImportReplit.js';
+import { GithubArrival } from '../components/GithubArrival.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
 import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
@@ -301,6 +302,10 @@ export function Projects() {
   return (
     <div className="animate-settle">
       <Status status={status} />
+      {/* The GitHub-arrival greeting: only for an empty org whose owner signed
+          in with GitHub and has not installed the App yet — the moment where
+          "here's what you've got, pick what to bring" is the whole next step. */}
+      {projects.length === 0 && <GithubArrival />}
       <Walkthrough projects={projects} />
       {/* The memory summary, the context export, bringing a history in and
           filing what came in are all things you set up or do once. They lived

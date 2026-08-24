@@ -42,6 +42,7 @@ import { createTimelineRouter } from './routes/timeline.js';
 import { createSubjectsRouter } from './routes/subjects.js';
 import { createImportHistoryRouter } from './routes/importHistory.js';
 import { createImportReplitRouter } from './routes/importReplit.js';
+import { createGithubArrivalRouter } from './routes/githubArrival.js';
 import { createDecisionsRouter } from './routes/decisions.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createCompanionKeysRouter } from './routes/companionKeys.js';
@@ -190,6 +191,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createDecisionsRouter(db));
   app.use(createImportHistoryRouter(db));
   app.use(createImportReplitRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
+  app.use(createGithubArrivalRouter());
   app.use(createCompanionKeysRouter(db));
 
   app.use(express.static(clientDir));

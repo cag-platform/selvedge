@@ -22,6 +22,7 @@
     "db:seed": "tsx src/server/db/seed.ts",
     "evals": "tsx evals/run.ts",
     "companion": "tsx src/cli/index.ts",
+    "fixtures": "tsx scripts/make-fixtures.ts",
     "shoot:og": "tsx scripts/shoot-og.ts"
   },
   "dependencies": {
