@@ -39,6 +39,14 @@ export function Admin() {
         <NavLink to="/admin/record" className={tabClass}>
           Record
         </NavLink>
+        {/* Reachable for the first time. "Your apps" — what Selvedge has seen
+            and where it belongs — was a finished screen with a live API that no
+            link in the client pointed at, so the only way to open it was to
+            type /tray. Six months of filing work behind an address nobody
+            knew. */}
+        <NavLink to="/admin/apps" className={tabClass}>
+          Your apps
+        </NavLink>
         <NavLink to="/admin/connections" className={tabClass}>
           Connections
         </NavLink>
@@ -55,6 +63,7 @@ export function Admin() {
             for — a key to add, a key that stopped working. */}
         <Route index element={<Navigate to="/admin/connections" replace />} />
         <Route path="record" element={<TrackRecord />} />
+        <Route path="apps" element={<Tray />} />
         <Route path="connections" element={<Connections />} />
         <Route path="billing" element={<Billing />} />
         <Route path="advanced" element={<UnderTheHood />} />

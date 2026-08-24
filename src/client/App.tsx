@@ -139,7 +139,7 @@ function AuthedApp() {
               <Route path="/connections" element={<Navigate to="/admin/connections" replace />} />
               <Route path="/settings/billing" element={<Navigate to="/admin/billing" replace />} />
               <Route path="/billing" element={<Navigate to="/admin/billing" replace />} />
-              <Route path="/tray" element={<Navigate to="/admin/advanced" replace />} />
+              <Route path="/tray" element={<Navigate to="/admin/apps" replace />} />
               <Route path="/admin/*" element={<Admin />} />
             </Routes>
             </Suspense>
@@ -169,6 +169,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/projects', 'Projects'],
   // Longest prefix first: /admin/billing must not be matched by /admin.
   ['/admin/record', 'Record'],
+  ['/admin/apps', 'Your apps'],
   ['/admin/connections', 'Connections'],
   ['/admin/billing', 'Billing'],
   ['/admin/advanced', 'Under the hood'],
