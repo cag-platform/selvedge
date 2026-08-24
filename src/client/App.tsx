@@ -18,8 +18,8 @@ import { Landing } from './pages/Landing.js';
  * two routes is the same jank the 150ms skeleton floor exists to avoid. The
  * pane's own skeleton takes over once the component is running.
  */
-const Home = lazy(() => import('./pages/Home.js').then((m) => ({ default: m.Home })));
 const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
+const Now = lazy(() => import('./pages/Now.js').then((m) => ({ default: m.Now })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
@@ -62,6 +62,7 @@ function AuthedApp() {
   // Every other page keeps the calm single-column measure it always had.
   const pathname = useLocation().pathname;
   const workbench = pathname.startsWith('/inbox');
+  const dashboard = pathname === '/';
   useRouteTitle(pathname);
   return (
     <>
@@ -106,17 +107,12 @@ function AuthedApp() {
         <AutoTimezone />
         <div className="min-h-screen">
           <Nav />
-          <main className={workbench ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
+          <main className={workbench || dashboard ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Suspense fallback={null}>
             <Routes>
-              {/* HOME IS ITS OWN PLACE. `/` used to redirect to `/inbox`, and
-                  the Inbox opens the most recent conversation on arrival — both
-                  right on their own, and together they meant every visit landed
-                  mid-sentence inside one project's build thread. The Inbox
-                  keeps that behaviour, because it IS the workbench; this is the
-                  room you walk through first. */}
-              <Route path="/" element={<Home />} />
+              {/* Now is the scheduler and launchpad; Threads is the workbench. */}
+              <Route path="/" element={<Now />} />
               <Route path="/today" element={<Navigate to="/projects" replace />} />
               {/* The moment sign-in/up completes, these paths are the app's. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
@@ -169,7 +165,7 @@ function AuthedApp() {
  * contents are not.
  */
 const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
-  ['/inbox', 'Inbox'],
+  ['/inbox', 'Threads'],
   ['/projects', 'Projects'],
   // Longest prefix first: /admin/billing must not be matched by /admin.
   ['/admin/record', 'Record'],

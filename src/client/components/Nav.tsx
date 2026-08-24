@@ -56,8 +56,11 @@ export function Nav() {
             <SelvedgeMark tone="chalk" className="h-7 w-auto sm:hidden" />
           </NavLink>
           <nav aria-label="Primary" className="flex min-w-0 items-center gap-0.5 sm:gap-1">
+            <NavLink to="/" end className={linkClass}>
+              Now
+            </NavLink>
             <NavLink to="/inbox" className={linkClass}>
-              Inbox
+              Threads
             </NavLink>
             <NavLink to="/projects" className={linkClass}>
               Projects

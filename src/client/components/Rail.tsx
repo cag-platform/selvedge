@@ -140,8 +140,12 @@ export function Rail({
   }
 
   return (
-    <nav aria-label="Projects and threads" className="flex h-full flex-col">
+    <nav aria-label="Threads" className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto p-work">
+        <div className="mb-work flex items-baseline justify-between border-b border-hairline px-work-tight pb-work">
+          <p className="text-label font-semibold uppercase tracking-widest text-ink-quiet">Threads</p>
+          <p className="font-mono text-tech text-ink-quiet">{atHand.length} active</p>
+        </div>
         {atHand.length === 0 && putAway.length === 0 && (
           <div className="px-work-tight">
             <EmptyState
