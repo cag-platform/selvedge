@@ -22,7 +22,7 @@ import { briefAsText, briefForThread, withFreshness } from '../../decisions/stor
 import { staleWarningFor } from '../../decisions/freshness.js';
 import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
-import { referenceLine } from '../../../shared/references.js';
+import { referenceLine, type SearchScope } from '../../../shared/references.js';
 import { boundDocuments } from '../../../shared/documents.js';
 import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
@@ -784,6 +784,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * used and marks it as something the database found rather than
        * something the owner pointed at.
        */
+      // Where the guess was made, reported back in the reference line. Set by
+      // the search below so the sentence describes what actually happened
+      // rather than what was intended.
+      const scope: SearchScope = { searched: null, widened: false };
       const found = named.resolved.length
         ? []
         : await (async () => {
@@ -805,12 +809,19 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
                 ? { subjectId: thread.subjectId }
                 : null;
             if (home) {
+              // The project id IS the name on screen ("ringrunner · builds in
+              // the sandbox"), so it needs no lookup. A subject id is a ulid
+              // and does — fetched only on this path, never on a plain turn.
+              scope.searched = thread.projectId ?? (await getSubject(db, orgId, thread.subjectId!).catch(() => null))?.name ?? null;
               const inHome = await findRelatedConversations(db, orgId, text, {
                 excludeThreadId: thread.id,
                 ...home,
                 limit: MAX_IN_HOME_THREAD,
               }).catch(() => []);
               if (inHome.length) return inHome;
+              // Nothing here. Whatever the wider search turns up is a weaker
+              // claim, and the line will say so.
+              scope.widened = true;
             }
             return findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
           })();
@@ -819,6 +830,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const referenceNote = references.resolved.length
         ? referenceLine(
             references.resolved.map((r) => ({ label: r.label, ...(r.note ? { note: r.note } : {}), ...(r.found ? { found: true } : {}) })),
+            scope,
           )
         : undefined;
 

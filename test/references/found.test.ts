@@ -75,6 +75,52 @@ describe('references/found — reaching back without being told to', () => {
     expect(both).toContain('looked back at Pricing the platform');
   });
 
+  /**
+   * AND SAYS WHERE IT LOOKED, WHICH IS THE HALF THAT WAS MISSING.
+   *
+   * Naming only WHAT was found left the reader to infer the scope from the
+   * titles — which is exactly how three imported chats about an unrelated shop
+   * read as "what you meant" inside a project they had nothing to do with.
+   * Leading with the place makes the guess checkable at a glance: if the
+   * results look wrong you can see whether the search was wrong or the place
+   * was.
+   */
+  describe('the line names the place it searched', () => {
+    it('leads with the place when the answer came from inside it', () => {
+      const line = referenceLine([{ label: 'Ring sizing', found: true }], { searched: 'ringrunner', widened: false });
+      expect(line).toContain('searched ringrunner and found Ring sizing');
+      expect(line).toContain('seemed to be what you meant');
+      // Not the unscoped phrasing — that one claims nothing about where.
+      expect(line).not.toContain('looked back at');
+    });
+
+    it('says so plainly when the place had nothing and everything was searched instead', () => {
+      const line = referenceLine([{ label: 'Selling Canvas Apparel', found: true }], { searched: 'ringrunner', widened: true });
+      expect(line).toContain('found nothing in ringrunner');
+      expect(line).toContain('so searched everything');
+      // A WEAKER CLAIM GETS A WEAKER WORD. Finding it where you were standing
+      // and finding it somewhere else entirely are not equally good guesses,
+      // and the sentence should not pretend they are.
+      expect(line).toContain('might be what you meant');
+      expect(line).not.toContain('seemed to be what you meant');
+    });
+
+    it('claims no place when there was none to claim', () => {
+      // A thread filed nowhere searched everywhere and always did. Naming a
+      // scope here would be inventing one.
+      const line = referenceLine([{ label: 'Pricing the platform', found: true }]);
+      expect(line).toContain('looked back at');
+      expect(line).not.toMatch(/searched|found nothing in/);
+    });
+
+    it('says nothing about searching when the owner pointed at it themselves', () => {
+      // An explicit # is not a guess, so there is no scope to report even when
+      // the thread has one.
+      const line = referenceLine([{ label: 'Loom' }], { searched: 'ringrunner', widened: true });
+      expect(line).toBe('⇄ reading Loom — nothing there was changed.');
+    });
+  });
+
   it('brings nothing back for a message that is about nothing', async () => {
     await conversation('Pricing the platform', ['charge a monthly subscription fee instead of per order']);
     // The everyday case, and the one that must stay free: short, contextless

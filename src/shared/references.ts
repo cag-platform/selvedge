@@ -112,7 +112,19 @@ export function completeReference(text: string, name: string): string {
  * that quietly launders the one into the other is the false-calm rule wearing
  * a different coat.
  */
-export function referenceLine(brought: Array<{ label: string; note?: string; found?: boolean }>): string {
+/**
+ * WHERE IT LOOKED, WHICH IS HALF THE ANSWER.
+ *
+ * `searched` is the place a guess was made inside — a project or a subject —
+ * and `widened` says that place had nothing, so the whole account was searched
+ * instead. Both are absent for an explicit `#`, where nothing was guessed.
+ */
+export type SearchScope = { searched: string | null; widened: boolean };
+
+export function referenceLine(
+  brought: Array<{ label: string; note?: string; found?: boolean }>,
+  where: SearchScope = { searched: null, widened: false },
+): string {
   const say = (b: { label: string; note?: string }) => (b.note ? `${b.label} (${b.note})` : b.label);
   const join = (parts: string[]) => (parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`);
 
@@ -121,10 +133,36 @@ export function referenceLine(brought: Array<{ label: string; note?: string; fou
 
   const parts: string[] = [];
   if (named.length) parts.push(`reading ${join(named)}`);
-  // A GUESS SAYS SO. The database found these from what was asked; presenting
-  // that as though it had been chosen is how somebody ends up believing they
-  // pointed at something they never did.
-  if (found.length) parts.push(`${named.length ? 'and ' : ''}looked back at ${join(found)}, which seemed to be what you meant`);
+  /**
+   * A GUESS SAYS SO, AND NOW IT SAYS WHERE IT LOOKED.
+   *
+   * The database found these from what was asked; presenting that as though it
+   * had been chosen is how somebody ends up believing they pointed at
+   * something they never did. But saying only WHAT was found left the reader
+   * to work out the scope from the titles — which is exactly how three
+   * imported chats about an unrelated shop read as "what you meant" inside a
+   * project they had nothing to do with.
+   *
+   * So the scope leads. "Searched ringrunner" is checkable at a glance: if the
+   * results look wrong, you can see immediately whether the search was wrong
+   * or the place was.
+   *
+   * AND A WIDENED SEARCH IS THE WEAKER CLAIM. Finding nothing here and then
+   * looking everywhere is a different act from finding it where you were
+   * standing, and it gets its own sentence and its own hedge — "might be"
+   * rather than "seemed to be" — because that is genuinely how much less
+   * confident it is.
+   */
+  if (found.length) {
+    const also = named.length ? 'and ' : '';
+    if (where.searched && where.widened) {
+      parts.push(`${also}found nothing in ${where.searched}, so searched everything: ${join(found)}, which might be what you meant`);
+    } else if (where.searched) {
+      parts.push(`${also}searched ${where.searched} and found ${join(found)}, which seemed to be what you meant`);
+    } else {
+      parts.push(`${also}looked back at ${join(found)}, which seemed to be what you meant`);
+    }
+  }
 
   return `⇄ ${parts.join(' ')} — nothing there was changed.`;
 }

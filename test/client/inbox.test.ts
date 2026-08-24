@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allThreads, matches, railOrder, railPlaces, splitPutAway, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
+import { allThreads, matches, railPlaces, splitPutAway, whenShort, type ProjectRow, type SubjectRow } from '../../src/client/lib/inbox.js';
 import { putAwayLine } from '../../src/shared/putAway.js';
 
 const project = (over: Partial<ProjectRow>): ProjectRow => ({
@@ -12,27 +12,12 @@ const project = (over: Partial<ProjectRow>): ProjectRow => ({
 });
 
 /**
- * The rail's rules, tested away from the browser: what order projects appear
- * in, and how a thread's date reads. The order matters because the rail is the
- * screen the health test is run against — a project that needs you must not be
- * below three that don't.
+ * The rail's rules, tested away from the browser. Ordering is asserted
+ * through `railPlaces` below — the only function that decides it now, since
+ * projects and subjects share one order and a separate projects-only sort
+ * could only disagree with it.
  */
 describe('the rail', () => {
-  it('puts what needs you first, then what is moving, then what it cannot see, then the quiet', () => {
-    const ordered = railOrder([
-      project({ id: 'a', name: 'Alpha', status: 'healthy' }),
-      project({ id: 'b', name: 'Bravo', status: 'unknown' }),
-      project({ id: 'c', name: 'Charlie', status: 'needs' }),
-      project({ id: 'd', name: 'Delta', status: 'working' }),
-    ]);
-    expect(ordered.map((p) => p.id)).toEqual(['c', 'd', 'b', 'a']);
-  });
-
-  it('breaks ties by name, so the rail never reshuffles under you', () => {
-    const ordered = railOrder([project({ id: 'z', name: 'Zulu' }), project({ id: 'a', name: 'Alpha' })]);
-    expect(ordered.map((p) => p.name)).toEqual(['Alpha', 'Zulu']);
-  });
-
   it('flattens every thread with the project it belongs to, for the palette', () => {
     const flat = allThreads({
       projects: [
@@ -75,11 +60,16 @@ describe('the rail', () => {
  * whether a thing was a "project" or a "subject" before they could start a
  * conversation about it. They are the same thing; one of them has code.
  *
- * The two rules that survive the merge are both honesty rules, and both are
- * about what the rail may CLAIM: a place with no code gets no status (a status
- * on it would be a claim about nothing), and it never outranks a place that
- * has one (a thing that cannot break must not sit above a thing that is
- * broken).
+ * The honesty rule that survives is about what the rail may CLAIM: a place
+ * with no code gets no status, because a status on it would be a claim about
+ * nothing.
+ *
+ * THE ORDER IS NO LONGER HEALTH. The rail sorted by the edge vocabulary while
+ * the product's question was "what needs me this morning?" — it isn't any
+ * more. This is where somebody keeps everything they are building, and what
+ * you want on opening it is what you were last doing. Health-first also
+ * collapsed in practice: most places have never reported anything, so they all
+ * landed in one rank and the list degraded to alphabetical.
  */
 describe('the rail, as one list', () => {
   const subject = (over: Partial<SubjectRow>): SubjectRow => ({ id: 's', name: 'S', threads: [], ...over });
@@ -91,30 +81,58 @@ describe('the rail, as one list', () => {
     expect(place!.hasCode).toBe(false);
   });
 
-  it('never lets a place that cannot break sit above one that is broken', () => {
-    const places = railPlaces(
-      [project({ id: 'loom', name: 'Loom', status: 'needs' }), project({ id: 'yoke', name: 'Yoke', status: 'healthy' })],
-      [subject({ id: 'aaa', name: 'Aaa' })],
-    );
-    expect(places.map((p) => p.id)).toEqual(['loom', 'yoke', 'aaa']);
-  });
+  const chatAt = (at: string) => [{ id: `t_${at}`, last_at: at } as never];
 
-  it('keeps the health ordering the stack is read by', () => {
+  it('puts where you were last at the top, whatever its health says', () => {
     const places = railPlaces(
       [
-        project({ id: 'a', name: 'Alpha', status: 'healthy' }),
-        project({ id: 'b', name: 'Bravo', status: 'unknown' }),
-        project({ id: 'c', name: 'Charlie', status: 'needs' }),
-        project({ id: 'd', name: 'Delta', status: 'working' }),
+        project({ id: 'a', name: 'Alpha', status: 'healthy', threads: chatAt('2026-08-24T09:00:00Z') }),
+        project({ id: 'b', name: 'Bravo', status: 'unknown', threads: chatAt('2026-08-20T09:00:00Z') }),
+        project({ id: 'c', name: 'Charlie', status: 'needs', threads: chatAt('2026-08-01T09:00:00Z') }),
+        project({ id: 'd', name: 'Delta', status: 'working', threads: chatAt('2026-08-22T09:00:00Z') }),
       ],
       [],
     );
-    expect(places.map((p) => p.id)).toEqual(['c', 'd', 'b', 'a']);
+    expect(places.map((p) => p.id)).toEqual(['a', 'd', 'b', 'c']);
   });
 
-  it('breaks ties by name among the code-less too, so nothing reshuffles under you', () => {
-    const places = railPlaces([], [subject({ id: 'z', name: 'Zulu' }), subject({ id: 'a', name: 'Alpha' })]);
-    expect(places.map((p) => p.name)).toEqual(['Alpha', 'Zulu']);
+  it('mixes places with and without code into one order — recency does not care which has a repo', () => {
+    // The merge was supposed to remove "which of these am I in?", and keeping
+    // every subject below every project drew that line straight back on. An
+    // idea from five minutes ago belongs above a repo last touched in March.
+    const places = railPlaces(
+      [project({ id: 'loom', name: 'Loom', status: 'needs', threads: chatAt('2026-03-01T09:00:00Z') })],
+      [{ ...subject({ id: 'idea', name: 'Idea' }), threads: chatAt('2026-08-24T09:00:00Z') }],
+    );
+    expect(places.map((p) => p.id)).toEqual(['idea', 'loom']);
+  });
+
+  it('sinks a place nobody has said anything in, because it has no recency to sort by', () => {
+    const places = railPlaces(
+      [
+        project({ id: 'fresh', name: 'Fresh' }),
+        project({ id: 'used', name: 'Used', threads: chatAt('2026-01-01T09:00:00Z') }),
+      ],
+      [],
+    );
+    expect(places.map((p) => p.id)).toEqual(['used', 'fresh']);
+  });
+
+  it('breaks ties by name, so nothing reshuffles under you', () => {
+    // Two never-used places, and two used at the same moment, both read
+    // alphabetically rather than in whatever order the payload arrived.
+    expect(railPlaces([], [subject({ id: 'z', name: 'Zulu' }), subject({ id: 'a', name: 'Alpha' })]).map((p) => p.name)).toEqual([
+      'Alpha',
+      'Zulu',
+    ]);
+    const sameMoment = railPlaces(
+      [
+        project({ id: 'z', name: 'Zulu', threads: chatAt('2026-08-24T09:00:00Z') }),
+        project({ id: 'a', name: 'Alpha', threads: chatAt('2026-08-24T09:00:00Z') }),
+      ],
+      [],
+    );
+    expect(sameMoment.map((p) => p.name)).toEqual(['Alpha', 'Zulu']);
   });
 
   it('carries every conversation through the merge — nothing is dropped by being re-sorted', () => {
@@ -142,14 +160,16 @@ describe('a place folded out of the rail', () => {
   it('separates what is at hand from what is folded, keeping the rail order', () => {
     const places = railPlaces(
       [
-        away(project({ id: 'old', name: 'Old thing', status: 'needs' })),
-        project({ id: 'live', name: 'Live', status: 'healthy' }),
-        project({ id: 'broken', name: 'Broken', status: 'needs' }),
+        away(project({ id: 'old', name: 'Old thing', status: 'needs', threads: [{ id: 'to', last_at: '2026-08-24T09:00:00Z' } as never] })),
+        project({ id: 'live', name: 'Live', status: 'healthy', threads: [{ id: 'tl', last_at: '2026-08-01T09:00:00Z' } as never] }),
+        project({ id: 'broken', name: 'Broken', status: 'needs', threads: [{ id: 'tb', last_at: '2026-08-20T09:00:00Z' } as never] }),
       ],
       [],
     );
     const { atHand, putAway } = splitPutAway(places);
-    // "needs you" still outranks "healthy" among what is at hand...
+    // The rail's order is kept inside the half that is at hand — the most
+    // recently used first, with the folded one out of the way entirely even
+    // though it is the most recent of the three.
     expect(atHand.map((p) => p.id)).toEqual(['broken', 'live']);
     // ...and the folded one is folded regardless of what its status says.
     expect(putAway.map((p) => p.id)).toEqual(['old']);

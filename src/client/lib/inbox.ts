@@ -98,17 +98,40 @@ export function allThreads(data: InboxData | null): Array<ThreadRow & { projectI
 }
 
 /**
- * The rail's own order: projects that need you first, then the ones in motion,
- * then the quiet ones — the edge vocabulary, applied to a list. Within a
- * project the server already sorts threads newest-first.
+ * WHERE YOU WERE LAST, NOT WHAT IS SHOUTING LOUDEST.
+ *
+ * The rail used to sort by the edge vocabulary — needs you, then in motion,
+ * then quiet — because the product's question was "what needs me this
+ * morning?". That is not the question any more. This is where somebody keeps
+ * everything they are building, and the thing you want when you open it is the
+ * thing you were last doing.
+ *
+ * Health-first also degraded badly in practice: most places have never
+ * reported anything, so they all landed in one rank and the list collapsed
+ * into alphabetical order — a directory of names with no sense of what was
+ * live. Recency can't collapse like that, because every place you have
+ * actually used has a different last-activity.
+ *
+ * A PLACE WITH NO CONVERSATION HAS NO RECENCY, so those go last, alphabetically
+ * — there is nothing to be recent about, and putting them first would rank a
+ * repo nobody has opened above the one open in the next tab.
+ *
+ * WHAT THIS COSTS, SAID OUT LOUD: a project that broke a month ago now sits
+ * where a month-old project sits, rather than being lifted to the top. The edge
+ * is still on its row, so the signal is not lost — but the order no longer
+ * carries it. That is the trade the change makes, and it is the right one for
+ * a workbench and would be the wrong one for a monitor.
  */
-const RAIL_RANK: Record<NonNullable<ProjectRow['status']>, number> = { needs: 0, working: 1, unknown: 2, healthy: 3 };
-/** No signal sorts with the quiet ones — it is not a problem, it is a silence. */
-const NO_SIGNAL_RANK = RAIL_RANK.healthy;
-
-export function railOrder(projects: ProjectRow[]): ProjectRow[] {
-  const rank = (p: ProjectRow) => (p.status === null ? NO_SIGNAL_RANK : RAIL_RANK[p.status]);
-  return [...projects].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+export function byRecency<T extends { name: string; chat: { last_at?: string | null } | null }>(places: T[]): T[] {
+  const at = (p: T) => p.chat?.last_at ?? '';
+  return [...places].sort((a, b) => {
+    const [x, y] = [at(a), at(b)];
+    if (x && y) return y.localeCompare(x) || a.name.localeCompare(b.name);
+    // Never used sinks; two never-used places read alphabetically.
+    if (x) return -1;
+    if (y) return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /**
@@ -153,9 +176,15 @@ export type RailPlace = {
 };
 
 export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): RailPlace[] {
+  // ONE LIST, ORDERED BY WHEN YOU WERE THERE — projects and subjects together.
+  // They used to be two blocks with every subject below every project, which
+  // is the "which of these am I in?" question the merge was supposed to have
+  // removed. An idea you were in five minutes ago belongs above a repo you
+  // last touched in March, whether or not it has code in it.
+  //
   // The server sorts a place's threads newest-first, so the first IS the
   // current conversation.
-  const withCode: RailPlace[] = railOrder(projects).map((p) => ({
+  const withCode: RailPlace[] = projects.map((p) => ({
     id: p.id,
     name: p.name,
     status: p.status,
@@ -165,19 +194,17 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
     chat: p.threads[0] ?? null,
     putAway: p.put_away === true,
   }));
-  const withoutCode: RailPlace[] = [...subjects]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      status: null,
-      health: null,
-      threads: s.threads,
-      hasCode: false,
-      chat: s.threads[0] ?? null,
-      putAway: s.put_away === true,
-    }));
-  return [...withCode, ...withoutCode];
+  const withoutCode: RailPlace[] = subjects.map((s) => ({
+    id: s.id,
+    name: s.name,
+    status: null,
+    health: null,
+    threads: s.threads,
+    hasCode: false,
+    chat: s.threads[0] ?? null,
+    putAway: s.put_away === true,
+  }));
+  return byRecency([...withCode, ...withoutCode]);
 }
 
 /**
