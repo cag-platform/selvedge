@@ -77,6 +77,30 @@ describe('status — corrections and what has happened', () => {
     expect(res.body.corrections[0].project_id).toBe('loom');
   });
 
+  /**
+   * A burst of incidents from one cause writes one sentence several times,
+   * and three identical apologies on screen read as a glitch. They collapse
+   * to one line that owns the count — and reading it still acknowledges
+   * every underlying incident, not just the one whose id survived.
+   */
+  it('collapses identical corrections into one line with the count', async () => {
+    await falseAllClear('I said checkout was fine. It broke.');
+    await falseAllClear('I said checkout was fine. It broke.');
+    await falseAllClear('I said checkout was fine. It broke.');
+    await falseAllClear('A different sentence entirely.');
+
+    const res = await request(app()).get('/api/status');
+    expect(res.status).toBe(200);
+    expect(res.body.corrections).toHaveLength(2);
+    const lines = res.body.corrections.map((c: { line: string }) => c.line).sort();
+    expect(lines[0]).toBe('A different sentence entirely.');
+    expect(lines[1]).toBe('I said checkout was fine. It broke. It happened 3 times.');
+
+    // All four incidents are acknowledged by the read, grouped or not.
+    const open = await db.select().from(trustIncidents).where(eq(trustIncidents.acknowledged, false));
+    expect(open).toHaveLength(0);
+  });
+
   /** The rule the move had to preserve: reading it is what marks it shown. */
   it('marks a correction acknowledged once it has actually been shown', async () => {
     const id = await falseAllClear('I got that wrong.');
