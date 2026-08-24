@@ -1,4 +1,4 @@
-import { mentionedAgents, MAX_CONSULTED } from '../../shared/mentions.js';
+import { builderNearMiss, mentionedAgents, MAX_CONSULTED } from '../../shared/mentions.js';
 import type { AgentId } from '../../shared/agents.js';
 
 /**
@@ -82,6 +82,10 @@ export function completeMention(text: string, agent: AgentId): string {
  * already answering, which costs nothing and needs no announcement.
  */
 export function sendNote(text: string, agents: AgentOffer[]): string | null {
+  // The near-miss outranks everything else this note could say: a message
+  // about to route to the wrong agent is the thing to catch before send.
+  const miss = builderNearMiss(text);
+  if (miss) return miss;
   const named = mentionedAgents(text);
   if (named.length === 0) return null;
 

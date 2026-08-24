@@ -463,6 +463,35 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     }),
   );
 
+  /**
+   * THE MOVE, REACHABLE ON PURPOSE. The join-or-create choices used to exist
+   * only inside the needs-project refusal — you could reach them by naming a
+   * builder and being told no, and no other way. Somebody who already knows
+   * they want a conversation in the workshop shouldn't have to trip the wall
+   * to find the door. Same shape as the 409 carries, served on request.
+   */
+  router.get(
+    '/api/threads/:threadId/build/options',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) {
+        res.status(404).json({ error: 'no such conversation' });
+        return;
+      }
+      if (thread.projectId) {
+        res.json({ has_project: true, projects: [], can_create: false });
+        return;
+      }
+      const packs = await listPacks(db, orgId);
+      res.json({
+        has_project: false,
+        projects: packs.map((p) => ({ id: p.identity.project_id, name: p.identity.name })),
+        can_create: Boolean(makeRepo),
+      });
+    }),
+  );
+
   /** Rename, archive, or change who is answering. */
   router.patch(
     '/api/threads/:threadId',

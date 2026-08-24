@@ -82,6 +82,85 @@ export async function resolveHostProject(
   return { projectId: project.id, environmentId: env.id };
 }
 
+/**
+ * DOES THIS REPO ALREADY LIVE HERE? — asked before anything is created.
+ *
+ * An app brought into Selvedge often already has a real deployment: Railway
+ * services carry the GitHub repo they deploy from, so the question is
+ * answerable. Provisioning used to skip it and mint a fresh service every
+ * time, which is how an imported app ended up with a duplicate deployment
+ * beside its real one — in the wrong Railway project, on dogfood configs.
+ *
+ * Matches are preferred in the production environment; the first match wins
+ * otherwise. Failure to ASK is an error the caller must treat as "do not
+ * create anything blind", not as "no".
+ */
+export type AdoptableService = {
+  projectId: string;
+  environmentId: string;
+  serviceId: string;
+  projectName: string;
+  serviceName: string;
+};
+
+export async function findServiceByRepo(token: string, repoFullName: string): Promise<AdoptableService | null> {
+  type Gql = {
+    projects: {
+      edges: Array<{
+        node: {
+          id: string;
+          name: string;
+          environments: { edges: Array<{ node: { id: string; name: string } }> };
+          services: {
+            edges: Array<{
+              node: {
+                id: string;
+                name: string;
+                serviceInstances: { edges: Array<{ node: { environmentId: string; source: { repo: string | null } | null } }> };
+              };
+            }>;
+          };
+        };
+      }>;
+    };
+  };
+  const data = await railwayGql<Gql>(
+    token,
+    `query {
+      projects { edges { node { id name
+        environments { edges { node { id name } } }
+        services { edges { node { id name
+          serviceInstances { edges { node { environmentId source { repo } } } }
+        } } }
+      } } }
+    }`,
+  );
+
+  const wanted = repoFullName.toLowerCase();
+  const matches: Array<AdoptableService & { environmentName: string }> = [];
+  for (const p of data.projects.edges.map((e) => e.node)) {
+    const envName = new Map(p.environments.edges.map((e) => [e.node.id, e.node.name] as const));
+    for (const svc of p.services.edges.map((e) => e.node)) {
+      for (const inst of svc.serviceInstances.edges.map((e) => e.node)) {
+        if (inst.source?.repo?.toLowerCase() === wanted) {
+          matches.push({
+            projectId: p.id,
+            environmentId: inst.environmentId,
+            serviceId: svc.id,
+            projectName: p.name,
+            serviceName: svc.name,
+            environmentName: envName.get(inst.environmentId) ?? '',
+          });
+        }
+      }
+    }
+  }
+  const best = matches.find((m) => m.environmentName.toLowerCase() === 'production') ?? matches[0];
+  if (!best) return null;
+  const { environmentName: _env, ...service } = best;
+  return service;
+}
+
 /** Create a service that deploys from a GitHub repo. Variables are passed at creation so the first auto-deploy already has them. */
 export async function createService(
   token: string,

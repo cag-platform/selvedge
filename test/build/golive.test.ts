@@ -19,6 +19,7 @@ function deps(over: Partial<GoLiveDeps> = {}): GoLiveDeps {
     domain: async () => 'https://loom-production.up.railway.app',
     awaitDeploy: async () => undefined,
     readFile: async () => null,
+    adopt: async () => null,
     ...over,
   };
 }
@@ -278,5 +279,91 @@ describe('the hosting account is the customer’s, by construction', () => {
       await t.close();
       delete process.env.RAILWAY_API_TOKEN;
     }
+  });
+});
+
+/**
+ * ADOPTION — an app that already runs on Railway keeps running there.
+ *
+ * Provisioning used to skip the question and mint a fresh service every time,
+ * which is how an imported app ended up with a duplicate deployment beside
+ * its real one. The properties held here: an existing service is adopted
+ * whole (recorded, watched, its domain read), and it is treated as somebody's
+ * running production — no database provisioned for it, no variable written to
+ * it, nothing created beside it. And when the question itself cannot be
+ * answered, nothing is created blind.
+ */
+describe('goLive adopts an existing deployment instead of duplicating it', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId, plan: 'studio' });
+    await createPack(
+      db,
+      orgId,
+      makeTestPack({
+        identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+        topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] },
+      }),
+    );
+  });
+  afterEach(async () => close());
+
+  const found = {
+    projectId: 'their_proj',
+    environmentId: 'their_env',
+    serviceId: 'their_svc',
+    projectName: 'loom-live',
+    serviceName: 'loom',
+  };
+
+  it('uses the service already deploying this repo, and touches nothing on it', async () => {
+    let created = 0;
+    let varsWritten = 0;
+    let provisioned = 0;
+    const out = await goLive(db, orgId, 'loom', deps({
+      adopt: async (_token, repo) => (repo === 'acme/loom' ? found : null),
+      makeService: async () => { created += 1; return 'svc_x'; },
+      setVars: async () => { varsWritten += 1; },
+      provisionDb: async () => { provisioned += 1; return { neonProjectId: 'n', connectionUri: 'c' }; },
+      // The app declares a database; an adopted deployment already has its own.
+      readFile: async () => 'DATABASE_URL=\n',
+      domain: async () => 'https://loom.up.railway.app',
+    }));
+    expect(out.outcome).toBe('live');
+    expect(created).toBe(0);
+    expect(varsWritten).toBe(0);
+    expect(provisioned).toBe(0);
+    // The real service is the one recorded, so the watching points at it.
+    const pack = await getPack(db, orgId, 'loom');
+    const host = pack?.topology.sources.find((s) => s.connector === 'railway');
+    expect(host?.resource_id).toBe('their_proj/their_env/their_svc');
+    expect(pack?.identity.links?.live_url).toBe('https://loom.up.railway.app');
+  });
+
+  it('creates nothing when it cannot tell whether a deployment exists', async () => {
+    let created = 0;
+    const out = await goLive(db, orgId, 'loom', deps({
+      adopt: async () => { throw new Error('Railway answered 502'); },
+      makeService: async () => { created += 1; return 'svc_x'; },
+    }));
+    expect(out.outcome).toBe('failed');
+    expect(out.message).toContain("didn't create anything");
+    expect(created).toBe(0);
+  });
+
+  it('still creates a fresh service when the account genuinely has none for this repo', async () => {
+    let created = 0;
+    const out = await goLive(db, orgId, 'loom', deps({
+      adopt: async () => null,
+      makeService: async () => { created += 1; return 'svc_new'; },
+    }));
+    expect(out.outcome).toBe('live');
+    expect(created).toBe(1);
   });
 });

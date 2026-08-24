@@ -8,12 +8,14 @@ import { createNeonDatabase, neonConfigured } from '../connectors/neon/client.js
 import {
   createService,
   ensureServiceDomain,
+  findServiceByRepo,
   resolveHostProject,
   serviceNameFor,
   setServiceVariables,
   targetToResourceId,
   waitForDeploy,
   DeployTimeoutError,
+  type AdoptableService,
 } from '../connectors/railway/provision.js';
 import { ensureLiveUrlCheck } from '../monitor/wiring.js';
 import { resolveRepoToken } from './repoToken.js';
@@ -134,6 +136,8 @@ export type GoLiveDeps = {
   setVars?: (token: string, target: RailwayTarget, vars: Record<string, string>) => Promise<void>;
   domain?: (token: string, target: RailwayTarget) => Promise<string>;
   awaitDeploy?: (token: string, target: RailwayTarget) => Promise<void>;
+  /** Find the service already deploying this repo, if one exists. */
+  adopt?: (token: string, repoFullName: string) => Promise<AdoptableService | null>;
   readFile?: (repoFullName: string, path: string, accessToken?: string) => Promise<string | null>;
   /** Arm the health watch on the new address. Injected so go-live is testable without the checks table. */
   watch?: (db: Db, orgId: string, projectId: string, url: string) => Promise<void>;
@@ -152,6 +156,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
   const setVars = deps.setVars ?? setServiceVariables;
   const domain = deps.domain ?? ensureServiceDomain;
   const awaitDeploy = deps.awaitDeploy ?? waitForDeploy;
+  const adopt = deps.adopt ?? findServiceByRepo;
   const readFile = deps.readFile ?? readRepoFile;
   const watch = deps.watch ?? ensureLiveUrlCheck;
 
@@ -195,34 +200,72 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
   }
 
   try {
-    // 1) A database, if the app asked for one in its own .env.example.
+    // 0) ADOPT BEFORE CREATING ANYTHING. An app brought into Selvedge often
+    //    already has a real deployment, and Railway knows which repo each
+    //    service deploys from — so the account is asked first. An adopted
+    //    service is treated as what it is, somebody's running production:
+    //    no database is provisioned for it, no variable is written to it,
+    //    and its existing domain is read rather than replaced. If the
+    //    question itself cannot be answered, nothing is created blind.
+    let target = already;
+    let adoptedService: AdoptableService | null = null;
+    if (!target) {
+      try {
+        adoptedService = await adopt(account.token, repo);
+      } catch (err) {
+        return {
+          outcome: 'failed',
+          message: `I couldn't check whether this app already has a deployment on that Railway account, so I didn't create anything: ${err instanceof Error ? err.message : String(err)}. Try again in a moment.`,
+        };
+      }
+      if (adoptedService) {
+        target = {
+          projectId: adoptedService.projectId,
+          environmentId: adoptedService.environmentId,
+          serviceId: adoptedService.serviceId,
+        };
+        await say(
+          db,
+          orgId,
+          projectId,
+          `This app already lives on Railway — the service "${adoptedService.serviceName}" in your project "${adoptedService.projectName}" deploys this repo. I'm using that deployment rather than making a second one.`,
+        );
+      }
+    }
+
+    // 1) A database, if the app asked for one in its own .env.example — but
+    //    never for an adopted deployment, which already has whatever it has.
     const variables: Record<string, string> = { ...BASE_VARIABLES };
     let neonProjectId: string | null = null;
-    const repoRead = await resolveRepoToken(db, orgId, repo);
-    if (!hasDatabase(pack) && needsDatabase(await readFile(repo, '.env.example', repoRead.ok ? repoRead.token : undefined))) {
-      if (!neonConfigured() && !deps.provisionDb) {
-        return { outcome: 'not_possible', message: "This app needs a database, and Selvedge's database provider isn't configured yet." };
+    if (!target) {
+      const repoRead = await resolveRepoToken(db, orgId, repo);
+      if (!hasDatabase(pack) && needsDatabase(await readFile(repo, '.env.example', repoRead.ok ? repoRead.token : undefined))) {
+        if (!neonConfigured() && !deps.provisionDb) {
+          return { outcome: 'not_possible', message: "This app needs a database, and Selvedge's database provider isn't configured yet." };
+        }
+        await say(db, orgId, projectId, 'Setting up a database for it…');
+        const created = await provisionDb(orgId, projectId);
+        neonProjectId = created.neonProjectId;
+        // The connection string is set on the host and deliberately not stored
+        // here: Selvedge never needs to read it again, and a secret it does not
+        // hold is a secret it cannot leak.
+        variables.DATABASE_URL = created.connectionUri;
       }
-      await say(db, orgId, projectId, 'Setting up a database for it…');
-      const created = await provisionDb(orgId, projectId);
-      neonProjectId = created.neonProjectId;
-      // The connection string is set on the host and deliberately not stored
-      // here: Selvedge never needs to read it again, and a secret it does not
-      // hold is a secret it cannot leak.
-      variables.DATABASE_URL = created.connectionUri;
     }
 
     // 2) The service, created from the repo with its variables already in place
-    //    so the first automatic build has them.
-    let target = already;
+    //    so the first automatic build has them. Only when nothing exists to
+    //    adopt or reuse.
     if (!target) {
       await say(db, orgId, projectId, 'Setting up the hosting…');
       const host = await hostProject(account.token, hostProjectOptions(account));
       const serviceId = await makeService(account.token, host.projectId, serviceNameFor(projectId), repo, variables);
       target = { projectId: host.projectId, environmentId: host.environmentId, serviceId };
+      // Re-asserted for the fallback creation shape, which carries none. Never
+      // for an adopted service: overwriting a running app's PORT or
+      // DATABASE_URL is exactly the kind of help nobody asked for.
+      await setVars(account.token, target, variables);
     }
-    // Re-assert regardless: a service created through the fallback shape has none.
-    await setVars(account.token, target, variables);
 
     // 3) A web address, then wait for the build to actually land.
     const url = await domain(account.token, target);

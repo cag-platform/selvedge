@@ -707,6 +707,30 @@ export function ThreadPane({
             </div>
           </div>
         )}
+        {/* THE MOVE, ON PURPOSE. The join-or-create card used to be reachable
+            only by naming a builder and being refused. A conversation that has
+            no project offers the door itself. */}
+        {!data.project && !needsProject && (
+          <button
+            onClick={() => {
+              void api
+                .get<{ has_project: boolean; projects: Array<{ id: string; name: string }>; can_create: boolean }>(
+                  `/api/threads/${data.thread.id}/build/options`,
+                )
+                .then((r) => {
+                  if (r.has_project) return onReload();
+                  setNeedsProject({
+                    refusal: { agent: 'a builder', projects: r.projects, canCreate: r.can_create },
+                    message: 'Where should this conversation build?',
+                  });
+                })
+                .catch(() => undefined);
+            }}
+            className="mb-work-tight text-meta text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+          >
+            Give this conversation a project
+          </button>
+        )}
         {/* Nothing spends past what you approved — said here, in the place the
             spending actually happens, with the figure and the way through. */}
         {needsProject && (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mentionedAgents, mentionIntent, consultationLine, MAX_CONSULTED } from '../../src/shared/mentions.js';
+import { builderNearMiss, mentionedAgents, mentionIntent, consultationLine, MAX_CONSULTED } from '../../src/shared/mentions.js';
 import { agentById, AGENTS } from '../../src/shared/agents.js';
 
 describe('@-mentions — who was asked', () => {
@@ -146,3 +146,24 @@ describe('naming any of the models in the room', () => {
     expect(consultationLine(asked, (id) => agentById(id)?.name ?? id)).not.toContain('limit');
   });
 });
+
+/**
+ * The near-miss: "@claude code" parses as @claude — correctly — and routes a
+ * build request to the talker. Caught before send, with the one-word form
+ * named; the text itself is never rewritten. Mirrored in Mentions.swift and
+ * held by the iOS parity harness.
+ */
+describe('builderNearMiss', () => {
+  it('catches "@claude code" and names @claudecode', () => {
+    expect(builderNearMiss('@claude code, build this')).toContain('@claudecode');
+    expect(builderNearMiss('hey @Claude Code go')).toContain('one word');
+  });
+
+  it('leaves real mentions and prose alone', () => {
+    expect(builderNearMiss('@claudecode build it')).toBeNull();
+    expect(builderNearMiss('@claude the code review')).toBeNull();
+    expect(builderNearMiss('mail x@claude code')).toBeNull();
+    expect(builderNearMiss('no mentions at all')).toBeNull();
+  });
+});
+

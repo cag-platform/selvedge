@@ -111,3 +111,18 @@ export function consultationLine(
     : '';
   return `⇄ asked ${list} for a take — nothing was built, and the conversation stays where it is.${note}`;
 }
+
+/**
+ * THE NEAR-MISS THAT ROUTES TO THE WRONG AGENT. "@claude code, build this"
+ * parses as @claude — the talker — followed by the word "code", so the person
+ * gets a thoughtful paragraph about why nothing can be built, from an agent
+ * that was never going to build. The parse is correct; the intent obviously
+ * wasn't. Said before send, never guessed at after: the text is left alone
+ * and the note names the one-word form.
+ */
+export function builderNearMiss(text: string): string | null {
+  if (/(^|[^A-Za-z0-9_])@claude[ .]code\b/i.test(text)) {
+    return 'Heads up: "@claude code" reads as @claude, who talks. The builder is @claudecode, one word.';
+  }
+  return null;
+}

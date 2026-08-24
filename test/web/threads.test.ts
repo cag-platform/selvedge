@@ -7,7 +7,8 @@ import { agentMessages, agentRuns, digests, orgs } from '../../src/server/db/sch
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/routes/threads.js';
-import { createThread, ensureWorkshopThread, getThread, listThreads } from '../../src/server/threads/store.js';
+import { createThread, createSubjectThread, ensureWorkshopThread, getThread, listThreads } from '../../src/server/threads/store.js';
+import { createSubject } from '../../src/server/threads/subjects.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { appWithOrg } from './helpers.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
@@ -300,3 +301,45 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect((await request(off).get('/api/inbox')).body.engine_on).toBe(false);
   });
 });
+
+/**
+ * THE MOVE, REACHABLE ON PURPOSE — the standing options endpoint serves the
+ * same choices the needs-project refusal carries, without the wall.
+ */
+describe('GET /api/threads/:id/build/options', () => {
+  it('offers the projects and whether a new one can be made', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
+      const subject = await createSubject(t.db, 'org_1', 'Ideas');
+      const idea = await createSubjectThread(t.db, 'org_1', subject.id, { title: 'order notes' });
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup, createRepo: async () => ({ fullName: 'acme/x' }) }));
+
+      const res = await request(app).get(`/api/threads/${idea.id}/build/options`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        has_project: false,
+        projects: [{ id: 'loom', name: 'Loom' }],
+        can_create: true,
+      });
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('says when the conversation already has a project, and offers nothing', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
+      const thread = await createThread(t.db, 'org_1', 'loom', { kind: 'general', title: 'x' });
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup }));
+      const res = await request(app).get(`/api/threads/${thread.id}/build/options`);
+      expect(res.body).toEqual({ has_project: true, projects: [], can_create: false });
+    } finally {
+      await t.close();
+    }
+  });
+});
+
