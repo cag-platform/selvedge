@@ -743,7 +743,9 @@ export function ThreadPane({
             </p>
 
             {needsProject.refusal.projects.length > 0 && (
-              <div className="flex flex-wrap gap-work-tight">
+              // Bounded for the same reason as the phone's card: twenty-eight
+              // projects unbounded push "start a new one" out of reach.
+              <div className="flex max-h-40 flex-wrap gap-work-tight overflow-y-auto">
                 {needsProject.refusal.projects.map((p) => (
                   <button
                     key={p.id}
