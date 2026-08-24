@@ -88,14 +88,80 @@ export async function isAppServerUp(sandbox: Sandbox): Promise<boolean> {
   return (probe.result ?? '').includes('UP');
 }
 
-/** True when /workspace/app has a package.json with a "dev" script. */
-async function hasDevScript(sandbox: Sandbox): Promise<boolean> {
+/**
+ * WHAT, IF ANYTHING, A BROWSER CAN OPEN HERE.
+ *
+ * This used to be one boolean — "does it have a dev script?" — and everything
+ * that answered no was handed to a static file server pointed at the
+ * repository root. For a web app without a dev script that is right. For
+ * everything else it is a lie with a green light on it: an Xcode project
+ * previewed as `Index of app/`, listing .gitignore and README.md and
+ * RegionalPancreas.xcodeproj, reported as `ready`, under the heading "the app,
+ * live in the workshop". A curl against a directory index returns 200, so
+ * every check downstream agreed.
+ *
+ * Three answers now, and the third is the point: a repository can have nothing
+ * in it that a browser can open, and saying so is the honest result rather than
+ * a failure. It also names what it DID find, because "this is an iOS app" is
+ * the whole explanation and leaving it out turns a clear answer into a shrug.
+ */
+export type PreviewShape =
+  | { kind: 'dev' }
+  | { kind: 'static'; dir: string }
+  | { kind: 'none'; what: string | null };
+
+/** Directories checked for an index.html, nearest-to-built first. */
+const STATIC_DIRS = ['dist', 'build', 'out', 'public', '.'];
+
+/**
+ * What a repository with no web app in it appears to be, in the owner's words.
+ * Ordered: the first match wins, so the most specific marker is the one named.
+ */
+const NOT_WEB: ReadonlyArray<readonly [glob: string, what: string]> = [
+  ['*.xcodeproj', 'an Xcode project'],
+  ['*.xcworkspace', 'an Xcode workspace'],
+  ['Package.swift', 'a Swift package'],
+  ['build.gradle', 'an Android or Gradle project'],
+  ['build.gradle.kts', 'an Android or Gradle project'],
+  ['Cargo.toml', 'a Rust crate'],
+  ['go.mod', 'a Go module'],
+  ['pyproject.toml', 'a Python package'],
+  ['setup.py', 'a Python package'],
+  ['Gemfile', 'a Ruby project'],
+];
+
+async function previewShape(sandbox: Sandbox): Promise<PreviewShape> {
+  const devCheck = shellQuote('const s = require("./package.json").scripts || {}; process.exit(s.dev ? 0 : 1)');
+  const staticChecks = STATIC_DIRS.map((d) => `[ -f ${d}/index.html ] && echo "STATIC:${d}" && exit 0`).join('; ');
+  const whatChecks = NOT_WEB.map(([glob, what]) => `ls -d ${glob} >/dev/null 2>&1 && echo "WHAT:${what}" && exit 0`).join('; ');
   const probe = await exec(
     sandbox,
-    `cd ${WORKDIR} && if [ -f package.json ] && node -e ${shellQuote('const s = require("./package.json").scripts || {}; process.exit(s.dev ? 0 : 1)')}; then echo DEV; fi`,
+    `cd ${WORKDIR} || exit 0; if [ -f package.json ] && node -e ${devCheck}; then echo DEV; exit 0; fi; ${staticChecks}; ${whatChecks}; echo NONE`,
     60,
   );
-  return (probe.result ?? '').includes('DEV');
+  const out = probe.result ?? '';
+  if (out.includes('DEV')) return { kind: 'dev' };
+  const dir = /STATIC:(\S+)/.exec(out)?.[1];
+  if (dir) return { kind: 'static', dir };
+  return { kind: 'none', what: /WHAT:(.+)/.exec(out)?.[1]?.trim() ?? null };
+}
+
+/**
+ * Said to the owner when the repository holds nothing a browser can open.
+ * Not an apology and not an error — a preview is a window onto a running web
+ * app, and some things you build are not one.
+ */
+export function nothingToPreviewLine(what: string | null): string {
+  return what
+    ? `There's nothing here I can show in a browser — this looks like ${what}. Previews only work for apps that serve a web page.`
+    : "There's nothing here I can show in a browser. I couldn't find a dev server to start or an index.html to serve — previews only work for apps that serve a web page.";
+}
+
+/** Raised when there is no web app to start, as opposed to one that failed to. */
+export class NothingToPreviewError extends Error {
+  constructor(readonly what: string | null) {
+    super('nothing to preview');
+  }
 }
 
 async function killAppServer(sandbox: Sandbox): Promise<void> {
@@ -174,7 +240,10 @@ async function startAppServer(sandbox: Sandbox, options: StartOptions): Promise<
     databaseUrl = (await ensurePreviewDatabase(sandbox)) ? `postgresql://postgres@127.0.0.1:${PG_PORT}/app` : null;
   }
 
-  const dev = await hasDevScript(sandbox);
+  // Decided BEFORE anything is started: a repository with nothing web-shaped
+  // in it must not get a file server pointed at its own source tree.
+  const shape = await previewShape(sandbox);
+  if (shape.kind === 'none') throw new NothingToPreviewError(shape.what);
   // The environment is SOURCED, not interpolated: nothing from it reaches the
   // command string, so nothing from it reaches a log.
   const loadEnv = [
@@ -185,9 +254,12 @@ async function startAppServer(sandbox: Sandbox, options: StartOptions): Promise<
     .join('; ');
   const prefix = loadEnv ? `${loadEnv}; ` : '';
 
-  const inner = dev
-    ? `cd ${WORKDIR} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 npm run dev`
-    : `cd ${WORKDIR} || exit 1; DIR=.; if [ -f dist/index.html ]; then DIR=dist; fi; (npx -y serve -l tcp://0.0.0.0:${APP_PORT} "$DIR" || python3 -m http.server ${APP_PORT} --bind 0.0.0.0 --directory "$DIR")`;
+  // The static branch serves a directory that was CHOSEN because it holds an
+  // index.html, so what answers on :3000 is a page rather than a file listing.
+  const inner =
+    shape.kind === 'dev'
+      ? `cd ${WORKDIR} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 npm run dev`
+      : `cd ${WORKDIR} || exit 1; DIR=${shellQuote(shape.dir)}; (npx -y serve -l tcp://0.0.0.0:${APP_PORT} "$DIR" || python3 -m http.server ${APP_PORT} --bind 0.0.0.0 --directory "$DIR")`;
   const start = `${PATH_PREFIX} nohup bash -c ${shellQuote(inner)} >> ${LOG_FILE} 2>&1 < /dev/null & echo $! > ${PID_FILE}`;
 
   await sandbox.process.createSession(SESSION).catch(() => undefined); // idempotent
@@ -314,6 +386,16 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
      * that produced it is still the failure. What changes is what a person
      * reads first.
      */
+    /**
+     * NOT AN ERROR — an answer. Nothing failed and nothing is wrong; this
+     * repository simply isn't a web app, which is a fact about it rather than
+     * a problem with it. `none` is the state that says so, and it carries no
+     * offer because there is nothing the owner could add that would make an
+     * Xcode project open in a browser.
+     */
+    if (err instanceof NothingToPreviewError) {
+      return { state: 'none', url: null, message: nothingToPreviewLine(err.what) };
+    }
     if (err instanceof StartFailedError) {
       console.error(`preview failed to start for ${orgId}/${projectId}:`, err.log);
       const found = diagnoseStartFailure(err.log);

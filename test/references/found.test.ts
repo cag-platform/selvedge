@@ -206,4 +206,67 @@ describe('references/found — reaching back without being told to', () => {
       expect(found.map((f) => f.label)).toEqual(['Basket persistence']);
     });
   });
+
+  /**
+   * THE THREE CONFIDENT ANSWERS TO A QUESTION NOBODY ASKED.
+   *
+   * A workshop thread belongs to a project and had no scope at all: only
+   * subjects narrowed the search. So asking the builder sitting inside an app
+   * to get familiar with that app searched the WHOLE account and came back
+   * with imported chats about selling apparel and migrating an unrelated repo
+   * — under the words "which seemed to be what you meant".
+   *
+   * A project is the narrowest and most obvious context there is. If the
+   * answer is anywhere, it is here.
+   */
+  describe('a project is a place a question can be asked inside', () => {
+    it('searches only that project when scoped, and would have found the others without it', async () => {
+      await conversation('Ring sizing and the checkout flow', [
+        'the ring sizing guide should open from the checkout flow rather than a separate page',
+      ], { projectId: 'ringrunner' });
+      // The imported history that used to answer for everything. Same words,
+      // different project — which is exactly why the scope has to be the thing
+      // that separates them rather than the wording.
+      await conversation('Selling Canvas Apparel to refocus on Smith Bespoke', [
+        'the apparel checkout flow needs a sizing guide before we can refocus the shop',
+      ], { projectId: 'canvas', importedFrom: 'claude' });
+
+      const question = 'have a look at the checkout flow and the sizing guide in here';
+
+      const scoped = await findRelatedConversations(db, orgId, question, { projectId: 'ringrunner' });
+      expect(scoped.map((r) => r.label)).toEqual(['Ring sizing and the checkout flow']);
+
+      // Without the scope the imported conversation comes back too — the exact
+      // behaviour the screenshot caught, kept here so the fix cannot silently
+      // become a no-op.
+      const unscoped = await findRelatedConversations(db, orgId, question);
+      expect(unscoped.length).toBeGreaterThan(scoped.length);
+      expect(unscoped.map((r) => r.label)).toContain('Selling Canvas Apparel to refocus on Smith Bespoke');
+    });
+
+    it('finds nothing rather than something else when the project has nothing to say', async () => {
+      await conversation('Selling Canvas Apparel to refocus on Smith Bespoke', [
+        'the apparel checkout flow needs a sizing guide before we can refocus the shop',
+      ], { projectId: 'canvas', importedFrom: 'claude' });
+
+      const found = await findRelatedConversations(db, orgId, 'have a look at the checkout flow and the sizing guide in here', {
+        projectId: 'ringrunner',
+      });
+      expect(found).toEqual([]);
+    });
+
+    it('never reaches into another org, scoped or not', async () => {
+      const id = ulid();
+      await db.insert(threads).values({ id, orgId: 'org_2', kind: 'general', title: 'Theirs', agent: 'claude', projectId: 'ringrunner' });
+      await db.insert(agentMessages).values({
+        id: ulid(), orgId: 'org_2', threadId: id, role: 'owner',
+        content: 'the ring sizing guide should open from the checkout flow rather than a separate page',
+      });
+
+      const found = await findRelatedConversations(db, orgId, 'have a look at the checkout flow and the sizing guide in here', {
+        projectId: 'ringrunner',
+      });
+      expect(found).toEqual([]);
+    });
+  });
 });

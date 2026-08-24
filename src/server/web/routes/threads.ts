@@ -50,13 +50,13 @@ function orgIdOf(req: Request): string {
  */
 
 /**
- * How many of a subject's own conversations a question asked inside it may
- * bring. More than the account-wide default, because the owner narrowed the
- * search themselves by choosing where to ask — and still bounded, because an
- * answer built from thirty half-matches is worse than one built from six good
- * ones.
+ * How many of a place's OWN conversations a question asked inside it may
+ * bring — a project's or a subject's alike. More than the account-wide
+ * default, because the owner narrowed the search themselves by choosing where
+ * to ask, and still bounded, because an answer built from thirty half-matches
+ * is worse than one built from six good ones.
  */
-const MAX_IN_SUBJECT_THREAD = 6;
+const MAX_IN_HOME_THREAD = 6;
 
 /** A run this old still marked running is a crashed process, not real work. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
@@ -787,13 +787,30 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const found = named.resolved.length
         ? []
         : await (async () => {
-            if (thread.subjectId) {
-              const inSubject = await findRelatedConversations(db, orgId, text, {
+            /**
+             * HOME FIRST. A conversation that belongs somewhere searches there
+             * before it searches everywhere — and a project is the narrowest
+             * and most obvious somewhere there is.
+             *
+             * The project half of this was missing, and it showed. Asking the
+             * builder sitting inside an app to get familiar with that app
+             * searched the entire account and came back with three imported
+             * chats about selling apparel and migrating an unrelated repo,
+             * under the words "which seemed to be what you meant". Every one
+             * of those was a confident answer to a question nobody asked.
+             */
+            const home = thread.projectId
+              ? { projectId: thread.projectId }
+              : thread.subjectId
+                ? { subjectId: thread.subjectId }
+                : null;
+            if (home) {
+              const inHome = await findRelatedConversations(db, orgId, text, {
                 excludeThreadId: thread.id,
-                subjectId: thread.subjectId,
-                limit: MAX_IN_SUBJECT_THREAD,
+                ...home,
+                limit: MAX_IN_HOME_THREAD,
               }).catch(() => []);
-              if (inSubject.length) return inSubject;
+              if (inHome.length) return inHome;
             }
             return findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
           })();

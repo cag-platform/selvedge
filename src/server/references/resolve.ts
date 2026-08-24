@@ -393,7 +393,21 @@ export async function findRelatedConversations(
      * afford to bring more of them.
      */
     subjectId,
-  }: { excludeThreadId?: string; limit?: number; subjectId?: string } = {},
+    /**
+     * Search only the conversations filed under one project.
+     *
+     * The same idea as `subjectId`, and it was the missing half. A workshop
+     * thread belongs to a project and had no scope at all: asking a builder to
+     * get familiar with the app it is sitting inside searched the WHOLE
+     * account, so "have a look at what you built here" came back with three
+     * imported chats about selling apparel and migrating a different repo —
+     * confidently, under "which seemed to be what you meant".
+     *
+     * A project is the narrowest and most obvious context there is. If the
+     * answer is anywhere, it is here, and it should be looked for here first.
+     */
+    projectId,
+  }: { excludeThreadId?: string; limit?: number; subjectId?: string; projectId?: string } = {},
 ): Promise<ResolvedReference[]> {
   const query = text
     // An explicit `#reference` is handled elsewhere, and an `@mention` decides
@@ -446,6 +460,7 @@ export async function findRelatedConversations(
           eq(agentMessages.orgId, orgId),
           isNull(threads.archivedAt),
           subjectId ? eq(threads.subjectId, subjectId) : undefined,
+          projectId ? eq(threads.projectId, projectId) : undefined,
           excludeThreadId ? sql`${threads.id} <> ${excludeThreadId}` : undefined,
           sql`to_tsvector('english', ${agentMessages.content}) @@ to_tsquery('english', ${expression})`,
         ),
