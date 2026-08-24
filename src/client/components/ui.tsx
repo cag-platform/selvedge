@@ -83,11 +83,15 @@ export function EmptyState({
  * two-lines is recognisably the rail. So the skeletons below are per-surface
  * rather than one reusable "loading box", and they render INSIDE the three-pane
  * frame so the frame itself never moves.
+ *
+ * The one grey bar below is the shared brushstroke the shaped skeletons paint
+ * with — deliberately not exported, so nobody assembles a loading state out of
+ * it somewhere else.
  */
-export function Skeleton({ className = '' }: { className?: string }) {
+
+function Skeleton({ className = '' }: { className?: string }) {
   return <div aria-hidden className={`animate-breathe rounded-inset bg-panel ${className}`} />;
 }
-
 /**
  * WHEN TO SHOW ONE.
  *

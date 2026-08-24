@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-
 /**
  * WHAT THE TAB SAYS.
  *
@@ -22,6 +20,15 @@ import { useEffect } from 'react';
  *    which is a thing only the running app knows about. That is what this file
  *    does, and all it does.
  *
+ * ONE PLACE DECIDES, WHICH IS WHY THERE IS NO HOOK HERE. This file used to
+ * also export `usePageTitle` and a `PageHead` component, so every surface could
+ * name itself. That is a rule five components have to remember and the sixth
+ * one added later inherits whatever the last route set — so App.tsx maps the
+ * path to the name instead, and a route that is not in that table falls back to
+ * the product's own name rather than to a stale one. The hook and the component
+ * outlived that decision by never being deleted; nothing had called either
+ * since.
+ *
  * NO DEPENDENCY, AND A CORRECTION WORTH RECORDING. The obvious move is to
  * render `<title>` inside the component and let React hoist it into `<head>`.
  * That is a REACT 19 feature; this codebase is on 18.3.1, where the same JSX
@@ -42,23 +49,4 @@ export const DEFAULT_TITLE = 'Selvedge — All your AI. One conversation.';
 /** "Inbox" → "Inbox · Selvedge", for as long as this surface is mounted. */
 export function titleFor(name: string): string {
   return `${name} · Selvedge`;
-}
-
-/**
- * Name this surface in the tab. Restores the default on the way out, so a
- * route that forgets to set one cannot inherit the last one's name.
- */
-export function usePageTitle(name: string): void {
-  useEffect(() => {
-    document.title = titleFor(name);
-    return () => {
-      document.title = DEFAULT_TITLE;
-    };
-  }, [name]);
-}
-
-/** The component form, for surfaces that read better with a tag than a hook. */
-export function PageHead({ name }: { name: string }) {
-  usePageTitle(name);
-  return null;
 }

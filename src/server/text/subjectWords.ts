@@ -49,10 +49,3 @@ export const NO_SUBJECT: ReadonlySet<string> = new Set([
   ...AGENTS.flatMap((a) => a.id.split('-')),
   ...AGENTS.map((a) => a.name.toLowerCase()),
 ]);
-
-/** The words in a string that are about anything, lowercased and deduplicated. */
-export function subjectTerms(text: string, limit = 24): string[] {
-  return [...new Set((text ?? '').toLowerCase().match(/[a-z0-9]{3,}/g) ?? [])]
-    .filter((t) => !NO_SUBJECT.has(t))
-    .slice(0, limit);
-}
