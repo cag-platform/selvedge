@@ -54,7 +54,7 @@ export function walkthroughSteps(input: WalkthroughInput): WalkthroughStep[] {
         key: 'project',
         done: false,
         title: 'Add your first app',
-        detail: 'Bring an app you already own — or start a new one.',
+        detail: 'Bring an app you already own, import one from Replit, or start a new one.',
         to: '/projects',
       };
 

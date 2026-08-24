@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../lib/api.js';
 import { SelvedgeEdge, type EdgeStatus } from './SelvedgeEdge.js';
 import { TimelineTab } from './TimelineTab.js';
 
@@ -50,6 +51,51 @@ const TIER_LABEL: Record<string, string> = {
  * expanding it was impossible; the pack editor is one small link in the open
  * card now, where somebody looking for it will find it and nobody else has to.
  */
+/**
+ * A Neon door means the database was provisioned on Selvedge's account — a
+ * console the OWNER cannot open yet. The claim hands the whole Neon project
+ * to their own account (connection strings survive, nothing re-deploys), so
+ * the door finally leads somewhere. Mints a fresh claim link on each press;
+ * the link itself expires server-side, so nothing durable is held here.
+ */
+function ClaimDatabase({ projectId }: { projectId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const claim = async () => {
+    if (busy) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const made = await api.post<{ claim_url: string }>(`/api/projects/${projectId}/database/claim`, {});
+      // The accept must happen in THEIR browser session with THEIR Neon
+      // login — a new tab is the mechanism, not a flourish.
+      window.open(made.claim_url, '_blank', 'noopener');
+      setNote('Claim page opened — sign in to your own Neon account there and accept.');
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "that didn't go through");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="inline-flex items-baseline gap-2">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          void claim();
+        }}
+        disabled={busy}
+        className="text-meta text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-40"
+      >
+        {busy ? 'Minting the claim…' : 'Make the database yours ↗'}
+      </button>
+      {note && <span className="text-meta text-ink-quiet">{note}</span>}
+    </span>
+  );
+}
+
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -102,6 +148,9 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
                   {door.provider} — {door.label} ↗
                 </a>
               ))}
+              {(project.console_links ?? []).some((door) => door.provider === 'Neon') && (
+                <ClaimDatabase projectId={project.project_id} />
+              )}
             </div>
             <Link
               to={`/projects/${project.project_id}/edit`}

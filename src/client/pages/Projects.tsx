@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
+import { ImportReplit } from '../components/ImportReplit.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
 import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
@@ -271,6 +272,10 @@ export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
   const [status, setStatus] = useState<StatusResponse>({ corrections: [], live: [] });
   const [showForm, setShowForm] = useState(false);
+  // The migration door, openable by link (?import=replit) so onboarding and
+  // Home can point straight at it rather than at a page it might be on.
+  const [searchParams] = useSearchParams();
+  const [showImport, setShowImport] = useState(searchParams.get('import') === 'replit');
   const navigate = useNavigate();
 
   const load = useCallback(
@@ -305,10 +310,25 @@ export function Projects() {
         <p className={eyebrowCls}>
           {projects.length === 0 ? 'No projects yet — connect GitHub, or create one' : 'Your stack · read the edges'}
         </p>
-        <button onClick={() => setShowForm((v) => !v)} className={btnPrimary}>
-          {showForm ? 'Close' : 'New project'}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* The migration door lives beside the blank-page door: arriving with
+              an app is as normal a way in as starting one. */}
+          <button
+            onClick={() => setShowImport((v) => !v)}
+            className="text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+          >
+            {showImport ? 'Close import' : 'Import from Replit'}
+          </button>
+          <button onClick={() => setShowForm((v) => !v)} className={btnPrimary}>
+            {showForm ? 'Close' : 'New project'}
+          </button>
+        </div>
       </div>
+      {showImport && (
+        <div className="mb-6">
+          <ImportReplit />
+        </div>
+      )}
       {(showForm || projects.length === 0) && (
         <NewProjectForm
           onCreated={(newProjectId) => {

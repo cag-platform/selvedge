@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Pane } from '../components/ui.js';
 import { ImportHistory } from '../components/ImportHistory.js';
+import { ImportReplit } from '../components/ImportReplit.js';
 import { FileOldChats } from '../components/FileOldChats.js';
 
 type StackMemory = { apps: number; watched_days: number; things_learned: number; summary: string };
@@ -76,7 +77,22 @@ export function Context() {
         {/* The mirror of the export, and the same argument: what you said
             elsewhere is yours, so it can come in as easily as it can go out. */}
         <ImportHistory />
+        {/* Cursor's history has no export button at all — it lives in a local
+            SQLite file, so the companion on that machine is the only honest
+            courier. Said here, where someone hunting for "import from Cursor"
+            will look, rather than pretending a zip picker could do it. */}
+        <p className="mt-4 border-t border-hairline pt-3 text-meta text-ink-dim">
+          <span className="text-ink">Coming from Cursor?</span> Its chats never leave your machine as a file — run{' '}
+          <span className="font-mono text-tech">selvedge import cursor</span> with the companion CLI on that computer and they
+          file themselves under &ldquo;Cursor history&rdquo;. (<span className="font-mono text-tech">selvedge login</span> first, if
+          the companion is new there.)
+        </p>
       </Pane>
+
+      {/* Chats above, code here: a Repl is an APP on its way to a repo the
+          owner controls, not a history to be filed. The component carries its
+          own card and heading, so it stands alone rather than nesting panes. */}
+      <ImportReplit />
 
       {/* And once it is in, the step that used to be missing: joining a
           conversation about a project to the project. Renders nothing at all

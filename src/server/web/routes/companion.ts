@@ -1,6 +1,11 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { checkConversationBatch } from '../../import/companionIngest.js';
+import { fileConversations } from '../../import/consumer/store.js';
+import { importSummary } from '../../import/consumer/read.js';
+import { VENDOR_NAMES } from '../../import/consumer/types.js';
+import { ensureSubject } from '../../threads/subjects.js';
 import { resolveCompanionToken, touchCompanionToken } from '../../companion/tokens.js';
 import { recordSession } from '../../companion/sessions.js';
 import { contextForProject, listContextProjects, openIssuesFor, recentChangesFor } from '../../companion/context.js';
@@ -80,6 +85,42 @@ export function createCompanionRouter(db: Db) {
         // session is still kept, and the companion can tell the owner why it
         // isn't showing up on a project.
         ...(projectId ? {} : { note: "I couldn't match that directory to a project, so it's recorded without one." }),
+      });
+    }),
+  );
+
+  /**
+   * A HISTORY NO VENDOR EXPORTS, delivered by the companion.
+   *
+   * Cursor's chats live in a local SQLite file with no download button, so
+   * `selvedge import cursor` reads them on the owner's machine and sends them
+   * here in chunks. Same pipe as the zip imports underneath — same dedupe by
+   * (vendor, sourceId), so re-running the command is a no-op rather than a
+   * doubling, and same honesty rule: what could not be read is counted in the
+   * summary, never silently dropped.
+   *
+   * Filed under "<Vendor> history", account-wide — the CLI names no project,
+   * because a year of editor chats is not "about" any one repo, and the
+   * filing screen exists for the ones that are.
+   */
+  router.post(
+    '/api/companion/import/conversations',
+    asyncHandler(async (req, res) => {
+      const orgId = (req as CompanionRequest).orgId;
+      const checked = checkConversationBatch(req.body);
+      if (!checked.ok) {
+        res.status(400).json({ error: checked.error });
+        return;
+      }
+      const { vendor, conversations, unreadable } = checked.value;
+      const home = await ensureSubject(db, orgId, `${VENDOR_NAMES[vendor]} history`);
+      const filed = await fileConversations(db, orgId, { subjectId: home.id }, vendor, conversations);
+      res.json({
+        filed: filed.filed,
+        already_had: filed.alreadyHad,
+        unreadable: unreadable.length,
+        subject_id: home.id,
+        summary: importSummary(vendor, filed.filed, unreadable.length, `${VENDOR_NAMES[vendor]} history`),
       });
     }),
   );

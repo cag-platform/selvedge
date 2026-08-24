@@ -107,6 +107,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+/**
+ * Multipart, so the browser sets its own boundary header — everything else
+ * (the sentence-or-sayFailure rule, ApiError carrying the body) matches
+ * request() above, so an upload failure reads like any other failure.
+ */
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: form });
+  } catch {
+    throw new ApiError(sayFailure(0), 0, {});
+  }
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const sentence = typeof body.error === 'string' && body.error.trim() !== '' ? body.error : sayFailure(res.status);
+    throw new ApiError(sentence, res.status, body);
+  }
+  return body as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),

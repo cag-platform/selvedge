@@ -28,6 +28,7 @@ const HELP = `selvedge — the local companion for Selvedge
   selvedge watch [--once] [--interval 60]    report finished coding sessions
   selvedge watch --dry-run                   print what WOULD be sent, send nothing
   selvedge context                           run the MCP server (stdio) for agents
+  selvedge import cursor [--dry-run]         bring this machine's Cursor chats into Selvedge
 
 What leaves this machine: for each finished session, its tool and id, when it
 ran, the directory and repo, the first thing you asked for (bounded), the file
@@ -130,6 +131,73 @@ async function main(): Promise<number> {
     // so there is no event to wait for, and a poll every minute costs nothing.
     setInterval(() => void pass().catch((err) => console.error(err)), interval);
     return new Promise<number>(() => undefined); // runs until interrupted
+  }
+
+  if (command === 'import') {
+    const what = argv[0];
+    if (what !== 'cursor') {
+      console.error('I can import: cursor. (ChatGPT and Claude exports go in on the web — Admin ▸ Context.)');
+      return 1;
+    }
+    const { findCursorDb, readCursorDb } = await import('./importers/cursor.js');
+    const dbPath = flag(argv, 'db') ?? findCursorDb();
+    if (!dbPath) {
+      console.error("I couldn't find Cursor's store on this machine. If it lives somewhere unusual, point at it: selvedge import cursor --db /path/to/state.vscdb");
+      return 1;
+    }
+
+    console.log(`reading ${dbPath}`);
+    const read = await readCursorDb(dbPath).catch((err: unknown) => {
+      console.error(err instanceof Error ? err.message : String(err));
+      return null;
+    });
+    if (!read) return 1;
+
+    console.log(`found ${read.conversations.length} conversation(s)` + (read.unreadable.length ? `, ${read.unreadable.length} thing(s) I could not read` : ''));
+    if (has(argv, 'dry-run')) {
+      for (const c of read.conversations.slice(0, 20)) {
+        console.log(`  ${c.title} — ${c.messages.length} message(s)${c.startedAt ? `, ${c.startedAt.slice(0, 10)}` : ''}`);
+      }
+      if (read.conversations.length > 20) console.log(`  … and ${read.conversations.length - 20} more`);
+      for (const u of read.unreadable.slice(0, 10)) console.log(`  could not read ${u.ref}: ${u.reason}`);
+      console.log('\nNothing was sent.');
+      return 0;
+    }
+
+    if (!config.token) {
+      console.error('No key yet — run `selvedge login --token slv_…` first.');
+      return 1;
+    }
+    const api = new CompanionApi(config);
+    // Chunked: the server takes 200 conversations a call, so a big history is
+    // many small calls rather than one body something in the middle refuses.
+    let filed = 0;
+    let alreadyHad = 0;
+    let unreadableTotal = read.unreadable.length;
+    for (let at = 0; at < read.conversations.length || at === 0; at += 200) {
+      const chunk = read.conversations.slice(at, at + 200);
+      if (chunk.length === 0 && at > 0) break;
+      const result = await api.importConversations({
+        vendor: 'cursor',
+        conversations: chunk,
+        // The parser's own failures ride with the first chunk so the server's
+        // summary covers the whole history.
+        unreadable: at === 0 ? read.unreadable.slice(0, 500) : [],
+      });
+      if (!result.ok) {
+        console.error(`chunk at ${at} failed: ${result.error}`);
+        console.error(`${filed} conversation(s) were filed before the failure — re-running is safe, nothing duplicates.`);
+        return 1;
+      }
+      filed += result.value.filed;
+      alreadyHad += result.value.already_had;
+      if (at === 0) unreadableTotal = result.value.unreadable;
+      if (chunk.length < 200) break;
+    }
+    console.log(`filed ${filed} conversation(s) under "Cursor history"` + (alreadyHad ? ` (${alreadyHad} already there — not duplicated)` : ''));
+    if (unreadableTotal > 0) console.log(`${unreadableTotal} thing(s) could not be read — they are counted, not silently dropped.`);
+    console.log('They are on the web under Admin ▸ Context, and any conversation can reach them by name.');
+    return 0;
   }
 
   if (command === 'context') {

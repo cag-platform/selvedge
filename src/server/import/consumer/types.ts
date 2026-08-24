@@ -45,12 +45,15 @@ export type ParseResult = {
   limitations: string[];
 };
 
-export type Vendor = 'chatgpt' | 'claude' | 'gemini';
+export type Vendor = 'chatgpt' | 'claude' | 'gemini' | 'cursor';
 
 export const VENDOR_NAMES: Record<Vendor, string> = {
   chatgpt: 'ChatGPT',
   claude: 'Claude',
   gemini: 'Gemini',
+  // Cursor has no export button at all — its history lives in a local SQLite
+  // file, so it arrives through the companion CLI rather than a zip upload.
+  cursor: 'Cursor',
 };
 
 /** Trim, collapse the runs of blank lines these exports are full of, and cap. */

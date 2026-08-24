@@ -41,6 +41,7 @@ import { createThreadsRouter } from './routes/threads.js';
 import { createTimelineRouter } from './routes/timeline.js';
 import { createSubjectsRouter } from './routes/subjects.js';
 import { createImportHistoryRouter } from './routes/importHistory.js';
+import { createImportReplitRouter } from './routes/importReplit.js';
 import { createDecisionsRouter } from './routes/decisions.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createCompanionKeysRouter } from './routes/companionKeys.js';
@@ -92,6 +93,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // just this path, mounted before the general one below, covers that; the
   // general parser sees the body already set and skips re-parsing it.
   app.use('/api/projects/:projectId/workshop/message', express.json({ limit: '100mb' }));
+  // A batch of imported conversations is bigger than a chat message and
+  // smaller than an export zip; the CLI chunks to 200 conversations per call.
+  app.use('/api/companion/import/conversations', express.json({ limit: '25mb' }));
 
   // STRIPE'S WEBHOOK, MOUNTED HERE AND NOWHERE ELSE.
   //
@@ -185,6 +189,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createSubjectsRouter(db));
   app.use(createDecisionsRouter(db));
   app.use(createImportHistoryRouter(db));
+  app.use(createImportReplitRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
   app.use(createCompanionKeysRouter(db));
 
   app.use(express.static(clientDir));

@@ -48,6 +48,23 @@ export class CompanionApi {
     });
   }
 
+  /** One chunk of a history that has no export file — see importers/cursor.ts. */
+  importConversations(batch: {
+    vendor: string;
+    conversations: Array<{
+      sourceId: string;
+      title: string;
+      startedAt: string | null;
+      messages: Array<{ role: 'owner' | 'agent'; content: string; at: string | null }>;
+    }>;
+    unreadable: Array<{ ref: string; reason: string }>;
+  }) {
+    return this.call<{ filed: number; already_had: number; unreadable: number; summary: string }>('/api/companion/import/conversations', {
+      method: 'POST',
+      body: JSON.stringify(batch),
+    });
+  }
+
   projects() {
     return this.call<{ projects: Array<{ id: string; name: string; repo: string | null }> }>('/api/companion/context');
   }

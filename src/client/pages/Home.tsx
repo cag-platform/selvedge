@@ -56,9 +56,16 @@ export function Home() {
       {inbox && places.length === 0 && (
         <EmptyState
           action={
-            <Link to="/projects" className="text-meta text-action-bright hover:underline">
-              Bring a repo in
-            </Link>
+            <span className="flex flex-wrap justify-center gap-x-4 gap-y-1">
+              <Link to="/projects" className="text-meta text-action-bright hover:underline">
+                Bring a repo in
+              </Link>
+              {/* The other way an app arrives: as a Repl zip. Deep-links the
+                  Projects page with the import already open. */}
+              <Link to="/projects?import=replit" className="text-meta text-action-bright hover:underline">
+                Import from Replit
+              </Link>
+            </span>
           }
         >
           Nothing here yet. Ask something above, or bring a repo &mdash; a conversation works before any code exists.
