@@ -5,7 +5,7 @@ import { TimelineTab } from './TimelineTab.js';
 import { btnPrimary, EmptyState, ContextSkeleton } from './ui.js';
 import { formatCents } from '../lib/ledger.js';
 import { inMotion, stateLabel, type WorkCardData } from '../lib/card.js';
-import type { ThreadData } from '../lib/inbox.js';
+import type { ConsoleLink, ThreadData } from '../lib/inbox.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { PreviewEnv } from './PreviewEnv.js';
 
@@ -204,7 +204,7 @@ function InMotion({ projectId }: { projectId: string }) {
   );
 }
 
-function PackTab({ projectId }: { projectId: string }) {
+function PackTab({ projectId, doors }: { projectId: string; doors: ConsoleLink[] }) {
   const [pack, setPack] = useState<ContextPack | null>(null);
   useEffect(() => {
     api
@@ -219,13 +219,41 @@ function PackTab({ projectId }: { projectId: string }) {
       <p className="text-ink">{pack.identity.owner_description}</p>
       {pack.stakes.downtime_translation && <p>If it breaks: {pack.stakes.downtime_translation}</p>}
       {pack.topology.stack_summary && <p className="font-mono text-tech text-ink-quiet">{pack.topology.stack_summary}</p>}
-      <ul className="font-mono text-tech text-ink-quiet">
-        {pack.topology.sources.map((s) => (
-          <li key={`${s.connector}:${s.resource_id}`}>
-            {s.connector} · {s.resource_id}
-          </li>
-        ))}
-      </ul>
+      {/* THE ACCOUNTS BEHIND THIS — the Railway variables, the database
+          console, the repo — as doors rather than inert mono lines. The URLs
+          are the server's (connectors/consoles.ts): the client only opens
+          them, so the phone and the web can never disagree about where a
+          door leads. No secret is in a URL; the provider's own session
+          decides whether the door opens. */}
+      {doors.length > 0 && (
+        <ul className="space-y-1">
+          {doors.map((door) => (
+            <li key={door.url}>
+              <a
+                href={door.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              >
+                {door.provider} — {door.label} ↗
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Sources with no console we know: still named, as data rather than a
+          door, so the list never understates what the project runs on. */}
+      {pack.topology.sources.filter((s) => !doors.some((d) => d.provider.toLowerCase() === s.connector)).length > 0 && (
+        <ul className="font-mono text-tech text-ink-quiet">
+          {pack.topology.sources
+            .filter((s) => !doors.some((d) => d.provider.toLowerCase() === s.connector))
+            .map((s) => (
+              <li key={`${s.connector}:${s.resource_id}`}>
+                {s.connector} · {s.resource_id}
+              </li>
+            ))}
+        </ul>
+      )}
       <p>
         <Link to={`/projects/${projectId}/edit`} className="text-action-bright hover:underline">
           Correct what I understand
@@ -300,7 +328,7 @@ export function ContextPanel({
           </div>
         )}
         {tab === 'timeline' && <TimelineTab projectId={project.id} onOpenThread={onOpenThread} />}
-        {tab === 'pack' && <PackTab projectId={project.id} />}
+        {tab === 'pack' && <PackTab projectId={project.id} doors={data.console_links ?? []} />}
       </div>
     </aside>
   );

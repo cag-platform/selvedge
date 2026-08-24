@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
+import { consoleLinks } from '../../connectors/consoles.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -28,6 +29,8 @@ export function createProjectsRouter(db: Db) {
           health_line: hasHealthSignal(pack) ? healthLine(pack) : null,
           edge: hasHealthSignal(pack) ? edgeStatus(pack) : null,
           links: pack.identity.links ?? {},
+          // The doors to the accounts behind it — see connectors/consoles.ts.
+          console_links: consoleLinks(pack),
           muted: muted.has(pack.identity.project_id),
         })),
       );

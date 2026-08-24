@@ -71,12 +71,21 @@ export type ThreadRun = {
   changed_paths?: string[] | null;
 };
 
+export type ConsoleLink = { provider: string; label: string; url: string };
+
 export type ThreadData = {
   thread: { id: string; kind: 'workshop' | 'general'; title: string; agent: string; model: string | null; created_at: string; archived: boolean };
   /** One of these is set: a thread is about a project, or about a subject. */
   project: { id: string; name: string } | null;
   subject: { id: string; name: string } | null;
   live_url: string | null;
+  /**
+   * The accounts behind this project — Railway variables, the Neon console,
+   * the repo — as one-click doors. BUILT ON THE SERVER (connectors/consoles.ts)
+   * so the phone and the web render identical strings; the client only ever
+   * opens them. Absent from older payloads.
+   */
+  console_links?: ConsoleLink[];
   engine_on: boolean;
   working: boolean;
   staged_changes_ready: boolean;

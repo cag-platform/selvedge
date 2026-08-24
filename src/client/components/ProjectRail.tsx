@@ -16,6 +16,8 @@ export type ProjectCardData = {
   /** Both null when nothing has ever reported — see the server's hasHealthSignal. */
   health_line: string | null;
   edge: EdgeStatus | null;
+  /** The accounts behind it, as server-built doors — see connectors/consoles.ts. */
+  console_links?: Array<{ provider: string; label: string; url: string }>;
   muted?: boolean;
 };
 
@@ -83,10 +85,27 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
 
       {open && (
         <div className="border-t border-hairline px-4 pb-4 pl-5">
-          <div className="flex justify-end pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+            {/* The accounts behind it: Railway variables, the database console,
+                the repo. Server-built URLs (connectors/consoles.ts) — the card
+                only opens doors, it never guesses where one leads. */}
+            <div className="flex min-w-0 flex-wrap gap-x-4 gap-y-1">
+              {(project.console_links ?? []).map((door) => (
+                <a
+                  key={door.url}
+                  href={door.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-meta text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+                >
+                  {door.provider} — {door.label} ↗
+                </a>
+              ))}
+            </div>
             <Link
               to={`/projects/${project.project_id}/edit`}
-              className="text-meta text-ink-quiet underline hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              className="shrink-0 text-meta text-ink-quiet underline hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
             >
               Edit this project
             </Link>

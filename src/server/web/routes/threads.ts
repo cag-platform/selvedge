@@ -36,6 +36,7 @@ import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/
 import { referenceLine, type SearchScope } from '../../../shared/references.js';
 import { boundDocuments } from '../../../shared/documents.js';
 import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
+import { consoleLinks } from '../../connectors/consoles.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 import { canStartBuild } from '../../billing/entitlements.js';
 import { createProject } from '../../packs/create.js';
@@ -349,6 +350,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         project: thread.projectId ? { id: thread.projectId, name: pack?.identity.name ?? thread.projectId } : null,
         subject: thread.subjectId ? { id: thread.subjectId, name: subjectName ?? thread.subjectId } : null,
         live_url: pack?.identity.links?.live_url ?? null,
+        // The accounts behind this project, as one-click doors. Computed
+        // server-side so both clients render the same strings — see
+        // connectors/consoles.ts.
+        console_links: pack ? consoleLinks(pack) : [],
         engine_on: env() !== null,
         working: running !== null,
         staged_changes_ready: build?.stagedChangesReady ?? false,

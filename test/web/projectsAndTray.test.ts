@@ -41,6 +41,37 @@ describe('web/routes/projects', () => {
     expect(res.body[0].name).toBe('YOKE');
     expect(res.body[0].health_line).toContain('day 12');
   });
+
+  /**
+   * The doors to the accounts behind a project ride the card payload, built
+   * server-side so both clients render the same strings. The URL formats
+   * themselves are pinned in test/connectors/consoles.test.ts — this holds
+   * that they actually reach a client.
+   */
+  it('carries the console doors on the card', async () => {
+    await createPack(
+      db,
+      orgId,
+      makeTestPack({
+        identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' },
+        topology: {
+          sources: [
+            { connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' },
+            { connector: 'railway', resource_id: 'p1/e1/s1', role: 'production_host' },
+            { connector: 'neon', resource_id: 'db-7', role: 'database' },
+          ],
+        },
+      }),
+    );
+
+    const app = appWithOrg(orgId, createProjectsRouter(db));
+    const res = await request(app).get('/api/projects');
+    expect(res.body[0].console_links).toEqual([
+      { provider: 'Railway', label: 'variables & deploys', url: 'https://railway.com/project/p1/service/s1/variables?environmentId=e1' },
+      { provider: 'Neon', label: 'database console', url: 'https://console.neon.tech/app/projects/db-7' },
+      { provider: 'GitHub', label: 'acme/loom', url: 'https://github.com/acme/loom' },
+    ]);
+  });
 });
 
 describe('web/routes/tray', () => {
