@@ -18,6 +18,7 @@ import { Landing } from './pages/Landing.js';
  * two routes is the same jank the 150ms skeleton floor exists to avoid. The
  * pane's own skeleton takes over once the component is running.
  */
+const Home = lazy(() => import('./pages/Home.js').then((m) => ({ default: m.Home })));
 const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
@@ -109,10 +110,13 @@ function AuthedApp() {
             <ErrorBoundary>
             <Suspense fallback={null}>
             <Routes>
-              {/* The workbench is the app. The daily brief was a page you had
-                  to go and read before you could get to the work; what it
-                  actually knew now sits with the projects it is about. */}
-              <Route path="/" element={<Navigate to="/inbox" replace />} />
+              {/* HOME IS ITS OWN PLACE. `/` used to redirect to `/inbox`, and
+                  the Inbox opens the most recent conversation on arrival — both
+                  right on their own, and together they meant every visit landed
+                  mid-sentence inside one project's build thread. The Inbox
+                  keeps that behaviour, because it IS the workbench; this is the
+                  room you walk through first. */}
+              <Route path="/" element={<Home />} />
               <Route path="/today" element={<Navigate to="/projects" replace />} />
               {/* The moment sign-in/up completes, these paths are the app's. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />

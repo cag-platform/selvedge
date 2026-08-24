@@ -6,10 +6,12 @@ import {
   createThread,
   ensureWorkshopThread,
   getThread,
+  isDefaultTitle,
   listThreads,
   renameThread,
   setThreadAgent,
   setThreadArchived,
+  titleFromFirstMessage,
 } from '../../src/server/threads/store.js';
 
 describe('the thread store — one project, many conversations', () => {
@@ -103,5 +105,56 @@ describe('the thread store — one project, many conversations', () => {
     expect(await setThreadAgent(db, 'org_1', workshop.id, 'llama')).toEqual({ ok: false, reason: 'unknown_agent' });
     expect(await setThreadAgent(db, 'org_1', 'no_such_thread', 'codex')).toEqual({ ok: false, reason: 'no_such_thread' });
     expect((await getThread(db, 'org_1', workshop.id))!.agent).toBe('gpt');
+  });
+});
+
+/**
+ * TWELVE ROWS READING "WORKSHOP".
+ *
+ * Threads are created as "Workshop" or "New thread" and nothing ever renamed
+ * them. That was invisible while the rail showed only project names — and the
+ * moment the rail started showing what a place IS, every row said the same
+ * word, which is exactly as useful as the blank line it replaced.
+ *
+ * The first thing the owner says names the room. Their words, not a model's
+ * summary: no request, no cost, and no chance of describing the conversation
+ * as something it isn't.
+ */
+describe('naming a conversation after what is in it', () => {
+  it('takes a short message whole', () => {
+    expect(titleFromFirstMessage('Give me a rundown of this app')).toBe('Give me a rundown of this app');
+  });
+
+  it('cuts a long one on a word boundary, never mid-word', () => {
+    const long = 'I need you to look at the checkout flow and work out why the basket empties itself when somebody changes a fabric';
+    const title = titleFromFirstMessage(long);
+    expect(title.length).toBeLessThanOrEqual(61);
+    expect(title.endsWith('…')).toBe(true);
+    // The cut lands between words: no half-word before the ellipsis.
+    expect(long.startsWith(title.slice(0, -1))).toBe(true);
+    expect(long[title.length - 1] === ' ' || long[title.length - 1] === undefined || /\s/.test(long[title.length - 1]!)).toBe(true);
+  });
+
+  it('collapses the whitespace a paste brings with it', () => {
+    expect(titleFromFirstMessage('  make   the\n\n  header   sticky ')).toBe('make the header sticky');
+  });
+
+  it('never ends on punctuation that reads as a mistake', () => {
+    expect(titleFromFirstMessage('fix the header,')).toBe('fix the header');
+    expect(titleFromFirstMessage('ship it.')).toBe('ship it');
+  });
+
+  it('has nothing to say about an empty message', () => {
+    expect(titleFromFirstMessage('   ')).toBe('');
+  });
+
+  it('knows which names are nobody\'s choice', () => {
+    expect(isDefaultTitle('Workshop')).toBe(true);
+    expect(isDefaultTitle('New thread')).toBe(true);
+    expect(isDefaultTitle('  ')).toBe(true);
+    // A name somebody chose is never overwritten, including one that merely
+    // contains the default word.
+    expect(isDefaultTitle('Workshop rework')).toBe(false);
+    expect(isDefaultTitle('Checkout rework')).toBe(false);
   });
 });

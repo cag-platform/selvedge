@@ -130,6 +130,45 @@ export async function ensureWorkshopThread(db: Db, orgId: string, projectId: str
 }
 
 /** Rename a thread. Returns false when there's no such thread for this org. */
+/**
+ * A CONVERSATION NAMED AFTER WHAT IS IN IT.
+ *
+ * Every workshop thread is created as "Workshop" and every idea as "New
+ * thread", and nothing ever renamed them. That was invisible while the rail
+ * showed only project names — and the moment the rail started showing what a
+ * place IS, it showed twelve rows reading "Workshop", which is exactly as
+ * useful as the blank line it replaced.
+ *
+ * So the first thing the owner says names the room. Their words, trimmed to a
+ * line: "Give me a rundown of this app" beats "Workshop" at telling you which
+ * of twelve this is, and it needs no model, no extra request, and no judgement
+ * about what the conversation is "really" about.
+ *
+ * ONLY WHILE THE NAME IS STILL THE DEFAULT. A thread the owner renamed, or one
+ * created with a real title, is never touched — this fills a blank, it does not
+ * overwrite a decision. And only on the FIRST message, so a conversation does
+ * not rename itself every time somebody types.
+ */
+export function titleFromFirstMessage(text: string): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  if (line === '') return '';
+  // A sentence's worth. Cut on a word boundary rather than mid-word, and drop
+  // trailing punctuation so a title never ends in a comma.
+  if (line.length <= TITLE_CHARS) return line.replace(/[\s,;:.\-—]+$/, '');
+  const cut = line.slice(0, TITLE_CHARS);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > TITLE_CHARS / 2 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.\-—]+$/, '') + '…';
+}
+
+/** Long enough to be a sentence, short enough for a rail row. */
+const TITLE_CHARS = 60;
+
+/** True when nobody has named this conversation — see titleFromFirstMessage. */
+export function isDefaultTitle(title: string): boolean {
+  const t = title.trim();
+  return t === DEFAULT_WORKSHOP_TITLE || t === DEFAULT_GENERAL_TITLE || t === '';
+}
+
 export async function renameThread(db: Db, orgId: string, threadId: string, title: string): Promise<boolean> {
   const trimmed = title.trim();
   if (trimmed === '') return false;

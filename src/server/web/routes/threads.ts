@@ -12,7 +12,18 @@ import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
-import { createSubjectThread, createThread, ensureWorkshopThread, fileThread, getThread, listThreads, renameThread, setThreadArchived } from '../../threads/store.js';
+import {
+  createSubjectThread,
+  createThread,
+  ensureWorkshopThread,
+  fileThread,
+  getThread,
+  isDefaultTitle,
+  listThreads,
+  renameThread,
+  setThreadArchived,
+  titleFromFirstMessage,
+} from '../../threads/store.js';
 import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { setPlacePutAway } from '../../threads/putAway.js';
 import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
@@ -734,6 +745,35 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
         return;
+      }
+
+      /**
+       * THE FIRST THING SAID NAMES THE ROOM.
+       *
+       * Threads are created as "Workshop" or "New thread" and nothing ever
+       * renamed them. Invisible while the rail showed only project names — and
+       * the moment the rail started showing what a place IS, it showed twelve
+       * rows reading "Workshop", as useful as the blank line it replaced.
+       *
+       * Here rather than beside any one insert, because there are three paths
+       * that write an owner message and this must not depend on which one ran.
+       * Only while the title is still a default, and only when the thread has
+       * nothing in it yet: this fills a blank, it never overwrites a name
+       * somebody chose.
+       */
+      if (isDefaultTitle(thread.title)) {
+        const [{ count } = { count: 0 }] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(agentMessages)
+          .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id), eq(agentMessages.role, 'owner')));
+        if (count === 0) {
+          const named = titleFromFirstMessage(text);
+          // A rename that fails changes nothing about the turn — the message
+          // is the point, the title is a courtesy.
+          if (named && (await renameThread(db, orgId, thread.id, named).catch(() => false))) {
+            thread = { ...thread, title: named };
+          }
+        }
       }
 
       /**
