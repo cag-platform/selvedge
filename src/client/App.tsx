@@ -92,7 +92,7 @@ function AuthedApp() {
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
                   <p className="max-w-sm text-body text-ink-dim">
-                    Bring a repo, a ChatGPT export, or just a question &mdash; the walkthrough takes it from there.
+                    Bring a repo, a ChatGPT export, or just a question. The walkthrough takes it from there.
                   </p>
                 </div>
                 <SignUp signInUrl="/sign-in" />

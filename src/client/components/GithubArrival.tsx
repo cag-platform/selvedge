@@ -54,7 +54,7 @@ export function GithubArrival() {
   return (
     <div className="mb-6 space-y-3 rounded-card border border-hairline bg-panel p-5">
       <p className="text-body-lg text-ink">
-        You signed in as <span className="font-medium">{arrival.login}</span> — so your apps are one step away.
+        You signed in as <span className="font-medium">{arrival.login}</span>, so your apps are one step away.
       </p>
       {freshest.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -69,7 +69,7 @@ export function GithubArrival() {
         </div>
       )}
       <p className="text-meta text-ink-dim">
-        Install the Selvedge GitHub App and pick the repos to bring in — each one becomes a project with its own workshop
+        Install the Selvedge GitHub App and pick the repos to bring in. Each one becomes a project with its own workshop
         and record. GitHub&rsquo;s install page lists everything, private repos included.
       </p>
       <a

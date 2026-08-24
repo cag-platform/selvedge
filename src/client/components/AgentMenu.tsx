@@ -11,11 +11,16 @@ import type { AgentId } from '../../shared/agents.js';
  * had chosen earlier and could not see, showing two of four agents with the
  * other two marked "not yet". Three separate ways of being unhelpful. Now:
  *
- *   Everyone is listed. There is no filter — that WAS the wall.
+ *   What can answer is listed — the agents this org has actually connected.
+ *     Eight orange "no key" rows drowned the three real choices once the
+ *     registry grew; the full list with every reason lives in Connections,
+ *     where a key can actually be added (offersMatching does the filtering).
  *   Every entry says what it DOES ("changes files"), not what it needs.
  *   Every entry says what switching to it COSTS, before you pick it, from the
  *     server's own quote — the same code that will do the charging.
- *   One that can't run today says why, in words, and stays on the list.
+ *   A blocker this conversation can fix (a builder with no project) stays
+ *     visible, in words — and typing any hidden name in full still gets the
+ *     honest note at send time.
  *
  * Picking inserts `@name` rather than switching behind your back, so the
  * choice is visible in the sentence, costs nothing until you send, and comes

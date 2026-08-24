@@ -57,3 +57,32 @@ not anything went wrong — because they apply to the successful import too:
 You cannot double your history by importing the same file again. Conversations
 already present are recognised and left alone, and the result says how many
 that was rather than quietly filing nothing.
+
+## Import from Cursor
+
+Cursor has no export button. Its chats live in a local file on the machine you
+run it on, so they come in through [the companion](/docs/companion) rather
+than an upload:
+
+```
+selvedge import cursor
+```
+
+Add `--dry-run` to see what would be filed without filing anything. The chats
+land under "Cursor history", the same dedupe applies, and whatever the local
+file holds in a shape that cannot be read is counted and listed like any
+other import.
+
+## Bring an app from Replit
+
+A different kind of import: not chats, a **working app** on its way from a
+workspace you rent to a repo you own. In Replit, download the Repl as a zip
+(files pane → ⋮ → Download as zip), then use **Import from Replit** on the
+Projects page. Selvedge filters out the workspace junk — node_modules, caches,
+virtualenvs — names what it left behind, creates a private repo under your
+GitHub, lands the files as one commit, and opens the project's workshop.
+
+Two things it tells you up front, because they are true: secrets never travel
+in the zip (a Repl's env lives in Replit's vault, so paste it into the preview
+environment when asked), and Replit's agent chats have no export, so they stay
+behind.

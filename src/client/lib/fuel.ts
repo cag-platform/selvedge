@@ -12,6 +12,9 @@ const LABEL: Record<string, string> = {
   openai: 'GPT (OpenAI)',
   gemini: 'Gemini (Google)',
   kimi: 'Kimi',
+  xai: 'Grok (xAI)',
+  deepseek: 'DeepSeek',
+  mistral: 'Mistral',
 };
 
 export function fuelLabel(provider: string): string {
@@ -24,6 +27,9 @@ const KEY_HINT: Record<string, string> = {
   openai: 'from platform.openai.com → API keys',
   gemini: 'from aistudio.google.com → Get API key',
   kimi: 'from platform.moonshot.cn → API keys',
+  xai: 'from console.x.ai → API keys',
+  deepseek: 'from platform.deepseek.com → API keys',
+  mistral: 'from console.mistral.ai → API keys',
 };
 
 export function keyHint(provider: string): string | null {

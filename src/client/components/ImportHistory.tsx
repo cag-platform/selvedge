@@ -109,8 +109,8 @@ export function ImportHistory() {
     <Pane className="mt-3">
       <p className="text-body text-ink">Bring in ChatGPT or Claude chats</p>
       <p className="mt-1 text-meta text-ink-quiet">
-        Upload the export that ChatGPT, Claude or Gemini gave you — a ZIP or a .json, exactly as it downloaded. Those chats become ordinary
-        conversations here — searchable, part of the history — and every one is marked as imported, because none of it was said to
+        Upload the export that ChatGPT, Claude or Gemini gave you: a ZIP or a .json, exactly as it downloaded. Those chats become ordinary
+        conversations here, searchable and part of the history. Every one is marked as imported, because none of it was said to
         Selvedge. Nothing is connected and nothing keeps reading: this happens once, from a file you chose.
       </p>
       {/* SAID BEFORE THE WALL, NOT AFTER IT. A ChatGPT export is mostly images
@@ -120,7 +120,7 @@ export function ImportHistory() {
           learning the way through at that point costs them the whole upload. */}
       <p className="mt-1 text-meta text-ink-quiet">
         A big ChatGPT export is mostly images. If yours is over 500MB, unzip it and upload just{' '}
-        <code className="font-mono text-tech">conversations.json</code> — it’s the only file read, and it’s a small part of the download.
+        <code className="font-mono text-tech">conversations.json</code>. It’s the only file read, and it’s a small part of the download.
       </p>
 
       <form onSubmit={submit} className="mt-work space-y-work-tight">
@@ -139,7 +139,7 @@ export function ImportHistory() {
         <label className="block text-body text-ink-dim">
           Where these belong (optional)
           <select value={target} onChange={(e) => setTarget(e.target.value)} className={inputCls}>
-            <option value="">Nowhere in particular — any conversation can reach them</option>
+            <option value="">Nowhere in particular (any conversation can reach them)</option>
             {dest?.projects.map((p) => (
               <option key={p.project_id} value={`project:${p.project_id}`}>
                 {p.name}

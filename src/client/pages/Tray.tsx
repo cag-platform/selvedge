@@ -80,7 +80,7 @@ export function Tray() {
 
       {data.sources.length === 0 ? (
         <Pane className="p-6">
-          <p className="text-body-lg text-ink">Nothing unplaced — everything I’ve seen has a home.</p>
+          <p className="text-body-lg text-ink">Nothing unplaced. Everything I’ve seen has a home.</p>
           <p className="mt-1 text-body text-ink-dim">
             When something arrives that I can’t place, it waits here quietly. Telling me once is enough.
           </p>

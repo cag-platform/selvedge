@@ -7,7 +7,8 @@ import { agentMessages, orgs } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter } from '../../src/server/web/routes/threads.js';
-import { createThread } from '../../src/server/threads/store.js';
+import { createThread, createSubjectThread } from '../../src/server/threads/store.js';
+import { createSubject } from '../../src/server/threads/subjects.js';
 import { switchThreadAgent } from '../../src/server/threads/switch.js';
 import { connectCredential } from '../../src/server/connectors/credentials/store.js';
 import type { AgentOffer } from '../../src/server/threads/roster.js';
@@ -153,9 +154,26 @@ describe('who could answer this, and what handing it over would cost', () => {
     const noKey = (await roster(thread.id)).find((a) => a.id === 'gpt')!;
     expect(noKey.available).toBe(false);
     expect(noKey.unavailable_note).toMatch(/no key connected/i);
+    // The KIND of no travels with it: a missing key is Connections' problem,
+    // which is what lets the picker hide the row without losing the truth.
+    expect(noKey.blocked_by).toBe('org');
 
     await connectCredential(db, orgId, 'openai', 'sk-oai-test-0002');
-    expect((await roster(thread.id)).find((a) => a.id === 'gpt')!.available).toBe(true);
+    const keyed = (await roster(thread.id)).find((a) => a.id === 'gpt')!;
+    expect(keyed.available).toBe(true);
+    expect(keyed.blocked_by).toBeNull();
+  });
+
+  it('marks a builder with no project as the thread\'s problem, not the org\'s', async () => {
+    await connectCredential(db, orgId, 'anthropic', 'sk-ant-test-0009', { kind: 'api_key' });
+    // A thread with no project: the builder's account is connected, the
+    // engine is on, and the only missing thing is somewhere to put the code.
+    const subject = await createSubject(db, orgId, 'Ideas');
+    const bare = await createSubjectThread(db, orgId, subject.id, { title: 'an idea' });
+    const row = (await roster(bare.id)).find((a) => a.id === 'claude-code')!;
+    expect(row.available).toBe(false);
+    expect(row.blocked_by).toBe('thread');
+    expect(row.unavailable_note).toMatch(/builds inside a project/i);
   });
 
   it('says when the build engine is off, without dropping the builders', async () => {

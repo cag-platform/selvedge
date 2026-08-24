@@ -151,7 +151,7 @@ export function Rail({
                 </Link>
               }
             >
-              Nothing here yet. Bring a repo, or start with a question &mdash; a subject works before any code
+              Nothing here yet. Bring a repo, or start with a question. A subject works before any code
               exists.
             </EmptyState>
           </div>

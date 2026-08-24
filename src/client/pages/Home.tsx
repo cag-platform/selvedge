@@ -68,7 +68,7 @@ export function Home() {
             </span>
           }
         >
-          Nothing here yet. Ask something above, or bring a repo &mdash; a conversation works before any code exists.
+          Nothing here yet. Ask something above, or bring a repo. A conversation works before any code exists.
         </EmptyState>
       )}
 

@@ -17,10 +17,14 @@ import type { Thread } from './store.js';
  *    It is quoted here, per candidate, from the same `quoteHandoff` the switch
  *    itself uses — so the number shown cannot drift from the number charged.
  *
- * 2. NOTHING IS HIDDEN, AND NOTHING LIES. Every agent is listed. One that
- *    cannot run right now says exactly why — a key nobody connected, an engine
- *    this deployment hasn't been given — instead of quietly vanishing from the
- *    list, which teaches people the product is smaller than it is.
+ * 2. THE ROSTER TELLS THE WHOLE TRUTH; THE PICKER SHOWS WHAT CAN ANSWER. Every
+ *    agent is in this response, each "no" with its reason and a `blocked_by`
+ *    kind. The @-menu renders only the rows an org has actually connected
+ *    (plus thread-level blocks, whose fix is in the conversation) — eight
+ *    orange "no key connected" rows drowned the three real choices. The full
+ *    list, with the same sentences, lives in Connections, which is where a
+ *    missing key gets fixed. Typing a hidden agent's name by hand still gets
+ *    the honest note at send time — hidden from the menu is not denied.
  */
 export type AgentOffer = {
   id: AgentId;
@@ -37,6 +41,16 @@ export type AgentOffer = {
   available: boolean;
   /** Why not, in the owner's words. Null when it can. */
   unavailable_note: string | null;
+  /**
+   * WHAT KIND OF NO, because the picker treats them differently. 'thread' is a
+   * blocker this conversation can fix (a builder with no project to build in)
+   * and stays visible where the fix is. 'org' is a blocker that lives in
+   * Connections (no key, engine off, not wired) — the picker hides those rows,
+   * because a menu that is mostly orange instructions is a menu shouting over
+   * the person typing. The full truth about org-level rows moved to
+   * Connections, which is where the fix is.
+   */
+  blocked_by: 'org' | 'thread' | null;
   /** What switching would cost. Absent for whoever is already answering. */
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
 };
@@ -69,7 +83,7 @@ async function availability(
   env: EngineEnv | null,
   hasProject: boolean,
   builderCan: (agentId: AgentId) => Promise<{ available: boolean; note: string | null }>,
-): Promise<{ available: boolean; note: string | null }> {
+): Promise<{ available: boolean; note: string | null; blockedBy: 'org' | 'thread' | null }> {
   // DECLARED IS NOT LIVE, and this is checked FIRST because it outranks every
   // other reason. The registry can name an agent before it is wired, so the
   // picker can be honest about what is coming without offering a row that
@@ -80,7 +94,7 @@ async function availability(
   // declared-but-unwired builder would have reported itself available on the
   // strength of the engine being switched on.
   if (!agent.live) {
-    return { available: false, note: `${agent.name} isn't wired up here yet — it's named so you know it's coming, not offered.` };
+    return { available: false, note: `${agent.name} isn't wired up here yet — it's named so you know it's coming, not offered.`, blockedBy: 'org' };
   }
 
   if (agent.changesFiles) {
@@ -88,7 +102,7 @@ async function availability(
     // account would have paid: there is nothing an owner can connect that fixes
     // it, so offering them a credential to add would be the wrong advice.
     if (!env) {
-      return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected." };
+      return { available: false, note: "The build engine isn't switched on for this deployment — the watching and your brief are unaffected.", blockedBy: 'org' };
     }
     /**
      * A BUILDER NEEDS SOMEWHERE TO PUT THE CODE, and this row used to forget.
@@ -107,16 +121,19 @@ async function availability(
       return {
         available: false,
         note: `${agent.name} builds inside a project. Give this conversation one — an existing project or a new one — and it can pick this up.`,
+        blockedBy: 'thread',
       };
     }
-    return builderCan(agent.id);
+    const can = await builderCan(agent.id);
+    // A builder's own "no" is a credential problem — Connections' to fix.
+    return { ...can, blockedBy: can.available ? null : 'org' };
   }
 
   const fuel = await resolveFuelFor(db, orgId, agent.provider).catch(() => null);
   if (!fuel) {
-    return { available: false, note: `No key connected for ${agent.name}. Add one under Connections and it can answer here.` };
+    return { available: false, note: `No key connected for ${agent.name}. Add one under Connections and it can answer here.`, blockedBy: 'org' };
   }
-  return { available: true, note: null };
+  return { available: true, note: null, blockedBy: null };
 }
 
 export async function agentRoster(
@@ -144,7 +161,7 @@ export async function agentRoster(
   return Promise.all(
     AGENTS.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
-      const { available, note } = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
+      const { available, note, blockedBy } = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
 
       // Nobody quotes you a price for staying where you are.
       const quote = answeringNow ? null : await quoteHandoff(db, orgId, thread, from, agent.id);
@@ -159,6 +176,7 @@ export async function agentRoster(
         answering_now: answeringNow,
         available,
         unavailable_note: note,
+        blocked_by: blockedBy,
         handoff: quote ? { tokens: quote.tokens, cost_usd: quote.costUsd, note: quoteNote(quote.tokens, quote.costUsd) } : null,
       };
     }),

@@ -4,6 +4,37 @@ What changed, in the same words the commits use. An entry ships with every
 deploy that changes behaviour — an empty month here is the thing this page
 exists to prevent.
 
+## 24 August 2026
+
+- Sign in with GitHub or Google — the same two doors on the web and the phone,
+  with email still there for everyone else.
+- Arrive through GitHub and Selvedge greets you as your GitHub self: your
+  repos, freshest first, and one step from each becoming a project.
+- Import from Replit: the zip a Repl exports becomes a project around a
+  private repo **you** own. Workspace junk is left behind by name, and if the
+  files fail to land after the repo exists, the retry is offered and layers a
+  commit rather than duplicating anything.
+- Import from Cursor: `selvedge import cursor` reads the file Cursor actually
+  keeps its chats in, on your machine, through the companion. What cannot be
+  read is counted and listed — never silently dropped.
+- Make the database yours: a database Selvedge provisioned can be claimed into
+  your own Neon account from the project card. Connection strings survive the
+  move, and Selvedge keeps nothing.
+- The accounts behind a project are doors on its card: the Railway variables,
+  the database console, the repo.
+- Home is a question rather than a dashboard: ask at the top, jump back in
+  underneath.
+- A conversation names itself after the first thing you say in it, until you
+  name it yourself.
+- Search looks where you are before it looks everywhere, and says which it
+  did — "found nothing in ringrunner, so searched everything" is a different
+  sentence from "found this in ringrunner".
+- A project that cannot be previewed says what it is instead: an Xcode project
+  gets a sentence, not a directory listing.
+- 111 incidents that never happened are deleted, and a test now walks every
+  event the tripwire counts as "users affected" through the real templates —
+  so a contradiction can only be declared about something that contradicts.
+
 ## 23 August 2026
 
 - Five more models answer to `@`: Gemini, Kimi, Grok, DeepSeek and Mistral.

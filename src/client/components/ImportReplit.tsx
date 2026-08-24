@@ -73,7 +73,7 @@ export function ImportReplit() {
       <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Import from Replit</p>
       <p className="text-meta text-ink-dim">
         In Replit: your Repl&rsquo;s files pane &rarr; &#8942; &rarr; <span className="text-ink">Download as zip</span>. Drop it here and it
-        becomes a project with its own private repo — workspace junk (node_modules and friends) is left behind and named.
+        becomes a project with its own private repo. Workspace junk (node_modules and friends) is left behind and named.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -111,7 +111,7 @@ export function ImportReplit() {
       </div>
 
       <p className="text-meta text-ink-quiet">
-        Secrets never travel in a zip — when the preview asks for the app&rsquo;s environment, paste the <span className="font-mono text-tech">.env</span> there.
+        Secrets never travel in a zip. When the preview asks for the app&rsquo;s environment, paste the <span className="font-mono text-tech">.env</span> there.
         Replit&rsquo;s agent chats have no export, so they stay behind; the code and the record start fresh here.
       </p>
 

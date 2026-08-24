@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { fuelLabel, keyHint } from '../lib/fuel.js';
+import { AGENTS } from '../../shared/agents.js';
 import { CompanionKeys } from '../components/CompanionKeys.js';
 
 /**
@@ -339,6 +340,18 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
             placeholder={effectiveKind === 'subscription' ? 'paste your subscription token' : 'paste your API key'}
             className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           />
+        </div>
+        {/* WHAT THIS KEY SWITCHES ON, said where the key is being added. This
+            copy lived in the @-menu, on rows for agents nobody had connected —
+            which made the menu loud and taught nothing at the moment anyone
+            could act on it. Here, it is the reason to paste the key. */}
+        <div className="space-y-1">
+          {AGENTS.filter((a) => a.provider === provider && a.live).map((a) => (
+            <p key={a.id} className="text-meta text-ink-dim">
+              <span className="font-mono text-tech text-brass">@{a.id}</span>{' '}
+              {a.changesFiles ? <>changes files in your sandbox; {a.costNote}.</> : <>talks it through, never touches your files; {a.costNote}.</>}
+            </p>
+          ))}
         </div>
         {/*
           Two different promises, so two different sentences. A key is pinged

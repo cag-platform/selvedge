@@ -84,6 +84,41 @@ Nothing reaches your main branch until you ship it. Before that:
      src/server/cards/risk.ts — sensitive → hard gate + verified backup;
      src/server/threads/ceiling.ts — the pause and the recorded raise -->
 
+## Signing in, and what arrives with you
+
+Sign-in is handled by Clerk, with GitHub and Google alongside email. A social
+sign-in proves **identity only** — your name, email and avatar. It does not
+grant access to your repositories: that stays a separate, explicit step (the
+GitHub App install), scoped to the repos you pick and revocable per repo.
+
+After a GitHub sign-in, Selvedge may borrow the sign-in token server-side for
+one thing: greeting you with your public repos so bringing them in is one
+step. The token is fetched from Clerk per request, sent to GitHub as a header,
+and never stored, logged, or shown to a browser.
+
+The imports follow the same shape — each one moves something that is already
+yours, once, from a file or grant you chose:
+
+- **A Replit zip** is validated before anything is created. Its files land in
+  a **private repo under your GitHub**, workspace junk is left behind and
+  named, and secrets never ride along — a Repl's env lives in Replit's vault,
+  not its filesystem, so there is nothing in the zip to leak.
+- **Cursor chats** are read on your own machine, by the companion, from the
+  local file Cursor keeps them in. They travel over the same hashed-key
+  companion auth, and whatever cannot be read is counted and listed rather
+  than silently dropped.
+- **A database Selvedge provisioned** sits on Selvedge's Neon account until
+  you claim it. The claim link expires after seven days, the accept happens in
+  your browser with your own Neon login, and after the move Selvedge keeps
+  nothing — the connection string keeps working, so your app never notices.
+
+<!-- src/server/connectors/github/personal.ts — token per-request, header-only;
+     src/server/import/replitApp.ts + web/routes/importReplit.ts — validate
+     before create, junk named; src/server/import/companionIngest.ts +
+     src/cli/importers/cursor.ts — local read, unreadable counted;
+     src/server/connectors/neon/claim.ts — CLAIM_TTL_SECONDS, transfer keeps
+     nothing -->
+
 ## Leaving
 
 Everything Selvedge knows exports as one JSON file, whenever you like, from
@@ -128,3 +163,7 @@ Found something? Email **greg@smithbespoke.com**. I would rather hear it from
 you than read about it later.
 
 — Greg Smith
+
+*Replit, Cursor, Neon, Railway, and the other product names on these pages are
+trademarks of their respective owners; Selvedge is not affiliated with or
+endorsed by any of them.*

@@ -11,6 +11,7 @@ function offer(over: Partial<AgentOffer> & Pick<AgentOffer, 'id' | 'name'>): Age
     answering_now: false,
     available: true,
     unavailable_note: null,
+    blocked_by: null,
     handoff: { tokens: 0, cost_usd: null, note: 'switching is free' },
     ...over,
   } as AgentOffer;
@@ -24,7 +25,14 @@ const roster: AgentOffer[] = [
     does: 'Changes files in your sandbox.',
     handoff: { tokens: 1842, cost_usd: 0.02, note: 'switching costs about $0.02 · carries 1.8k tokens over' },
   }),
-  offer({ id: 'codex', name: 'Codex', changes_files: true, available: false, unavailable_note: 'Codex builds on an OpenAI key, and there isn’t one configured here yet.' }),
+  offer({
+    id: 'codex',
+    name: 'Codex',
+    changes_files: true,
+    available: false,
+    unavailable_note: 'Codex builds on an OpenAI key, and there isn’t one configured here yet.',
+    blocked_by: 'org',
+  }),
   offer({ id: 'claude', name: 'Claude', answering_now: true, handoff: null }),
   offer({ id: 'gpt', name: 'GPT' }),
 ];
@@ -58,8 +66,40 @@ describe('narrowing the roster as you type', () => {
     expect(offersMatching(roster, 'g').map((a) => a.id)).toEqual(['gpt']);
   });
 
-  it('shows everyone for a bare @', () => {
-    expect(offersMatching(roster, '')).toHaveLength(4);
+  it('shows everyone who can answer for a bare @', () => {
+    expect(offersMatching(roster, '').map((a) => a.id)).toEqual(['claude-code', 'claude', 'gpt']);
+  });
+
+  /**
+   * THE QUIET RULE: an org-level no (no key connected) is not a row, because
+   * eight orange instructions drown three real choices. A thread-level no (a
+   * builder with no project) stays, since this conversation can fix it — and
+   * whoever is answering now is never hidden, whatever broke underneath.
+   */
+  it('hides what the org has not connected, keeps what the thread can fix', () => {
+    const withThreadBlock = [
+      ...roster,
+      offer({
+        id: 'gemini',
+        name: 'Gemini',
+        available: false,
+        unavailable_note: 'Gemini builds inside a project.',
+        blocked_by: 'thread',
+      }),
+    ];
+    const shown = offersMatching(withThreadBlock, '').map((a) => a.id);
+    expect(shown).toContain('gemini');
+    expect(shown).not.toContain('codex');
+  });
+
+  it('never hides whoever is answering now, even org-blocked', () => {
+    const orphaned = [offer({ id: 'claude', name: 'Claude', answering_now: true, available: false, blocked_by: 'org', handoff: null })];
+    expect(offersMatching(orphaned, '').map((a) => a.id)).toEqual(['claude']);
+  });
+
+  /** Hidden from the menu is not denied: the typed name still gets the truth. */
+  it('still prices and explains a hidden agent typed by hand', () => {
+    expect(sendNote('@codex build it', roster)).toMatch(/OpenAI key/i);
   });
 });
 

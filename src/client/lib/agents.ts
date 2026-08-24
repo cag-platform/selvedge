@@ -20,6 +20,8 @@ export type AgentOffer = {
   answering_now: boolean;
   available: boolean;
   unavailable_note: string | null;
+  /** What kind of no: 'org' hides the row from the menu, 'thread' keeps it. */
+  blocked_by: 'org' | 'thread' | null;
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
 };
 
@@ -39,11 +41,21 @@ export function mentionQuery(text: string): string | null {
   return match ? (match[1] ?? '') : null;
 }
 
-/** The roster narrowed to what is being typed, in registry order. */
+/**
+ * The roster narrowed to what is being typed, in registry order — and to what
+ * can actually answer. An org-blocked row (no key connected, engine off) is
+ * hidden rather than shown orange: with eleven agents in the registry, a menu
+ * of mostly instructions drowned the real choices. The one exception is
+ * whoever is answering now — the current agent losing its key is a fact this
+ * conversation needs in view, not something the menu may hide. Typing a hidden
+ * name in full still gets the honest note from sendNote; Connections carries
+ * the full list with every reason.
+ */
 export function offersMatching(agents: AgentOffer[], query: string): AgentOffer[] {
+  const offerable = agents.filter((a) => a.blocked_by !== 'org' || a.answering_now);
   const q = query.toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (q === '') return agents;
-  return agents.filter((a) => a.id.replace(/[^a-z0-9]/g, '').startsWith(q) || a.name.toLowerCase().replace(/[^a-z0-9]/g, '').startsWith(q));
+  if (q === '') return offerable;
+  return offerable.filter((a) => a.id.replace(/[^a-z0-9]/g, '').startsWith(q) || a.name.toLowerCase().replace(/[^a-z0-9]/g, '').startsWith(q));
 }
 
 /**

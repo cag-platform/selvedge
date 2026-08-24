@@ -32,7 +32,7 @@ describe('the landing page', () => {
 
   it('says the one sentence the whole product is, and shows it being true', () => {
     const html = render();
-    expect(html).toContain('Your AI should know what the others already know.');
+    expect(html).toContain('Where all your AI builds together.');
     expect(html).toContain('@claude');
     expect(html).toContain('@gpt');
     expect(html).toContain('@codex');

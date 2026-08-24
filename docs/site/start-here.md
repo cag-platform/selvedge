@@ -9,7 +9,8 @@ This page is the first ten minutes.
 ## What you need
 
 A GitHub account, if you want Selvedge to work in your code. That is the only
-requirement.
+requirement — and you can sign in with it (or with Google), which also lets
+Selvedge greet you with your repos instead of a blank page.
 
 Model keys are optional to start. Without one you can still bring a repo in,
 read what Selvedge sees, and import your old conversations; the agents simply
@@ -19,9 +20,10 @@ record, not for the tokens. See [Keys and spending](/docs/keys).
 
 ## The first ten minutes
 
-**Bring something in.** A repo, from Projects. Selvedge reads it, writes down
-what it thinks the project is, and starts watching it. You can correct
-anything it got wrong; what you write wins over what it guessed.
+**Bring something in.** A repo, from Projects — or a Repl, as the zip Replit
+exports. Selvedge reads it, writes down what it thinks the project is, and
+starts watching it. You can correct anything it got wrong; what you write wins
+over what it guessed.
 
 **Say something.** Open the conversation and type. There is one conversation
 per project, and everything happens in it — deciding, building, shipping.
