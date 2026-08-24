@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
 import { SelvedgeEdge, StatusDot } from './SelvedgeEdge.js';
-import { Reveal } from './Brief.js';
+import { Reveal } from './Reveal.js';
 import { cardEdge, stateLabel, formatCents, formatRange, gateNote, graderNote, type WorkCardData } from '../lib/card.js';
 
 /**

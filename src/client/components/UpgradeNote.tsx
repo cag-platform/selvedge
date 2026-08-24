@@ -42,7 +42,7 @@ export function UpgradeNote({ error }: { error: unknown }) {
     <p className="mt-2 text-body text-ink-dim">
       {error.message}{' '}
       <Link
-        to="/settings/billing"
+        to="/admin/billing"
         className="text-ink underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
       >
         See plans
@@ -66,7 +66,7 @@ export function LockedOlder({ count, note }: { count: number; note?: string | nu
       {count} older {count === 1 ? 'item' : 'items'} {count === 1 ? 'is' : 'are'} locked on this plan — locked, never
       deleted, and an export includes {count === 1 ? 'it' : 'them'} either way.{' '}
       <Link
-        to="/settings/billing"
+        to="/admin/billing"
         className="text-ink underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
       >
         {note ? 'See plans' : 'Upgrade to see them'}

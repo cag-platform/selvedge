@@ -71,7 +71,7 @@ describe('web/routes/portability', () => {
     // Import into a fresh org — the pack is restored there.
     await db.insert(orgs).values({ orgId: 'org_2' });
     const importApp = appWithOrg('org_2', createPortabilityRouter(db));
-    const imported = await request(importApp).post('/api/import').send(exported.body);
+    const imported = await request(importApp).post('/api/context/restore').send(exported.body);
     expect(imported.status).toBe(200);
     expect(imported.body.restored).toBe(1);
 
@@ -108,13 +108,13 @@ describe('web/routes/portability', () => {
     // another org — importing a past would be manufacturing one.
     expect(exported.body.selvedge_export_version).toBe('1');
     await db.insert(orgs).values({ orgId: 'org_3' });
-    const imported = await request(appWithOrg('org_3', createPortabilityRouter(db))).post('/api/import').send(exported.body);
+    const imported = await request(appWithOrg('org_3', createPortabilityRouter(db))).post('/api/context/restore').send(exported.body);
     expect(imported.status).toBe(200);
     expect(await db.select().from(cards).where(eq(cards.orgId, 'org_3'))).toEqual([]);
   });
 
   it('400s on a body that is not a bundle', async () => {
     const app = appWithOrg(orgId, createPortabilityRouter(db));
-    expect((await request(app).post('/api/import').send({ nope: true })).status).toBe(400);
+    expect((await request(app).post('/api/context/restore').send({ nope: true })).status).toBe(400);
   });
 });

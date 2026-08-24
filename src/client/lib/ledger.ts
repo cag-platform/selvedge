@@ -1,3 +1,4 @@
+export { formatCents, UNKNOWN_AMOUNT } from './money.js';
 import type { EdgeStatus } from '../components/SelvedgeEdge.js';
 
 /**
@@ -29,9 +30,6 @@ export type LedgerSummaryData = {
   byOutcome: Record<string, number>;
 };
 
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /** The edge for a finished change — a clean result is healthy, a miss is dashed unknown, never healthy. */
 export function entryEdge(entry: Pick<LedgerEntryData, 'outcome' | 'verdict'>): EdgeStatus {

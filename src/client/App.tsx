@@ -19,11 +19,8 @@ import { Landing } from './pages/Landing.js';
  * pane's own skeleton takes over once the component is running.
  */
 const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
-const TrackRecord = lazy(() => import('./pages/TrackRecord.js').then((m) => ({ default: m.TrackRecord })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
-const Connections = lazy(() => import('./pages/Connections.js').then((m) => ({ default: m.Connections })));
-const Billing = lazy(() => import('./pages/Billing.js').then((m) => ({ default: m.Billing })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
 const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
 const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide })));
@@ -130,18 +127,20 @@ function AuthedApp() {
                   finished is on the Record and the project's own history. A
                   bookmark lands on the front door rather than on nothing. */}
               <Route path="/work" element={<Navigate to="/" replace />} />
-              <Route path="/record" element={<TrackRecord />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               {/* The workshop is a thread now — old links land in the conversation they meant. */}
               <Route path="/projects/:projectId/workshop" element={<WorkshopRedirect />} />
-              {/* Unsorted lives in Admin now — keep the address working. */}
-              <Route path="/tray" element={<Navigate to="/admin" replace />} />
-              <Route path="/connections" element={<Connections />} />
-              <Route path="/settings/billing" element={<Billing />} />
-              {/* The brief's path is /settings/billing; this is the short way people type it. */}
-              <Route path="/billing" element={<Navigate to="/settings/billing" replace />} />
-              <Route path="/admin" element={<Admin />} />
+              {/* THE THINGS YOU SET UP ONCE now live together under /admin.
+                  Every old address still resolves: a bookmark should not die
+                  for a navigation decision, and these four were top-level for
+                  long enough that people have them saved. */}
+              <Route path="/record" element={<Navigate to="/admin/record" replace />} />
+              <Route path="/connections" element={<Navigate to="/admin/connections" replace />} />
+              <Route path="/settings/billing" element={<Navigate to="/admin/billing" replace />} />
+              <Route path="/billing" element={<Navigate to="/admin/billing" replace />} />
+              <Route path="/tray" element={<Navigate to="/admin/advanced" replace />} />
+              <Route path="/admin/*" element={<Admin />} />
             </Routes>
             </Suspense>
             </ErrorBoundary>
@@ -167,11 +166,13 @@ function AuthedApp() {
  */
 const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/inbox', 'Inbox'],
-  ['/record', 'Record'],
   ['/projects', 'Projects'],
-  ['/connections', 'Connections'],
-  ['/settings/billing', 'Billing'],
-  ['/admin', 'Settings'],
+  // Longest prefix first: /admin/billing must not be matched by /admin.
+  ['/admin/record', 'Record'],
+  ['/admin/connections', 'Connections'],
+  ['/admin/billing', 'Billing'],
+  ['/admin/advanced', 'Under the hood'],
+  ['/admin', 'Admin'],
   ['/styleguide', 'Styleguide'],
 ];
 

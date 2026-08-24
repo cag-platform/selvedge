@@ -5,7 +5,7 @@
  */
 
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
-import { Brief, BriefEyebrow, BriefItem, BriefClose, Headline, Reveal } from '../components/Brief.js';
+import { Reveal } from '../components/Reveal.js';
 import { SituationCard } from '../components/SituationCard.js';
 import { WorkCard } from '../components/WorkCard.js';
 import type { WorkCardData } from '../lib/card.js';
@@ -196,6 +196,10 @@ export function Styleguide() {
             </div>
           ))}
         </div>
+        <p className="mt-2 text-meta text-ink-dim">
+          Verdict → edge is fixed vocabulary: users_fine → healthy, users_affected → thread, cannot_tell → dashed. A
+          pane carrying several items takes the edge of the worst one, and a missing verdict is dashed — never healthy.
+        </p>
       </section>
 
       <section>
@@ -258,39 +262,20 @@ export function Styleguide() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-headline font-display">The brief — Day-2 golden, rendered</h2>
-        <Brief status="unknown">
-          <div>
-            <BriefEyebrow>Morning brief · mixed day</BriefEyebrow>
-            <Headline>Two things need you this morning.</Headline>
-          </div>
-          <BriefItem
-            kind="attention"
-            verdict="users_fine"
-            reveal={
-              <Reveal>
-                chalk · first 5 live transactions · verdict users_fine (sales) · secondary cannot_tell (chalk→loom
-                sync)
-              </Reveal>
-            }
-          >
+        {/* THE REGISTER SHIFT, which is the one thing the retired brief
+            contributed that the product still uses everywhere: plain language
+            on the surface, mono underneath, and you have to ask for it. */}
+        <h2 className="mb-3 text-headline font-display">Reveal — plain on top, mono inside</h2>
+        <div className="rounded-pane border border-hairline bg-panel p-5">
+          <p className="text-body text-ink">
             Chalk ran its first five real transactions — the sales themselves went through fine. What I can’t confirm
-            is whether the transaction data made it back to Loom; check that connection before more sales stack up.
-          </BriefItem>
-          <BriefItem
-            kind="attention"
-            verdict="cannot_tell"
-            reveal={<Reveal>sild · post-ship check coverage suspect · verdict cannot_tell · next: verify knowledge packs</Reveal>}
-          >
-            And SILD: the checks you built around the new features don’t look like they’re working right. Have Claude
-            verify the knowledge packs are behaving — and a live test with a real counterparty would confirm SILD is
-            actually reading their position correctly.
-          </BriefItem>
-          <BriefClose>Everything else is quiet.</BriefClose>
-        </Brief>
+            is whether the transaction data made it back to Loom.
+          </p>
+          <Reveal>chalk · first 5 live transactions · verdict users_fine (sales) · secondary cannot_tell (chalk→loom sync)</Reveal>
+        </div>
         <p className="mt-2 text-meta text-ink-dim">
-          Verdict → edge is fixed vocabulary: users_fine → healthy, users_affected → thread, cannot_tell → dashed. The
-          pane’s own edge carries the day’s top priority (here: a cannot_tell outranks a users_fine).
+          A real <span className="font-mono text-tech">&lt;details&gt;</span>, so keyboards and screen readers get it
+          for free. The technical line is always available and never in the way.
         </p>
       </section>
 

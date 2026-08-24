@@ -137,7 +137,7 @@ describe('web/routes/billing — buying, managing, and seeing what you are on', 
       expect(res.body.url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
       expect((await subscriptionForOrg(db, orgId))!.stripeCustomerId).toBe('cus_made_1');
       expect(calls.checkout[0]).toMatchObject({ orgId, customerId: 'cus_made_1', priceId: 'price_monthly', interval: 'monthly' });
-      expect(calls.checkout[0]!.successUrl).toBe('https://selvedge.test/settings/billing?bought=1');
+      expect(calls.checkout[0]!.successUrl).toBe('https://selvedge.test/admin/billing?bought=1');
     });
 
     /** Two customers for one org is how an account ends up with two subscriptions. */

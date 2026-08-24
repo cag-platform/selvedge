@@ -7,7 +7,25 @@ function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
 }
 
-/** Portability (Ironclad 1, part C): export your full context, re-import it. */
+/**
+ * PORTABILITY — take your whole context out, and put it back.
+ *
+ * Being able to leave is what makes people stay, so the export is a button on
+ * a page. The restore is NOT, and that asymmetry is deliberate rather than
+ * unfinished: exporting is harmless and reassuring, while restoring MERGES a
+ * bundle into a live account. A button beside "Export my context" saying
+ * "Import my context" would dress a much more dangerous action in identical
+ * clothes, and somebody would find out which was which afterwards.
+ *
+ * So restore is an operator endpoint. It is real, it is tested, and it is
+ * reached deliberately — not offered to anyone passing.
+ *
+ * IT IS ALSO NOT THE HISTORY IMPORT. `/api/import/history` takes a ChatGPT,
+ * Claude or Gemini export and has a whole screen; this takes a Selvedge bundle
+ * and puts an account back. Two unrelated features both called "import" was a
+ * trap for whoever touched this next, which is why this one is named for what
+ * it does.
+ */
 export function createPortabilityRouter(db: Db) {
   const router = Router();
 
@@ -21,7 +39,7 @@ export function createPortabilityRouter(db: Db) {
   );
 
   router.post(
-    '/api/import',
+    '/api/context/restore',
     asyncHandler(async (req, res) => {
       const bundle = req.body as ExportBundle;
       if (!bundle || typeof bundle !== 'object' || !Array.isArray(bundle.packs)) {

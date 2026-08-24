@@ -1,3 +1,4 @@
+export { formatCents, formatRange, UNKNOWN_AMOUNT } from './money.js';
 import type { EdgeStatus } from '../components/SelvedgeEdge.js';
 
 /**
@@ -109,14 +110,7 @@ export function graderNote(state: CardState, gradedBy: GradedBy | null): string 
   return 'Checked by a different model than the one that wrote it.';
 }
 
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
-/** An estimate range, collapsed to one figure when the ends match. */
-export function formatRange(low: number, high: number): string {
-  return low === high ? formatCents(low) : `${formatCents(low)}–${formatCents(high)}`;
-}
 
 /**
  * The plain gate note shown at approval. A hard gate says, in words, why the

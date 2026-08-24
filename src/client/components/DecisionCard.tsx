@@ -105,6 +105,7 @@ export function DecisionCard({
   threadId,
   kind,
   hasConversation,
+  hasProject,
   onOpenThread,
   onReload,
   reloadKey,
@@ -113,6 +114,8 @@ export function DecisionCard({
   kind: 'workshop' | 'general';
   /** Nothing has been said yet — there is nothing to decide from, so don't offer to. */
   hasConversation: boolean;
+  /** Whether this conversation has a codebase — decides if 'then build it' is a true offer. */
+  hasProject: boolean;
   onOpenThread: (id: string) => void;
   onReload: () => void;
   /** Bumped by the thread when its messages change, so the dating re-checks itself. */
@@ -166,6 +169,10 @@ export function DecisionCard({
   // write one down; anywhere else, say nothing at all.
   if (!hasBrief(state)) {
     if (kind !== 'general' || !hasConversation) return null;
+    // "— then build it" is only true where there is somewhere to build. In an
+    // idea, which is the most likely place to be writing a decision down, it
+    // offered a next step the conversation cannot take; the same card already
+    // disables the build button for exactly this case further down.
     return (
       <div className="border-b border-hairline px-work-loose py-work-tight">
         <button
@@ -173,7 +180,7 @@ export function DecisionCard({
           disabled={busy !== null}
           className="text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
         >
-          {busy === 'extract' ? 'Reading it back…' : 'Write down what we decided — then build it'}
+          {busy === 'extract' ? 'Reading it back…' : hasProject ? 'Write down what we decided — then build it' : 'Write down what we decided'}
         </button>
         {note && <p className="mt-work-tight text-meta text-thread">{note}</p>}
       </div>

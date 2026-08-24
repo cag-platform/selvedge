@@ -28,7 +28,7 @@ export type WalkthroughStep = {
   title: string;
   detail: string;
   /** Where the step's action lives, when it's a navigation. */
-  to?: '/projects' | '/connections' | '/inbox';
+  to?: '/projects' | '/admin/connections' | '/inbox';
 };
 
 /**
@@ -64,14 +64,14 @@ export function walkthroughSteps(input: WalkthroughInput): WalkthroughStep[] {
         done: true,
         title: 'The agents have their fuel',
         detail: 'Your model key is connected.',
-        to: '/connections',
+        to: '/admin/connections',
       }
     : {
         key: 'fuel',
         done: false,
         title: 'Give the agents their fuel',
         detail: 'Connect your model key. Optional — the watching still works without it, in plainer words.',
-        to: '/connections',
+        to: '/admin/connections',
       };
 
   // Never marked done: starting work is an invitation, not a box to tick.

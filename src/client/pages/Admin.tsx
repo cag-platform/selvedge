@@ -1,6 +1,67 @@
 import { useEffect, useState } from 'react';
+import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Tray } from './Tray.js';
+import { TrackRecord } from './TrackRecord.js';
+import { Connections } from './Connections.js';
+import { Billing } from './Billing.js';
+
+/**
+ * EVERYTHING YOU SET UP ONCE.
+ *
+ * The nav used to carry six peers — Inbox, Record, Projects, Connections,
+ * Billing, Admin — of which two are where you work and four are things you
+ * arrange once and then stop thinking about. Presenting them as equals made
+ * the first question on every visit "which of these did I want?" instead of
+ * "what needs me?", and it is most of the reason the app felt clunky.
+ *
+ * So the four became one. What is here is genuinely of a kind: the record of
+ * what has been done, the accounts it runs on, the money, and the operator
+ * internals underneath. None of it is the work.
+ *
+ * EACH PANEL KEEPS ITS OWN TITLE and this page has none. The tabs are the
+ * navigation; a second heading above them would be a label for a label, and
+ * two `h1`s on one screen is the kind of thing that reads fine and tests badly.
+ */
+
+const tabClass = ({ isActive }: { isActive: boolean }) =>
+  `whitespace-nowrap rounded-inset px-3 py-1.5 text-body font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
+    isActive ? 'bg-panel-soft text-ink' : 'text-ink-quiet hover:text-ink-dim'
+  }`;
+
+export function Admin() {
+  return (
+    <div className="space-y-6">
+      {/* Scrolls rather than wraps or overflows: four tabs fit a laptop and
+          not a phone, and a row that quietly widens the document is exactly
+          the bug this consolidation was fixing upstairs. */}
+      <nav aria-label="Admin sections" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <NavLink to="/admin/record" className={tabClass}>
+          Record
+        </NavLink>
+        <NavLink to="/admin/connections" className={tabClass}>
+          Connections
+        </NavLink>
+        <NavLink to="/admin/billing" className={tabClass}>
+          Billing
+        </NavLink>
+        <NavLink to="/admin/advanced" className={tabClass}>
+          Under the hood
+        </NavLink>
+      </nav>
+
+      <Routes>
+        {/* Connections is the landing because it is the one people come back
+            for — a key to add, a key that stopped working. */}
+        <Route index element={<Navigate to="/admin/connections" replace />} />
+        <Route path="record" element={<TrackRecord />} />
+        <Route path="connections" element={<Connections />} />
+        <Route path="billing" element={<Billing />} />
+        <Route path="advanced" element={<UnderTheHood />} />
+      </Routes>
+    </div>
+  );
+}
 
 type Metrics = {
   attention_usd_per_day: number;
@@ -90,7 +151,7 @@ function TimezoneSettings() {
   );
 }
 
-export function Admin() {
+function UnderTheHood() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [pairs, setPairs] = useState<DigestPair[] | null>(null);
 

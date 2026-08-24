@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { api } from '../lib/api.js';
-import { Reveal } from './Brief.js';
+import { Reveal } from './Reveal.js';
 import { SelvedgeEdge, StatusDot } from './SelvedgeEdge.js';
-import { situationEdge, technicalPresentation, type SituationEvent } from '../lib/situation.js';
+import { fragmentLine, NO_FRAGMENT, situationEdge, technicalPresentation, type SituationEvent } from '../lib/situation.js';
 
 export type { SituationEvent } from '../lib/situation.js';
 
@@ -108,12 +108,19 @@ export function SituationCard({ event }: { event: SituationEvent }) {
   const technical = technicalPresentation(event.detail_level, event.technicalDetail);
   const inlineTechnical = technical === 'inline';
   const when = whenLine(event.occurredAt);
+  const written = fragmentLine(event);
 
   return (
     <article className="relative rounded-card border border-hairline bg-panel p-4 pl-5">
       <SelvedgeEdge status={edge} />
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-body text-ink">{event.fragment ?? 'Something changed.'}</p>
+        {written ? (
+          <p className="text-body text-ink">{written}</p>
+        ) : (
+          <p className="text-body text-ink-dim">
+            {NO_FRAGMENT} <span className="font-mono text-tech text-ink-quiet">{event.eventType}</span>
+          </p>
+        )}
         {(event.project_name || when) && (
           <p className="shrink-0 text-meta text-ink-quiet">
             {[event.project_name, when].filter(Boolean).join(' · ')}

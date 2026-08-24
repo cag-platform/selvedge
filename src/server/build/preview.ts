@@ -50,11 +50,16 @@ export type PreviewStatus = {
   /** Plain-English line for the owner when there is no URL to show. */
   message: string | null;
   /**
-   * Something the owner could turn on that would plausibly fix this, offered at
-   * the moment it is relevant rather than as a setting nobody reads. Only set
-   * when the failure actually points at it.
+   * Something the owner could do that would plausibly fix this, offered at the
+   * moment it is relevant rather than as a setting nobody reads. Only set when
+   * the failure actually points at it.
+   *
+   * `env` exists because the diagnosis already NAMES the missing variable —
+   * "The app needs STRIPE_SECRET_KEY to start" — and for a while it named it
+   * and then told you to add it somewhere that did not exist. An instruction
+   * with no destination is worse than no instruction.
    */
-  offer?: 'database';
+  offer?: 'database' | 'env';
 };
 
 function shellQuote(v: string): string {
@@ -316,7 +321,11 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         state: 'error',
         url: null,
         message: previewFailureMessage(err.log),
-        ...(found.kind === 'database' ? { offer: 'database' as const } : {}),
+        ...(found.kind === 'database'
+          ? { offer: 'database' as const }
+          : found.kind === 'missing_env'
+            ? { offer: 'env' as const }
+            : {}),
       };
     }
     console.error(`preview failed for ${orgId}/${projectId}:`, err);

@@ -7,6 +7,7 @@ import { formatCents } from '../lib/ledger.js';
 import { inMotion, stateLabel, type WorkCardData } from '../lib/card.js';
 import type { ThreadData } from '../lib/inbox.js';
 import type { ContextPack } from '../../shared/types/pack.js';
+import { PreviewEnv } from './PreviewEnv.js';
 
 /**
  * THE CONTEXT PANEL — what is true about the project this thread belongs to,
@@ -37,13 +38,16 @@ type Preview = {
    * when the failure actually points at it, so the offer arrives at the moment
    * it is relevant rather than as a setting nobody goes looking for.
    */
-  offer?: 'database';
+  offer?: 'database' | 'env';
 };
 
 function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Opened by the failure that needs it, and stays open afterwards so a second
+  // variable can go in without hunting for the link again.
+  const [envOpen, setEnvOpen] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -136,7 +140,23 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
                 Give it a database and try again
               </button>
             )}
+            {/*
+              The other answer to the other sentence. The diagnosis has already
+              named the variable it wants; opening the box here means the fix is
+              where the problem was said, rather than in a settings screen the
+              reader has to go and find while holding a stack trace in their head.
+            */}
+            {!busy && preview?.offer === 'env' && !envOpen && (
+              <button className="mt-2 block text-meta text-action-bright hover:underline" onClick={() => setEnvOpen(true)}>
+                Add the environment it needs
+              </button>
+            )}
           </p>
+        )}
+        {envOpen && (
+          <div className="px-work pb-work">
+            <PreviewEnv projectId={data.project.id} onSaved={() => void load()} />
+          </div>
         )}
       </div>
     </div>

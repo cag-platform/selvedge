@@ -33,7 +33,7 @@ describe('the upgrade prompt', () => {
     const html = render(<UpgradeNote error={limit('limit_projects', `2 projects on Free. ${priceLine('pro')} lifts the limit.`)} />);
     expect(html).toContain('2 projects on Free');
     expect(html).toContain(priceLine('pro'));
-    expect(html).toContain('/settings/billing');
+    expect(html).toContain('/admin/billing');
   });
 
   it('renders nothing at all for a failure that is not a limit', () => {
@@ -69,7 +69,7 @@ describe('the locked-history line', () => {
     expect(html).toContain('142');
     expect(html).toMatch(/never\s*deleted/);
     expect(html).toMatch(/export/i);
-    expect(html).toContain('/settings/billing');
+    expect(html).toContain('/admin/billing');
   });
 
   it('counts one thing as one thing', () => {

@@ -6,3 +6,6 @@ dist-server/
 *.log
 coverage/
 .DS_Store
+
+# Throwaway visual-audit harness (fixtures + screenshots). Never shipped.
+.audit/

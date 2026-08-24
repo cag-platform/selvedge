@@ -139,14 +139,28 @@ export function Billing() {
               </button>
             </>
           ) : (
-            <button className={btnPrimary} disabled={busy} onClick={() => void go('/api/billing/portal')}>
+            // Disabled when there is no payment processor: the portal is
+            // Stripe's, and a primary button that can only fail is worse than
+            // one that is plainly unavailable.
+            <button className={btnPrimary} disabled={busy || !state.can_checkout} onClick={() => void go('/api/billing/portal')}>
               Manage billing
             </button>
           )}
         </div>
+        {/*
+          WHAT IS TRUE HERE DEPENDS ON THE PLAN, and this used to say the same
+          thing either way: "everything runs on the Free tier". For an account
+          on Pro with no processor configured — which is exactly what a
+          hand-written subscription row looks like — that sat directly beneath
+          "Your plan · $12/month · renews on the 23rd" and contradicted it.
+          Two sentences in one panel disagreeing about what somebody is paying
+          is the plainest kind of lie this product can tell.
+        */}
         {!state.can_checkout && (
           <p className="mt-3 text-body text-ink-quiet">
-            This deployment isn’t set up to take payments, so everything runs on the Free tier. Nothing is charged.
+            {onFree
+              ? 'This deployment isn’t set up to take payments, so there is no way to upgrade from here. Nothing is charged.'
+              : `Your account is on ${state.plan_name} and everything on it works. This deployment isn’t set up to take payments, though, so there is no card attached and nothing is being charged — and nothing here can change that.`}
           </p>
         )}
         {error && <p className="mt-3 text-body text-thread">{error}</p>}

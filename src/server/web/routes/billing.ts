@@ -130,8 +130,8 @@ export function createBillingRouter(db: Db, deps: BillingRouterDeps = {}) {
         customerId,
         priceId,
         interval,
-        successUrl: `${base}/settings/billing?bought=1`,
-        cancelUrl: `${base}/settings/billing`,
+        successUrl: `${base}/admin/billing?bought=1`,
+        cancelUrl: `${base}/admin/billing`,
       });
 
       if (!session.url) {
@@ -162,7 +162,7 @@ export function createBillingRouter(db: Db, deps: BillingRouterDeps = {}) {
       }
       const session = await gateway.createPortalSession({
         customerId: existing.stripeCustomerId,
-        returnUrl: `${baseUrl(req)}/settings/billing`,
+        returnUrl: `${baseUrl(req)}/admin/billing`,
       });
       res.json({ url: session.url });
     }),

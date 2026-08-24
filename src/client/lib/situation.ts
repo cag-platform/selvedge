@@ -53,6 +53,28 @@ export function situationEdge(ev: Pick<SituationEvent, 'verdict' | 'eventType'>)
 }
 
 /**
+ * WHAT THE CARD SAYS WHEN NOBODY WROTE THE SENTENCE.
+ *
+ * The fallback used to be "Something changed." — three words that invent a
+ * fact. Half the event families this card renders are not changes: a failed
+ * deploy left the old version serving, a recovery undid a change, a health
+ * check that has been red for an hour changed nothing at all. And it threw away
+ * the one thing a narration-less card definitely knows, which is its own event
+ * type, in exchange for saying something untrue.
+ *
+ * So: no narration is reported as no narration, and the machine name rides
+ * along in the technical register where a machine name belongs. That is a
+ * missing sentence, said out loud — a person can still tell what arrived, and
+ * nothing on the card claims more than it has.
+ */
+export function fragmentLine(ev: Pick<SituationEvent, 'fragment'>): string | null {
+  const written = ev.fragment?.trim();
+  return written ? written : null;
+}
+
+export const NO_FRAGMENT = 'This one arrived without a description.';
+
+/**
  * How the technical line rides along, by register:
  *   plain_only        → never (the narration omits it at that register anyway)
  *   plain_expandable  → present but collapsed behind a "why" reveal

@@ -1,4 +1,11 @@
 /**
+ * `money` is `formatCents` under an older name — kept because the ceiling
+ * copy read fine and was the third of three, which is the point at which a
+ * duplicated formatter stops being a nuisance and starts being a risk.
+ */
+import { formatCents as money } from './money.js';
+export { money };
+/**
  * What the 409 from the message path carries when a conversation has spent
  * everything it was allowed to spend.
  *
@@ -22,9 +29,6 @@ export function ceilingRefusalOf(body: Record<string, unknown>): CeilingRefusal 
   };
 }
 
-export function money(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 /**
  * What carrying on costs, said before it is pressed rather than after. The step

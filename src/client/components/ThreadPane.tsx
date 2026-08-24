@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
-import { Reveal } from './Brief.js';
+import { Reveal } from './Reveal.js';
 import { AgentChip } from './AgentChip.js';
 import { AgentMenu } from './AgentMenu.js';
 import { ReferenceMenu } from './ReferenceMenu.js';
@@ -575,12 +575,23 @@ export function ThreadPane({
         threadId={data.thread.id}
         kind={data.thread.kind}
         hasConversation={data.messages.some((m) => m.role === 'owner' || m.role === 'agent')}
+        hasProject={Boolean(data.project)}
         onOpenThread={onOpenThread}
         onReload={onReload}
         reloadKey={data.messages.length}
       />
 
-      <div className="flex-1 space-y-work-loose overflow-y-auto px-work-loose py-work">
+      {/* THE CONVERSATION SITS ON THE COMPOSER, NOT UNDER THE TITLE.
+          A short thread used to pin itself to the top of a tall pane, which put
+          six hundred pixels of nothing between the last thing said and the box
+          you say the next thing in — a room that reads as abandoned at exactly
+          the moment it is newest. `mt-auto` on the inner column is the whole
+          fix: spare room goes above the messages when there is any, and nothing
+          happens when there isn't. Doing it with `justify-end` on the scroller
+          instead is the version that quietly makes the top of a long thread
+          unreachable. */}
+      <div className="flex flex-1 flex-col overflow-y-auto px-work-loose py-work">
+        <div className="mt-auto space-y-work-loose">
         {data.messages.length === 0 && (
           // Names where you are, then teaches the two marks — which is the
           // whole interface, and the one thing a first conversation cannot
@@ -633,6 +644,7 @@ export function ThreadPane({
           </p>
         )}
         <div ref={end} />
+        </div>
       </div>
 
       {/* Work waiting on you, in the conversation rather than behind a tab.

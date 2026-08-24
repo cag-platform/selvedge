@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
-import { Reveal } from './Brief.js';
+import { Reveal } from './Reveal.js';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { whenShort } from '../lib/inbox.js';
 import { LockedOlder } from './UpgradeNote.js';

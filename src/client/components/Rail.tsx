@@ -114,12 +114,20 @@ export function Rail({
         </button>
 
         {/* Quiet until wanted, but never only on hover: focus reaches it too,
-            or the gesture would exist for mice alone. */}
+            or the gesture would exist for mice alone.
+
+            OUT OF FLOW, WHICH IS THE WHOLE POINT. In the row's flex line this
+            button reserved the width of "Bring back" on every row forever —
+            about eighty pixels of a two-hundred-and-sixty pixel rail, invisible
+            until you hovered, and taken directly out of the project name. Names
+            were clipped to a few characters by a control nobody could see. It
+            occupies no width now; it lifts off the row when wanted, over ground
+            that was its own dead space anyway. */}
         <button
           onClick={() => onPutAway(place, !place.putAway)}
           title={place.putAway ? BRING_BACK : PUT_AWAY}
           aria-label={`${place.putAway ? BRING_BACK : PUT_AWAY}: ${place.name}`}
-          className="mr-work-tight shrink-0 rounded-inset px-2 py-1 text-meta text-ink-quiet opacity-0 transition-opacity duration-settle ease-settle hover:text-ink focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright group-hover:opacity-100"
+          className="absolute right-work-tight top-1/2 -translate-y-1/2 rounded-inset bg-panel-soft px-2 py-1 text-meta text-ink-quiet opacity-0 shadow-sm transition-opacity duration-settle ease-settle hover:text-ink focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright group-hover:opacity-100"
         >
           {place.putAway ? BRING_BACK : PUT_AWAY}
         </button>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { SelvedgeEdge, StatusDot } from '../components/SelvedgeEdge.js';
 import { entryEdge, outcomeLabel, formatCents, type LedgerEntryData, type LedgerSummaryData } from '../lib/ledger.js';
-import { Reveal } from '../components/Brief.js';
+import { Reveal } from '../components/Reveal.js';
 import { describeAct, type ActView } from '../lib/replay.js';
 import { EmptyState } from '../components/ui.js';
 
