@@ -27,7 +27,8 @@ const failCreate = process.argv.includes('--fail-create');
 /** Photograph the thread with a decision brief above it: --decision=stale|current. */
 const decision = process.argv.find((a) => a.startsWith('--decision='))?.slice('--decision='.length);
 const out = args[0] ?? path.resolve(here, '../workbench.png');
-const params = [decision ? `decision=${decision}` : '', failCreate ? 'fail=create' : ''].filter(Boolean).join('&');
+const home = process.argv.includes('--home');
+const params = [decision ? `decision=${decision}` : '', failCreate ? 'fail=create' : '', home ? 'surface=home' : ''].filter(Boolean).join('&');
 const URL_ = `http://localhost:5199/harness.html${params ? `?${params}` : ''}`;
 
 async function main() {
@@ -76,7 +77,8 @@ async function main() {
   });
 
   await page.goto(URL_, { waitUntil: 'networkidle' });
-  await page.waitForSelector('nav[aria-label="Projects and threads"]');
+  // The front door has no rail; each surface is awaited by its own landmark.
+  await page.waitForSelector(home ? 'section[aria-label="Start something"]' : 'nav[aria-label="Projects and threads"]');
   if (projectView) {
     await page.click('nav[aria-label="Projects and threads"] button[title^="What happened"]');
     await page.waitForTimeout(800);

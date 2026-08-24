@@ -79,6 +79,48 @@ describe('trust/tripwire', () => {
     expect(isContradictingSignal({ eventType: 'build.succeeded', verdict: 'users_affected' })).toBe(true);
   });
 
+  /**
+   * THE 111 WRONG ALL-CLEARS THAT WEREN'T.
+   *
+   * Two event types sat in the hard-negative set that do not mean users are
+   * affected. `deploy.failed_previous_serving` means the previous version is
+   * STILL SERVING — its own template says "users are fine" — so every routine
+   * failed deploy after an all-clear recorded the all-clear as having been
+   * wrong while it was still true. And `data.migration_failed` narrates as
+   * cannot_tell: not knowing is not proof of a miss, and a ledger that counts
+   * "I could not tell" as "I got it wrong" confesses to sins it did not
+   * commit. On a real account that produced 111 incidents against zero ships,
+   * a number so obviously wrong the whole honesty ledger read as noise.
+   */
+  it('a failed deploy with the previous version still serving contradicts nothing', () => {
+    expect(isContradictingSignal({ eventType: 'deploy.failed_previous_serving', verdict: null })).toBe(false);
+    expect(isContradictingSignal({ eventType: 'deploy.failed_previous_serving', verdict: 'users_fine' })).toBe(false);
+    // The verdict still wins when it is a real one: a row that SAYS users are
+    // affected contradicts an all-clear whatever its event type.
+    expect(isContradictingSignal({ eventType: 'deploy.failed_previous_serving', verdict: 'users_affected' })).toBe(true);
+  });
+
+  it('cannot-tell is not proof of a miss', () => {
+    expect(isContradictingSignal({ eventType: 'data.migration_failed', verdict: null })).toBe(false);
+    expect(isContradictingSignal({ eventType: 'data.migration_failed', verdict: 'cannot_tell' })).toBe(false);
+  });
+
+  it("owns the miss in the owner's words, never a machine name", async () => {
+    await seedNarration(db, orgId, 'loom', 'users_fine', 'high', new Date('2026-07-20T06:58:00Z'));
+    await recordFalseAllClearIfContradicted(db, orgId, 'loom', {
+      narrationId: ulid(),
+      eventId: 'evt-break',
+      eventType: 'runtime.health_failing',
+      verdict: null,
+      occurredAt: new Date('2026-07-20T15:04:00Z'),
+    });
+    const [row] = await db.select().from(trustIncidents).where(eq(trustIncidents.orgId, orgId));
+    expect(row!.detail).toBe('I told you users were fine, and within a day the app stopped answering.');
+    // The one sentence whose whole job is owning a mistake plainly must not
+    // contain an event type.
+    expect(row!.detail).not.toMatch(/[a-z]+\.[a-z_]+/);
+  });
+
   it('ignores an all-clear that is older than the 24h window', async () => {
     await seedNarration(db, orgId, 'loom', 'users_fine', 'high', new Date('2026-07-18T06:00:00Z'));
     const recorded = await recordFalseAllClearIfContradicted(db, orgId, 'loom', {

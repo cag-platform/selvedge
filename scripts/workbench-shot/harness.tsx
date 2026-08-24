@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Inbox } from '../../src/client/pages/Inbox.js';
+import { Home } from '../../src/client/pages/Home.js';
 import '../../src/client/index.css';
 import { cardsFixture, decisionFixture, inboxFixture, searchFixture, threadFixture, timelineFixture } from './fixture.js';
 
@@ -34,9 +35,15 @@ window.fetch = (async (input: RequestInfo | URL) => {
   return new Response(JSON.stringify(hit ? hit[1] : {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 }) as typeof fetch;
 
+/** ?surface=home — photograph the front door instead of the workbench. */
+const surface = new URLSearchParams(window.location.search).get('surface');
+
 createRoot(document.getElementById('root')!).render(
-  <MemoryRouter initialEntries={['/inbox/p0t0']}>
+  <MemoryRouter initialEntries={[surface === 'home' ? '/' : '/inbox/p0t0']}>
     <Routes>
+      {/* The app shell gives every non-workbench page this measure; the
+          harness reproduces it so the shot is the page as shipped. */}
+      <Route path="/" element={<main className="mx-auto max-w-3xl px-4 py-8"><Home /></main>} />
       <Route path="/inbox/project/:projectId" element={<Inbox />} />
       <Route path="/inbox/:threadId" element={<Inbox />} />
       <Route path="*" element={<Inbox />} />

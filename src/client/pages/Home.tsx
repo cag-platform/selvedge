@@ -1,37 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { AgentChip } from '../components/AgentChip.js';
 import { SelvedgeEdge } from '../components/SelvedgeEdge.js';
-import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { EmptyState, eyebrowCls } from '../components/ui.js';
 import { placeLines, railPlaces, splitPutAway, whenShort, type InboxData, type RailPlace } from '../lib/inbox.js';
 
 /**
- * THE FRONT DOOR — which used to be somebody else's workshop.
+ * THE FRONT DOOR — a question, then your work.
  *
- * `/` redirected to `/inbox`, and the Inbox opens the most recent conversation
- * on arrival. Both of those are right on their own: a workbench should reopen
- * where you were. Together they meant the app had no home at all — every visit
- * landed mid-sentence inside one project's build thread, whatever you had come
- * to do, and there was nowhere that showed you the shape of your own work.
+ * `/` used to redirect into the Inbox, which opens the most recent
+ * conversation on arrival, so every visit landed mid-sentence inside one
+ * project's workshop. The first cut of this page fixed the landing but led
+ * with a wall of status; the owner's verdict on that was "clinical", and they
+ * were right. What you want from a front door is what Replit's gets right: it
+ * asks you a question, and your work is one glance below.
  *
- * So home is its own place now. The Inbox keeps its behaviour, because that IS
- * the workbench and reopening the last conversation is what a workbench should
- * do. This is the room you walk through first.
+ * SO THE COMPOSER IS THE PAGE. Typing here starts an idea — a plain
+ * conversation about nothing in particular yet, because the point of an idea
+ * is that you do not know yet. It lands under the Ideas subject, the first
+ * message names it (see titleFromFirstMessage), and naming a builder later is
+ * what turns it into a project. The whole idea→build path this product
+ * already has, entered by answering a question.
  *
- * WHAT IT IS ALLOWED TO SAY. Everything here is already on screen elsewhere —
- * it invents no metric, computes no score, and adds no request the app was not
- * making. A dashboard's temptation is to fill space with numbers that look like
- * insight; the honest version shows you what you were doing, what you have, and
- * what happened, and then gets out of the way.
+ * WHAT IS DELIBERATELY NOT HERE:
+ *
+ * - Status and corrections. Reading a correction is what acknowledges it, and
+ *   exactly one surface may own that act — /api/status marks incidents
+ *   acknowledged on read, so a page that fetched it without leading with it
+ *   would silently burn corrections nobody saw. They live on Projects.
+ * - Suggested prompts. Replit fills this space with guesses; a guessed chip
+ *   that produces a bad answer costs more trust than an empty space costs
+ *   delight.
+ * - A live preview. Waking a sandbox takes a minute and starts the meter —
+ *   the wrong bill for a page you pass through.
  */
-
-type StatusResponse = { corrections: Array<{ id: string; line: string }>; live: SituationEvent[] };
 
 export function Home() {
   const [inbox, setInbox] = useState<InboxData | null>(null);
-  const [status, setStatus] = useState<StatusResponse>({ corrections: [], live: [] });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,136 +45,146 @@ export function Home() {
       .get<InboxData>('/api/inbox')
       .then(setInbox)
       .catch(() => setInbox({ projects: [], subjects: [], engine_on: false }));
-    // Status must never be able to blank the page: a home that renders without
-    // it is degraded, one that doesn't render at all is broken.
-    api
-      .get<StatusResponse>('/api/status')
-      .then(setStatus)
-      .catch(() => undefined);
   }, []);
 
-  if (!inbox) return null;
-
-  const { atHand } = splitPutAway(railPlaces(inbox.projects, inbox.subjects ?? []));
-  // The rail is already ordered by when you were last there, so the first row
-  // IS where you left off — no second notion of "recent" that could disagree.
-  const [latest, ...rest] = atHand;
-  const live = status.live.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed');
+  const places = inbox ? splitPutAway(railPlaces(inbox.projects, inbox.subjects ?? [])).atHand : [];
 
   return (
-    <div className="animate-settle space-y-8">
-      {/* CORRECTIONS LEAD AND ARE NEVER FOLDED. When Selvedge said something
-          was fine and it wasn't, owning it out loud is the whole basis for
-          believing it the rest of the time — so it outranks even the thing you
-          were in the middle of. */}
-      {status.corrections.length > 0 && (
-        <section aria-label="Corrections" className="rounded-card border border-hairline border-l-2 border-l-thread bg-panel-soft px-4 py-3">
-          <p className="text-label font-body uppercase tracking-widest text-thread">Correcting myself</p>
-          {status.corrections.map((c) => (
-            <p key={c.id} className="mt-1 text-body text-ink">
-              {c.line}
-            </p>
-          ))}
-        </section>
-      )}
+    <div className="animate-settle space-y-10 pt-6 sm:pt-12">
+      <Ask />
 
-      {latest ? (
-        <WhereYouLeftOff place={latest} onOpen={() => openPlace(latest, navigate)} />
-      ) : (
-        <EmptyState action={<Link to="/projects" className="text-meta text-action-bright hover:underline">Bring a repo in</Link>}>
-          Nothing here yet. Bring a repo, or start with a question &mdash; a subject works before any code exists.
+      {inbox && places.length === 0 && (
+        <EmptyState
+          action={
+            <Link to="/projects" className="text-meta text-action-bright hover:underline">
+              Bring a repo in
+            </Link>
+          }
+        >
+          Nothing here yet. Ask something above, or bring a repo &mdash; a conversation works before any code exists.
         </EmptyState>
       )}
 
-      {rest.length > 0 && (
-        <section aria-label="Everywhere else">
-          <p className={`mb-3 ${eyebrowCls}`}>Everywhere else</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {rest.map((place) => (
-              <PlaceRow key={place.id} place={place} onOpen={() => openPlace(place, navigate)} />
+      {places.length > 0 && (
+        <section aria-label="Jump back in">
+          <p className={`mb-3 ${eyebrowCls}`}>Jump back in</p>
+          {/* The rail's own order — most recently used first — so the card
+              top-left IS where you left off, with no second notion of
+              "recent" that could disagree with the Inbox. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {places.map((place) => (
+              <PlaceCard key={place.id} place={place} onOpen={() => openPlace(place, navigate)} />
             ))}
           </div>
         </section>
-      )}
-
-      {/* Folded, and counted. This was an open wall of narration cards on the
-          Projects page; on a real account it is the whole screen. */}
-      {live.length > 0 && (
-        <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
-          <summary className={`cursor-pointer ${eyebrowCls}`}>Since yesterday · {live.length}</summary>
-          <div className="mt-3 space-y-3">
-            {live.map((n) => (
-              <SituationCard key={n.id} event={n} />
-            ))}
-          </div>
-        </details>
       )}
     </div>
   );
 }
 
 /**
- * Where tapping a place goes, in one function, so the card at the top and the
- * rows under it can never land somewhere different. A place with no
- * conversation yet has nothing to open, so it goes to the Inbox, which knows
- * how to start one.
+ * The question, and the box that answers it. Submitting starts an idea and
+ * says the first thing in it — one gesture, no ceremony about what kind of
+ * thing it is, because the point of an idea is that you don't know yet.
  */
-function openPlace(place: RailPlace, navigate: (to: string) => void): void {
-  navigate(place.chat ? `/inbox/${place.chat.id}` : '/inbox');
-}
+function Ask() {
+  /**
+   * The name comes off the loaded Clerk instance rather than the useUser hook.
+   * This page only renders inside <SignedIn>, where Clerk is already loaded —
+   * and the hook throws outside a ClerkProvider, which would make a GREETING
+   * the reason the screenshot harness cannot mount the page. A missing name
+   * costs one word; a provider dependency costs the page its testability.
+   */
+  const first = (window as { Clerk?: { user?: { firstName?: string | null } } }).Clerk?.user?.firstName?.trim();
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
 
-/**
- * The one thing on this page bigger than a row: the conversation you were last
- * in, with the room to say what it was about.
- *
- * NO LIVE PREVIEW IN HERE, deliberately. Waking a sandbox takes about a minute
- * and starts the meter, and doing that on every visit to the front door is a
- * real bill for something most visits scroll past. The preview stays one click
- * in, inside the conversation, where asking for it is a decision.
- */
-function WhereYouLeftOff({ place, onOpen }: { place: RailPlace; onOpen: () => void }) {
-  const lines = placeLines(place);
+  async function start() {
+    const text = draft.trim();
+    if (text === '' || busy) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const made = await api.post<{ thread: { id: string } }>('/api/ideas', {});
+      await api.post(`/api/threads/${made.thread.id}/message`, { text });
+      navigate(`/inbox/${made.thread.id}`);
+    } catch (e) {
+      // The draft is kept: a failed send must never eat the sentence.
+      setNote(e instanceof Error ? e.message : "that didn't go through");
+      setBusy(false);
+    }
+  }
+
   return (
-    <section aria-label="Where you left off">
-      <p className={`mb-3 ${eyebrowCls}`}>Where you left off</p>
-      <button
-        onClick={onOpen}
-        className="relative block w-full rounded-pane border border-hairline bg-panel p-6 pl-7 text-left transition-colors duration-settle ease-settle hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
-      >
-        {place.status && <SelvedgeEdge status={place.status} />}
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="truncate text-headline font-display text-ink">{place.name}</p>
-          {place.chat && <p className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</p>}
+    <section aria-label="Start something" className="mx-auto max-w-xl text-center">
+      <h1 className="font-display text-section font-medium text-ink">
+        {first ? `${first}, what are we building today?` : 'What are we building today?'}
+      </h1>
+
+      <div className="mt-6 rounded-pane border border-hairline bg-panel p-3 text-left shadow-sm focus-within:border-action">
+        <textarea
+          ref={box}
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void start();
+            }
+          }}
+          rows={2}
+          disabled={busy}
+          placeholder="Describe it, or just ask — a question is a fine place to start"
+          className="block w-full resize-none bg-transparent px-1 py-1 text-body-lg text-ink placeholder:text-ink-quiet focus:outline-none disabled:opacity-60"
+        />
+        <div className="flex items-center justify-between pt-2">
+          {/* The way out of "just talking" is named where the talking starts:
+              the same @-mention that moves any conversation to a builder. */}
+          <p className="px-1 text-meta text-ink-quiet">
+            Name a builder when it should become code &mdash; <span className="font-mono text-tech">@claudecode</span> takes it from
+            there.
+          </p>
+          <button
+            onClick={() => void start()}
+            disabled={busy || draft.trim() === ''}
+            className="shrink-0 rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-40"
+          >
+            {busy ? 'Starting…' : 'Start'}
+          </button>
         </div>
-        <p className="mt-2 text-body-lg text-ink-dim">{lines.said}</p>
-        {lines.note && <p className="mt-1 text-meta text-thread">{lines.note}</p>}
-        {place.chat && (
-          <div className="mt-4 flex items-center gap-work">
-            <AgentChip agent={place.chat.agent} working={place.chat.working} />
-            <span className="text-meta text-ink-quiet">pick it up</span>
-          </div>
-        )}
-      </button>
+      </div>
+
+      {note && <p className="mt-2 text-meta text-thread">{note}</p>}
     </section>
   );
 }
 
-function PlaceRow({ place, onOpen }: { place: RailPlace; onOpen: () => void }) {
+/** Where tapping a place goes. A place with no conversation yet has nothing to open, so it lands on the Inbox, which knows how to start one. */
+function openPlace(place: RailPlace, navigate: (to: string) => void): void {
+  navigate(place.chat ? `/inbox/${place.chat.id}` : '/inbox');
+}
+
+function PlaceCard({ place, onOpen }: { place: RailPlace; onOpen: () => void }) {
   const lines = placeLines(place);
   return (
     <button
       onClick={onOpen}
-      className="relative flex w-full items-center gap-work rounded-card border border-hairline bg-panel px-4 py-3 pl-5 text-left transition-colors duration-settle ease-settle hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
+      className="relative block w-full rounded-card border border-hairline bg-panel p-4 pl-5 text-left transition-colors duration-settle ease-settle hover:border-action focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
     >
       {place.status && <SelvedgeEdge status={place.status} />}
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-work">
-          <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{place.name}</span>
-          {place.chat && <span className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</span>}
-        </span>
-        <span className="block truncate text-meta text-ink-quiet">{lines.said}</span>
-      </span>
-      {place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="truncate text-body font-medium text-ink">{place.name}</p>
+        {place.chat && <p className="shrink-0 font-mono text-tech text-ink-quiet">{whenShort(place.chat.last_at)}</p>}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-meta text-ink-quiet">{lines.said}</p>
+        {place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}
+      </div>
+      {lines.note && <p className="mt-1 truncate text-meta text-thread">{lines.note}</p>}
     </button>
   );
 }

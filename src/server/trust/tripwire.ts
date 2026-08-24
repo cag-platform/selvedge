@@ -7,16 +7,40 @@ import { narrations, trustIncidents } from '../db/schema/index.js';
 // window of a "users are fine" narration on the same project.
 const CONTRADICTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// Event types that are, by themselves, a hard negative (independent of a
-// verdict phrase) — a health failure or a failed deploy on live serving.
+/**
+ * Event types that MEAN users are affected, by the row's own definition.
+ *
+ * TWO WERE HERE THAT DO NOT, and together they made the ledger incoherent.
+ * `deploy.failed_previous_serving` means the previous version is still
+ * serving — its own template says "users are fine" — so every routine failed
+ * deploy after an all-clear was recorded as the all-clear having been WRONG,
+ * when it was still true. And `data.migration_failed` narrates as cannot_tell:
+ * not knowing whether users are affected is not proof that they were, and a
+ * ledger that counts "I could not tell" as "I got it wrong" is confessing to
+ * sins it did not commit. That is how an account with nothing shipped came to
+ * show 111 wrong all-clears — a number so obviously wrong it made the whole
+ * honesty ledger read as noise, which costs the one thing the ledger exists
+ * to buy.
+ */
 const HARD_NEGATIVE_EVENTS = new Set([
   'runtime.health_failing',
-  'deploy.failed_previous_serving',
   'deploy.failed_nothing_serving',
-  'data.migration_failed',
   'runtime.error_rate_spike',
   'data.integrity_signal',
 ]);
+
+/**
+ * What actually happened, in the owner's language. The detail used to
+ * interpolate the raw event type — "then runtime.health_failing contradicted
+ * it" — which is a machine name in the one sentence whose entire job is owning
+ * a mistake plainly.
+ */
+const CONTRADICTION_SAID: Record<string, string> = {
+  'runtime.health_failing': 'the app stopped answering',
+  'deploy.failed_nothing_serving': 'a failed deploy left nothing running',
+  'runtime.error_rate_spike': 'errors spiked for the people using it',
+  'data.integrity_signal': 'the data showed signs of damage',
+};
 
 export type ContradictingSignal = {
   narrationId: string;
@@ -70,7 +94,7 @@ export async function recordFalseAllClearIfContradicted(
     kind: 'false_all_clear',
     priorNarrationId: prior.id,
     contradictingEventId: sig.eventId,
-    detail: `Told you users were fine, then ${sig.eventType} contradicted it within 24 hours.`,
+    detail: `I told you users were fine, and within a day ${CONTRADICTION_SAID[sig.eventType] ?? 'a real problem reached them'}.`,
   });
   return true;
 }
