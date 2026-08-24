@@ -34,17 +34,26 @@ export const B5: TemplateFn = (event, pack) => ({
 
 // The row's own definition states the previous version is still serving —
 // the verdict follows directly, no guessing required.
-export const B6: TemplateFn = (event, pack) => ({
-  fragment: `${projectName(pack)}: your update couldn't go live. The previous version is still running — ${VERDICT_PHRASE.users_fine}, and ${downtimeTranslation(
-    pack,
-  )} is not happening.`,
-  technicalDetail: technicalLine(event),
-  verdict: 'users_fine',
-});
+export const B6: TemplateFn = (event, pack) => {
+  // The clause is only added when the owner told us what downtime costs them.
+  // Without it the sentence simply ends — see downtimeTranslation for the two
+  // real sentences the old generic produced.
+  const costs = downtimeTranslation(pack);
+  return {
+    fragment: `${projectName(pack)}: your update couldn't go live. The previous version is still running — ${VERDICT_PHRASE.users_fine}${
+      costs ? `, and ${costs} is not happening` : ''
+    }.`,
+    technicalDetail: technicalLine(event),
+    verdict: 'users_fine',
+  };
+};
 
 // VOICE-REVIEW: same logic, the row's definition states nothing is serving.
-export const B7: TemplateFn = (event, pack) => ({
-  fragment: `${projectName(pack)}: your update failed and nothing is currently live — ${VERDICT_PHRASE.users_affected}: ${downtimeTranslation(pack)}.`,
-  technicalDetail: technicalLine(event),
-  verdict: 'users_affected',
-});
+export const B7: TemplateFn = (event, pack) => {
+  const costs = downtimeTranslation(pack);
+  return {
+    fragment: `${projectName(pack)}: your update failed and nothing is currently live — ${VERDICT_PHRASE.users_affected}${costs ? `: ${costs}` : ''}.`,
+    technicalDetail: technicalLine(event),
+    verdict: 'users_affected',
+  };
+};

@@ -10,11 +10,14 @@ import type { TemplateFn } from '../types.js';
  */
 
 // VOICE-REVIEW
-export const C1: TemplateFn = (event, pack) => ({
-  fragment: `${projectName(pack)} looks down right now — ${VERDICT_PHRASE.users_affected}: ${downtimeTranslation(pack)}.`,
-  technicalDetail: technicalLine(event),
-  verdict: 'users_affected',
-});
+export const C1: TemplateFn = (event, pack) => {
+  const costs = downtimeTranslation(pack);
+  return {
+    fragment: `${projectName(pack)} looks down right now — ${VERDICT_PHRASE.users_affected}${costs ? `: ${costs}` : ''}.`,
+    technicalDetail: technicalLine(event),
+    verdict: 'users_affected',
+  };
+};
 
 export const C2: TemplateFn = (event, pack) => ({
   fragment: `${projectName(pack)} is back up — ${VERDICT_PHRASE.users_fine}.`,

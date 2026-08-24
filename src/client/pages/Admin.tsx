@@ -5,6 +5,7 @@ import { Tray } from './Tray.js';
 import { TrackRecord } from './TrackRecord.js';
 import { Connections } from './Connections.js';
 import { Billing } from './Billing.js';
+import { Context } from './Context.js';
 
 /**
  * EVERYTHING YOU SET UP ONCE.
@@ -50,6 +51,13 @@ export function Admin() {
         <NavLink to="/admin/connections" className={tabClass}>
           Connections
         </NavLink>
+        {/* What Selvedge has learned, the export that lets you take it, and
+            bringing a history in. All of it sat above the projects on the
+            Projects page — none of it is work, and on an account with a real
+            history it pushed the projects below the fold. */}
+        <NavLink to="/admin/context" className={tabClass}>
+          Context
+        </NavLink>
         <NavLink to="/admin/billing" className={tabClass}>
           Billing
         </NavLink>
@@ -65,6 +73,7 @@ export function Admin() {
         <Route path="record" element={<TrackRecord />} />
         <Route path="apps" element={<Tray />} />
         <Route path="connections" element={<Connections />} />
+        <Route path="context" element={<Context />} />
         <Route path="billing" element={<Billing />} />
         <Route path="advanced" element={<UnderTheHood />} />
       </Routes>

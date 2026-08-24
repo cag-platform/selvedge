@@ -171,6 +171,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/admin/record', 'Record'],
   ['/admin/apps', 'Your apps'],
   ['/admin/connections', 'Connections'],
+  ['/admin/context', 'Context'],
   ['/admin/billing', 'Billing'],
   ['/admin/advanced', 'Under the hood'],
   ['/admin', 'Admin'],

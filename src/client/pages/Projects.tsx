@@ -3,8 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
-import { ImportHistory } from '../components/ImportHistory.js';
-import { FileOldChats } from '../components/FileOldChats.js';
 import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
 import { UpgradeNote, limitCodeOf } from '../components/UpgradeNote.js';
@@ -40,15 +38,26 @@ function Status({ status }: { status: StatusResponse }) {
           ))}
         </div>
       )}
+      {/* WHAT HAPPENED, FOLDED. This was an open list above the projects, and
+          on a real account it is the whole screen: eleven narration cards
+          between you and the thing you came for. That layout belonged to the
+          question "what needs me this morning?", which this product no longer
+          asks — so it is one line you can open, and the count is on it, because
+          a fold you cannot see the size of is a fold that hides.
+
+          CORRECTIONS ARE NOT IN HERE, and never will be. Reading one is how it
+          gets acknowledged; putting it behind a click is how it goes unread. */}
       {live.length > 0 && (
-        <>
-          <p className={eyebrowCls}>Since yesterday</p>
-          <div className="space-y-3">
+        <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
+          <summary className={`cursor-pointer ${eyebrowCls}`}>
+            Since yesterday · {live.length}
+          </summary>
+          <div className="mt-3 space-y-3">
             {live.map((n) => (
               <SituationCard key={n.id} event={n} />
             ))}
           </div>
-        </>
+        </details>
       )}
     </section>
   );
@@ -258,61 +267,6 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
   );
 }
 
-type StackMemory = { apps: number; watched_days: number; things_learned: number; summary: string };
-
-/**
- * The moat made visible (Ironclad 1): a growing count of what Selvedge has
- * learned, and the honest anti-lock-in export. Being able to leave is what
- * makes people stay.
- */
-function MemoryBanner() {
-  const [mem, setMem] = useState<StackMemory | null>(null);
-  useEffect(() => {
-    api.get<StackMemory>('/api/memory').then(setMem).catch(() => setMem(null));
-  }, []);
-  // Nothing watched yet means no memory to boast about and nothing to export —
-  // but an old history can still come in, and a subject is somewhere to put it.
-  if (!mem || mem.apps === 0) {
-    return (
-      <Pane className="mb-6 p-5">
-        <p className="text-body text-ink-quiet">Nothing has been watched long enough to have a memory yet.</p>
-        <ImportHistory />
-        <FileOldChats />
-      </Pane>
-    );
-  }
-
-  const exportContext = async () => {
-    const bundle = await api.get<unknown>('/api/export');
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'selvedge-context.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <Pane className="mb-6 p-5">
-      <p className="text-body text-ink">{mem.summary}</p>
-      <button
-        onClick={() => void exportContext()}
-        className="mt-3 block text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
-      >
-        Export my context →
-      </button>
-      {/* The mirror of the export, and the same argument: what you said
-          elsewhere is yours, so it can come in as easily as it can go out. */}
-      <ImportHistory />
-      {/* And once it is in, the step that used to be missing: joining a
-          conversation about a project to the project. Renders nothing at all
-          when there is no imported history. */}
-      <FileOldChats />
-    </Pane>
-  );
-}
-
 export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
   const [status, setStatus] = useState<StatusResponse>({ corrections: [], live: [] });
@@ -343,7 +297,10 @@ export function Projects() {
     <div className="animate-settle">
       <Status status={status} />
       <Walkthrough projects={projects} />
-      <MemoryBanner />
+      {/* The memory summary, the context export, bringing a history in and
+          filing what came in are all things you set up or do once. They lived
+          here, above the projects, and pushed the actual work down the page.
+          They are Admin ▸ Context now. */}
       <div className="mb-4 flex items-center justify-between">
         <p className={eyebrowCls}>
           {projects.length === 0 ? 'No projects yet — connect GitHub, or create one' : 'Your stack · read the edges'}

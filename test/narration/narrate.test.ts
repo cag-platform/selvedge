@@ -78,4 +78,68 @@ describe('narrate', () => {
       }
     }
   });
+
+  /**
+   * TWO SENTENCES THAT REACHED A REAL SCREEN.
+   *
+   *   "AI Chess looks down right now — users are affected: the people who use
+   *    it are affected."
+   *   "AI Chess: your update couldn't go live. The previous version is still
+   *    running — users are fine, and the people who use it are affected is not
+   *    happening."
+   *
+   * `downtime_translation` is a NOUN PHRASE the owner writes — "orders stop
+   * going through". Its fallback was a full sentence wearing a noun phrase's
+   * clothes, so the first output says one thing twice (the generic restates
+   * the verdict phrase it was appended to) and the second is not grammatical.
+   *
+   * An owner who never wrote down what downtime costs them has told us nothing
+   * about it, and every generic either repeats the verdict or invents a
+   * consequence. So the clause is dropped and the sentence is shorter.
+   */
+  describe("what downtime costs, when the owner never said", () => {
+    const noTranslation = () => makeTestPack({ stakes: { tier: 'live_small', has_external_users: true, touches_money: false } });
+    const withTranslation = () =>
+      makeTestPack({
+        stakes: { tier: 'live_small', has_external_users: true, touches_money: false, downtime_translation: 'orders stop going through' },
+      });
+
+    const say = (eventType: string, pack: ReturnType<typeof makeTestPack>) =>
+      narrate(testEvent(eventType), pack, route({ event_type: eventType }, pack))?.fragment ?? '';
+
+    it('never says the same thing twice when nothing was written down', () => {
+      const line = say('runtime.health_failing', noTranslation());
+      expect(line).toContain('users are affected');
+      expect(line).not.toContain('the people who use it are affected');
+      // One statement of who is affected, not two.
+      expect(line.match(/affected/g) ?? []).toHaveLength(1);
+      expect(line).toMatch(/\.$/);
+    });
+
+    it('never produces the ungrammatical clause', () => {
+      const line = say('deploy.failed_previous_serving', noTranslation());
+      expect(line).not.toContain('is not happening');
+      expect(line).toContain('users are fine');
+      expect(line).toMatch(/users are fine\.$/);
+    });
+
+    it('and drops the clause on the nothing-serving row too', () => {
+      const line = say('deploy.failed_nothing_serving', noTranslation());
+      expect(line).toMatch(/users are affected\.$/);
+    });
+
+    /** The whole point of the slot: when the owner DID write it, it is used. */
+    it('uses the owner\'s own words wherever they gave them', () => {
+      expect(say('runtime.health_failing', withTranslation())).toContain('orders stop going through');
+      expect(say('deploy.failed_nothing_serving', withTranslation())).toContain('orders stop going through');
+      expect(say('deploy.failed_previous_serving', withTranslation())).toContain('orders stop going through is not happening');
+    });
+
+    it('treats a whitespace-only translation as never written', () => {
+      const blank = makeTestPack({
+        stakes: { tier: 'live_small', has_external_users: true, touches_money: false, downtime_translation: '   ' },
+      });
+      expect(say('runtime.health_failing', blank)).toMatch(/users are affected\.$/);
+    });
+  });
 });
