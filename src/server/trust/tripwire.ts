@@ -22,11 +22,26 @@ const CONTRADICTION_WINDOW_MS = 24 * 60 * 60 * 1000;
  * honesty ledger read as noise, which costs the one thing the ledger exists
  * to buy.
  */
-const HARD_NEGATIVE_EVENTS = new Set([
+/**
+ * THE RULE THAT KEEPS THE SET HONEST, and the safeguard against this bug's
+ * return: an event may sit in HARD_NEGATIVE_EVENTS only if its OWN NARRATION
+ * TEMPLATE carries verdict users_affected. Not "sounds negative", not "failed
+ * is in the name" — the template is where the product already decided, once,
+ * what each row means for users, and this set must never contradict it.
+ *
+ * test/trust/tripwire.test.ts enforces this structurally: it narrates every
+ * member and fails if any narration says anything but users_affected. That is
+ * also why `data.integrity_signal` left the set alongside the two that caused
+ * the 111: it has no template at all, so its membership was a claim nothing
+ * could check.
+ *
+ * (Exported for that test, not for callers — the door in is
+ * isContradictingSignal.)
+ */
+export const HARD_NEGATIVE_EVENTS: ReadonlySet<string> = new Set([
   'runtime.health_failing',
   'deploy.failed_nothing_serving',
   'runtime.error_rate_spike',
-  'data.integrity_signal',
 ]);
 
 /**
@@ -39,7 +54,6 @@ const CONTRADICTION_SAID: Record<string, string> = {
   'runtime.health_failing': 'the app stopped answering',
   'deploy.failed_nothing_serving': 'a failed deploy left nothing running',
   'runtime.error_rate_spike': 'errors spiked for the people using it',
-  'data.integrity_signal': 'the data showed signs of damage',
 };
 
 export type ContradictingSignal = {

@@ -239,6 +239,13 @@
       "when": 1787001100000,
       "tag": "0033_preview_env",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787001200000,
+      "tag": "0034_honest_ledger",
+      "breakpoints": true
     }
   ]
 }

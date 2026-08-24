@@ -3,7 +3,11 @@ import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, narrations, trustIncidents, feedback } from '../../src/server/db/schema/index.js';
-import { recordFalseAllClearIfContradicted, isContradictingSignal } from '../../src/server/trust/tripwire.js';
+import { recordFalseAllClearIfContradicted, isContradictingSignal, HARD_NEGATIVE_EVENTS } from '../../src/server/trust/tripwire.js';
+import { narrate } from '../../src/server/narration/narrate.js';
+import { route } from '../../src/server/routing/route.js';
+import { makeTestPack } from '../fixtures/testPack.js';
+import type { NarratableEvent } from '../../src/server/narration/types.js';
 import { trackRecord } from '../../src/server/trust/trackRecord.js';
 
 async function seedNarration(
@@ -98,6 +102,41 @@ describe('trust/tripwire', () => {
     // The verdict still wins when it is a real one: a row that SAYS users are
     // affected contradicts an all-clear whatever its event type.
     expect(isContradictingSignal({ eventType: 'deploy.failed_previous_serving', verdict: 'users_affected' })).toBe(true);
+  });
+
+  /**
+   * THE SAFEGUARD. The bug was a hand-maintained list drifting away from what
+   * the templates actually say: two event types sat in it whose own narrations
+   * read "users are fine" and "cannot tell", so the ledger recorded misses
+   * that never happened — 111 of them on one real account.
+   *
+   * This test closes the drift structurally. Every member of the set is
+   * narrated through the real routing table and the real templates, and the
+   * narration must say users_affected. Adding an event whose template says
+   * anything else — or that has no template at all, so the claim cannot be
+   * checked — turns this red before it can invent a single false incident.
+   */
+  it('every hard-negative event narrates as users_affected — the set may never outrun the templates', () => {
+    const pack = makeTestPack({
+      stakes: { tier: 'live_small', has_external_users: true, touches_money: false },
+      voice: { detail_level: 'plain_expandable' },
+    });
+    const ev = (eventType: string): NarratableEvent => ({
+      id: 'evt_1',
+      event_type: eventType,
+      occurred_at: '2026-07-20T10:00:00Z',
+      severity_hint: 'critical',
+    });
+
+    expect(HARD_NEGATIVE_EVENTS.size).toBeGreaterThan(0);
+    for (const eventType of HARD_NEGATIVE_EVENTS) {
+      const output = narrate(ev(eventType), pack, route({ event_type: eventType }, pack));
+      // No template means no checkable claim — which is disqualifying, not
+      // excusable: an unnarratable event cannot honestly call an all-clear
+      // wrong. data.integrity_signal left the set for exactly this.
+      expect(output, `${eventType} produced no narration — it cannot sit in HARD_NEGATIVE_EVENTS`).not.toBeNull();
+      expect(output?.verdict, `${eventType} narrates as ${output?.verdict} — only users_affected belongs in HARD_NEGATIVE_EVENTS`).toBe('users_affected');
+    }
   });
 
   it('cannot-tell is not proof of a miss', () => {
