@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { describeToolEvent, summarizeRecord, describeAct } from '../../src/client/lib/replay.js';
+import {
+  describeToolEvent,
+  summarizeRecord,
+  describeAct,
+  simpleActivitySummary,
+  technicalActivitySummary,
+} from '../../src/client/lib/replay.js';
 
 describe('replay — the technical register, honest about outcomes', () => {
   it('a step with no known outcome claims none — absence is not success', () => {
@@ -19,9 +25,35 @@ describe('replay — the technical register, honest about outcomes', () => {
       { id: '2', name: 'Bash', detail: 'y', ok: false },
       { id: '3', name: 'Read', detail: 'z' },
     ];
-    expect(summarizeRecord({ run_id: 'r', tools, truncated: false })).toBe('3 steps · 1 hit problems');
-    expect(summarizeRecord({ run_id: 'r', tools, truncated: true })).toBe('3 steps · 1 hit problems · record truncated');
+    expect(summarizeRecord({ run_id: 'r', tools, truncated: false })).toBe('3 steps · 1 problem');
+    expect(summarizeRecord({ run_id: 'r', tools, truncated: true })).toBe('3 steps · 1 problem · record truncated');
     expect(summarizeRecord({ run_id: 'r', tools: [], truncated: false })).toBe('0 steps');
+  });
+
+  it('presents the same activity in full and simple registers without losing the record', () => {
+    const record = {
+      run_id: 'r',
+      tools: [{ id: '1', name: 'Edit', detail: 'Editing src/App.tsx', ok: true }],
+      truncated: false,
+    };
+    const run = { status: 'succeeded', changed_paths: ['src/App.tsx'] };
+    expect(simpleActivitySummary(record, run)).toBe('I updated 1 file and checked the work.');
+    expect(technicalActivitySummary(record, run)).toBe('1 step · 1 file changed · succeeded');
+  });
+
+  it('simple activity admits failure and points to the retained exact error', () => {
+    const record = {
+      run_id: 'r',
+      tools: [{ id: '1', name: 'Bash', detail: 'Running tests', ok: false }],
+      truncated: false,
+    };
+    expect(simpleActivitySummary(record, { status: 'failed', changed_paths: null })).toContain('technical record');
+  });
+
+  it('simple activity does not describe running, unknown, or stopped work as checked', () => {
+    expect(simpleActivitySummary(null, { status: 'running', changed_paths: null })).toContain('working');
+    expect(simpleActivitySummary(null, { status: 'unknown', changed_paths: ['src/App.tsx'] })).toContain('exact steps');
+    expect(simpleActivitySummary(null, { status: 'cancelled', changed_paths: ['src/App.tsx'] })).toContain('still in the project');
   });
 
   it('an act with embedded tools shows the step count; one without shows none', () => {

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
-import { describeToolEvent, summarizeRecord, type RunRecordView } from '../lib/replay.js';
+import {
+  describeToolEvent,
+  simpleActivitySummary,
+  technicalActivitySummary,
+  type RunRecordView,
+} from '../lib/replay.js';
 import { Reveal } from './Reveal.js';
 import { AgentChip } from './AgentChip.js';
 import { AgentMenu } from './AgentMenu.js';
@@ -28,6 +33,7 @@ import { WorkCard } from './WorkCard.js';
 import { EmptyState } from './ui.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
+import type { TechnicalDetail } from '../../shared/technicalDetail.js';
 
 type ContextReceipt = { sections: { about: string[]; recent: string[]; open: string[] } };
 
@@ -191,8 +197,13 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
 
 function Message({ message, data }: { message: ThreadMessage; data: ThreadData }) {
   if (message.role === 'switch') {
-    // The switch line: one quiet mono sentence stating what was handed over and
-    // what carrying it cost. This line is the feature made visible.
+    const switchedTo = (message.meta as { switch?: { to?: string } } | null)?.switch?.to;
+    if (data.effective_technical_detail === 'simple') {
+      const name = switchedTo ? agentById(switchedTo)?.name ?? switchedTo : null;
+      return <p className="py-work-tight text-body text-ink-dim">{name ? `Now working with ${name}.` : 'Switched builders.'} The project history came with it.</p>;
+    }
+    // Full mode keeps the exact handoff line visible: compact, technical, and
+    // still part of the conversation rather than hidden in a settings log.
     return (
       <p className="py-work-tight font-mono text-tech text-ink-quiet">{message.content}</p>
     );
@@ -200,31 +211,33 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
 
   if (message.role === 'activity') {
     const record = message.meta as RunRecordView | null;
-    const run = data.runs.find((r) => r.id === record?.run_id);
+    const run = data.runs.find((r) => r.id === (record?.run_id ?? message.run_id));
+    const simple = data.effective_technical_detail === 'simple';
     return (
-      <div className="border-l-2 border-hairline pl-work">
-        <p className="whitespace-pre-line font-mono text-tech text-ink-quiet">{message.content}</p>
-        {record?.tools && record.tools.length > 0 && (
-          <div className="mt-work-tight">
-            <Reveal summary={`the full record · ${summarizeRecord(record)}`}>
-              {record.tools.map((t) => (
-                <div key={t.id}>{describeToolEvent(t)}</div>
-              ))}
-              {run && (
-                <div className="mt-1 text-ink-quiet">
-                  {[
-                    run.changed_paths?.length ? `files changed: ${run.changed_paths.join(', ')}` : null,
-                    run.cost_cents != null ? `cost ${formatCents(run.cost_cents)}` : null,
-                    run.agent ? `by ${run.agent}` : null,
-                    run.model ? `model ${run.model}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              )}
-            </Reveal>
-          </div>
-        )}
+      <div className={`border-l-2 pl-work ${simple ? 'border-healthy' : 'border-hairline'}`}>
+        <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{simple ? 'Progress' : 'Technical activity'}</p>
+        <p className={simple ? 'text-body text-ink-dim' : 'font-mono text-tech text-ink-dim'}>
+          {simple ? simpleActivitySummary(record, run ?? null) : technicalActivitySummary(record, run ?? null)}
+        </p>
+        <Reveal summary={simple ? 'Technical details' : 'Show technical record'}>
+          {record?.tools?.length ? (
+            record.tools.map((tool) => <div key={tool.id}>{describeToolEvent(tool)}</div>)
+          ) : (
+            <pre className="whitespace-pre-wrap break-words font-mono text-tech">{message.content}</pre>
+          )}
+          {run && (
+            <div className="mt-2 border-t border-hairline pt-2 text-ink-quiet">
+              {[
+                run.changed_paths?.length ? `files changed: ${run.changed_paths.join(', ')}` : null,
+                run.cost_cents != null ? `cost ${formatCents(run.cost_cents)}` : null,
+                run.agent ? `by ${run.agent}` : null,
+                run.model ? `model ${run.model}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          )}
+        </Reveal>
       </div>
     );
   }
@@ -255,6 +268,73 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
         </div>
       )}
     </div>
+  );
+}
+
+function TechnicalDetailControl({ data, onDone }: { data: ThreadData; onDone: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const menu = useRef<HTMLDetailsElement>(null);
+
+  async function choose(value: TechnicalDetail | null) {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.patch(`/api/threads/${data.thread.id}/technical-detail`, { technical_detail: value });
+      menu.current?.removeAttribute('open');
+      onDone();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "That setting didn't save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const options: Array<{ value: TechnicalDetail | null; label: string; note: string }> = [
+    {
+      value: null,
+      label: 'Use account setting',
+      note: 'Return this conversation to your saved default.',
+    },
+    { value: 'full', label: 'Full', note: 'Technical summary first; exact record folded below.' },
+    { value: 'simple', label: 'Simple', note: 'Outcome first; technical record folded below.' },
+  ];
+
+  return (
+    <details ref={menu} className="relative z-20">
+      <summary className="cursor-pointer list-none rounded-inset border border-hairline bg-panel px-3 py-1.5 text-meta font-medium text-ink-dim hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright [&::-webkit-details-marker]:hidden">
+        Detail: {data.effective_technical_detail === 'full' ? 'Full' : 'Simple'} <span aria-hidden>⌄</span>
+      </summary>
+      <div className="absolute right-0 mt-2 w-72 overflow-hidden rounded-card border border-hairline bg-panel shadow-xl">
+        <div className="border-b border-hairline px-3 py-2">
+          <p className="text-body font-semibold text-ink">Technical detail</p>
+          <p className="text-meta text-ink-quiet">Changes display only. The complete record always stays with the project.</p>
+        </div>
+        <div className="p-1.5" role="radiogroup" aria-label="Technical detail for this conversation">
+          {options.map((option) => {
+            const selected = data.technical_detail === option.value;
+            return (
+              <button
+                key={option.value ?? 'account'}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={saving}
+                onClick={() => void choose(option.value)}
+                className={`flex w-full items-start gap-2 rounded-inset px-2.5 py-2 text-left hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-60 ${selected ? 'bg-panel-soft' : ''}`}
+              >
+                <span aria-hidden className={`mt-1 h-2 w-2 shrink-0 rounded-full ${selected ? 'bg-action-bright' : 'border border-ink-faint'}`} />
+                <span>
+                  <span className="block text-body font-medium text-ink">{option.label}</span>
+                  <span className="block text-meta text-ink-quiet">{option.note}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {error && <p role="alert" className="border-t border-hairline px-3 py-2 text-meta text-thread">{error}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -595,6 +675,7 @@ export function ThreadPane({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-3">
+          <TechnicalDetailControl data={data} onDone={onReload} />
           {workshop && data.project && (
             <button
               type="button"

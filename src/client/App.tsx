@@ -186,6 +186,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/inbox', 'Threads'],
   ['/projects', 'Projects'],
   // Longest prefix first: /admin/billing must not be matched by /admin.
+  ['/admin/preferences', 'Preferences'],
   ['/admin/record', 'Record'],
   ['/admin/apps', 'Your apps'],
   ['/admin/connections', 'Connections'],

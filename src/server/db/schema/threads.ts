@@ -33,6 +33,11 @@ export const threads = pgTable(
     agent: text('agent').notNull(),
     /** The model alias behind that agent, when it has one; null means the agent's default. */
     model: text('model'),
+    /**
+     * Optional presentation override for this conversation. Null inherits the
+     * organization's technical-detail preference; no run data is discarded.
+     */
+    technicalDetail: text('technical_detail'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     /**

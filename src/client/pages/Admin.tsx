@@ -6,6 +6,7 @@ import { TrackRecord } from './TrackRecord.js';
 import { Connections } from './Connections.js';
 import { Billing } from './Billing.js';
 import { Context } from './Context.js';
+import { Preferences } from './Preferences.js';
 
 /**
  * EVERYTHING YOU SET UP ONCE.
@@ -37,6 +38,9 @@ export function Admin() {
           not a phone, and a row that quietly widens the document is exactly
           the bug this consolidation was fixing upstairs. */}
       <nav aria-label="Admin sections" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        <NavLink to="/admin/preferences" className={tabClass}>
+          Preferences
+        </NavLink>
         <NavLink to="/admin/record" className={tabClass}>
           Record
         </NavLink>
@@ -69,7 +73,8 @@ export function Admin() {
       <Routes>
         {/* Connections is the landing because it is the one people come back
             for — a key to add, a key that stopped working. */}
-        <Route index element={<Navigate to="/admin/connections" replace />} />
+        <Route index element={<Navigate to="/admin/preferences" replace />} />
+        <Route path="preferences" element={<Preferences />} />
         <Route path="record" element={<TrackRecord />} />
         <Route path="apps" element={<Tray />} />
         <Route path="connections" element={<Connections />} />

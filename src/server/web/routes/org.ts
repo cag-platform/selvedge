@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -30,7 +31,30 @@ export function createOrgRouter(db: Db) {
     '/api/org',
     asyncHandler(async (req, res) => {
       const [row] = await db.select().from(orgs).where(eq(orgs.orgId, orgIdOf(req))).limit(1);
-      res.json({ timezone: row?.timezone ?? 'UTC', timezone_source: row?.timezoneSource ?? 'default' });
+      res.json({
+        timezone: row?.timezone ?? 'UTC',
+        timezone_source: row?.timezoneSource ?? 'default',
+        technical_detail: isTechnicalDetail(row?.technicalDetail) ? row.technicalDetail : 'full',
+      });
+    }),
+  );
+
+  router.patch(
+    '/api/org/technical-detail',
+    asyncHandler(async (req, res) => {
+      const technicalDetail = (req.body as { technical_detail?: unknown } | undefined)?.technical_detail;
+      if (!isTechnicalDetail(technicalDetail)) {
+        res.status(400).json({ error: "technical_detail must be 'full' or 'simple'" });
+        return;
+      }
+      const orgId = orgIdOf(req);
+      await db.update(orgs).set({ technicalDetail }).where(eq(orgs.orgId, orgId));
+      const [row] = await db.select().from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
+      res.json({
+        timezone: row?.timezone ?? 'UTC',
+        timezone_source: row?.timezoneSource ?? 'default',
+        technical_detail: technicalDetail,
+      });
     }),
   );
 

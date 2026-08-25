@@ -25,7 +25,11 @@ describe('web/routes/org', () => {
 
   it('starts at the UTC default and accepts a browser auto-detect', async () => {
     const app = appWithOrg(orgId, createOrgRouter(db));
-    expect((await request(app).get('/api/org')).body).toEqual({ timezone: 'UTC', timezone_source: 'default' });
+    expect((await request(app).get('/api/org')).body).toEqual({
+      timezone: 'UTC',
+      timezone_source: 'default',
+      technical_detail: 'full',
+    });
 
     const res = await request(app).patch('/api/org/timezone').send({ timezone: 'America/New_York', source: 'auto' });
     expect(res.body).toEqual({ timezone: 'America/New_York', timezone_source: 'auto' });
@@ -48,5 +52,16 @@ describe('web/routes/org', () => {
     const app = appWithOrg(orgId, createOrgRouter(db));
     expect((await request(app).patch('/api/org/timezone').send({ timezone: 'Not/AZone', source: 'user' })).status).toBe(400);
     expect((await request(app).patch('/api/org/timezone').send({ timezone: 'UTC', source: 'wat' })).status).toBe(400);
+  });
+
+  it('defaults to Full technical detail and persists Simple as an org presentation preference', async () => {
+    const app = appWithOrg(orgId, createOrgRouter(db));
+    const changed = await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'simple' });
+    expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ timezone: 'UTC', timezone_source: 'default', technical_detail: 'simple' });
+    expect((await request(app).get('/api/org')).body.technical_detail).toBe('simple');
+
+    expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'plain' })).status).toBe(400);
+    expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: null })).status).toBe(400);
   });
 });

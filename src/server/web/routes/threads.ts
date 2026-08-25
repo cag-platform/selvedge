@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, threads } from '../../db/schema/index.js';
+import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, orgs, threads } from '../../db/schema/index.js';
 import { getPack, listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { getBuild } from '../../build/store.js';
@@ -47,6 +47,7 @@ import { canStartBuild } from '../../billing/entitlements.js';
 import { createProject } from '../../packs/create.js';
 import type { StakesTier } from '../../../shared/types/pack.js';
 import { refuse } from '../middleware/limit.js';
+import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -288,7 +289,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const [pack, build, messages, runs, running] = await Promise.all([
+      const [pack, build, messages, runs, running, orgRows] = await Promise.all([
         thread.projectId ? getPack(db, orgId, thread.projectId) : null,
         thread.projectId ? getBuild(db, orgId, thread.projectId) : null,
         db
@@ -303,8 +304,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .orderBy(desc(agentRuns.createdAt))
           .limit(20),
         thread.projectId ? activeRun(orgId, thread.projectId) : null,
+        db.select({ technicalDetail: orgs.technicalDetail }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1),
       ]);
       const subjectName = thread.subjectId ? (await getSubject(db, orgId, thread.subjectId))?.name ?? null : null;
+      const accountDetail = isTechnicalDetail(orgRows[0]?.technicalDetail) ? orgRows[0].technicalDetail : 'full';
+      const threadDetail = isTechnicalDetail(thread.technicalDetail) ? thread.technicalDetail : null;
 
       // What this CONVERSATION has cost: sandbox turns in cents, model calls in
       // dollars. The two ledgers stay separate (they measure different things)
@@ -370,6 +374,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         sandbox: build?.sandboxId ? 'attached' : 'none',
         handoff_waiting: pending !== null,
         cost_cents: threadCents,
+        // Presentation only: the full record remains attached to the message
+        // in both modes. Null means this conversation follows the account.
+        technical_detail: threadDetail,
+        effective_technical_detail: threadDetail ?? accountDetail,
         messages: messages.map((m) => ({
           id: m.id,
           role: m.role,
@@ -410,6 +418,42 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           model: r.model,
           changed_paths: (r.changedPaths as string[] | null) ?? null,
         })),
+      });
+    }),
+  );
+
+  /**
+   * Let one conversation temporarily depart from the account register. Null
+   * means "follow my account" again; it never deletes or rewrites run data.
+   */
+  router.patch(
+    '/api/threads/:threadId/technical-detail',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const threadId = req.params.threadId ?? '';
+      const requested = (req.body as { technical_detail?: unknown } | undefined)?.technical_detail;
+      if (requested !== null && !isTechnicalDetail(requested)) {
+        res.status(400).json({ error: "technical_detail must be 'full', 'simple', or null" });
+        return;
+      }
+      const thread = await getThread(db, orgId, threadId);
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+      await db
+        .update(threads)
+        .set({ technicalDetail: requested })
+        .where(and(eq(threads.orgId, orgId), eq(threads.id, threadId)));
+      const [orgRow] = await db
+        .select({ technicalDetail: orgs.technicalDetail })
+        .from(orgs)
+        .where(eq(orgs.orgId, orgId))
+        .limit(1);
+      const accountDetail = isTechnicalDetail(orgRow?.technicalDetail) ? orgRow.technicalDetail : 'full';
+      res.json({
+        technical_detail: requested,
+        effective_technical_detail: requested ?? accountDetail,
       });
     }),
   );

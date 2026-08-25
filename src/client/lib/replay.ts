@@ -32,9 +32,45 @@ export function describeToolEvent(e: ToolEventView): string {
 export function summarizeRecord(record: RunRecordView): string {
   const failed = record.tools.filter((t) => t.ok === false).length;
   const parts = [`${record.tools.length} step${record.tools.length === 1 ? '' : 's'}`];
-  if (failed > 0) parts.push(`${failed} hit problems`);
+  if (failed > 0) parts.push(`${failed} problem${failed === 1 ? '' : 's'}`);
   if (record.truncated) parts.push('record truncated');
   return parts.join(' · ');
+}
+
+/**
+ * One outcome-first sentence for the simple register. It is derived from the
+ * same durable run record as the technical view, so changing register is an
+ * instant presentation choice rather than a second, lossy narration pass.
+ */
+export function simpleActivitySummary(
+  record: RunRecordView | null,
+  run: { status?: string | null; changed_paths?: string[] | null } | null,
+): string {
+  const changed = run?.changed_paths?.length ?? 0;
+  const failed = record?.tools.some((tool) => tool.ok === false) || run?.status === 'failed';
+  const stopped = run?.status === 'cancelled' || run?.status === 'stopped';
+  const running = run?.status === 'running';
+  if (stopped) return changed > 0 ? 'I stopped here. The changes already made are still in the project.' : 'I stopped this work. Nothing was published.';
+  if (running) return 'I’m working through the requested change.';
+  if (failed && changed > 0) return `I updated ${changed} file${changed === 1 ? '' : 's'}, but a project check found a problem.`;
+  if (failed) return 'A project check found a problem. The technical record has the exact error.';
+  if (changed > 0 && run?.status === 'succeeded') return `I updated ${changed} file${changed === 1 ? '' : 's'} and checked the work.`;
+  if (changed > 0) return `I updated ${changed} file${changed === 1 ? '' : 's'}. The technical record has the exact steps.`;
+  if ((record?.tools.length ?? 0) > 0) return 'I reviewed the project and worked through the requested change.';
+  return 'I’m working through the requested change.';
+}
+
+/** A compact technical surface; the raw steps stay in the disclosure below. */
+export function technicalActivitySummary(
+  record: RunRecordView | null,
+  run: { status?: string | null; changed_paths?: string[] | null } | null,
+): string {
+  const parts: string[] = [];
+  if (record) parts.push(summarizeRecord(record));
+  const changed = run?.changed_paths?.length ?? 0;
+  if (changed > 0) parts.push(`${changed} file${changed === 1 ? '' : 's'} changed`);
+  if (run?.status) parts.push(run.status);
+  return parts.join(' · ') || 'activity in progress';
 }
 
 export type ActView = { at: string; kind: string; detail: string; meta?: Record<string, unknown> };

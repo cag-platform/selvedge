@@ -253,6 +253,13 @@
       "when": 1787087600000,
       "tag": "0035_threads_named",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787619600000,
+      "tag": "0036_technical_detail",
+      "breakpoints": true
     }
   ]
 }

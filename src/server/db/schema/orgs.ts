@@ -21,5 +21,11 @@ export const orgs = pgTable('orgs', {
   // server/billing/entitlements.ts for one and llm/budget.ts for the other, and
   // do not join them without deciding out loud that they have merged.
   plan: text('plan').notNull().default('care'),
+  /**
+   * How build activity is presented across the product. `full` keeps a
+   * concise technical summary on the surface; `simple` leads with the outcome
+   * in ordinary language. The underlying run record is retained either way.
+   */
+  technicalDetail: text('technical_detail').notNull().default('full'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

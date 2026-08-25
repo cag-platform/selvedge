@@ -1,4 +1,5 @@
 import type { RunRecordView } from './replay.js';
+import type { TechnicalDetail } from '../../shared/technicalDetail.js';
 
 /**
  * The Inbox's wire shapes, in one place — what /api/inbox and /api/threads/:id
@@ -92,6 +93,9 @@ export type ThreadData = {
   sandbox: 'attached' | 'none';
   handoff_waiting: boolean;
   cost_cents: number;
+  /** Null means the conversation follows the account-level preference. */
+  technical_detail: TechnicalDetail | null;
+  effective_technical_detail: TechnicalDetail;
   messages: ThreadMessage[];
   runs: ThreadRun[];
 };

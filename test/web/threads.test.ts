@@ -146,6 +146,32 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(res.body.runs[0]).toMatchObject({ kind: 'turn', agent: 'claude-code', cost_cents: 18 });
     expect(res.body.cost_cents).toBe(18);
     expect(res.body.engine_on).toBe(true);
+    expect(res.body.technical_detail).toBeNull();
+    expect(res.body.effective_technical_detail).toBe('full');
+  });
+
+  it('inherits technical detail from the account and allows a scoped conversation override', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    await db.update(orgs).set({ technicalDetail: 'simple' }).where(eq(orgs.orgId, orgId));
+
+    const inherited = await request(app()).get(`/api/threads/${thread.id}`);
+    expect(inherited.body).toMatchObject({ technical_detail: null, effective_technical_detail: 'simple' });
+
+    const overridden = await request(app())
+      .patch(`/api/threads/${thread.id}/technical-detail`)
+      .send({ technical_detail: 'full' });
+    expect(overridden.status).toBe(200);
+    expect(overridden.body).toEqual({ technical_detail: 'full', effective_technical_detail: 'full' });
+    expect((await request(app()).get(`/api/threads/${thread.id}`)).body).toMatchObject({
+      technical_detail: 'full',
+      effective_technical_detail: 'full',
+    });
+
+    const accountAgain = await request(app())
+      .patch(`/api/threads/${thread.id}/technical-detail`)
+      .send({ technical_detail: null });
+    expect(accountAgain.body).toEqual({ technical_detail: null, effective_technical_detail: 'simple' });
+    expect((await request(app()).patch(`/api/threads/${thread.id}/technical-detail`).send({ technical_detail: 'plain' })).status).toBe(400);
   });
 
   it('is org-scoped: another org cannot read a thread, or even learn it exists', async () => {
@@ -153,6 +179,7 @@ describe('web/routes/threads — the Inbox surface', () => {
     const otherOrg = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
     expect((await request(otherOrg).get(`/api/threads/${thread.id}`)).status).toBe(404);
     expect((await request(otherOrg).patch(`/api/threads/${thread.id}`).send({ title: 'mine now' })).status).toBe(400);
+    expect((await request(otherOrg).patch(`/api/threads/${thread.id}/technical-detail`).send({ technical_detail: 'simple' })).status).toBe(404);
     expect((await request(otherOrg).post(`/api/threads/${thread.id}/message`).send({ text: 'hi' })).status).toBe(404);
     expect((await getThread(db, orgId, thread.id))!.title).toBe('Workshop');
   });
@@ -413,4 +440,3 @@ describe('attachments on the Inbox message route', () => {
     }
   });
 });
-
