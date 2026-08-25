@@ -601,7 +601,7 @@ export function ThreadPane({
               onClick={onShowPreview}
               className="rounded-inset bg-action px-4 py-2 text-body font-semibold text-ink shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
             >
-              Preview app →
+              Preview changes →
             </button>
           )}
         </div>

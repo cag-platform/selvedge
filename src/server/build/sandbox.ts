@@ -57,6 +57,8 @@ export type SandboxConfig = {
   branch: string;
   /** True when the repo has no commits yet, so `branch` doesn't exist to clone. */
   emptyRepo?: boolean;
+  /** Resume this checkout, but never try to recreate it without repo access. */
+  reuseOnly?: boolean;
 };
 
 /**
@@ -194,6 +196,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
       // for this project.
       await closeSandboxRun(db, build.sandboxId, 'reaper').catch(() => null);
       await clearSandbox(db, orgId, projectId);
+      if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
       return create(db, orgId, projectId, cfg);
     }
     throw err;
@@ -206,6 +209,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
     // twice.
     await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
     await clearSandbox(db, orgId, projectId);
+    if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
     return create(db, orgId, projectId, cfg);
   }
   if (sandbox.state !== 'started') await sandbox.start(300);

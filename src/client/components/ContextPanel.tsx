@@ -135,12 +135,17 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         <p className="text-body leading-relaxed text-ink-dim">See the app the builder is changing, refresh it after a turn, or open the live address.</p>
       </div>
       {data.live_url ? (
-        <p className="text-body text-ink">
-          Online at{' '}
-          <a href={data.live_url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
-            {data.live_url.replace(/^https:\/\//, '')}
+        <div className="flex flex-wrap items-center justify-between gap-work-tight">
+          <p className="text-body text-ink">
+            Online at{' '}
+            <a href={data.live_url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
+              {data.live_url.replace(/^https:\/\//, '')}
+            </a>
+          </p>
+          <a href={data.live_url} target="_blank" rel="noopener noreferrer" className={btnPrimary}>
+            Open live app ↗
           </a>
-        </p>
+        </div>
       ) : (
         <div className="space-y-work-tight">
           <p className="text-body text-ink-dim">This isn’t online yet; only you can see it.</p>
@@ -180,7 +185,11 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
               </button>
             )}
             <p className="mt-3 text-body text-ink-quiet">
-            {busy ? 'Waking the workshop and starting the app — this can take a minute the first time.' : preview?.message ?? 'Open the preview to see the workshop build running here.'}
+            {busy
+              ? 'Waking the workshop and starting the app — this can take a minute the first time.'
+              : preview?.state === 'error' && data.live_url
+                ? `The workshop copy could not start: ${preview.message ?? 'preview unavailable'} The live app above is still available.`
+                : preview?.message ?? 'Open the preview to see the workshop build running here.'}
             {/*
               THE ANSWER TO THE SENTENCE ABOVE, next to it.
               An app that stopped because it wanted a database is one tap from

@@ -371,17 +371,30 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
       const projectId = req.params.projectId ?? '';
-      const resolved = await configFor(orgId, projectId);
-      if ('error' in resolved) {
-        res.status(resolved.status).json({ error: resolved.error });
-        return;
+      const build = await getBuild(db, orgId, projectId);
+      let cfg: SandboxConfig;
+      if (build?.sandboxId && build.repoFullName && build.branch) {
+        // A workshop that already contains the checkout does not need GitHub
+        // merely to show the files it is actively changing. Resolving a fresh
+        // clone token here made a warm, working sandbox unpreviewable whenever
+        // the repo belonged to a GitHub account not connected to this org.
+        // `reuseOnly` prevents the empty token from ever reaching a clone if
+        // Daytona reports that the old sandbox has expired.
+        cfg = { githubToken: '', repoFullName: build.repoFullName, branch: build.branch, reuseOnly: true };
+      } else {
+        const resolved = await configFor(orgId, projectId);
+        if ('error' in resolved) {
+          res.status(resolved.status).json({ error: resolved.error });
+          return;
+        }
+        cfg = resolved.cfg;
       }
       const minutes = await canStartBuild(db, orgId);
       if (!minutes.allowed) {
         refuse(res, minutes);
         return;
       }
-      res.json(await preview(db, orgId, projectId, resolved.cfg));
+      res.json(await preview(db, orgId, projectId, cfg));
     }),
   );
 

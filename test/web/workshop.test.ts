@@ -11,6 +11,7 @@ import { onPlan } from '../helpers/plan.js';
 import { planLimits } from '../../src/shared/plans.js';
 import { monthStartUtc } from '../../src/server/billing/entitlements.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
+import { setBuild } from '../../src/server/build/store.js';
 
 describe('web/routes/workshop — the workshop surface', () => {
   let db: TestDb;
@@ -83,6 +84,21 @@ describe('web/routes/workshop — the workshop surface', () => {
     const res = await appAndPost(db, { env: () => null });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/isn't switched on/i);
+  });
+
+  it('previews the existing workshop checkout without asking GitHub for it again', async () => {
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_warm', repoFullName: 'acme/loom', branch: 'main' });
+    let seen: { token?: string; repo?: string; branch?: string } = {};
+    const res = await request(app({
+      preview: async (_db, _org, _project, cfg) => {
+        seen = { token: cfg.githubToken, repo: cfg.repoFullName, branch: cfg.branch };
+        return { state: 'ready', url: 'https://preview.example.test', message: null };
+      },
+    })).get('/api/projects/loom/workshop/preview');
+
+    expect(res.status).toBe(200);
+    expect(res.body.state).toBe('ready');
+    expect(seen).toEqual({ token: '', repo: 'acme/loom', branch: 'main' });
   });
 
   it('sums the cost watch from real runs', async () => {
