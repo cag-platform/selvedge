@@ -25,20 +25,18 @@ describe('the landing page', () => {
 
   it('makes existing project context visible before explaining it', () => {
     const html = render();
-    expect(html).toContain('12 conversations in context');
-    expect(html).toContain('both answers used the same 12 imported conversations');
-    expect(html).toContain('3 conversations added to Loom');
+    expect(html).toContain('Context received');
+    expect(html).toContain('12 conversations');
+    expect(html).toContain('3 decisions');
   });
 
   it('says the one sentence the whole product is, and shows it being true', () => {
     const html = render();
-    expect(html).toContain('Where all your AI builds together.');
-    expect(html).toContain('@claude');
-    expect(html).toContain('@gpt');
-    expect(html).toContain('@codex');
-    expect(html).toContain('CL');
-    expect(html).toContain('GPT');
-    expect(html).toContain('CX');
+    expect(html).toContain('Your project remembers, even when the AI changes.');
+    expect(html).toContain('Think with Claude.');
+    expect(html).toContain('Challenge it with GPT.');
+    expect(html).toContain('Build with Codex.');
+    expect(html).toContain('Every decision, conversation, and preview stays with the project.');
   });
 
   it('carries no vendor logo or brand colour, only text chips', () => {
