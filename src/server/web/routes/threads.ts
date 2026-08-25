@@ -405,6 +405,16 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           ...(m.role === 'agent' && (m.meta as { answered_by?: unknown } | null)?.answered_by
             ? { answered_by: (m.meta as { answered_by: string }).answered_by }
             : {}),
+          // A consultation is parallel, so chronology cannot prove which
+          // answer belongs to which prompt. These JSONB correlations do. They
+          // are exposed on every correlated row while the full marker record
+          // remains below in `meta`.
+          ...(typeof (m.meta as { consultation_id?: unknown } | null)?.consultation_id === 'string'
+            ? { consultation_id: (m.meta as { consultation_id: string }).consultation_id }
+            : {}),
+          ...(typeof (m.meta as { in_reply_to?: unknown } | null)?.in_reply_to === 'string'
+            ? { in_reply_to: (m.meta as { in_reply_to: string }).in_reply_to }
+            : {}),
           ...(m.role === 'activity' || m.role === 'switch' ? { meta: m.meta } : {}),
         })),
         runs: runs.map((r) => ({
@@ -984,15 +994,25 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         // Whoever was named and didn't fit. Said on the thread rather than
         // dropped in silence — see consultationLine.
         const skipped = intent.agents.slice(MAX_CONSULTED);
+        const ownerMessageId = ulid();
+        const consultationId = ulid();
+        // The batch is ordered deliberately. Database defaults give every row
+        // in one INSERT the same timestamp, and ordering equal timestamps is
+        // not a contract. Replies start only after this insert completes.
+        // Count backwards so the system rows have a stable order without
+        // placing them in the future: a no-key answer can be written almost
+        // immediately after this batch.
+        const askedAt = new Date(Date.now() - (referenceNote ? 2 : 1));
         await db.insert(agentMessages).values([
           {
-            id: ulid(),
+            id: ownerMessageId,
             orgId,
             projectId: thread.projectId,
             threadId: thread.id,
             role: 'owner',
             content: text,
-            ...(documents.length ? { meta: { documents } } : {}),
+            meta: { ...(documents.length ? { documents } : {}), consultation_id: consultationId },
+            createdAt: askedAt,
           },
           {
             id: ulid(),
@@ -1001,10 +1021,25 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             threadId: thread.id,
             role: 'switch',
             content: consultationLine(asked, (id) => agentById(id)?.name ?? id, skipped),
-            meta: { consulted: asked, ...(skipped.length ? { skipped } : {}) },
+            meta: {
+              consulted: asked,
+              ...(skipped.length ? { skipped } : {}),
+              consultation_id: consultationId,
+              consultation: { id: consultationId, prompt_id: ownerMessageId, agents: asked },
+            },
+            createdAt: new Date(askedAt.getTime() + 1),
           },
           ...(referenceNote
-            ? [{ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'switch', content: referenceNote }]
+            ? [{
+                id: ulid(),
+                orgId,
+                projectId: thread.projectId,
+                threadId: thread.id,
+                role: 'switch',
+                content: referenceNote,
+                meta: { consultation_id: consultationId, in_reply_to: ownerMessageId },
+                createdAt: new Date(askedAt.getTime() + 2),
+              }]
             : []),
         ]);
 
@@ -1018,11 +1053,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             ...(documents.length ? { documents } : {}),
             answeringAs: agent,
             asTake: true,
+            consultation: { id: consultationId, promptId: ownerMessageId },
           }).catch((err) => {
             console.error(`take from ${agent} failed for ${orgId}/${consulted.id}:`, err);
           });
         }
-        res.status(202).json({ started: true, warming: false, consulted: asked });
+        res.status(202).json({ started: true, warming: false, consulted: asked, consultation_id: consultationId });
         return;
       }
 

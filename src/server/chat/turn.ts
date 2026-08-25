@@ -142,6 +142,12 @@ export type ChatDeps = {
    * builder speaks on this path, and the conversation says so out loud.
    */
   asTake?: boolean;
+  /**
+   * The consultation this parallel answer belongs to. Both fields are stored
+   * on every answer path, including failures, so the thread can compare takes
+   * without guessing from arrival order or agent names.
+   */
+  consultation?: { id: string; promptId: string };
 };
 
 /**
@@ -208,7 +214,14 @@ function whyNoAnswer(reason: string): string {
  * paragraphs from nobody in particular, and the whole point of asking two
  * agents is knowing which one said which.
  */
-async function say(db: Db, orgId: string, thread: Thread, content: string, answeredBy: AgentId): Promise<void> {
+async function say(
+  db: Db,
+  orgId: string,
+  thread: Thread,
+  content: string,
+  answeredBy: AgentId,
+  consultation?: ChatDeps['consultation'],
+): Promise<void> {
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,
@@ -216,7 +229,10 @@ async function say(db: Db, orgId: string, thread: Thread, content: string, answe
     threadId: thread.id,
     role: 'agent',
     content,
-    meta: { answered_by: answeredBy },
+    meta: {
+      answered_by: answeredBy,
+      ...(consultation ? { consultation_id: consultation.id, in_reply_to: consultation.promptId } : {}),
+    },
   });
 }
 
@@ -267,7 +283,7 @@ export async function runChatTurn(
   if (!provider || !deps.client) {
     const name = agentById(speaking)?.name ?? speaking;
     const message = `This thread runs on ${name}, and there's no key connected for it — so I can't answer here yet. Connect one under Connections, or switch this thread to a model you have connected.`;
-    await say(db, orgId, thread, message, speaking);
+    await say(db, orgId, thread, message, speaking, deps.consultation);
     return { ok: false, reason: 'no_fuel', message };
   }
 
@@ -276,7 +292,7 @@ export async function runChatTurn(
   const budget = await checkThinkingBudget(db, orgId, now());
   if (budget.over) {
     const message = `This account has reached its daily limit for chat ($${budget.capUsd.toFixed(2)}). It resets tomorrow — the watching and your morning brief are unaffected.`;
-    await say(db, orgId, thread, message, speaking);
+    await say(db, orgId, thread, message, speaking, deps.consultation);
     return { ok: false, reason: 'over_budget', message };
   }
 
@@ -332,17 +348,17 @@ export async function runChatTurn(
     // diagnosable rather than a mystery reported three times by three agents.
     console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
     const message = whyNoAnswer(result.reason);
-    await say(db, orgId, thread, message, speaking);
+    await say(db, orgId, thread, message, speaking, deps.consultation);
     return { ok: false, reason: 'model_failed', message };
   }
 
   const reply = (result.json as { reply?: unknown }).reply;
   if (typeof reply !== 'string' || reply.trim() === '') {
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
-    await say(db, orgId, thread, message, speaking);
+    await say(db, orgId, thread, message, speaking, deps.consultation);
     return { ok: false, reason: 'model_failed', message };
   }
 
-  await say(db, orgId, thread, reply.trim(), speaking);
+  await say(db, orgId, thread, reply.trim(), speaking, deps.consultation);
   return { ok: true, reply: reply.trim(), model, costed: true };
 }

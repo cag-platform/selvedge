@@ -11,6 +11,9 @@ import { setBuild } from '../../src/server/build/store.js';
 import { MAX_CONSULTED } from '../../src/shared/mentions.js';
 import { appWithOrg } from './helpers.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
+import { ulid } from 'ulid';
+import { groupPairedConsultations } from '../../src/client/lib/consultation.js';
+import type { ThreadMessage } from '../../src/client/lib/inbox.js';
 
 /**
  * @-MENTIONS, THROUGH THE ROUTE.
@@ -26,7 +29,13 @@ describe('choosing who answers by naming them', () => {
   const orgId = 'org_1';
 
   /** Every chat turn the route started, in order. */
-  let takes: Array<{ agent: string | undefined; text: string; asTake: boolean; recorded: boolean }>;
+  let takes: Array<{
+    agent: string | undefined;
+    text: string;
+    asTake: boolean;
+    recorded: boolean;
+    consultation: { id: string; promptId: string } | undefined;
+  }>;
   /** Every build turn the route started. */
   let builds: Array<{ agent: string; text: string }>;
 
@@ -56,6 +65,7 @@ describe('choosing who answers by naming them', () => {
             text,
             asTake: deps?.asTake === true,
             recorded: deps?.recordOwnerMessage !== false,
+            consultation: deps?.consultation,
           });
           return { ok: true, reply: 'noted.', model: 'test', costed: true };
         },
@@ -127,6 +137,8 @@ describe('choosing who answers by naming them', () => {
     expect(builds).toEqual([]);
     expect(takes.map((t) => t.agent)).toEqual(['codex', 'claude-code']);
     expect(takes.every((t) => t.asTake)).toBe(true);
+    expect(takes[0]!.consultation).toEqual(takes[1]!.consultation);
+    expect(takes[0]!.consultation?.id).toBe(res.body.consultation_id);
 
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude');
   });
@@ -146,6 +158,69 @@ describe('choosing who answers by naming them', () => {
     expect(line?.content).toContain('Claude and GPT');
     expect(line?.content).toMatch(/nothing was built/i);
     expect((line?.meta as { consulted?: string[] })?.consulted).toEqual(['claude', 'gpt']);
+    const ownerMeta = owner[0]!.meta as { consultation_id?: string };
+    const lineMeta = line?.meta as {
+      consultation_id?: string;
+      consultation?: { id: string; prompt_id: string; agents: string[] };
+    };
+    expect(lineMeta.consultation).toEqual({
+      id: ownerMeta.consultation_id,
+      prompt_id: owner[0]!.id,
+      agents: ['claude', 'gpt'],
+    });
+    expect(takes.every((take) => take.consultation?.id === ownerMeta.consultation_id)).toBe(true);
+    expect(takes.every((take) => take.consultation?.promptId === owner[0]!.id)).toBe(true);
+  });
+
+  it('keeps overlapping consultations with the same agents unambiguously separate on the wire', async () => {
+    const thread = await talking();
+    await send(thread.id, '@codex @claudecode compare the divider').expect(202);
+    await send(thread.id, '@codex @claudecode compare the type scale').expect(202);
+
+    const first = takes[0]!.consultation!;
+    const second = takes[2]!.consultation!;
+    expect(takes[1]!.consultation).toEqual(first);
+    expect(takes[3]!.consultation).toEqual(second);
+    expect(second.id).not.toBe(first.id);
+    expect(second.promptId).not.toBe(first.promptId);
+
+    const afterPrompts = Date.now() + 1_000;
+    await db.insert(agentMessages).values([
+      {
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / Codex',
+        meta: { answered_by: 'codex', consultation_id: first.id, in_reply_to: first.promptId },
+        createdAt: new Date(afterPrompts),
+      },
+      {
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / Codex',
+        meta: { answered_by: 'codex', consultation_id: second.id, in_reply_to: second.promptId },
+        createdAt: new Date(afterPrompts + 1),
+      },
+      {
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / Claude Code',
+        meta: { answered_by: 'claude-code', consultation_id: first.id, in_reply_to: first.promptId },
+        createdAt: new Date(afterPrompts + 2),
+      },
+      {
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / Claude Code',
+        meta: { answered_by: 'claude-code', consultation_id: second.id, in_reply_to: second.promptId },
+        createdAt: new Date(afterPrompts + 3),
+      },
+    ]);
+
+    const response = await request(app()).get(`/api/threads/${thread.id}`).expect(200);
+    const wire = response.body.messages as ThreadMessage[];
+    const replies = wire.filter((message) => message.role === 'agent');
+    expect(replies.map((reply) => [reply.consultation_id, reply.in_reply_to])).toEqual([
+      [first.id, first.promptId],
+      [second.id, second.promptId],
+      [first.id, first.promptId],
+      [second.id, second.promptId],
+    ]);
+    // Same authors and interleaved arrival are not evidence of a pair. The
+    // exact correlations prevent either consultation borrowing the other's
+    // late answer.
+    expect(groupPairedConsultations(wire).every((item) => item.kind === 'message')).toBe(true);
   });
 
   /**

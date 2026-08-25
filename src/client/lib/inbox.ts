@@ -55,9 +55,23 @@ export type ThreadMessage = {
    *  every reply to a consultation — asking two agents is pointless if both
    *  answers come back signed the same way. */
   answered_by?: string | null;
+  /** Stable identity for a parallel consultation; never inferred from order. */
+  consultation_id?: string | null;
+  /** The one owner message every answer in that consultation responds to. */
+  in_reply_to?: string | null;
   /** Pastes attached to this message — name and size only; the text is one request away. */
   documents?: Array<{ index: number; name: string; chars: number }>;
-  meta?: RunRecordView | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null } } | null;
+  meta?:
+    | RunRecordView
+    | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null } }
+    | {
+        consulted?: string[];
+        skipped?: string[];
+        consultation_id?: string;
+        in_reply_to?: string;
+        consultation?: { id: string; prompt_id: string; agents: string[] };
+      }
+    | null;
 };
 
 export type ThreadRun = {

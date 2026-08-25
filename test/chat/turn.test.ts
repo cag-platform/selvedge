@@ -53,6 +53,43 @@ describe('a general thread turn', () => {
     expect(messages.every((m) => m.threadId === thread.id)).toBe(true);
   });
 
+  it('records the consultation and prompt identity on a parallel answer', async () => {
+    const thread = await chatThread();
+    await runChatTurn(db, orgId, thread, 'which treatment reads better?', {
+      client: replying('Keep the border subtle.'),
+      recordOwnerMessage: false,
+      answeringAs: 'codex',
+      asTake: true,
+      consultation: { id: 'consultation-1', promptId: 'owner-message-1' },
+    });
+
+    const [answer] = await db.select().from(agentMessages).where(eq(agentMessages.threadId, thread.id));
+    expect(answer?.meta).toEqual({
+      answered_by: 'codex',
+      consultation_id: 'consultation-1',
+      in_reply_to: 'owner-message-1',
+    });
+  });
+
+  it('keeps that identity when one consulted agent cannot answer', async () => {
+    const thread = await chatThread();
+    await runChatTurn(db, orgId, thread, 'which treatment reads better?', {
+      client: null,
+      recordOwnerMessage: false,
+      answeringAs: 'codex',
+      asTake: true,
+      consultation: { id: 'consultation-1', promptId: 'owner-message-1' },
+    });
+
+    const [answer] = await db.select().from(agentMessages).where(eq(agentMessages.threadId, thread.id));
+    expect(answer?.meta).toMatchObject({
+      answered_by: 'codex',
+      consultation_id: 'consultation-1',
+      in_reply_to: 'owner-message-1',
+    });
+    expect(answer?.content).toMatch(/no key connected/i);
+  });
+
   it('gives the model the project it is talking about, and the conversation so far', async () => {
     const thread = await chatThread();
     const client = replying('ok');

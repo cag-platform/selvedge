@@ -32,7 +32,9 @@ import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { EmptyState } from './ui.js';
 import { BuilderHandoff } from './BuilderHandoff.js';
+import { OpinionComparison } from './OpinionComparison.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
+import { groupPairedConsultations } from '../lib/consultation.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
 
@@ -720,8 +722,17 @@ export function ThreadPane({
             <span className="font-mono text-tech">#</span> to bring in what you&rsquo;ve already decided.
           </EmptyState>
         )}
-        {data.messages.map((m) => (
-          <Message key={m.id} message={m} data={data} />
+        {groupPairedConsultations(data.messages).map((item) => item.kind === 'message' ? (
+          <Message key={item.message.id} message={item.message} data={data} />
+        ) : (
+          <OpinionComparison
+            key={`comparison-${item.prompt.id}`}
+            promptId={item.prompt.id}
+            answers={[
+              { agent: item.agents[0], body: <Message message={item.answers[0]} data={data} /> },
+              { agent: item.agents[1], body: <Message message={item.answers[1]} data={data} /> },
+            ]}
+          />
         ))}
         {optimistic && (
           <div className="opacity-60">
