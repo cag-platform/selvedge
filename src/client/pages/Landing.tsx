@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SelvedgeLockup } from '../components/Logo.js';
 import { AgentChip } from '../components/AgentChip.js';
@@ -112,25 +112,119 @@ function PricingFaq() {
   );
 }
 
+type DemoStep = 'route' | 'think' | 'switch' | 'preview' | 'remember';
+
+const DEMO_STEPS: Array<{ id: DemoStep; label: string }> = [
+  { id: 'route', label: 'Route' },
+  { id: 'think', label: 'Think' },
+  { id: 'switch', label: 'Switch builder' },
+  { id: 'preview', label: 'Preview' },
+  { id: 'remember', label: 'Remember' },
+];
+
+const DEMO_PROMPTS = [
+  'Improve the onboarding without adding another step',
+  'Challenge our decision to remove the setup wizard',
+  'Ship the new onboarding landing page',
+] as const;
+
+function ProductDemo() {
+  const [step, setStep] = useState<DemoStep>('route');
+  const [prompt, setPrompt] = useState<string>(DEMO_PROMPTS[0]);
+  const [startedPrompt, setStartedPrompt] = useState<string>(DEMO_PROMPTS[0]);
+  const [theme, setTheme] = useState<'night' | 'light'>('night');
+  const promptId = useId();
+  const activeIndex = DEMO_STEPS.findIndex((item) => item.id === step);
+  const reached = (candidate: DemoStep) => activeIndex >= DEMO_STEPS.findIndex((item) => item.id === candidate);
+
+  function beginDemo() {
+    const next = prompt.trim();
+    if (!next) return;
+    setStartedPrompt(next);
+    setStep('route');
+  }
+
+  return (
+    <div className={`landing-demo landing-demo-${theme}`} aria-label="Interactive Selvedge product demonstration">
+      <div className="landing-demo-bar">
+        <div className="landing-window-dots" aria-hidden="true"><i /><i /><i /></div>
+        <p>Selvedge · Loom</p>
+        <button type="button" onClick={() => setTheme(theme === 'night' ? 'light' : 'night')} aria-label={`Use ${theme === 'night' ? 'light' : 'Night Weave'} demo theme`}>
+          {theme === 'night' ? 'Light' : 'Night Weave'}
+        </button>
+      </div>
+
+      <div className="landing-demo-guide" aria-label="Demo stages">
+        {DEMO_STEPS.map((item, index) => <button key={item.id} type="button" onClick={() => setStep(item.id)} aria-current={step === item.id ? 'step' : undefined}>
+          <span>{String(index + 1).padStart(2, '0')}</span>{item.label}
+        </button>)}
+      </div>
+
+      <div className="landing-demo-shell">
+        <aside className="landing-demo-threads" aria-label="Project conversations">
+          <p className="landing-demo-label">PROJECT / LOOM</p>
+          <strong>Onboarding</strong>
+          <div className="landing-demo-thread active"><span>Now</span><b>{startedPrompt}</b><small>just now · CX</small></div>
+          <div className="landing-demo-thread"><span>Decision</span><b>Where should project setup happen?</b><small>yesterday · CL</small></div>
+          <div className="landing-demo-thread"><span>Research</span><b>Customer import interviews</b><small>Feb 12 · GP</small></div>
+        </aside>
+
+        <section className="landing-demo-work" aria-live="polite">
+          <div className="landing-demo-heading">
+            <p className="landing-demo-label">CURRENT WORK</p>
+            <h3>{startedPrompt}</h3>
+            <p><span>Context received</span> · 12 conversations · 3 decisions · builder {reached('switch') ? 'Codex' : 'Claude'}</p>
+          </div>
+          <div className="landing-demo-conversation">
+            <div className="landing-demo-note"><span>YOU</span><p>{startedPrompt}</p></div>
+            {reached('think') && <div className="landing-demo-note"><span>CLAUDE</span><p>Keep one boundary question, but ask it after import. People understand the project once Selvedge has something real to organize.</p></div>}
+            {reached('switch') && <div className="landing-demo-transfer"><b>Context preserved</b><span>Claude → Codex · decision, evidence, and 12 conversations transferred</span></div>}
+            {reached('switch') && <div className="landing-demo-note"><span>CODEX</span><p>I have the onboarding decision and customer evidence. Updating the import-first path now.</p><small>✓ 4 files changed · 14 tests passed</small></div>}
+            {reached('preview') && <button type="button" className="landing-demo-ready" onClick={() => setStep('preview')}><span>✓ Preview ready</span><strong>Open in the Preview panel →</strong></button>}
+          </div>
+        </section>
+
+        <aside className="landing-demo-context" aria-label="Project context">
+          <div className="landing-demo-tabs" role="tablist" aria-label="Context view">
+            <button type="button" role="tab" aria-selected={step !== 'preview'} onClick={() => setStep('remember')}>Memory</button>
+            <button type="button" role="tab" aria-selected={step === 'preview'} onClick={() => setStep('preview')}>Preview</button>
+          </div>
+          {step === 'preview' ? <div className="landing-app-preview">
+            <div className="landing-preview-browser"><span>loom.app/onboarding</span><b>↗</b></div>
+            <div className="landing-preview-page"><small>LOOM</small><h4>Bring the work you already started.</h4><p>Import a conversation. Selvedge will find the project boundary with you.</p><button type="button">Import a conversation</button></div>
+          </div> : <div className="landing-demo-memory">
+            <p className="landing-demo-label">WHAT GOVERNS THIS WORK</p>
+            <strong>Establish the project boundary after import, not before it.</strong>
+            <dl><div><dt>Strongest evidence</dt><dd>7 of 9 interviews understood the project after seeing imported context.</dd></div><div><dt>Current builder</dt><dd>{reached('switch') ? 'Codex · context transferred' : 'Claude'}</dd></div><div><dt>Open question</dt><dd>Should empty projects keep the old path?</dd></div></dl>
+            {reached('remember') && <p className="landing-memory-saved">✓ This decision now belongs to Loom</p>}
+          </div>}
+        </aside>
+      </div>
+
+      <form className="landing-demo-composer" onSubmit={(event) => { event.preventDefault(); beginDemo(); }}>
+        <label htmlFor={promptId}>Try Selvedge with an outcome</label>
+        <div><input id={promptId} value={prompt} onChange={(event) => setPrompt(event.target.value)} /><button type="submit">Route this work →</button></div>
+        <div className="landing-demo-suggestions" aria-label="Example outcomes">{DEMO_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)}>{example}</button>)}</div>
+      </form>
+    </div>
+  );
+}
+
 export function Landing() {
   return <div className="overflow-hidden">
-    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><div className="flex items-center gap-1 sm:gap-2"><a href="#pricing" className={btnGhost}>Pricing</a><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
+    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#memory">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-6xl px-4 pt-14 sm:px-6 sm:pt-20 lg:pt-24"><div className="relative z-10 max-w-4xl"><p className={eyebrowCls}>All your AI. One conversation.</p><h1 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Where all your AI builds together.</h1><div className="mt-6 flex max-w-3xl flex-col gap-6 sm:flex-row sm:items-end sm:justify-between"><p className="max-w-xl text-hero-sub text-ink-dim">Claude, GPT, Codex and the rest of your AI stack, working from one project history.</p><Link to="/sign-up" className={`${btnPrimary} shrink-0 self-start sm:self-auto`}>Start a project</Link></div></div><div className="landing-hero-thread mt-12 lg:mt-16"><SampleThread caption={false} /></div><p className="landing-scroll-cue font-mono text-tech text-ink-quiet">Continue through the project ↓</p></section>
+      <section className="landing-hero mx-auto max-w-6xl px-4 pt-14 sm:px-6 sm:pt-20 lg:pt-24"><div className="landing-hero-copy"><p className={eyebrowCls}>The project layer for all your AI</p><h1 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Your project remembers, even when the AI changes.</h1><p className="mt-6 max-w-2xl text-hero-sub text-ink-dim">Think with Claude. Challenge it with GPT. Build with Codex. Every decision, conversation, and preview stays with the project.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/sign-up" className={btnPrimary}>Start a project</Link><a href="#product" className={btnGhost}>Try the demo ↓</a></div></div><div id="product" className="landing-product-stage"><ProductDemo /></div><p className="landing-scroll-cue font-mono text-tech text-ink-quiet">The work belongs to the project, not the agent. ↓</p></section>
 
-      <section aria-label="One project, many minds" className="landing-section landing-many mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="01" title="One project. Many minds.">Call in one model or several. Each reads the same history and answers in its own name.</SectionIntro><div className="landing-transcript"><ContextLine>loom / pricing · context carried forward from onboarding</ContextLine><Message who="You">Which pricing change creates the least confusion? <span className="text-brass">@gemini @claude @gpt</span></Message><Message who="Gemini" agent="gemini">Keep the current tiers. Change the usage language, not the structure.</Message><Message who="Claude" agent="claude">Collapse to two tiers. The middle option is doing no useful work.</Message><Message who="GPT" agent="gpt">Keep three tiers, but price the middle one as the obvious default.</Message></div></section>
+      <section id="memory" aria-label="How project continuity works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>One continuous record</p><h2 className="mt-4 font-display text-section font-medium text-ink">The work stays together.</h2><p className="mt-4 max-w-xl text-body-lg text-ink-dim">A conversation becomes a decision. A decision guides a build. The preview and its evidence return to the same project—ready for whichever mind comes next.</p></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Bring what you know</strong><p>Import conversations, notes, evidence, and repositories.</p></li><li><span>02</span><strong>Use the right mind</strong><p>Ask one model, compare several, or hand the work to a builder.</p></li><li><span>03</span><strong>Keep what matters</strong><p>Decisions, accepted language, open questions, and previews endure.</p></li></ol></section>
 
-      <section aria-label="Bring old conversations" className="landing-section landing-import mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-import-stack" aria-label="Imported conversations becoming project context"><div className="landing-import-source"><span>ChatGPT</span><strong>Early customer interviews</strong><small>18 messages · Feb 12</small></div><div className="landing-import-source"><span>Claude</span><strong>Onboarding teardown</strong><small>31 messages · Mar 04</small></div><div className="landing-import-source"><span>Gemini</span><strong>Competitor notes</strong><small>9 messages · Mar 19</small></div><div className="landing-import-result font-mono text-tech"><span className="text-healthy">✓</span> 3 conversations added to Loom</div></div><SectionIntro number="02" title="Stop starting over.">Bring in the conversations that got you here. The next AI starts with the decisions, questions, and dead ends already in the project.</SectionIntro></section>
+      <section aria-label="Project memory" className="landing-section landing-memory mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PROJECT MEMORY" title="Nothing important disappears into the chat log.">Selvedge separates durable project knowledge from the conversation that produced it—without severing the evidence and history behind it.</SectionIntro><div className="landing-memory-sheet"><div><p className="landing-demo-label">GOVERNING DECISION</p><strong>Ask for the project boundary after import.</strong><small>Accepted Mar 05 · supported by 3 conversations</small></div><div><p className="landing-demo-label">ACCEPTED LANGUAGE</p><strong>“Bring the work you already started.”</strong><small>Used in onboarding and import flows</small></div><div><p className="landing-demo-label">OPEN QUESTION</p><strong>What should happen when there is nothing to import?</strong><small>Owner: Product · fresh today</small></div></div></section>
 
-      <section aria-label="Compare models" className="landing-section landing-compare mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="03" title="Ask twice.">Give the same question to two models. Keep the disagreement visible. Decide for yourself.</SectionIntro><div className="landing-compare-stage"><p className="border-b border-hairline pb-5 text-body-lg text-ink">Should the free plan include conversation imports?</p><div className="landing-comparison"><div><AgentChip agent="claude" /><p>Yes. Import is the moment Selvedge proves its value. Limiting it delays understanding.</p><span>Include 3 imports</span></div><div><AgentChip agent="gpt" /><p>No. Imports have durable storage cost and make the free tier easy to treat as an archive.</p><span>Preview before upgrading</span></div></div></div></section>
+      <section aria-label="Many models, one project" className="landing-models mx-auto max-w-6xl px-4 sm:px-6"><div><p className={eyebrowCls}>Many minds, one project</p><h2 className="mt-4 max-w-3xl font-display text-section font-medium text-ink">Use the best AI for each moment—not one AI for everything.</h2></div><div className="landing-model-row"><AgentChip agent="claude" /><AgentChip agent="gpt" /><AgentChip agent="gemini" /><AgentChip agent="codex" /><span>and the tools you already use</span></div></section>
 
-      <section aria-label="Coding agents in the project" className="landing-section landing-building mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-code-run font-mono text-tech"><div className="border-b border-hairline px-5 py-4 text-ink-quiet">loom / onboarding · Codex</div><div className="space-y-3 px-5 py-6 text-ink-dim"><p><span className="text-action-bright">→</span> Read the pricing decision above</p><p><span className="text-action-bright">→</span> Updated import limit copy</p><p><span className="text-action-bright">→</span> Changed upgrade boundary</p><p><span className="text-healthy">✓</span> 14 tests passed</p><p><span className="text-healthy">✓</span> preview ready · 7c3a1d8</p></div></div><SectionIntro number="04" title="Building belongs in the conversation.">Thinking and implementation share one history. Codex, Claude Code, and Cursor enter the same project instead of beginning in a blank terminal.</SectionIntro></section>
+      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PRICING" title="What it costs.">One price for the record that holds all of this together. The models stay yours, at cost.</SectionIntro><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
 
-      <section aria-label="Project history" className="landing-section landing-memory mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="05" title="The project remembers.">Close the tab. Change models. Come back in six months. The project still knows how the work arrived here.</SectionIntro><div className="landing-history font-mono text-tech"><div><time>FEB 12</time><span>18 ChatGPT messages imported</span></div><div><time>MAR 04</time><span>Onboarding wizard challenged by Claude</span></div><div><time>MAR 05</time><span>Boundary question kept after GPT disagreed</span></div><div><time>MAR 06</time><span>Codex shipped 7c3a1d8</span></div><div><time>AUG 22</time><span>You asked “why is it like this?”</span></div></div></section>
-
-      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="06" title="What it costs.">One price for the record that holds all of this together. The models stay yours, at cost.</SectionIntro><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
-
-      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><p className={eyebrowCls}>One project conversation</p><h2 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Your work doesn’t belong to one AI anymore.</h2><div className="mt-8 flex flex-wrap items-center gap-5"><Link to="/sign-up" className={btnPrimary}>Start free</Link><p className="font-mono text-tech text-ink-quiet">Bring a conversation, a repo, or just a question.</p></div></section>
+      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><p className={eyebrowCls}>Start with the work</p><h2 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Give your project a memory that outlasts every model.</h2><div className="mt-8 flex flex-wrap items-center gap-5"><Link to="/sign-up" className={btnPrimary}>Start free</Link><p className="font-mono text-tech text-ink-quiet">Bring a conversation, a repo, or just a question.</p></div></section>
     </main>
     <footer className="border-t border-hairline"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-meta text-ink-quiet sm:px-6"><p><span className="font-display italic text-ink-dim">selvedge</span> — the project layer across the AI you already use.</p><div className="flex gap-5"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/sign-in">Sign in</Link></div></div></footer>
   </div>;
