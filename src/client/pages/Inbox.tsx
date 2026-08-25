@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { Rail } from '../components/Rail.js';
 import { RailSkeleton, ThreadSkeleton, useLoadingPhase, SLOW_LINE } from '../components/ui.js';
 import { ThreadPane } from '../components/ThreadPane.js';
-import { ContextPanel } from '../components/ContextPanel.js';
+import { ContextPanel, type ContextTab } from '../components/ContextPanel.js';
 import { Palette } from '../components/Palette.js';
 import { TimelineTab } from '../components/TimelineTab.js';
 import { allThreads, type InboxData, type ThreadData } from '../lib/inbox.js';
@@ -30,6 +30,64 @@ import { allThreads, type InboxData, type ThreadData } from '../lib/inbox.js';
 
 const NARROW = 1280;
 const PHONE = 768;
+const RAIL_MIN = 220;
+const RAIL_MAX = 440;
+const CONTEXT_MIN = 280;
+const CONTEXT_MAX = 620;
+
+function savedWidth(key: string, fallback: number): number {
+  if (typeof window === 'undefined') return fallback;
+  const value = Number(window.localStorage.getItem(key));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function ResizeHandle({ label, value, min, max, direction, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  direction: 1 | -1;
+  onChange: (value: number) => void;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      aria-orientation="vertical"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={Math.round(value)}
+      tabIndex={0}
+      title={`${label}. Drag, or use the arrow keys.`}
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const delta = (event.key === 'ArrowRight' ? 16 : -16) * direction;
+        onChange(clamp(value + delta));
+      }}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const startX = event.clientX;
+        const startValue = value;
+        const move = (next: PointerEvent) => onChange(clamp(startValue + (next.clientX - startX) * direction));
+        const stop = () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', stop);
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+        };
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', stop, { once: true });
+      }}
+      className="group relative w-2 shrink-0 cursor-col-resize touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+    >
+      <span aria-hidden className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-hairline transition-colors group-hover:bg-action group-focus-visible:bg-action" />
+    </div>
+  );
+}
 
 export function Inbox() {
   const { threadId, projectId } = useParams();
@@ -42,6 +100,9 @@ export function Inbox() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
   const [contextOpen, setContextOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= NARROW));
+  const [contextTab, setContextTab] = useState<ContextTab>('memory');
+  const [railWidth, setRailWidth] = useState(() => savedWidth('selvedge.rail-width', 272));
+  const [contextWidth, setContextWidth] = useState(() => savedWidth('selvedge.context-width', 336));
   // On a phone the three panes become a drill: rail → thread → context.
   const [view, setView] = useState<'rail' | 'thread' | 'context'>('thread');
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -53,6 +114,9 @@ export function Inbox() {
     next.delete('search');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => { window.localStorage.setItem('selvedge.rail-width', String(railWidth)); }, [railWidth]);
+  useEffect(() => { window.localStorage.setItem('selvedge.context-width', String(contextWidth)); }, [contextWidth]);
 
   const loadInbox = useCallback(
     () => api.get<InboxData>('/api/inbox').then(setInbox).catch((e: Error) => setError(e.message)),
@@ -292,7 +356,7 @@ export function Inbox() {
       )}
       <div className="flex min-h-0 flex-1 overflow-hidden">
       {showRail && (
-        <div className={`${phone ? 'w-full' : 'w-rail shrink-0'} border-r border-hairline bg-panel`}>
+        <div className={`${phone ? 'w-full' : 'shrink-0'} bg-panel`} style={phone ? undefined : { width: railWidth }}>
           {inbox === null ? (
             <>
               {railPhase !== 'idle' && <RailSkeleton />}
@@ -313,6 +377,10 @@ export function Inbox() {
           />
           )}
         </div>
+      )}
+
+      {!phone && showRail && showThread && (
+        <ResizeHandle label="Resize threads panel" value={railWidth} min={RAIL_MIN} max={RAIL_MAX} direction={1} onChange={setRailWidth} />
       )}
 
       {showThread && (
@@ -348,6 +416,11 @@ export function Inbox() {
               switcherOpen={switcherOpen}
               onSwitcherOpenChange={setSwitcherOpen}
               composerRef={composerRef}
+              onShowPreview={() => {
+                setContextTab('preview');
+                setContextOpen(true);
+                if (phone) setView('context');
+              }}
             />
           ) : threadId ? (
             // A thread was asked for and hasn't arrived. The shape goes here,
@@ -366,8 +439,12 @@ export function Inbox() {
         </main>
       )}
 
+      {!phone && showContext && showThread && thread && !projectId && (
+        <ResizeHandle label="Resize context panel" value={contextWidth} min={CONTEXT_MIN} max={CONTEXT_MAX} direction={-1} onChange={setContextWidth} />
+      )}
+
       {showContext && thread && !projectId && (
-        <div className={`${phone ? 'w-full' : 'w-context shrink-0'} border-l border-hairline bg-panel`}>
+        <div className={`${phone ? 'w-full' : 'shrink-0'} bg-panel`} style={phone ? undefined : { width: contextWidth }}>
           <ContextPanel
             data={thread}
             onReload={() => void loadThread()}
@@ -377,6 +454,8 @@ export function Inbox() {
               setSwitcherOpen(true);
               if (phone) setView('thread');
             }}
+            tab={contextTab}
+            onTabChange={setContextTab}
           />
         </div>
       )}

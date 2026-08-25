@@ -265,6 +265,7 @@ export function ThreadPane({
   switcherOpen,
   onSwitcherOpenChange,
   composerRef,
+  onShowPreview,
 }: {
   data: ThreadData;
   onReload: () => void;
@@ -272,6 +273,7 @@ export function ThreadPane({
   switcherOpen: boolean;
   onSwitcherOpenChange: (open: boolean) => void;
   composerRef: React.RefObject<HTMLTextAreaElement>;
+  onShowPreview: () => void;
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -562,7 +564,7 @@ export function ThreadPane({
     <section className="flex h-full flex-col">
       <header className="flex flex-wrap items-start justify-between gap-work border-b border-hairline bg-panel-soft/40 px-work-loose py-work-loose">
         <div className="min-w-0">
-          <p className="section-label mb-2">Active outcome</p>
+          <p className="section-label mb-2">Current work</p>
           {renaming ? (
             <input
               autoFocus
@@ -589,10 +591,21 @@ export function ThreadPane({
           </p>
           {data.project && <ReceivedContext projectId={data.project.id} />}
         </div>
-        <p className="font-mono text-tech text-ink-quiet">
-          {formatCents(data.cost_cents)} in this thread
-          {workshop && (data.sandbox === 'attached' ? ' · workshop warm' : ' · workshop cold')}
-        </p>
+        <div className="flex shrink-0 flex-col items-end gap-3">
+          {workshop && data.project && (
+            <button
+              type="button"
+              onClick={onShowPreview}
+              className="rounded-inset bg-action-deep px-4 py-2 text-body font-semibold text-paper shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
+            >
+              Preview app →
+            </button>
+          )}
+          <p className="font-mono text-tech text-ink-quiet">
+            {formatCents(data.cost_cents)} in this thread
+            {workshop && (data.sandbox === 'attached' ? ' · workshop warm' : ' · workshop cold')}
+          </p>
+        </div>
       </header>
 
       <DecisionCard

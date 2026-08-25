@@ -29,7 +29,7 @@ import { AgentChip } from './AgentChip.js';
  * conversation matters more than the panel.
  */
 
-type Tab = 'memory' | 'now' | 'timeline' | 'pack';
+export type ContextTab = 'memory' | 'preview' | 'timeline' | 'pack';
 type GroundedContext = { sections: { about: string[]; recent: string[]; open: string[] } };
 type LearnedMemory = { glossary: Array<{ term: string; means: string }>; learned_signatures: unknown[] };
 
@@ -130,6 +130,10 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
 
   return (
     <div className="space-y-work">
+      <div className="rounded-card border border-action/30 bg-sage p-work">
+        <p className="section-label">App preview</p>
+        <p className="text-body leading-relaxed text-ink-dim">See the app the builder is changing, refresh it after a turn, or open the live address.</p>
+      </div>
       {data.live_url ? (
         <p className="text-body text-ink">
           Online at{' '}
@@ -150,8 +154,8 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
       <div className="overflow-hidden rounded-card border border-hairline bg-panel">
         <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight">
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">The app, live in the workshop</p>
-          <button onClick={() => void load()} disabled={busy} className="text-meta text-ink-quiet hover:text-ink-dim disabled:opacity-50">
-            {busy ? 'Waking it…' : preview?.state === 'ready' ? 'Refresh' : 'Show the app'}
+          <button onClick={() => void load()} disabled={busy} className="rounded-inset bg-action-deep px-3 py-1.5 text-meta font-semibold text-paper hover:opacity-90 disabled:opacity-50">
+            {busy ? 'Opening preview…' : preview?.state === 'ready' ? 'Refresh preview' : 'Open app preview'}
           </button>
         </div>
         {preview?.state === 'ready' && preview.url ? (
@@ -317,20 +321,23 @@ export function ContextPanel({
   onClose,
   onOpenThread,
   onChangeAgent,
+  tab,
+  onTabChange,
 }: {
   data: ThreadData;
   onReload: () => void;
   onClose: () => void;
   onOpenThread: (threadId: string) => void;
   onChangeAgent: () => void;
+  tab: ContextTab;
+  onTabChange: (tab: ContextTab) => void;
 }) {
   // A subject's thread has no project behind it, so it has no work cards, no
   // app to preview and no pack — the panel simply isn't shown for one.
   const project = data.project;
-  const [tab, setTab] = useState<Tab>('memory');
-  const tabs: Array<{ id: Tab; label: string }> = [
+  const tabs: Array<{ id: ContextTab; label: string }> = [
     { id: 'memory', label: 'Memory' },
-    { id: 'now', label: 'Now' },
+    { id: 'preview', label: 'Preview' },
     { id: 'timeline', label: 'History' },
     { id: 'pack', label: 'About' },
   ];
@@ -338,14 +345,14 @@ export function ContextPanel({
 
   return (
     <aside aria-label="Context" className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight">
-        <div className="flex gap-work-tight">
+      <div className="flex items-center justify-between gap-2 border-b border-hairline px-work py-work-tight">
+        <div className="flex min-w-0 gap-0.5 overflow-x-auto">
           {tabs.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => onTabChange(t.id)}
               aria-current={tab === t.id ? 'true' : undefined}
-              className={`rounded-inset px-work py-work-tight text-meta focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
+              className={`shrink-0 rounded-inset px-2.5 py-work-tight text-meta focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${
                 tab === t.id ? 'bg-panel-soft text-ink' : 'text-ink-quiet hover:text-ink-dim'
               }`}
             >
@@ -353,13 +360,13 @@ export function ContextPanel({
             </button>
           ))}
         </div>
-        <button onClick={onClose} title="Hide this panel (Esc)" className="text-meta text-ink-quiet hover:text-ink-dim">
+        <button onClick={onClose} title="Hide this panel (Esc)" className="shrink-0 text-meta text-ink-quiet hover:text-ink-dim">
           Hide
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-work">
         {tab === 'memory' && <MemoryNow data={{ ...data, project }} onChangeAgent={onChangeAgent} />}
-        {tab === 'now' && (
+        {tab === 'preview' && (
           <div className="space-y-work-loose">
             {/* Only a building thread has a workshop to look at. A talking one
                 still has work in motion and a project that may be online. */}
