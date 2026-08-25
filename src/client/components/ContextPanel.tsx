@@ -154,9 +154,11 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
       <div className="overflow-hidden rounded-card border border-hairline bg-panel">
         <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight">
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">The app, live in the workshop</p>
-          <button onClick={() => void load()} disabled={busy} className="rounded-inset bg-action-deep px-3 py-1.5 text-meta font-semibold text-paper hover:opacity-90 disabled:opacity-50">
-            {busy ? 'Opening preview…' : preview?.state === 'ready' ? 'Refresh preview' : 'Open app preview'}
-          </button>
+          {preview?.state === 'ready' && (
+            <button onClick={() => void load()} disabled={busy} className="text-meta font-medium text-action-bright hover:underline disabled:opacity-50">
+              {busy ? 'Refreshing…' : 'Refresh preview'}
+            </button>
+          )}
         </div>
         {preview?.state === 'ready' && preview.url ? (
           <iframe
@@ -167,8 +169,18 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
             sandbox="allow-scripts allow-same-origin allow-forms"
           />
         ) : (
-          <p className="p-work text-body text-ink-quiet">
-            {busy ? 'Waking the workshop and starting the app — this can take a minute the first time.' : preview?.message ?? 'Press "Show the app" to see it running.'}
+          <div className="p-work">
+            {!busy && preview === null && (
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="w-full rounded-inset bg-action px-4 py-3 text-body font-semibold text-ink shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
+              >
+                Open app preview →
+              </button>
+            )}
+            <p className="mt-3 text-body text-ink-quiet">
+            {busy ? 'Waking the workshop and starting the app — this can take a minute the first time.' : preview?.message ?? 'Open the preview to see the workshop build running here.'}
             {/*
               THE ANSWER TO THE SENTENCE ABOVE, next to it.
               An app that stopped because it wanted a database is one tap from
@@ -202,7 +214,8 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
                 Add the environment it needs
               </button>
             )}
-          </p>
+            </p>
+          </div>
         )}
         {envOpen && (
           <div className="px-work pb-work">

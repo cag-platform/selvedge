@@ -29,7 +29,11 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-action text-ink' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'
   }`;
 
-export function Nav() {
+export function Nav({ theme, resolvedTheme, onThemeChange }: {
+  theme: 'light' | 'night' | 'system';
+  resolvedTheme: 'light' | 'night';
+  onThemeChange: (theme: 'light' | 'night' | 'system') => void;
+}) {
   const pathname = useLocation().pathname;
   const workActive = pathname.startsWith('/inbox') || pathname === '/work';
   return (
@@ -54,8 +58,8 @@ export function Nav() {
           >
             {/* The full lockup needs room for the wordmark; below that the mark
                 stands on its own rather than being squeezed into illegibility. */}
-            <SelvedgeLockup tone="ink" className="hidden h-7 w-auto sm:block" />
-            <SelvedgeMark tone="ink" className="h-7 w-auto sm:hidden" />
+            <SelvedgeLockup tone={resolvedTheme === 'night' ? 'chalk' : 'ink'} className="hidden h-7 w-auto sm:block" />
+            <SelvedgeMark tone={resolvedTheme === 'night' ? 'chalk' : 'ink'} className="h-7 w-auto sm:hidden" />
           </NavLink>
           <nav aria-label="Primary" className="flex min-w-0 items-center gap-0.5 sm:gap-1">
             <NavLink to="/" end className={linkClass}>
@@ -74,10 +78,27 @@ export function Nav() {
         <div className="flex min-w-0 shrink items-center gap-1.5 sm:gap-3">
           <details className="relative shrink-0">
             <summary aria-label="Secondary navigation" className="cursor-pointer list-none rounded-inset px-2 py-1 text-body text-ink-dim hover:bg-panel-soft">•••</summary>
-            <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-48 rounded-card border border-hairline bg-panel p-2 shadow-pane">
+            <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-56 rounded-card border border-hairline bg-panel p-2 shadow-pane">
               <Link to="/admin/record" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
               <Link to="/admin/connections" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
               <Link to="/admin" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
+              <div className="mt-2 border-t border-hairline px-2 pt-3">
+                <p className="text-label font-semibold uppercase tracking-widest text-ink-quiet">Appearance</p>
+                <div className="mt-2 grid grid-cols-3 gap-1" role="group" aria-label="Color theme">
+                  {(['light', 'night', 'system'] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={theme === option}
+                      onClick={() => onThemeChange(option)}
+                      className={`rounded-inset px-2 py-1.5 text-meta capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${theme === option ? 'bg-action text-ink' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'}`}
+                    >
+                      {option === 'night' ? 'Night' : option}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-meta text-ink-quiet">{theme === 'night' || (theme === 'system' && resolvedTheme === 'night') ? 'Night Weave' : 'Mineral light'}</p>
+              </div>
             </nav>
           </details>
           <div className="min-w-0 truncate">

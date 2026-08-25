@@ -599,7 +599,7 @@ export function ThreadPane({
             <button
               type="button"
               onClick={onShowPreview}
-              className="rounded-inset bg-action-deep px-4 py-2 text-body font-semibold text-paper shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
+              className="rounded-inset bg-action px-4 py-2 text-body font-semibold text-ink shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
             >
               Preview app →
             </button>
@@ -705,7 +705,7 @@ export function ThreadPane({
         <ShipControls data={{ ...data, project: data.project }} onDone={onReload} />
       )}
 
-      <div className="border-t border-hairline px-work-loose py-work">
+      <div className="workbench-composer border-t border-hairline px-work-loose py-work">
         <PendingChips
           images={images}
           onImagesChange={setImages}

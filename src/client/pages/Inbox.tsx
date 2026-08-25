@@ -356,7 +356,7 @@ export function Inbox() {
       )}
       <div className="flex min-h-0 flex-1 overflow-hidden">
       {showRail && (
-        <div className={`${phone ? 'w-full' : 'shrink-0'} bg-panel`} style={phone ? undefined : { width: railWidth }}>
+        <div className={`${phone ? 'w-full' : 'shrink-0'} workbench-rail bg-panel`} style={phone ? undefined : { width: railWidth }}>
           {inbox === null ? (
             <>
               {railPhase !== 'idle' && <RailSkeleton />}
@@ -384,7 +384,7 @@ export function Inbox() {
       )}
 
       {showThread && (
-        <main className="flex min-w-0 flex-1 flex-col bg-paper">
+        <main className="workbench-thread flex min-w-0 flex-1 flex-col bg-paper">
           {phone && (
             <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight text-meta text-ink-quiet">
               <button onClick={() => setView('rail')} className="hover:text-ink-dim">
@@ -444,7 +444,7 @@ export function Inbox() {
       )}
 
       {showContext && thread && !projectId && (
-        <div className={`${phone ? 'w-full' : 'shrink-0'} bg-panel`} style={phone ? undefined : { width: contextWidth }}>
+        <div className={`${phone ? 'w-full' : 'shrink-0'} workbench-context bg-panel`} style={phone ? undefined : { width: contextWidth }}>
           <ContextPanel
             data={thread}
             onReload={() => void loadThread()}

@@ -108,9 +108,25 @@
 .product-shell {
   --paper:#f3f2eb;--paper-soft:#f8f8f3;--ink:#183126;--ink-dim:#657269;--ink-quiet:#77837b;--ink-faint:#87938b;
   --panel:#fbfbf7;--panel-soft:#e6eee7;--sage:#e1eae1;--hairline:#ccd4cd;--thread:#b84f39;--brass:#99721f;
-  --healthy:#4f8c68;--action:#178d57;--action-bright:#167a4d;--deep:#173c2b;
+  --healthy:#4f8c68;--action:#178d57;--action-bright:#167a4d;--deep:#173c2b;--paper-dim:#cbd8ce;
   --glass-fill:rgba(247,248,243,.94);--glass-fill-soft:#eef2ec;--glass-blur:blur(12px) saturate(1.04);
   min-height:100vh;background:var(--paper);color:var(--ink)
+}
+
+/* NIGHT WEAVE — a dark mineral workshop, not generic charcoal. The vertical
+   warp is almost below perception; the active horizontal light gathers near
+   the composer, where a new strand enters the project. */
+.product-shell[data-theme='night'] {
+  --paper:#101914;--paper-soft:#131f18;--ink:#f0eee6;--ink-dim:#b7c0b8;--ink-quiet:#98a49b;--ink-faint:#758279;
+  --panel:#16221b;--panel-soft:#1d2d23;--sage:#21352a;--hairline:rgba(235,238,229,.14);
+  --thread:#ed8a68;--brass:#d0aa4e;--healthy:#86b99a;--action:#397f55;--action-bright:#72bf8c;--deep:#0c281b;--paper-dim:#c6cec3;
+  --glass-fill:rgba(16,25,20,.9);--glass-fill-soft:rgba(29,45,35,.9);--glass-blur:blur(14px) saturate(1.08);
+  --specular:radial-gradient(110% 75% at 16% 0%,rgba(130,184,146,.08),transparent 58%);
+  background-color:var(--paper);
+  background-image:
+    radial-gradient(ellipse 72% 34% at 52% 100%,rgba(64,145,94,.14),transparent 72%),
+    repeating-linear-gradient(90deg,rgba(220,232,218,.018) 0 1px,transparent 1px 76px);
+  background-attachment:fixed;
 }
 
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {

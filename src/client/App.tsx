@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
@@ -65,6 +65,21 @@ function AuthedApp() {
   const workbench = pathname.startsWith('/inbox') || pathname === '/work';
   const dashboard = pathname === '/';
   const memory = /^\/projects\/[^/]+$/.test(pathname);
+  const [theme, setTheme] = useState<'light' | 'night' | 'system'>(() => {
+    if (typeof window === 'undefined') return 'system';
+    const saved = window.localStorage.getItem('selvedge.theme');
+    return saved === 'light' || saved === 'night' || saved === 'system' ? saved : 'system';
+  });
+  const [systemDark, setSystemDark] = useState(() => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const resolvedTheme = theme === 'system' ? (systemDark ? 'night' : 'light') : theme;
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => setSystemDark(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => { window.localStorage.setItem('selvedge.theme', theme); }, [theme]);
   useRouteTitle(pathname);
   return (
     <>
@@ -107,8 +122,8 @@ function AuthedApp() {
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
-        <div className="product-shell min-h-screen">
-          <Nav />
+        <div className="product-shell min-h-screen" data-theme={resolvedTheme} style={{ colorScheme: resolvedTheme === 'night' ? 'dark' : 'light' }}>
+          <Nav theme={theme} resolvedTheme={resolvedTheme} onThemeChange={setTheme} />
           <main className={workbench || dashboard || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Suspense fallback={null}>

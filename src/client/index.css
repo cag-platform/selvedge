@@ -51,6 +51,37 @@
 .context-chip-selected{background:var(--panel-soft);border-color:color-mix(in srgb,var(--action) 28%,var(--hairline));color:var(--action-bright)}
 .section-label{margin-bottom:.65rem;color:var(--ink-quiet);font:600 var(--text-label)/1 var(--font-mono);letter-spacing:.13em;text-transform:uppercase}
 
+/* Night Weave speaks through material changes, not a decorative color wash:
+   cool graphite for the active conversation, warmer mineral context, and the
+   clearest green light where a new instruction enters the work. */
+.product-shell{transition:background-color 180ms ease,color 180ms ease}
+.product-shell[data-theme='night'] .workbench-rail{
+  background-color:rgba(22,34,27,.97);
+  background-image:repeating-linear-gradient(0deg,transparent 0 47px,rgba(235,238,229,.012) 47px 48px)
+}
+.product-shell[data-theme='night'] .workbench-thread{
+  background-color:rgba(16,25,20,.985);
+  background-image:linear-gradient(180deg,rgba(114,191,140,.025),transparent 28%)
+}
+.product-shell[data-theme='night'] .workbench-context{
+  background-color:rgba(24,36,28,.98);
+  background-image:linear-gradient(180deg,rgba(189,169,112,.018),transparent 35%)
+}
+.product-shell[data-theme='night'] .workbench-composer{
+  background-color:rgba(18,29,22,.98);
+  box-shadow:0 -30px 70px rgba(57,127,85,.1)
+}
+.product-shell[data-theme='night'] .workbench-rail [aria-current='true']{
+  background-image:
+    linear-gradient(90deg,rgba(114,191,140,.13),transparent 68%),
+    linear-gradient(0deg,transparent calc(50% - .5px),rgba(114,191,140,.09) 50%,transparent calc(50% + .5px));
+  box-shadow:inset 2px 0 0 var(--action-bright)
+}
+.product-shell[data-theme='night'] .cl-organizationSwitcherTrigger,
+.product-shell[data-theme='night'] .cl-organizationPreviewTextContainer{color:var(--ink)}
+
+@media (prefers-reduced-motion:reduce){.product-shell{transition:none}}
+
 /* Landing: one continuous project history, composed with product fragments. */
 .landing-nav { background: var(--glass-fill); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 .landing-hero { min-height: calc(100vh - var(--nav-height)); }
