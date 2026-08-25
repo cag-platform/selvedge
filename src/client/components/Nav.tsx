@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
 import { SelvedgeLockup, SelvedgeMark } from './Logo.js';
 
@@ -30,6 +30,8 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
   }`;
 
 export function Nav() {
+  const pathname = useLocation().pathname;
+  const workActive = pathname.startsWith('/inbox') || pathname === '/work';
   return (
     <header
       className="border-b border-hairline"
@@ -52,31 +54,32 @@ export function Nav() {
           >
             {/* The full lockup needs room for the wordmark; below that the mark
                 stands on its own rather than being squeezed into illegibility. */}
-            <SelvedgeLockup tone="chalk" className="hidden h-7 w-auto sm:block" />
-            <SelvedgeMark tone="chalk" className="h-7 w-auto sm:hidden" />
+            <SelvedgeLockup tone="ink" className="hidden h-7 w-auto sm:block" />
+            <SelvedgeMark tone="ink" className="h-7 w-auto sm:hidden" />
           </NavLink>
           <nav aria-label="Primary" className="flex min-w-0 items-center gap-0.5 sm:gap-1">
             <NavLink to="/" end className={linkClass}>
-              Now
+              Home
             </NavLink>
-            <NavLink to="/inbox" className={linkClass}>
-              Threads
-            </NavLink>
+            <Link to="/inbox" className={linkClass({ isActive: workActive })} aria-current={workActive ? 'page' : undefined}>Work</Link>
             <NavLink to="/projects" className={linkClass}>
               Projects
             </NavLink>
-            {/* Everything you set up once: the record, the keys, the money.
-                `end` is deliberately absent — /admin/connections and the rest
-                are Admin too, and the tab should stay lit while you are in one. */}
-            <NavLink to="/admin" className={linkClass}>
-              Admin
-            </NavLink>
+            <Link to="/inbox?search=1" className={linkClass({ isActive: false })}>Search</Link>
           </nav>
         </div>
         {/* The org name is the first thing to give up room, and the avatar the
             last: you can always tell which account you are in from the picture,
             and never from a name clipped to three letters. */}
-        <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 shrink items-center gap-1.5 sm:gap-3">
+          <details className="relative shrink-0">
+            <summary aria-label="Secondary navigation" className="cursor-pointer list-none rounded-inset px-2 py-1 text-body text-ink-dim hover:bg-panel-soft">•••</summary>
+            <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-48 rounded-card border border-hairline bg-panel p-2 shadow-pane">
+              <Link to="/admin/record" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
+              <Link to="/admin/connections" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
+              <Link to="/admin" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
+            </nav>
+          </details>
           <div className="min-w-0 truncate">
             <OrganizationSwitcher />
           </div>

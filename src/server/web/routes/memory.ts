@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { projectMemory, stackMemory } from '../../memory/learned.js';
+import { contextForProject } from '../../companion/context.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 function orgIdOf(req: Request): string {
@@ -31,6 +32,21 @@ export function createMemoryRouter(db: Db) {
         return;
       }
       res.json(memory);
+    }),
+  );
+
+  // The browser reads the exact same grounded context handed to companion
+  // agents. Keeping this behind the normal signed-in router makes project
+  // memory visible without introducing a second, UI-only memory model.
+  router.get(
+    '/api/projects/:projectId/context',
+    asyncHandler(async (req, res) => {
+      const context = await contextForProject(db, orgIdOf(req), req.params.projectId!);
+      if (!context) {
+        res.status(404).json({ error: 'not found' });
+        return;
+      }
+      res.json(context);
     }),
   );
 

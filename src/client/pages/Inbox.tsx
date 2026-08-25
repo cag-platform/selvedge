@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Rail } from '../components/Rail.js';
 import { RailSkeleton, ThreadSkeleton, useLoadingPhase, SLOW_LINE } from '../components/ui.js';
@@ -34,6 +34,7 @@ const PHONE = 768;
 export function Inbox() {
   const { threadId, projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [inbox, setInbox] = useState<InboxData | null>(null);
   const [thread, setThread] = useState<ThreadData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,14 @@ export function Inbox() {
   // On a phone the three panes become a drill: rail → thread → context.
   const [view, setView] = useState<'rail' | 'thread' | 'context'>('thread');
   const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (searchParams.get('search') !== '1') return;
+    setPaletteOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('search');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const loadInbox = useCallback(
     () => api.get<InboxData>('/api/inbox').then(setInbox).catch((e: Error) => setError(e.message)),
@@ -364,6 +373,10 @@ export function Inbox() {
             onReload={() => void loadThread()}
             onClose={() => (phone ? setView('thread') : setContextOpen(false))}
             onOpenThread={open}
+            onChangeAgent={() => {
+              setSwitcherOpen(true);
+              if (phone) setView('thread');
+            }}
           />
         </div>
       )}

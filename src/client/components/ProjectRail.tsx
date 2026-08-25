@@ -152,12 +152,20 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
                 <ClaimDatabase projectId={project.project_id} />
               )}
             </div>
-            <Link
-              to={`/projects/${project.project_id}/edit`}
-              className="shrink-0 text-meta text-ink-quiet underline hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
-            >
-              Edit this project
-            </Link>
+            <div className="flex shrink-0 items-center gap-4">
+              <Link
+                to={`/projects/${project.project_id}`}
+                className="text-meta font-medium text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              >
+                Project memory →
+              </Link>
+              <Link
+                to={`/projects/${project.project_id}/edit`}
+                className="text-meta text-ink-quiet underline hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              >
+                Settings
+              </Link>
+            </div>
           </div>
           {/* The record's own surface, reused whole. A second implementation of
               "what happened here" would be a second thing to keep true. */}

@@ -44,6 +44,12 @@
 .animate-settle {
   animation: settle var(--settle-duration) var(--settle-ease) both;
 }
+.product-shell .bg-deep{background-color:var(--deep)}
+.product-shell .bg-sage{background-color:var(--sage)}
+.product-shell .bg-paper-soft{background-color:var(--paper-soft)}
+.context-chip{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--hairline);background:var(--paper-soft);color:var(--ink-dim);border-radius:999px;padding:.45rem .65rem;font-size:var(--text-meta)}
+.context-chip-selected{background:var(--panel-soft);border-color:color-mix(in srgb,var(--action) 28%,var(--hairline));color:var(--action-bright)}
+.section-label{margin-bottom:.65rem;color:var(--ink-quiet);font:600 var(--text-label)/1 var(--font-mono);letter-spacing:.13em;text-transform:uppercase}
 
 /* Landing: one continuous project history, composed with product fragments. */
 .landing-nav { background: var(--glass-fill); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }

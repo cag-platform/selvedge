@@ -21,6 +21,7 @@ import { Landing } from './pages/Landing.js';
 const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
 const Now = lazy(() => import('./pages/Now.js').then((m) => ({ default: m.Now })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
+const ProjectMemory = lazy(() => import('./pages/ProjectMemory.js').then((m) => ({ default: m.ProjectMemory })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
 const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
@@ -61,8 +62,9 @@ function AuthedApp() {
   // The Inbox is the workbench: three panes, full bleed, its own scrolling.
   // Every other page keeps the calm single-column measure it always had.
   const pathname = useLocation().pathname;
-  const workbench = pathname.startsWith('/inbox');
+  const workbench = pathname.startsWith('/inbox') || pathname === '/work';
   const dashboard = pathname === '/';
+  const memory = /^\/projects\/[^/]+$/.test(pathname);
   useRouteTitle(pathname);
   return (
     <>
@@ -105,9 +107,9 @@ function AuthedApp() {
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
-        <div className="min-h-screen">
+        <div className="product-shell min-h-screen">
           <Nav />
-          <main className={workbench || dashboard ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
+          <main className={workbench || dashboard || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Suspense fallback={null}>
             <Routes>
@@ -126,8 +128,9 @@ function AuthedApp() {
                   motion is one line in that thread's Now panel, and what
                   finished is on the Record and the project's own history. A
                   bookmark lands on the front door rather than on nothing. */}
-              <Route path="/work" element={<Navigate to="/" replace />} />
+              <Route path="/work" element={<Inbox />} />
               <Route path="/projects" element={<Projects />} />
+              <Route path="/projects/:projectId" element={<ProjectMemory />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               {/* The workshop is a thread now — old links land in the conversation they meant. */}
               <Route path="/projects/:projectId/workshop" element={<WorkshopRedirect />} />

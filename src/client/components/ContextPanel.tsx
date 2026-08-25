@@ -8,6 +8,7 @@ import { inMotion, stateLabel, type WorkCardData } from '../lib/card.js';
 import type { ConsoleLink, ThreadData } from '../lib/inbox.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { PreviewEnv } from './PreviewEnv.js';
+import { AgentChip } from './AgentChip.js';
 
 /**
  * THE CONTEXT PANEL — what is true about the project this thread belongs to,
@@ -28,7 +29,53 @@ import { PreviewEnv } from './PreviewEnv.js';
  * conversation matters more than the panel.
  */
 
-type Tab = 'now' | 'timeline' | 'pack';
+type Tab = 'memory' | 'now' | 'timeline' | 'pack';
+type GroundedContext = { sections: { about: string[]; recent: string[]; open: string[] } };
+type LearnedMemory = { glossary: Array<{ term: string; means: string }>; learned_signatures: unknown[] };
+
+function MemoryNow({ data, onChangeAgent }: { data: ThreadData & { project: { id: string; name: string } }; onChangeAgent: () => void }) {
+  const [context, setContext] = useState<GroundedContext | null>(null);
+  const [memory, setMemory] = useState<LearnedMemory | null>(null);
+  useEffect(() => {
+    Promise.all([
+      api.get<GroundedContext>(`/api/projects/${encodeURIComponent(data.project.id)}/context`),
+      api.get<LearnedMemory>(`/api/projects/${encodeURIComponent(data.project.id)}/memory`),
+    ]).then(([nextContext, nextMemory]) => {
+      setContext(nextContext);
+      setMemory(nextMemory);
+    }).catch(() => undefined);
+  }, [data.project.id]);
+
+  if (!context || !memory) return <ContextSkeleton />;
+  return (
+    <div className="space-y-work">
+      <div>
+        <p className="section-label">What governs this work</p>
+        <p className="mt-2 text-body leading-relaxed text-ink">{context.sections.about[0] ?? 'No governing understanding has been recorded yet.'}</p>
+      </div>
+      <div className="rounded-card border border-hairline bg-sage p-work">
+        <p className="section-label">Current builder</p>
+        <div className="mt-2 flex items-center gap-2"><AgentChip agent={data.thread.agent} working={data.working} /><span className="text-body font-medium text-ink">{data.thread.agent}</span></div>
+        <button onClick={onChangeAgent} className="mt-3 text-left text-meta font-medium text-action-bright hover:underline">
+          Change builder — project context will be preserved
+        </button>
+      </div>
+      <div>
+        <p className="section-label">Strongest recent evidence</p>
+        <p className="mt-2 text-body leading-relaxed text-ink-dim">{context.sections.recent[0] ?? 'No supporting evidence has landed in the record yet.'}</p>
+      </div>
+      <div>
+        <p className="section-label">Open questions · {context.sections.open.length}</p>
+        {context.sections.open.length ? <ul className="mt-2 space-y-2">{context.sections.open.slice(0, 4).map((line, i) => <li key={i} className="text-body leading-relaxed text-ink">{line}</li>)}</ul> : <p className="mt-2 text-body text-ink-dim">Nothing currently waiting.</p>}
+      </div>
+      <div>
+        <p className="section-label">Accepted language · {memory.glossary.length}</p>
+        <p className="mt-2 text-body text-ink-dim">{memory.glossary[0] ? `${memory.glossary[0].term} means ${memory.glossary[0].means}` : 'No preferred terminology established yet.'}</p>
+      </div>
+      <Link to={`/projects/${data.project.id}`} className="inline-block text-body font-medium text-action-bright hover:underline">Open project memory →</Link>
+    </div>
+  );
+}
 type Preview = {
   state: 'ready' | 'none' | 'error';
   url: string | null;
@@ -269,17 +316,20 @@ export function ContextPanel({
   onReload,
   onClose,
   onOpenThread,
+  onChangeAgent,
 }: {
   data: ThreadData;
   onReload: () => void;
   onClose: () => void;
   onOpenThread: (threadId: string) => void;
+  onChangeAgent: () => void;
 }) {
   // A subject's thread has no project behind it, so it has no work cards, no
   // app to preview and no pack — the panel simply isn't shown for one.
   const project = data.project;
-  const [tab, setTab] = useState<Tab>('now');
+  const [tab, setTab] = useState<Tab>('memory');
   const tabs: Array<{ id: Tab; label: string }> = [
+    { id: 'memory', label: 'Memory' },
     { id: 'now', label: 'Now' },
     { id: 'timeline', label: 'History' },
     { id: 'pack', label: 'About' },
@@ -308,6 +358,7 @@ export function ContextPanel({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-work">
+        {tab === 'memory' && <MemoryNow data={{ ...data, project }} onChangeAgent={onChangeAgent} />}
         {tab === 'now' && (
           <div className="space-y-work-loose">
             {/* Only a building thread has a workshop to look at. A talking one

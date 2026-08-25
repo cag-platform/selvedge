@@ -42,8 +42,16 @@ describe('web/routes/memory', () => {
     expect(project.status).toBe(200);
     expect(project.body.learned_signatures[0].plain).toBe('Loom flaky check');
 
+    // The signed-in product reads the same grounded context handed to an
+    // external agent; the memory UI must never drift into a second model.
+    const context = await request(app).get('/api/projects/loom/context');
+    expect(context.status).toBe(200);
+    expect(context.body.project).toMatchObject({ id: 'loom', name: 'Loom' });
+    expect(context.body.sections.about.join(' ')).toContain('orders');
+
     const missing = await request(app).get('/api/projects/nope/memory');
     expect(missing.status).toBe(404);
+    expect((await request(app).get('/api/projects/nope/context')).status).toBe(404);
   });
 });
 

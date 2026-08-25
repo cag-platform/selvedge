@@ -103,6 +103,16 @@
   --specular: radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 55%);
 }
 
+/* Signed-in product: warm mineral paper and pale sage. Public pages keep the
+   dark editorial palette; app chrome opts into this semantic set. */
+.product-shell {
+  --paper:#f3f2eb;--paper-soft:#f8f8f3;--ink:#183126;--ink-dim:#657269;--ink-quiet:#77837b;--ink-faint:#87938b;
+  --panel:#fbfbf7;--panel-soft:#e6eee7;--sage:#e1eae1;--hairline:#ccd4cd;--thread:#b84f39;--brass:#99721f;
+  --healthy:#4f8c68;--action:#178d57;--action-bright:#167a4d;--deep:#173c2b;
+  --glass-fill:rgba(247,248,243,.94);--glass-fill-soft:#eef2ec;--glass-blur:blur(12px) saturate(1.04);
+  min-height:100vh;background:var(--paper);color:var(--ink)
+}
+
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   :root {
     --glass-fill: rgba(21, 38, 59, 0.62);

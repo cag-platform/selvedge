@@ -29,6 +29,25 @@ import { EmptyState } from './ui.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 
+type ContextReceipt = { sections: { about: string[]; recent: string[]; open: string[] } };
+
+function ReceivedContext({ projectId }: { projectId: string }) {
+  const [received, setReceived] = useState<ContextReceipt | null>(null);
+  useEffect(() => {
+    api.get<ContextReceipt>(`/api/projects/${encodeURIComponent(projectId)}/context`).then(setReceived).catch(() => setReceived(null));
+  }, [projectId]);
+  if (!received) return null;
+  const count = received.sections.about.length + received.sections.recent.length + received.sections.open.length;
+  return (
+    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Context received by the current builder">
+      <span className="font-medium text-action-bright">Context received</span>
+      <span aria-hidden>·</span><span>{count} grounded lines</span>
+      <span aria-hidden>·</span><span>{received.sections.recent.length} recent records</span>
+      <span aria-hidden>·</span><span>{received.sections.open.length} open questions</span>
+    </p>
+  );
+}
+
 /**
  * One attached document on the thread: its name and size, and the whole of it
  * one click away. Fetched on opening rather than with the thread, because a
@@ -541,8 +560,9 @@ export function ThreadPane({
 
   return (
     <section className="flex h-full flex-col">
-      <header className="flex flex-wrap items-baseline justify-between gap-work border-b border-hairline px-work-loose py-work">
+      <header className="flex flex-wrap items-start justify-between gap-work border-b border-hairline bg-panel-soft/40 px-work-loose py-work-loose">
         <div className="min-w-0">
+          <p className="section-label mb-2">Active outcome</p>
           {renaming ? (
             <input
               autoFocus
@@ -556,10 +576,10 @@ export function ThreadPane({
                   setRenaming(false);
                 }
               }}
-              className="w-full rounded-inset border border-hairline bg-panel-soft px-2 py-1 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              className="w-full rounded-inset border border-hairline bg-panel px-2 py-1 font-display text-3xl text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
             />
           ) : (
-            <button onClick={() => setRenaming(true)} title="Rename this thread" className="truncate text-body font-medium text-ink hover:text-ink-dim">
+            <button onClick={() => setRenaming(true)} title="Rename this outcome" className="block max-w-3xl truncate text-left font-display text-[clamp(2rem,4vw,3.25rem)] leading-[1.02] tracking-[-0.03em] text-ink hover:text-ink-dim">
               {data.thread.title}
             </button>
           )}
@@ -567,6 +587,7 @@ export function ThreadPane({
             {data.project?.name ?? data.subject?.name ?? 'unfiled'} ·{' '}
             {workshop ? 'builds in the sandbox' : data.project ? 'chat, nothing is built here' : 'a conversation about a subject, not a codebase'}
           </p>
+          {data.project && <ReceivedContext projectId={data.project.id} />}
         </div>
         <p className="font-mono text-tech text-ink-quiet">
           {formatCents(data.cost_cents)} in this thread
