@@ -39,12 +39,12 @@ function ReceivedContext({ projectId }: { projectId: string }) {
   if (!received) return null;
   const count = received.sections.about.length + received.sections.recent.length + received.sections.open.length;
   return (
-    <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Context received by the current builder">
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Context received by the current builder">
       <span className="font-medium text-action-bright">Context received</span>
       <span aria-hidden>·</span><span>{count} grounded lines</span>
       <span aria-hidden>·</span><span>{received.sections.recent.length} recent records</span>
       <span aria-hidden>·</span><span>{received.sections.open.length} open questions</span>
-    </p>
+    </span>
   );
 }
 
@@ -562,9 +562,11 @@ export function ThreadPane({
 
   return (
     <section className="flex h-full flex-col">
-      <header className="flex flex-wrap items-start justify-between gap-work border-b border-hairline bg-panel-soft/40 px-work-loose py-work-loose">
-        <div className="min-w-0">
-          <p className="section-label mb-2">Current work</p>
+      <header className="flex flex-wrap items-start justify-between gap-work border-b border-hairline bg-panel-soft/40 px-work-loose py-work">
+        <div className="min-w-0 flex-1">
+          <p className="section-label mb-2">
+            {data.project?.name ?? data.subject?.name ?? 'Unfiled'} <span aria-hidden>／</span> {workshop ? 'Workshop' : 'Conversation'}
+          </p>
           {renaming ? (
             <input
               autoFocus
@@ -578,18 +580,19 @@ export function ThreadPane({
                   setRenaming(false);
                 }
               }}
-              className="w-full rounded-inset border border-hairline bg-panel px-2 py-1 font-display text-3xl text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+              className="w-full rounded-inset border border-hairline bg-panel px-2 py-1 text-2xl font-semibold leading-tight text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
             />
           ) : (
-            <button onClick={() => setRenaming(true)} title="Rename this outcome" className="block max-w-3xl truncate text-left font-display text-[clamp(2rem,4vw,3.25rem)] leading-[1.02] tracking-[-0.03em] text-ink hover:text-ink-dim">
+            <button onClick={() => setRenaming(true)} title="Rename this work" className="line-clamp-2 block max-w-3xl text-left text-[clamp(1.25rem,2.2vw,1.65rem)] font-semibold leading-[1.18] tracking-[-0.015em] text-ink hover:text-ink-dim">
               {data.thread.title}
             </button>
           )}
-          <p className="truncate text-meta text-ink-quiet">
-            {data.project?.name ?? data.subject?.name ?? 'unfiled'} ·{' '}
-            {workshop ? 'builds in the sandbox' : data.project ? 'chat, nothing is built here' : 'a conversation about a subject, not a codebase'}
-          </p>
-          {data.project && <ReceivedContext projectId={data.project.id} />}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-quiet">
+            <AgentChip agent={data.thread.agent} working={data.working} />
+            {data.project && <><span aria-hidden>·</span><ReceivedContext projectId={data.project.id} /></>}
+            <span aria-hidden>·</span><span>{formatCents(data.cost_cents)}</span>
+            {workshop && <><span aria-hidden>·</span><span>{data.sandbox === 'attached' ? 'workshop warm' : 'workshop cold'}</span></>}
+          </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-3">
           {workshop && data.project && (
@@ -601,10 +604,6 @@ export function ThreadPane({
               Preview app →
             </button>
           )}
-          <p className="font-mono text-tech text-ink-quiet">
-            {formatCents(data.cost_cents)} in this thread
-            {workshop && (data.sandbox === 'attached' ? ' · workshop warm' : ' · workshop cold')}
-          </p>
         </div>
       </header>
 
