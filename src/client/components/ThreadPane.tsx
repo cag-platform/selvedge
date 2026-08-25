@@ -31,6 +31,7 @@ import {
 import { agentById } from '../../shared/agents.js';
 import { WorkCard } from './WorkCard.js';
 import { EmptyState } from './ui.js';
+import { BuilderHandoff } from './BuilderHandoff.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
@@ -197,16 +198,7 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
 
 function Message({ message, data }: { message: ThreadMessage; data: ThreadData }) {
   if (message.role === 'switch') {
-    const switchedTo = (message.meta as { switch?: { to?: string } } | null)?.switch?.to;
-    if (data.effective_technical_detail === 'simple') {
-      const name = switchedTo ? agentById(switchedTo)?.name ?? switchedTo : null;
-      return <p className="py-work-tight text-body text-ink-dim">{name ? `Now working with ${name}.` : 'Switched builders.'} The project history came with it.</p>;
-    }
-    // Full mode keeps the exact handoff line visible: compact, technical, and
-    // still part of the conversation rather than hidden in a settings log.
-    return (
-      <p className="py-work-tight font-mono text-tech text-ink-quiet">{message.content}</p>
-    );
+    return <BuilderHandoff content={message.content} meta={message.meta} detail={data.effective_technical_detail} />;
   }
 
   if (message.role === 'activity') {
