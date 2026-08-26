@@ -6,7 +6,8 @@ import { agentMessages, llmUsage, orgs } from '../../src/server/db/schema/index.
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThread } from '../../src/server/threads/store.js';
-import { runChatTurn, chatProviderFor } from '../../src/server/chat/turn.js';
+import { runChatTurn, chatProviderFor, streamedReply } from '../../src/server/chat/turn.js';
+import { subscribeLiveChat, type LiveChatEvent } from '../../src/server/chat/live.js';
 import { DownLlmClient, FakeLlmClient } from '../../src/server/llm/fake.js';
 
 /**
@@ -125,6 +126,15 @@ describe('a general thread turn', () => {
     expect(row!.provider).toBe('openai');
   });
 
+  it('honours the model version saved on the thread', async () => {
+    const thread = await createThread(db, orgId, 'loom', {
+      kind: 'general', title: 'Fast answer', agent: 'gpt', model: 'gpt-5.6-luna',
+    });
+    const client = replying('hi');
+    await runChatTurn(db, orgId, thread, 'hello', { client });
+    expect(client.requests[0]!.model).toBe('gpt-5.6-luna');
+  });
+
   it('says plainly when the thread runs on a model nobody connected', async () => {
     const thread = await chatThread('gpt');
     const out = await runChatTurn(db, orgId, thread, 'hello', { client: null });
@@ -183,5 +193,29 @@ describe('a general thread turn', () => {
     expect(chatProviderFor('claude')).toBe('anthropic');
     expect(chatProviderFor('gpt')).toBe('openai');
     expect(chatProviderFor('claude-code')).toBeNull(); // a builder, not a chat model
+  });
+
+  it('publishes a readable partial reply, then persists the validated answer', async () => {
+    const thread = await chatThread();
+    const events: LiveChatEvent[] = [];
+    const unsubscribe = subscribeLiveChat(orgId, thread.id, (event) => events.push(event));
+    const client = new FakeLlmClient((req) => {
+      req.onTextDelta?.('{"reply":"Hello');
+      req.onTextDelta?.(' there\\nfriend"}');
+      return { ok: true, json: { reply: 'Hello there\nfriend' }, tokensIn: 2, tokensOut: 3, model: req.model };
+    });
+    await runChatTurn(db, orgId, thread, 'hello', { client });
+    unsubscribe();
+
+    expect(events.map((event) => event.type)).toEqual(['reply_started', 'reply_delta', 'reply_delta', 'reply_finished']);
+    expect(events.filter((event): event is Extract<LiveChatEvent, { type: 'reply_delta' }> => event.type === 'reply_delta').map((event) => event.text).join('')).toBe('Hello there\nfriend');
+  });
+});
+
+describe('streamedReply', () => {
+  it('reveals only the reply string and decodes complete escapes', () => {
+    expect(streamedReply('{"reply":"hello\\nworld')).toBe('hello\nworld');
+    expect(streamedReply('{"reply":"quote: \\"yes\\""}')).toBe('quote: "yes"');
+    expect(streamedReply('{"reply":"wait\\u2')).toBe('wait');
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import {
@@ -35,7 +35,8 @@ import { BuilderHandoff } from './BuilderHandoff.js';
 import { OpinionComparison } from './OpinionComparison.js';
 import { needsOwner, type WorkCardData } from '../lib/card.js';
 import { groupPairedConsultations } from '../lib/consultation.js';
-import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
+import type { LiveReply } from '../pages/Inbox.js';
+import type { GeneratedVisual, ThreadData, ThreadMessage } from '../lib/inbox.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
 import type { EvidenceSheet } from '../../shared/types/evidenceSheet.js';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
@@ -210,13 +211,11 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
     const run = data.runs.find((r) => r.id === (record?.run_id ?? message.run_id));
     const simple = data.effective_technical_detail === 'simple';
     return (
-      <div className={`border-l-2 pl-work ${simple ? 'border-healthy' : 'border-hairline'}`}>
-        <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{simple ? 'Progress' : 'Technical activity'}</p>
-        <p className={simple ? 'text-body text-ink-dim' : 'font-mono text-tech text-ink-dim'}>
-          {simple ? simpleActivitySummary(record, run ?? null) : technicalActivitySummary(record, run ?? null)}
-        </p>
-        {run?.evidence && <EvidenceSheetPanel path={run.evidence.path} summary={run.evidence} autoOpen={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('evidence') === run.id} />}
-        <Reveal summary={simple ? 'Technical details' : 'Show technical record'}>
+      <div className="pl-work">
+        <Reveal summary={run?.status === 'running' ? '✉ Work in progress' : '✉ Work details'}>
+          <p className={simple ? 'font-body text-body text-ink-dim' : 'font-mono text-tech text-ink-dim'}>
+            {simple ? simpleActivitySummary(record, run ?? null) : technicalActivitySummary(record, run ?? null)}
+          </p>
           {record?.tools?.length ? (
             record.tools.map((tool) => <div key={tool.id}>{describeToolEvent(tool)}</div>)
           ) : (
@@ -234,11 +233,16 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
                 .join(' · ')}
             </div>
           )}
+          {run?.evidence && <EvidenceSheetPanel path={run.evidence.path} summary={run.evidence} autoOpen={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('evidence') === run.id} />}
         </Reveal>
       </div>
     );
   }
 
+  const messageVisuals = (data.visuals ?? []).filter((visual) => visual.message_id === message.id);
+  const comparisonVisuals = message.consultation_id
+    ? (data.visuals ?? []).filter((visual) => visual.consultation_id === message.consultation_id)
+    : messageVisuals;
   return (
     <div id={`message-${message.id}`} className={message.role === 'owner' ? 'pl-6' : 'border-l-2 border-hairline pl-work'}>
       {/* Who actually said it. A consultation puts two answers in a row, and
@@ -264,8 +268,72 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
           ))}
         </div>
       )}
+      <VisualGallery visuals={messageVisuals} comparisonVisuals={comparisonVisuals} />
     </div>
   );
+}
+
+function VisualGallery({ visuals, comparisonVisuals = visuals }: { visuals: GeneratedVisual[]; comparisonVisuals?: GeneratedVisual[] }) {
+  const ready = comparisonVisuals.filter((visual) => visual.status === 'ready' && visual.content_url);
+  const [selected, setSelected] = useState<GeneratedVisual | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setSelected(null); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [selected]);
+  if (!visuals.length) return null;
+  return <div className="border-l-2 border-brass pl-work">
+    <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Visual interpretations</p>
+    <div className={`mt-work-tight grid gap-work-tight ${ready.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+      {visuals.map((visual) => visual.status === 'ready' && visual.content_url ? (
+        <button key={visual.id} type="button" onClick={() => setSelected(visual)} className="group overflow-hidden rounded-card border border-hairline bg-panel text-left hover:border-brass focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright">
+          <img src={visual.content_url} alt={`${visual.directing_agent} visual interpretation`} className="aspect-square w-full object-cover transition-transform duration-300 group-hover:scale-[1.01]" />
+          <span className="flex justify-between px-3 py-2 text-meta text-ink-dim"><span>{agentById(visual.directing_agent)?.name ?? visual.directing_agent}</span><span>Open ↗</span></span>
+        </button>
+      ) : (
+        <div key={visual.id} className="flex aspect-square items-center justify-center rounded-card border border-hairline bg-panel-soft px-6 text-center text-body text-ink-dim">
+          {visual.status === 'failed' ? (visual.error || 'This visual did not render.') : 'Rendering a visual interpretation…'}
+        </div>
+      ))}
+    </div>
+    {selected?.content_url && <div role="dialog" aria-modal="true" aria-label="Visual comparison" className="fixed inset-0 z-50 flex flex-col bg-black/85 p-4 backdrop-blur-sm" onClick={() => setSelected(null)}>
+      <div className="mb-3 flex items-center justify-between text-white"><span>{agentById(selected.directing_agent)?.name ?? selected.directing_agent}</span><button type="button" className="rounded-inset px-3 py-2 hover:bg-white/10" onClick={() => setSelected(null)}>Close</button></div>
+      <div className={`grid min-h-0 flex-1 gap-4 ${ready.length > 1 ? 'md:grid-cols-2' : ''}`} onClick={(event) => event.stopPropagation()}>
+        {ready.map((visual) => <figure key={visual.id} className={`min-h-0 ${visual.id === selected.id || ready.length > 1 ? '' : 'hidden'}`}>
+          <img src={visual.content_url} alt={`${visual.directing_agent} visual interpretation`} className="h-full w-full rounded-card object-contain" />
+          {ready.length > 1 && <figcaption className="mt-1 text-center text-meta text-white/75">{agentById(visual.directing_agent)?.name ?? visual.directing_agent}</figcaption>}
+        </figure>)}
+      </div>
+    </div>}
+  </div>;
+}
+
+const WAITING_LINES = [
+  'Working on it…',
+  'Thinking in complete sentences…',
+  'Consulting the tiny committee…',
+  'Asking the electrons nicely…',
+  'Untangling the good yarn…',
+  'Putting the thoughts in order…',
+] as const;
+
+function WaitingLine({ sending }: { sending: boolean }) {
+  const [line, setLine] = useState<string>(sending ? 'Sending…' : WAITING_LINES[0]);
+  useEffect(() => {
+    if (sending) { setLine('Sending…'); return; }
+    setLine(WAITING_LINES[0]);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let previous = 0;
+    const timer = window.setInterval(() => {
+      let next = Math.floor(Math.random() * WAITING_LINES.length);
+      if (next === previous) next = (next + 1) % WAITING_LINES.length;
+      previous = next;
+      setLine(WAITING_LINES[next] ?? WAITING_LINES[0]);
+    }, 3_800);
+    return () => window.clearInterval(timer);
+  }, [sending]);
+  return <>{line}</>;
 }
 
 function EvidenceSheetPanel({ path, summary, autoOpen }: { path: string; summary: NonNullable<ThreadData['runs'][number]['evidence']>; autoOpen: boolean }) {
@@ -383,6 +451,7 @@ function TechnicalDetailControl({ data, onDone }: { data: ThreadData; onDone: ()
 
 export function ThreadPane({
   data,
+  liveReplies,
   onReload,
   onOpenThread,
   switcherOpen,
@@ -391,6 +460,7 @@ export function ThreadPane({
   onShowPreview,
 }: {
   data: ThreadData;
+  liveReplies: LiveReply[];
   onReload: () => void;
   onOpenThread: (threadId: string) => void;
   switcherOpen: boolean;
@@ -400,6 +470,10 @@ export function ThreadPane({
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  // Plain model chat has no sandbox run, so `data.working` remains false while
+  // the provider answers. Keep the accepted turn live until its reply lands.
+  const [awaitingReply, setAwaitingReply] = useState(false);
+  const expectedAgentCount = useRef<number | null>(null);
   /**
    * The message you just sent, shown before the server has confirmed it.
    * Cleared the moment the real one arrives on a poll — see the effect below,
@@ -449,10 +523,25 @@ export function ThreadPane({
   // projects long, and scrolling a list is slower than typing three letters.
   const [projectFilter, setProjectFilter] = useState('');
   const [moving, setMoving] = useState(false);
+  const orderedLiveReplies = useMemo(() => {
+    const order = new Map<string, number>();
+    for (const message of data.messages) {
+      const consultation = (message.meta as { consultation?: { id?: string; agents?: string[] } } | null)?.consultation;
+      if (!consultation?.id || !Array.isArray(consultation.agents)) continue;
+      consultation.agents.forEach((agent, index) => order.set(`${consultation.id}:${agent}`, index));
+    }
+    return [...liveReplies].sort((a, b) => {
+      if (a.consultationId && a.consultationId === b.consultationId) {
+        return (order.get(`${a.consultationId}:${a.agent}`) ?? 999) - (order.get(`${b.consultationId}:${b.agent}`) ?? 999);
+      }
+      return 0;
+    });
+  }, [data.messages, liveReplies]);
   const end = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
 
   const workshop = data.thread.kind === 'workshop';
+  const currentOffer = roster.find((offer) => offer.id === data.thread.agent) ?? null;
 
   useEffect(() => {
     const el = composerRef.current;
@@ -472,9 +561,20 @@ export function ThreadPane({
    */
   useEffect(() => {
     const newest = data.messages.at(-1);
+    // The just-sent owner row already occupied this exact place optimistically.
+    // Replacing it with the server row is reconciliation, not new navigation.
+    if (newest?.role === 'owner') return;
     const node = newest ? document.getElementById(`message-${newest.id}`) : null;
     (node ?? end.current)?.scrollIntoView({ behavior: 'smooth', block: node ? 'start' : 'end' });
   }, [data.messages.length, data.messages]);
+
+  // Move only far enough to keep the sent line and the stable response row in
+  // view. Later acknowledgement changes their state in place and does not
+  // retarget the scroll position.
+  useEffect(() => {
+    if (!optimistic) return;
+    end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [optimistic]);
 
   useEffect(() => {
     setTitleDraft(data.thread.title);
@@ -570,6 +670,23 @@ export function ThreadPane({
     if (landed || stale) setOptimistic(null);
   }, [data.messages, optimistic]);
 
+  useEffect(() => {
+    if (!awaitingReply || expectedAgentCount.current === null) return;
+    const answers = data.messages.filter((message) => message.role === 'agent').length;
+    if (answers >= expectedAgentCount.current) {
+      setAwaitingReply(false);
+      expectedAgentCount.current = null;
+    }
+  }, [awaitingReply, data.messages]);
+
+  // Fast reconciliation for accepted chat turns. A live event stream can
+  // replace this fallback later; today it removes the twelve-second quiet gap.
+  useEffect(() => {
+    if (!awaitingReply || data.working) return;
+    const interval = window.setInterval(onReload, 1500);
+    return () => window.clearInterval(interval);
+  }, [awaitingReply, data.working, onReload]);
+
   async function send(e: React.FormEvent | null, acknowledgeStale = false, raiseCap = false) {
     e?.preventDefault();
     const body = text.trim();
@@ -600,8 +717,10 @@ export function ThreadPane({
       ...(documents.length ? { documents: documents.map((d, index) => ({ index, name: d.name, chars: d.text.length })) } : {}),
     };
     setOptimistic(pending);
+    expectedAgentCount.current = data.messages.filter((message) => message.role === 'agent').length + 1;
+    setAwaitingReply(true);
     try {
-      const res = await api.post<{ started: boolean; warming: boolean }>(`/api/threads/${data.thread.id}/message`, {
+      const res = await api.post<{ started: boolean; warming: boolean; consulted?: string[] }>(`/api/threads/${data.thread.id}/message`, {
         text: body,
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
@@ -609,6 +728,9 @@ export function ThreadPane({
         ...(acknowledgeStale ? { acknowledge_stale: true } : {}),
         ...(raiseCap ? { raise_cap: true } : {}),
       });
+      if (res.consulted?.length) {
+        expectedAgentCount.current = data.messages.filter((message) => message.role === 'agent').length + res.consulted.length;
+      }
       setText('');
       setImages([]);
       setFiles([]);
@@ -622,6 +744,8 @@ export function ThreadPane({
       // Refused: take it back off the thread. A message the server declined
       // must not sit there looking sent.
       setOptimistic(null);
+      setAwaitingReply(false);
+      expectedAgentCount.current = null;
       // Both of these are refusals with a way through, not dead ends: keep what
       // was typed, say what is in the way, and let the owner choose. The
       // message is NOT sent by the act of being told.
@@ -681,6 +805,16 @@ export function ThreadPane({
     setRenaming(false);
     if (titleDraft.trim() === '' || titleDraft === data.thread.title) return;
     await api.patch(`/api/threads/${data.thread.id}`, { title: titleDraft.trim() }).then(onReload).catch(() => undefined);
+  }
+
+  async function chooseModel(model: string) {
+    setNote(null);
+    try {
+      await api.patch(`/api/threads/${data.thread.id}`, { model });
+      onReload();
+    } catch (err) {
+      setNote(err instanceof Error ? err.message : "that model didn't switch");
+    }
   }
 
   return (
@@ -784,33 +918,40 @@ export function ThreadPane({
           />
         ))}
         {optimistic && (
-          <div className="opacity-60">
+          <div className="opacity-70 transition-opacity duration-200">
             <Message message={optimistic} data={data} />
           </div>
         )}
-        {data.working && (
-          <div className="flex items-start gap-work border-l-2 border-brass pl-work">
+        {(sending || optimistic || awaitingReply || warming || data.working || orderedLiveReplies.length > 0) && (
+          <div className="flex min-h-12 items-start gap-work border-l-2 border-brass pl-work transition-colors duration-200">
             <div className="flex-1">
               <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge</p>
-              <p className="text-body text-ink-dim">Working on it…</p>
+              {orderedLiveReplies.length >= 2 ? (
+                <OpinionComparison
+                  promptId={orderedLiveReplies[0]?.consultationId ?? orderedLiveReplies[0]?.turnId ?? 'live'}
+                  answers={orderedLiveReplies.map((reply) => ({
+                    agent: reply.agent,
+                    body: <p className="min-h-6 whitespace-pre-wrap text-body text-ink-dim">{reply.text || (reply.capability === 'build' ? 'Building — details are arriving in the work envelope…' : <WaitingLine sending={false} />)}</p>,
+                  }))}
+                />
+              ) : (
+                <p className="min-h-6 whitespace-pre-wrap text-body text-ink-dim">{orderedLiveReplies[0]?.text || (orderedLiveReplies[0]?.capability === 'build' ? 'Building — details are arriving in the work envelope…' : <WaitingLine sending={sending} />)}</p>
+              )}
             </div>
             {/* The way out. A turn you can start and not stop is a turn that
                 owns you rather than the other way round — and while it runs,
                 the project takes no other work. */}
-            <button
-              type="button"
-              disabled={stopping}
-              onClick={() => void stop()}
-              className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50"
-            >
-              {stopping ? 'Stopping…' : 'Stop'}
-            </button>
+            {(data.working || orderedLiveReplies.some((reply) => reply.capability === 'visual')) && (
+              <button
+                type="button"
+                disabled={stopping}
+                onClick={() => void stop()}
+                className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50"
+              >
+                {stopping ? 'Stopping…' : 'Stop'}
+              </button>
+            )}
           </div>
-        )}
-        {warming && !data.working && (
-          <p className="font-mono text-tech text-ink-quiet">
-            {data.thread.agent === 'codex' ? 'Codex' : 'The workshop'} is getting ready — your message is queued.
-          </p>
         )}
         <div ref={end} />
         </div>
@@ -1036,6 +1177,23 @@ export function ThreadPane({
           >
             <AgentChip agent={data.thread.agent} />
           </button>
+          {currentOffer && currentOffer.models.length > 1 && (
+            <label className="sr-only" htmlFor={`model-${data.thread.id}`}>Model version</label>
+          )}
+          {currentOffer && currentOffer.models.length > 1 && (
+            <select
+              id={`model-${data.thread.id}`}
+              value={data.thread.model ?? currentOffer.selected_model}
+              onChange={(event) => void chooseModel(event.target.value)}
+              disabled={sending}
+              title="Choose model version"
+              className="max-w-32 rounded-inset border border-hairline bg-panel-soft px-2 py-2 font-mono text-tech text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+            >
+              {currentOffer.models.map((option) => (
+                <option key={option.id} value={option.id}>{option.label} · {option.note}</option>
+              ))}
+            </select>
+          )}
           <textarea
             ref={composerRef}
             value={text}

@@ -37,7 +37,7 @@ describe('choosing who answers by naming them', () => {
     consultation: { id: string; promptId: string } | undefined;
   }>;
   /** Every build turn the route started. */
-  let builds: Array<{ agent: string; text: string }>;
+  let builds: Array<{ agent: string; text: string; recorded: boolean; consultation?: { id: string; promptId: string } }>;
 
   beforeEach(async () => {
     const t = await createTestDb();
@@ -69,8 +69,8 @@ describe('choosing who answers by naming them', () => {
           });
           return { ok: true, reply: 'noted.', model: 'test', costed: true };
         },
-        runTurn: (async (_db, _org, _projectId, text, cfg) => {
-          builds.push({ agent: cfg.agent, text });
+        runTurn: (async (_db, _org, _projectId, text, cfg, options) => {
+          builds.push({ agent: cfg.agent, text, recorded: options?.recordOwnerMessage !== false, consultation: options?.consultation });
           return { runId: 'r', agent: cfg.agent, status: 'succeeded', costCents: 1, reply: 'ok', stagedChangesReady: false };
         }) as ThreadsDeps['runTurn'],
       }),
@@ -97,7 +97,7 @@ describe('choosing who answers by naming them', () => {
 
     await send(thread.id, '@claudecode ok build it').expect(202);
 
-    expect(builds).toEqual([{ agent: 'claude-code', text: '@claudecode ok build it' }]);
+    expect(builds).toEqual([{ agent: 'claude-code', text: '@claudecode ok build it', recorded: true, consultation: undefined }]);
     expect(takes).toEqual([]);
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude-code');
   });
@@ -122,25 +122,30 @@ describe('choosing who answers by naming them', () => {
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude');
   });
 
-  /**
-   * A CONSULTATION. Everyone named answers; the conversation stays where it
-   * is. Asking two people what they think is not handing the work to either.
-   */
-  it('asks everyone named, and hands the conversation to none of them', async () => {
+  it('runs one conversational answer beside one real builder', async () => {
     const thread = await talking();
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1' });
 
-    const res = await send(thread.id, '@codex @claudecode i want to see your takes on this').expect(202);
-    expect(res.body.consulted).toEqual(['codex', 'claude-code']);
+    const res = await send(thread.id, '@claude @claudecode explain it and build it').expect(202);
+    expect(res.body.consulted).toEqual(['claude', 'claude-code']);
 
-    // Both answered, and neither built — two builders cannot share one sandbox,
-    // and a request for takes was never a request for two builds.
-    expect(builds).toEqual([]);
-    expect(takes.map((t) => t.agent)).toEqual(['codex', 'claude-code']);
+    expect(builds).toEqual([{
+      agent: 'claude-code', text: '@claude @claudecode explain it and build it', recorded: false,
+      consultation: { id: res.body.consultation_id, promptId: takes[0]!.consultation!.promptId },
+    }]);
+    expect(takes.map((t) => t.agent)).toEqual(['claude']);
     expect(takes.every((t) => t.asTake)).toBe(true);
-    expect(takes[0]!.consultation).toEqual(takes[1]!.consultation);
     expect(takes[0]!.consultation?.id).toBe(res.body.consultation_id);
 
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude');
+  });
+
+  it('refuses two builders until the owner chooses an order', async () => {
+    const thread = await talking();
+    const res = await send(thread.id, '@codex @claudecode build both versions').expect(409);
+    expect(res.body).toMatchObject({ code: 'choose_builder_order', builders: ['codex', 'claude-code'] });
+    expect(builds).toEqual([]);
+    expect(takes).toEqual([]);
   });
 
   /** The question is asked once, however many people are asked it. */
@@ -174,8 +179,8 @@ describe('choosing who answers by naming them', () => {
 
   it('keeps overlapping consultations with the same agents unambiguously separate on the wire', async () => {
     const thread = await talking();
-    await send(thread.id, '@codex @claudecode compare the divider').expect(202);
-    await send(thread.id, '@codex @claudecode compare the type scale').expect(202);
+    await send(thread.id, '@claude @gpt compare the divider').expect(202);
+    await send(thread.id, '@claude @gpt compare the type scale').expect(202);
 
     const first = takes[0]!.consultation!;
     const second = takes[2]!.consultation!;
@@ -187,23 +192,23 @@ describe('choosing who answers by naming them', () => {
     const afterPrompts = Date.now() + 1_000;
     await db.insert(agentMessages).values([
       {
-        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / Codex',
-        meta: { answered_by: 'codex', consultation_id: first.id, in_reply_to: first.promptId },
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / Claude',
+        meta: { answered_by: 'claude', consultation_id: first.id, in_reply_to: first.promptId },
         createdAt: new Date(afterPrompts),
       },
       {
-        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / Codex',
-        meta: { answered_by: 'codex', consultation_id: second.id, in_reply_to: second.promptId },
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / Claude',
+        meta: { answered_by: 'claude', consultation_id: second.id, in_reply_to: second.promptId },
         createdAt: new Date(afterPrompts + 1),
       },
       {
-        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / Claude Code',
-        meta: { answered_by: 'claude-code', consultation_id: first.id, in_reply_to: first.promptId },
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'first / GPT',
+        meta: { answered_by: 'gpt', consultation_id: first.id, in_reply_to: first.promptId },
         createdAt: new Date(afterPrompts + 2),
       },
       {
-        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / Claude Code',
-        meta: { answered_by: 'claude-code', consultation_id: second.id, in_reply_to: second.promptId },
+        id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'second / GPT',
+        meta: { answered_by: 'gpt', consultation_id: second.id, in_reply_to: second.promptId },
         createdAt: new Date(afterPrompts + 3),
       },
     ]);
@@ -230,7 +235,7 @@ describe('choosing who answers by naming them', () => {
    */
   it('caps how many are asked at once', async () => {
     const thread = await talking();
-    await send(thread.id, '@claude @gpt @codex @claudecode everyone').expect(202);
+    await send(thread.id, '@claude @gpt @gemini @kimi everyone').expect(202);
 
     expect(takes).toHaveLength(MAX_CONSULTED);
   });

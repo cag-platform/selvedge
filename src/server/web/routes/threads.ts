@@ -11,11 +11,12 @@ import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.j
 import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
 import { validateFileRefs, validateImages } from '../attachments.js';
 import { consumeStagedUpload } from '../../build/uploads.js';
-import type { AttachedFile } from '../../build/agent.js';
+import type { AgentTurnConfig, AttachedFile } from '../../build/agent.js';
 import { promises as fsp } from 'node:fs';
 import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
+import { publishLiveChat, subscribeLiveChat } from '../../chat/live.js';
 import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
 import {
   createSubjectThread,
@@ -52,6 +53,13 @@ import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
 import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
 import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
 import { cardEvidenceSheet, runEvidenceSheet, summarizeRunEvidence } from '../../build/evidenceSheet.js';
+import { defaultChatModelFor, modelBelongsToAgent } from '../../llm/chatModels.js';
+import { visualById, visualsForThread } from '../../visuals/store.js';
+import { visualObjectStore, type VisualObjectStore } from '../../visuals/storage.js';
+import { imageApiKeyFor } from '../../visuals/credentials.js';
+import { OpenAIVisualRenderer, runVisualJob } from '../../visuals/render.js';
+import { wantsVisual } from '../../../shared/visualIntent.js';
+import { cancelVisualJobs } from '../../visuals/live.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -101,6 +109,7 @@ export type ThreadsDeps = {
    */
   createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
   checkoutGuardEnabled?: boolean;
+  visualStore?: VisualObjectStore | null;
 };
 
 export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
@@ -115,6 +124,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   // decides whether to offer somebody a real repo.
   const makeRepo = deps.createRepo;
   const checkoutGuardEnabled = deps.checkoutGuardEnabled ?? false;
+  const visualStore = deps.visualStore === undefined ? visualObjectStore() : deps.visualStore;
 
   router.post(
     '/api/projects/:projectId/checkout/preflight',
@@ -352,7 +362,86 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     }),
   );
 
+  /**
+   * A LIGHTWEIGHT WAKE-UP STREAM. The thread remains the canonical response;
+   * this channel only says "it changed" so web and native clients can fetch
+   * the same tested representation immediately instead of guessing with a
+   * timer. Heartbeats keep proxies from treating a quiet conversation as a
+   * dead connection, and every client retains its polling fallback.
+   */
+  router.get(
+    '/api/threads/:threadId/events',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) {
+        res.status(404).json({ error: 'no such thread' });
+        return;
+      }
+
+      res.status(200);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      let closed = false;
+      let checking = false;
+      let previous = '';
+      const unsubscribe = subscribeLiveChat(orgId, thread.id, (event) => {
+        if (!closed) res.write(`data: ${JSON.stringify(event)}\n\n`);
+      });
+      const check = async () => {
+        if (closed || checking) return;
+        checking = true;
+        try {
+          const [latest] = await db
+            .select({ id: agentMessages.id, role: agentMessages.role, content: agentMessages.content, meta: agentMessages.meta })
+            .from(agentMessages)
+            .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id)))
+            .orderBy(desc(agentMessages.createdAt))
+            .limit(1);
+          const running = thread.projectId ? await activeRun(orgId, thread.projectId) : null;
+          const signature = JSON.stringify([latest?.id ?? null, latest?.role ?? null, latest?.content ?? null, latest?.meta ?? null, running?.id ?? null]);
+          if (signature !== previous) {
+            previous = signature;
+            res.write(`data: ${JSON.stringify({ changed: true })}\n\n`);
+          }
+        } finally {
+          checking = false;
+        }
+      };
+
+      await check();
+      const changes = setInterval(() => void check(), 750);
+      const heartbeat = setInterval(() => { if (!closed) res.write(': keep-alive\n\n'); }, 15_000);
+      req.on('close', () => {
+        closed = true;
+        unsubscribe();
+        clearInterval(changes);
+        clearInterval(heartbeat);
+      });
+    }),
+  );
+
   /** Everything one thread needs to be read and worked in. */
+  router.get(
+    '/api/visuals/:visualId/content',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const visual = await visualById(db, orgId, req.params.visualId ?? '');
+      if (!visual || visual.status !== 'ready' || !visual.storageKey) {
+        res.status(404).json({ error: 'no such visual' });
+        return;
+      }
+      if (!visualStore) {
+        res.status(503).json({ error: 'visual storage is not configured' });
+        return;
+      }
+      res.redirect(302, await visualStore.signedGet(visual.storageKey));
+    }),
+  );
+
   router.get(
     '/api/threads/:threadId',
     asyncHandler(async (req, res) => {
@@ -362,7 +451,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const [pack, build, messages, runs, running, orgRows] = await Promise.all([
+      const [pack, build, messages, runs, running, orgRows, visuals] = await Promise.all([
         thread.projectId ? getPack(db, orgId, thread.projectId) : null,
         thread.projectId ? getBuild(db, orgId, thread.projectId) : null,
         db
@@ -378,6 +467,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           .limit(20),
         thread.projectId ? activeRun(orgId, thread.projectId) : null,
         db.select({ technicalDetail: orgs.technicalDetail }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1),
+        visualsForThread(db, orgId, thread.id),
       ]);
       const subjectName = thread.subjectId ? (await getSubject(db, orgId, thread.subjectId))?.name ?? null : null;
       const accountDetail = isTechnicalDetail(orgRows[0]?.technicalDetail) ? orgRows[0].technicalDetail : 'full';
@@ -490,6 +580,25 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             ? { in_reply_to: (m.meta as { in_reply_to: string }).in_reply_to }
             : {}),
           ...(m.role === 'activity' || m.role === 'switch' ? { meta: m.meta } : {}),
+        })),
+        visuals: visuals.map((visual) => ({
+          id: visual.id,
+          message_id: visual.messageId,
+          consultation_id: visual.consultationId,
+          directing_agent: visual.directingAgent,
+          rendering_provider: visual.renderingProvider,
+          rendering_model: visual.renderingModel,
+          status: visual.status,
+          mime: visual.mime,
+          width: visual.width,
+          height: visual.height,
+          bytes: visual.bytes,
+          direction_ms: visual.directionMs,
+          render_ms: visual.renderMs,
+          storage_ms: visual.storageMs,
+          error: visual.error,
+          parent_id: visual.parentId,
+          ...(visual.status === 'ready' ? { content_url: `/api/visuals/${encodeURIComponent(visual.id)}/content` } : {}),
         })),
         runs: runs.map((r) => ({
           id: r.id,
@@ -633,7 +742,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
       const threadId = req.params.threadId ?? '';
-      const body = (req.body ?? {}) as { title?: unknown; archived?: unknown; agent?: unknown };
+      const body = (req.body ?? {}) as { title?: unknown; archived?: unknown; agent?: unknown; model?: unknown };
 
       if (typeof body.title === 'string') {
         if (!(await renameThread(db, orgId, threadId, body.title))) {
@@ -661,6 +770,19 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           receipt: out.receipt,
         });
         return;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, 'model')) {
+        const current = await getThread(db, orgId, threadId);
+        if (!current) {
+          res.status(404).json({ error: 'no such thread' });
+          return;
+        }
+        if (body.model !== null && (typeof body.model !== 'string' || !modelBelongsToAgent(current.agent as AgentId, body.model))) {
+          res.status(400).json({ error: 'That model is not available for this agent.' });
+          return;
+        }
+        await db.update(threads).set({ model: body.model as string | null }).where(and(eq(threads.orgId, orgId), eq(threads.id, threadId)));
       }
 
       const thread = await getThread(db, orgId, threadId);
@@ -913,12 +1035,13 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
+      const visualsStopped = cancelVisualJobs(orgId, thread.id);
       if (!thread.projectId) {
-        res.json({ stopped: false });
+        res.json({ stopped: visualsStopped > 0 });
         return;
       }
       const outcome = await stopActiveRun(db, orgId, thread.projectId);
-      res.json({ stopped: outcome.stopped });
+      res.json({ stopped: outcome.stopped || visualsStopped > 0 });
     }),
   );
 
@@ -932,7 +1055,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown; raise_cap?: unknown; acknowledge_stale?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -1116,6 +1239,105 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         // Whoever was named and didn't fit. Said on the thread rather than
         // dropped in silence — see consultationLine.
         const skipped = intent.agents.slice(MAX_CONSULTED);
+        const builders = asked.filter((agent) => changesFiles(agent));
+        const visualRequest = wantsVisual(text);
+        if (visualRequest && builders.length > 0) {
+          res.status(400).json({ error: 'Visual comparisons currently use conversational models. Ask Claude and GPT, then hand the chosen direction to a builder.' });
+          return;
+        }
+        const imageKey = visualRequest ? await imageApiKeyFor(db, orgId) : null;
+        if (visualRequest && (!visualStore || !imageKey)) {
+          res.status(503).json({ error: 'Visual responses need an OpenAI image key and visual object storage configured.' });
+          return;
+        }
+        if (builders.length > 1) {
+          res.status(409).json({
+            error: 'Two builders cannot safely change one project at the same time. Pick which one should go first.',
+            code: 'choose_builder_order',
+            builders,
+          });
+          return;
+        }
+
+        let mixedBuild: {
+          agent: AgentId;
+          projectId: string;
+          cfg: AgentTurnConfig;
+          handoff?: string;
+          handoffMessageId?: string;
+          files: AttachedFile[];
+          paired: Awaited<ReturnType<typeof withFreshness>> | null;
+        } | null = null;
+        if (builders[0]) {
+          const builder = builders[0];
+          const projectId = thread.projectId;
+          if (!projectId) {
+            res.status(409).json({ error: `${agentById(builder)?.name ?? 'That builder'} needs a project to build in.`, code: 'needs_project', agent: builder });
+            return;
+          }
+          const mode = body.mode === undefined || body.mode === 'build' ? 'build' : body.mode === 'plan' ? 'plan' : null;
+          if (mode !== 'build') {
+            res.status(400).json({ error: 'A mixed talk-and-build request must use build mode.' });
+            return;
+          }
+          if (checkoutGuardEnabled) {
+            const guard = await inspectCheckout(db, orgId, projectId, { threadId: thread.id, goal: text });
+            if (!canResolveCheckout(guard, body.checkout_resolution)) {
+              res.status(409).json({ error: 'This checkout needs a deliberate choice before another change starts.', code: 'checkout_conflict', checkout_guard: guard });
+              return;
+            }
+          } else if (await activeRun(orgId, projectId)) {
+            res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
+            return;
+          }
+          const resolved = await configFor(db, orgId, projectId, env, undefined, lookup);
+          if ('error' in resolved) {
+            res.status(resolved.status).json({ error: resolved.error });
+            return;
+          }
+          const minutes = await canStartBuild(db, orgId);
+          if (!minutes.allowed) {
+            refuse(res, minutes);
+            return;
+          }
+          const ceiling = await threadCeiling(db, orgId, thread);
+          if (ceiling.reached && body.raise_cap !== true) {
+            res.status(409).json({ error: ceiling.note, spend_ceiling: { spent_cents: ceiling.spentCents, cap_cents: ceiling.capCents, raises: ceiling.raises } });
+            return;
+          }
+          if (ceiling.reached) await raiseCeiling(db, orgId, thread, ceiling);
+          const brief = await briefForThread(db, orgId, thread.id).catch(() => null);
+          const paired = brief && brief.buildingThreadId === thread.id ? await withFreshness(db, orgId, brief) : null;
+          if (paired?.freshness.state === 'stale' && body.acknowledge_stale !== true) {
+            res.status(409).json({
+              error: `${paired.freshness.note} Refresh the decision, or send again to build from it as it stands.`,
+              stale_decision: { brief_id: paired.brief.id, behind: paired.freshness.behind, thinking_thread_id: paired.brief.thinkingThreadId },
+            });
+            return;
+          }
+          const handoff = await pendingHandoff(db, orgId, thread.id).catch(() => null);
+          const consumed: Array<{ path: string }> = [];
+          const files: AttachedFile[] = [];
+          for (const id of fileRefs.ids) {
+            const staged = consumeStagedUpload(orgId, projectId, id);
+            if (!staged) {
+              await Promise.all(consumed.map((file) => fsp.unlink(file.path).catch(() => undefined)));
+              res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
+              return;
+            }
+            consumed.push(staged);
+            files.push({ name: staged.name, mime: staged.mime, localPath: staged.path });
+          }
+          mixedBuild = {
+            agent: builder,
+            projectId,
+            cfg: { ...resolved.cfg, agent: builder, model: defaultChatModelFor(builder) },
+            ...(handoff ? { handoff: handoff.text } : {}),
+            ...(handoff ? { handoffMessageId: handoff.messageId } : {}),
+            files,
+            paired,
+          };
+        }
         const ownerMessageId = ulid();
         const consultationId = ulid();
         // The batch is ordered deliberately. Database defaults give every row
@@ -1166,19 +1388,66 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         ]);
 
         const consulted = thread;
-        for (const agent of asked) {
+        if (mixedBuild?.paired?.freshness.state === 'stale' && body.acknowledge_stale === true) {
+          await db.insert(agentMessages).values({
+            id: ulid(), orgId, projectId: mixedBuild.projectId, threadId: consulted.id, role: 'switch',
+            content: `⇄ built from the decision as it stood — ${mixedBuild.paired.freshness.behind} later message${mixedBuild.paired.freshness.behind === 1 ? '' : 's'} in the thinking were not part of it.`,
+            meta: { consultation_id: consultationId, in_reply_to: ownerMessageId },
+          }).catch(() => undefined);
+        }
+        for (const agent of asked.filter((candidate) => !changesFiles(candidate))) {
           const provider = agentById(agent)?.provider ?? null;
           const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
-          void chatTurn(db, orgId, consulted, text, {
-            client: fuel?.client ?? null,
+          if (visualRequest && fuel?.client && imageKey && visualStore) {
+            void runVisualJob(db, orgId, {
+              threadId: consulted.id, consultationId, promptId: ownerMessageId,
+              directingAgent: agent, directingModel: defaultChatModelFor(agent), request: text,
+              director: fuel.client, renderer: new OpenAIVisualRenderer(imageKey), objectStore: visualStore,
+            });
+          } else {
+            void chatTurn(db, orgId, consulted, text, {
+              client: fuel?.client ?? null,
+              recordOwnerMessage: false,
+              ...(documents.length ? { documents } : {}),
+              answeringAs: agent,
+              asTake: true,
+              consultation: { id: consultationId, promptId: ownerMessageId },
+            }).catch((err) => {
+              console.error(`take from ${agent} failed for ${orgId}/${consulted.id}:`, err);
+            });
+          }
+        }
+        if (mixedBuild) {
+          const buildTurnId = ulid();
+          const buildLive = { turnId: buildTurnId, agent: mixedBuild.agent, consultationId, capability: 'build' as const };
+          publishLiveChat(orgId, consulted.id, { type: 'reply_started', ...buildLive });
+          const decisionPreamble = mixedBuild.paired
+            ? [mixedBuild.paired.freshness.state === 'stale' ? staleWarningFor(mixedBuild.paired.freshness) : null, briefAsText(mixedBuild.paired.brief)].filter(Boolean).join('\n\n')
+            : null;
+          void runTurn(db, orgId, mixedBuild.projectId, text, mixedBuild.cfg, {
+            mode: 'build',
+            threadId: thread.id,
             recordOwnerMessage: false,
-            ...(documents.length ? { documents } : {}),
-            answeringAs: agent,
-            asTake: true,
             consultation: { id: consultationId, promptId: ownerMessageId },
-          }).catch((err) => {
-            console.error(`take from ${agent} failed for ${orgId}/${consulted.id}:`, err);
+            ...(mixedBuild.handoff || decisionPreamble || referenced
+              ? { handoff: [decisionPreamble, referenced, mixedBuild.handoff].filter(Boolean).join('\n\n---\n\n') }
+              : {}),
+            ...(documents.length ? { documents } : {}),
+            ...(images.images.length ? { images: images.images } : {}),
+            ...(mixedBuild.files.length ? { files: mixedBuild.files } : {}),
+          }).then(() => {
+            publishLiveChat(orgId, consulted.id, { type: 'reply_finished', ...buildLive });
+          }).catch(async (err) => {
+            publishLiveChat(orgId, consulted.id, { type: 'reply_cancelled', ...buildLive });
+            console.error(`mixed builder turn failed for ${orgId}/${consulted.id}:`, err);
+            await failActiveRun(db, orgId, mixedBuild!.projectId).catch(() => undefined);
+            await db.insert(agentMessages).values({
+              id: ulid(), orgId, projectId: mixedBuild!.projectId, threadId: consulted.id, role: 'agent',
+              content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
+              meta: { answered_by: mixedBuild!.agent, consultation_id: consultationId, in_reply_to: ownerMessageId },
+            }).catch(() => undefined);
           });
+          if (mixedBuild.handoffMessageId) await markHandoffSpent(db, orgId, mixedBuild.handoffMessageId).catch(() => undefined);
         }
         res.status(202).json({ started: true, warming: false, consulted: asked, consultation_id: consultationId });
         return;
@@ -1245,6 +1514,32 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         }
         const provider = chatProviderFor(thread.agent as AgentId);
         const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
+        if (wantsVisual(text)) {
+          const imageKey = await imageApiKeyFor(db, orgId);
+          if (!fuel?.client || !visualStore || !imageKey) {
+            res.status(503).json({ error: 'Visual responses need the selected model, an OpenAI image key, and visual object storage configured.' });
+            return;
+          }
+          const promptId = ulid();
+          await db.insert(agentMessages).values({
+            id: promptId, orgId, projectId: thread.projectId, threadId: thread.id,
+            role: 'owner', content: text, meta: { ...(documents.length ? { documents } : {}) },
+          });
+          if (referenceNote) {
+            await db.insert(agentMessages).values({
+              id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id,
+              role: 'switch', content: referenceNote, meta: { in_reply_to: promptId },
+            });
+          }
+          const directingAgent = thread.agent as AgentId;
+          void runVisualJob(db, orgId, {
+            threadId: thread.id, promptId, directingAgent,
+            directingModel: defaultChatModelFor(directingAgent), request: text,
+            director: fuel.client, renderer: new OpenAIVisualRenderer(imageKey), objectStore: visualStore,
+          });
+          res.status(202).json({ started: true, visual: true, warming: false });
+          return;
+        }
         // The turn runs in the background like every other turn, so a slow
         // model never holds the composer.
         const talking = thread;
@@ -1411,7 +1706,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         orgId,
         projectId,
         text,
-        { ...resolved.cfg, agent, ...(thread.model && agent === 'claude-code' ? { model: thread.model } : {}) },
+        { ...resolved.cfg, agent, ...(thread.model ? { model: thread.model } : {}) },
         {
           mode,
           threadId: thread.id,

@@ -23,6 +23,8 @@ export type AgentOffer = {
   /** What kind of no: 'org' hides the row from the menu, 'thread' keeps it. */
   blocked_by: 'org' | 'thread' | null;
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
+  models: Array<{ id: string; label: string; tier: 'fast' | 'balanced' | 'deep'; note: string }>;
+  selected_model: string;
 };
 
 export type RosterResponse = { answering: string; agents: AgentOffer[] };

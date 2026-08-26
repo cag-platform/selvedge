@@ -91,6 +91,10 @@ export type TurnOptions = {
    * in front of the ask like a handoff, and kept on the thread as the record.
    */
   documents?: PastedDocument[];
+  /** The consultation route already wrote the one shared owner prompt. */
+  recordOwnerMessage?: boolean;
+  /** Correlates this builder's activity and final reply with its parallel lanes. */
+  consultation?: { id: string; promptId: string };
 };
 
 export type AgentTurnConfig = SandboxConfig & {
@@ -322,6 +326,9 @@ export async function runAgentTurn(
   // Which conversation this turn is part of. Every row this turn writes carries
   // it, so the thread reads back whole even once a project holds several.
   const threadId = options.threadId ?? (await ensureWorkshopThread(db, orgId, projectId, cfg.model)).id;
+  const consultationMeta = options.consultation
+    ? { answered_by: cfg.agent ?? 'claude-code', consultation_id: options.consultation.id, in_reply_to: options.consultation.promptId }
+    : undefined;
 
   // Which builder is running this turn, and can it run here at all? An agent
   // this deployment has no fuel for is said plainly on the thread — never a
@@ -353,14 +360,14 @@ export async function runAgentTurn(
     const reply = agent === 'claude-code' ? why : `${why} Or switch this thread to Claude Code and I'll pick it up.`;
     const failedRunId = ulid();
     await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
-    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });
-    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId });
+    if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId, ...(consultationMeta ? { meta: consultationMeta } : {}) });
     return { runId: failedRunId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
   }
 
   // The owner's message lands on the thread first — the conversation is the record.
   const ownerMessageId = ulid();
-  await db.insert(agentMessages).values({
+  if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({
     id: ownerMessageId,
     orgId,
     projectId,
@@ -459,7 +466,7 @@ export async function runAgentTurn(
     if (lines.length === activityShown) return;
     const content = lines.slice(-30).join('\n');
     if (!activityInserted) {
-      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content, runId });
+      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content, runId, ...(consultationMeta ? { meta: consultationMeta } : {}) });
       activityInserted = true;
     } else {
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
@@ -573,7 +580,7 @@ export async function runAgentTurn(
     };
     await db
       .update(agentMessages)
-      .set({ meta: record })
+      .set({ meta: consultationMeta ? { ...record, ...consultationMeta } : record })
       .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)))
       .catch(() => undefined); // the record is evidence, not a gate — never sink the turn
   }
@@ -612,7 +619,7 @@ export async function runAgentTurn(
     return { runId, agent, status: 'failed', costCents, reply, stagedChangesReady };
   }
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId, ...(consultationMeta ? { meta: consultationMeta } : {}) });
   await setBuild(db, orgId, projectId, {
     ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
     stagedChangesReady,

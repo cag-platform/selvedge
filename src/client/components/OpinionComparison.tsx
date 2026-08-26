@@ -20,9 +20,9 @@ export function OpinionComparison({
   answers,
 }: {
   promptId: string;
-  answers: readonly [Answer, Answer];
+  answers: readonly Answer[];
 }) {
-  const names = answers.map((answer) => nameOf(answer.agent)) as [string, string];
+  const names = answers.map((answer) => nameOf(answer.agent));
   const titleId = `opinion-comparison-${promptId}`;
 
   return (
@@ -31,7 +31,7 @@ export function OpinionComparison({
         <h3 id={titleId} className="text-label font-semibold uppercase tracking-widest text-ink-dim">
           Compare opinions
         </h3>
-        <p className="text-meta text-ink-quiet">{names[0]} and {names[1]} answered the same question.</p>
+        <p className="text-meta text-ink-quiet">{names.join(', ').replace(/, ([^,]*)$/, ' and $1')} answered the same question.</p>
       </div>
       {/* The workbench panes are resizable, so viewport breakpoints cannot
           know how much room this comparison actually has. Auto-fit responds

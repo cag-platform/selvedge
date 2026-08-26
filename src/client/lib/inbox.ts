@@ -88,6 +88,25 @@ export type ThreadRun = {
 };
 
 export type ConsoleLink = { provider: string; label: string; url: string };
+export type GeneratedVisual = {
+  id: string;
+  message_id: string | null;
+  consultation_id: string | null;
+  directing_agent: string;
+  rendering_provider: string;
+  rendering_model: string;
+  status: 'queued' | 'rendering' | 'ready' | 'failed';
+  mime: string | null;
+  width: number | null;
+  height: number | null;
+  bytes: number | null;
+  direction_ms: number | null;
+  render_ms: number | null;
+  storage_ms: number | null;
+  error: string | null;
+  parent_id: string | null;
+  content_url?: string;
+};
 
 export type ThreadData = {
   thread: { id: string; kind: 'workshop' | 'general'; title: string; agent: string; model: string | null; created_at: string; archived: boolean };
@@ -112,6 +131,7 @@ export type ThreadData = {
   technical_detail: TechnicalDetail | null;
   effective_technical_detail: TechnicalDetail;
   messages: ThreadMessage[];
+  visuals: GeneratedVisual[];
   runs: ThreadRun[];
 };
 

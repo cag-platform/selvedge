@@ -33,7 +33,20 @@ export class AnthropicLlmClient implements LlmClient {
   async complete(req: LlmRequest): Promise<LlmResult> {
     try {
       const useFallbacks = req.model === 'claude-fable-5';
-      const response = useFallbacks
+      const input = {
+        model: req.model,
+        max_tokens: req.maxTokens,
+        system: req.system,
+        output_config: { format: { type: 'json_schema' as const, schema: req.schema } },
+        messages: [{ role: 'user' as const, content: req.userContent }],
+      };
+      const response = req.onTextDelta && !useFallbacks
+        ? await (async () => {
+            const stream = this.client.messages.stream(input);
+            stream.on('text', (text) => req.onTextDelta?.(text));
+            return stream.finalMessage();
+          })()
+        : useFallbacks
         ? await this.client.beta.messages.create({
             model: req.model,
             max_tokens: req.maxTokens,
@@ -43,13 +56,7 @@ export class AnthropicLlmClient implements LlmClient {
             output_config: { format: { type: 'json_schema', schema: req.schema } },
             messages: [{ role: 'user', content: req.userContent }],
           })
-        : await this.client.messages.create({
-            model: req.model,
-            max_tokens: req.maxTokens,
-            system: req.system,
-            output_config: { format: { type: 'json_schema', schema: req.schema } },
-            messages: [{ role: 'user', content: req.userContent }],
-          });
+        : await this.client.messages.create(input);
 
       const tokensIn = response.usage.input_tokens;
       const tokensOut = response.usage.output_tokens;
@@ -62,8 +69,9 @@ export class AnthropicLlmClient implements LlmClient {
         return { ok: false, reason: 'max_tokens', tokensIn, tokensOut, model: servedBy, provider: PROVIDER };
       }
 
-      const text = response.content
-        .filter((b): b is { type: 'text'; text: string } & typeof b => b.type === 'text')
+      const blocks = response.content as readonly { type: string; text?: string }[];
+      const text = blocks
+        .filter((b): b is { type: 'text'; text: string } => b.type === 'text' && typeof b.text === 'string')
         .map((b) => b.text)
         .join('');
 

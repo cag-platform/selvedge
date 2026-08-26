@@ -5,6 +5,7 @@ import { builderAvailability } from '../build/builderAuth.js';
 import { resolveFuelFor } from '../connectors/fuel/resolve.js';
 import { quoteHandoff, quoteNote } from './switch.js';
 import type { Thread } from './store.js';
+import { chatModelsFor, defaultChatModelFor, type ChatModelOption } from '../llm/chatModels.js';
 
 /**
  * THE ROSTER — everyone who could answer this conversation, what each would
@@ -53,6 +54,8 @@ export type AgentOffer = {
   blocked_by: 'org' | 'thread' | null;
   /** What switching would cost. Absent for whoever is already answering. */
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
+  models: readonly ChatModelOption[];
+  selected_model: string;
 };
 
 function does(changesFiles: boolean): string {
@@ -178,6 +181,8 @@ export async function agentRoster(
         unavailable_note: note,
         blocked_by: blockedBy,
         handoff: quote ? { tokens: quote.tokens, cost_usd: quote.costUsd, note: quoteNote(quote.tokens, quote.costUsd) } : null,
+        models: chatModelsFor(agent.id),
+        selected_model: answeringNow && thread.model ? thread.model : defaultChatModelFor(agent.id),
       };
     }),
   );

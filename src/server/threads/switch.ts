@@ -11,6 +11,7 @@ import { agentById, isAgentId, type AgentId } from '../../shared/agents.js';
 import { getThread, setThreadAgent, type Thread } from './store.js';
 import type { HandoffReceipt } from '../../shared/types/continuation.js';
 import { recordProductEvent } from '../telemetry/productEvents.js';
+import { defaultChatModelFor } from '../llm/chatModels.js';
 
 /**
  * SWITCHING AGENTS MID-THREAD — the interaction the Inbox exists for.
@@ -137,11 +138,10 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   }
   const before = await getThread(db, orgId, threadId);
   if (!before) return { ok: false, reason: 'no_such_thread', message: 'no such thread' };
-  const descriptor = agentById(target)!;
   if (before.agent === target) return { ok: true, thread: before, changed: false, line: null, handoff: null, receipt: null };
 
   const from = before.agent as AgentId;
-  const switched = await setThreadAgent(db, orgId, threadId, target, descriptor.pricingModel);
+  const switched = await setThreadAgent(db, orgId, threadId, target, defaultChatModelFor(target));
   if (!switched.ok) return { ok: false, reason: switched.reason, message: 'that switch did not go through' };
   const thread = switched.thread;
 

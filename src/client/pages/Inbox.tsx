@@ -35,6 +35,15 @@ const RAIL_MAX = 440;
 const CONTEXT_MIN = 280;
 const CONTEXT_MAX = 620;
 
+export type LiveReply = {
+  turnId: string;
+  agent: string;
+  consultationId?: string;
+  capability: 'chat' | 'build' | 'visual';
+  text: string;
+  status: 'streaming' | 'finished' | 'cancelled';
+};
+
 function savedWidth(key: string, fallback: number): number {
   if (typeof window === 'undefined') return fallback;
   const value = Number(window.localStorage.getItem(key));
@@ -95,6 +104,7 @@ export function Inbox() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [inbox, setInbox] = useState<InboxData | null>(null);
   const [thread, setThread] = useState<ThreadData | null>(null);
+  const [liveReplies, setLiveReplies] = useState<Record<string, LiveReply>>({});
   const [error, setError] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -142,6 +152,42 @@ export function Inbox() {
     void loadThread();
   }, [loadThread]);
 
+  // Same-origin SSE needs no second auth mechanism: Clerk's session cookie
+  // rides with EventSource. Each event is only a wake-up; the ordinary thread
+  // endpoint remains the single canonical wire shape and polling remains the
+  // reconnect fallback.
+  useEffect(() => {
+    if (!threadId || typeof EventSource === 'undefined') return;
+    const events = new EventSource(`/api/threads/${encodeURIComponent(threadId)}/events`);
+    events.onmessage = (message) => {
+      try {
+        const event = JSON.parse(message.data) as { type?: string; text?: string; turnId?: string; agent?: string; consultationId?: string; capability?: LiveReply['capability'] };
+        const key = event.turnId;
+        if (event.type === 'reply_started' && key && event.agent) {
+          setLiveReplies((current) => ({ ...current, [key]: { turnId: key, agent: event.agent!, ...(event.consultationId ? { consultationId: event.consultationId } : {}), capability: event.capability ?? 'chat', text: '', status: 'streaming' } }));
+        }
+        else if (event.type === 'reply_delta' && key && event.text) setLiveReplies((current) => current[key] ? ({ ...current, [key]: { ...current[key]!, text: current[key]!.text + event.text! } }) : current);
+        else if (event.type === 'reply_finished' || event.type === 'reply_cancelled') {
+          if (key) setLiveReplies((current) => current[key] ? ({ ...current, [key]: { ...current[key]!, status: event.type === 'reply_finished' ? 'finished' : 'cancelled' } }) : current);
+          void loadThread();
+        } else void loadThread();
+      } catch {
+        void loadThread();
+      }
+    };
+    return () => events.close();
+  }, [threadId, loadThread]);
+
+  useEffect(() => setLiveReplies({}), [threadId]);
+
+  useEffect(() => {
+    if (!thread) return;
+    setLiveReplies((current) => Object.fromEntries(Object.entries(current).filter(([, reply]) => {
+      if (reply.status === 'streaming') return true;
+      return !thread.messages.some((message) => message.role === 'agent' && message.answered_by === reply.agent && (!reply.consultationId || message.consultation_id === reply.consultationId));
+    })));
+  }, [thread]);
+
   useEffect(() => {
     const onResize = () => setWidth(window.innerWidth);
     window.addEventListener('resize', onResize);
@@ -152,7 +198,10 @@ export function Inbox() {
   useEffect(() => {
     const interval = setInterval(() => {
       void loadThread();
-      void loadInbox();
+      // The active conversation is the latency-sensitive surface. The rail
+      // does not need a second request every three seconds while that turn is
+      // working; it reconciles when the turn settles or on its quiet cadence.
+      if (!thread?.working) void loadInbox();
     }, thread?.working ? 3000 : 12000);
     return () => clearInterval(interval);
   }, [thread?.working, loadThread, loadInbox]);
@@ -408,6 +457,7 @@ export function Inbox() {
           ) : thread ? (
             <ThreadPane
               data={thread}
+              liveReplies={Object.values(liveReplies)}
               onReload={() => {
                 void loadThread();
                 void loadInbox();

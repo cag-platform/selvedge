@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import type { LlmClient, LlmRequest, LlmResult } from './types.js';
 import type { StructuredMode } from './providers.js';
 
@@ -75,7 +76,7 @@ export class OpenAiLlmClient implements LlmClient {
       // it runs either way, so this degrades to "checked one step later" rather
       // than to "unchecked".
       const schemaInPrompt = this.structured === 'json_object';
-      const response = await this.client.chat.completions.create({
+      const input: ChatCompletionCreateParamsNonStreaming = {
         model: req.model,
         // Newer models reject max_tokens; max_completion_tokens is the
         // supported spelling and means the same thing to this seam.
@@ -95,7 +96,42 @@ export class OpenAiLlmClient implements LlmClient {
               type: 'json_schema',
               json_schema: { name: 'selvedge_response', schema: req.schema, strict: strictable(req.schema) },
             },
-      });
+      };
+      const response = req.onTextDelta
+        ? await (async () => {
+            let content = '';
+            let refusal = '';
+            let finishReason: string | null = null;
+            let model = req.model;
+            let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
+            try {
+              const stream = await this.client.chat.completions.create({ ...input, stream: true });
+              for await (const chunk of stream) {
+                model = chunk.model ?? model;
+                usage = chunk.usage ?? usage;
+                const choice = chunk.choices[0];
+                const delta = choice?.delta.content ?? '';
+                if (delta) {
+                  content += delta;
+                  req.onTextDelta?.(delta);
+                }
+                refusal += choice?.delta.refusal ?? '';
+                finishReason = choice?.finish_reason ?? finishReason;
+              }
+            } catch (error) {
+              // Some compatible endpoints implement chat completions but not
+              // streaming. Fall back only before a byte was shown; once text
+              // is visible, retrying could splice two different answers.
+              if (content !== '') throw error;
+              return this.client.chat.completions.create(input);
+            }
+            return {
+              model,
+              usage,
+              choices: [{ finish_reason: finishReason, message: { content, refusal: refusal || null } }],
+            };
+          })()
+        : await this.client.chat.completions.create(input);
 
       const usage = response.usage;
       const tokensIn = usage?.prompt_tokens ?? 0;

@@ -96,16 +96,22 @@ export function groupPairedConsultations(messages: readonly ThreadMessage[]): Th
       && prompt.id === consultation.promptId
       && prompt.consultation_id === consultation.id;
     let answerIndex = index + 2;
-    // A resolved #reference is another switch row, but it belongs to this
-    // exact consultation and should not prevent the two replies being compared.
-    while (
-      correlatedPrompt
-      && messages[answerIndex]?.role === 'switch'
-      && messages[answerIndex]?.consultation_id === consultation.id
-      && messages[answerIndex]?.in_reply_to === consultation.promptId
-    ) answerIndex += 1;
+    const notes: ThreadMessage[] = [];
+    const correlatedAnswers: ThreadMessage[] = [];
+    // Reference notes and a builder's folded activity can arrive between the
+    // two final replies. Their exact correlation is proof they belong here;
+    // network adjacency is not.
+    while (consultation && correlatedPrompt && answerIndex < messages.length) {
+      const candidate = messages[answerIndex]!;
+      if (candidate.consultation_id !== consultation.id || candidate.in_reply_to !== consultation.promptId) break;
+      if (candidate.role === 'agent') correlatedAnswers.push(candidate);
+      else if (candidate.role === 'switch' || candidate.role === 'activity') notes.push(candidate);
+      else break;
+      answerIndex += 1;
+      if (correlatedAnswers.length === 2) break;
+    }
     const answers = consultation && correlatedPrompt
-      ? orderedAnswers(consultation, messages[answerIndex], messages[answerIndex + 1])
+      ? orderedAnswers(consultation, correlatedAnswers[0], correlatedAnswers[1])
       : null;
     const allCorrelatedAnswers = consultation
       ? messages.filter((message) => message.role === 'agent' && message.consultation_id === consultation.id)
@@ -116,11 +122,9 @@ export function groupPairedConsultations(messages: readonly ThreadMessage[]): Th
       // parallel answers become one visual comparison.
       items.push({ kind: 'message', message: prompt });
       items.push({ kind: 'message', message: marker });
-      for (let noteIndex = index + 2; noteIndex < answerIndex; noteIndex += 1) {
-        items.push({ kind: 'message', message: messages[noteIndex]! });
-      }
+      for (const note of notes) items.push({ kind: 'message', message: note });
       items.push({ kind: 'comparison', prompt, marker, agents: consultation.agents, answers });
-      index = answerIndex + 2;
+      index = answerIndex;
       continue;
     }
 

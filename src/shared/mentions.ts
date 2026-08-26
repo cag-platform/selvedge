@@ -109,7 +109,11 @@ export function consultationLine(
   const note = skipped.length > 0
     ? ` ${skipped.map(names).join(' and ')} ${skipped.length === 1 ? 'was' : 'were'} named too, but ${MAX_CONSULTED} at once is the limit — ask ${skipped.length === 1 ? 'them' : 'them'} in the next message.`
     : '';
-  return `⇄ asked ${list} for a take — nothing was built, and the conversation stays where it is.${note}`;
+  const builders = agents.filter((id) => AGENTS.find((agent) => agent.id === id)?.changesFiles);
+  const action = builders.length === 1
+    ? `${names(builders[0]!)} is building while the others answer; the conversation stays where it is.`
+    : 'nothing was built, and the conversation stays where it is.';
+  return `⇄ asked ${list} — ${action}${note}`;
 }
 
 /**

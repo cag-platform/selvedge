@@ -131,6 +131,18 @@ describe('paired consultations in a chronological thread', () => {
     expect(items[2]?.kind === 'message' ? items[2].message : null).toBe(reference);
   });
 
+  it('keeps a builder activity envelope visible while comparing the final chat and build replies', () => {
+    const activity = message('activity', 'activity', {
+      consultation_id: consultationId,
+      in_reply_to: owner.id,
+    });
+    const items = groupPairedConsultations([owner, marker, claude, activity, codex]);
+
+    expect(items.map((item) => item.kind)).toEqual(['message', 'message', 'message', 'comparison']);
+    expect(items[2]?.kind === 'message' ? items[2].message : null).toBe(activity);
+    expect(items[3]?.kind === 'comparison' ? items[3].answers.map((answer) => answer.id) : []).toEqual(['claude', 'codex']);
+  });
+
   it('does not borrow a late reply from an overlapping consultation with the same agents', () => {
     const secondId = 'consultation-2';
     const secondOwner = message('owner-2', 'owner', { consultation_id: secondId });

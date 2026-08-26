@@ -12,6 +12,7 @@ import { recordUsage } from '../llm/metering.js';
 import type { LlmClient } from '../llm/types.js';
 import { agentById, type AgentId, type AgentProvider } from '../../shared/agents.js';
 import type { Thread } from '../threads/store.js';
+import { publishLiveChat } from './live.js';
 
 /**
  * A general thread's turn: plain conversation, no sandbox, nothing to ship.
@@ -69,6 +70,32 @@ const CHAT_SCHEMA = {
   required: ['reply'],
   additionalProperties: false,
 } as const;
+
+/** Extract the complete prefix of the streamed JSON `reply` string. */
+export function streamedReply(json: string): string {
+  const match = /"reply"\s*:\s*"/.exec(json);
+  if (!match) return '';
+  let out = '';
+  for (let i = match.index + match[0].length; i < json.length; i += 1) {
+    const char = json[i];
+    if (char === '"') break;
+    if (char !== '\\') { out += char; continue; }
+    const escaped = json[++i];
+    if (escaped === undefined) break;
+    if (escaped === 'n') out += '\n';
+    else if (escaped === 'r') out += '\r';
+    else if (escaped === 't') out += '\t';
+    else if (escaped === 'b') out += '\b';
+    else if (escaped === 'f') out += '\f';
+    else if (escaped === 'u') {
+      const code = json.slice(i + 1, i + 5);
+      if (!/^[0-9a-f]{4}$/i.test(code)) break;
+      out += String.fromCharCode(Number.parseInt(code, 16));
+      i += 4;
+    } else out += escaped;
+  }
+  return out;
+}
 
 const SYSTEM_BASE = `You are Selvedge, talking with the owner of a small software project.
 
@@ -279,11 +306,20 @@ export async function runChatTurn(
   // Who is answering is not always the thread's own agent: a consultation asks
   // several, and none of them takes the conversation over.
   const speaking = (deps.answeringAs ?? thread.agent) as AgentId;
+  const turnId = ulid();
+  const liveIdentity = {
+    turnId,
+    agent: speaking,
+    capability: 'chat' as const,
+    ...(deps.consultation ? { consultationId: deps.consultation.id } : {}),
+  };
+  publishLiveChat(orgId, thread.id, { type: 'reply_started', ...liveIdentity });
   const provider = providerForTake(speaking, deps.asTake === true);
   if (!provider || !deps.client) {
     const name = agentById(speaking)?.name ?? speaking;
     const message = `This thread runs on ${name}, and there's no key connected for it — so I can't answer here yet. Connect one under Connections, or switch this thread to a model you have connected.`;
     await say(db, orgId, thread, message, speaking, deps.consultation);
+    publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'no_fuel', message };
   }
 
@@ -293,6 +329,7 @@ export async function runChatTurn(
   if (budget.over) {
     const message = `This account has reached its daily limit for chat ($${budget.capUsd.toFixed(2)}). It resets tomorrow — the watching and your morning brief are unaffected.`;
     await say(db, orgId, thread, message, speaking, deps.consultation);
+    publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'over_budget', message };
   }
 
@@ -327,7 +364,11 @@ export async function runChatTurn(
   // and carrying the mark on anything that was said somewhere else.
   const referenced = renderReferences(await resolveReferences(db, orgId, ownerText).catch(() => ({ resolved: [], missed: [] })));
   const attached = renderDocuments(deps.documents ?? []);
-  const model = chatModel(provider);
+  const model = thread.model ?? chatModel(provider);
+  const modelStartedAt = Date.now();
+  let firstDeltaAt: number | null = null;
+  let rawStream = '';
+  let shown = '';
   const result = await deps.client.complete({
     model,
     system: systemFor(speaking, deps.asTake === true),
@@ -340,10 +381,32 @@ export async function runChatTurn(
     ].join('\n'),
     maxTokens: MAX_REPLY_TOKENS,
     schema: CHAT_SCHEMA as unknown as Record<string, unknown>,
+    onTextDelta: (delta) => {
+      firstDeltaAt ??= Date.now();
+      rawStream += delta;
+      const next = streamedReply(rawStream);
+      const visibleDelta = next.slice(shown.length);
+      shown = next;
+      if (visibleDelta) publishLiveChat(orgId, thread.id, { type: 'reply_delta', ...liveIdentity, text: visibleDelta });
+    },
   });
+  if (process.env.NODE_ENV !== 'test') {
+    console.info(JSON.stringify({
+      event: 'chat_latency',
+      thread_id: thread.id,
+      agent: speaking,
+      model,
+      provider,
+      time_to_first_delta_ms: firstDeltaAt === null ? null : firstDeltaAt - modelStartedAt,
+      total_ms: Date.now() - modelStartedAt,
+      streamed: firstDeltaAt !== null,
+      ok: result.ok,
+    }));
+  }
   await recordUsage(db, orgId, 'chat', result, undefined, thread.id);
 
   if (!result.ok) {
+    publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     // In the log with the model that produced it, so a run of these is
     // diagnosable rather than a mystery reported three times by three agents.
     console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
@@ -354,11 +417,13 @@ export async function runChatTurn(
 
   const reply = (result.json as { reply?: unknown }).reply;
   if (typeof reply !== 'string' || reply.trim() === '') {
+    publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
     await say(db, orgId, thread, message, speaking, deps.consultation);
     return { ok: false, reason: 'model_failed', message };
   }
 
   await say(db, orgId, thread, reply.trim(), speaking, deps.consultation);
+  publishLiveChat(orgId, thread.id, { type: 'reply_finished', ...liveIdentity });
   return { ok: true, reply: reply.trim(), model, costed: true };
 }

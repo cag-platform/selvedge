@@ -25,6 +25,8 @@ export type LlmRequest = {
   maxTokens: number;
   /** JSON Schema the response must conform to (structured outputs). */
   schema: Record<string, unknown>;
+  /** Raw structured-output text as it arrives. Used only for live chat UX. */
+  onTextDelta?: (delta: string) => void;
 };
 
 /**

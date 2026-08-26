@@ -3,7 +3,7 @@ import request from 'supertest';
 import { ulid } from 'ulid';
 import { eq, and } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, agentRuns, digests, orgs, threads } from '../../src/server/db/schema/index.js';
+import { agentMessages, agentRuns, digests, generatedVisuals, orgs, threads } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThreadsRouter, type ThreadsDeps } from '../../src/server/web/routes/threads.js';
@@ -204,6 +204,21 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect((await request(app()).patch(`/api/threads/${thread.id}/technical-detail`).send({ technical_detail: 'plain' })).status).toBe(400);
   });
 
+  it('offers model versions and persists only versions belonging to the current agent', async () => {
+    const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Models', agent: 'gpt' });
+    const roster = await request(app()).get(`/api/threads/${thread.id}/agents`).expect(200);
+    const gpt = roster.body.agents.find((offer: { id: string }) => offer.id === 'gpt');
+    expect(gpt.models.map((model: { id: string }) => model.id)).toEqual([
+      'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol',
+    ]);
+
+    await request(app()).patch(`/api/threads/${thread.id}`).send({ model: 'gpt-5.6-luna' }).expect(200);
+    expect((await getThread(db, orgId, thread.id))?.model).toBe('gpt-5.6-luna');
+
+    await request(app()).patch(`/api/threads/${thread.id}`).send({ model: 'claude-sonnet-5' }).expect(400);
+    expect((await getThread(db, orgId, thread.id))?.model).toBe('gpt-5.6-luna');
+  });
+
   it('is org-scoped: another org cannot read a thread, or even learn it exists', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
     const otherOrg = appWithOrg('org_2', createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn }));
@@ -212,6 +227,29 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect((await request(otherOrg).patch(`/api/threads/${thread.id}/technical-detail`).send({ technical_detail: 'simple' })).status).toBe(404);
     expect((await request(otherOrg).post(`/api/threads/${thread.id}/message`).send({ text: 'hi' })).status).toBe(404);
     expect((await getThread(db, orgId, thread.id))!.title).toBe('Workshop');
+  });
+
+  it('serves generated visuals through tenant-scoped signed redirects', async () => {
+    const thread = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Visuals', agent: 'gpt' });
+    await db.insert(generatedVisuals).values({
+      id: 'visual_1', orgId, threadId: thread.id, messageId: 'message_1', directingAgent: 'gpt',
+      renderingProvider: 'openai', renderingModel: 'gpt-image-1', status: 'ready', request: 'show me a card',
+      storageKey: 'generated/org_1/visual_1.png', mime: 'image/png', width: 1024, height: 1024, bytes: 3,
+    });
+    const visualStore = {
+      put: async () => undefined,
+      signedGet: async (key: string) => `https://assets.test/${key}?signed=yes`,
+      delete: async () => undefined,
+    };
+
+    const payload = await request(app({ visualStore })).get(`/api/threads/${thread.id}`).expect(200);
+    expect(payload.body.visuals).toEqual([expect.objectContaining({
+      id: 'visual_1', message_id: 'message_1', directing_agent: 'gpt', status: 'ready',
+      content_url: '/api/visuals/visual_1/content',
+    })]);
+    const content = await request(app({ visualStore })).get('/api/visuals/visual_1/content').expect(302);
+    expect(content.headers.location).toBe('https://assets.test/generated/org_1/visual_1.png?signed=yes');
+    await request(appWithOrg('org_2', createThreadsRouter(db, { visualStore }))).get('/api/visuals/visual_1/content').expect(404);
   });
 
   it('starts a conversation on whoever was asked for, and only balks at an agent nobody declared', async () => {
