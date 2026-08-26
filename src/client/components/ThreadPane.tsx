@@ -134,7 +134,14 @@ function speakerOf(message: ThreadMessage): string {
  * bar that guesses — content moves, chrome does not.
  */
 
-function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: string; name: string } }; onDone: () => void }) {
+function ShipControls({ data, onDone, prompted = false, branch, onReview, onCancel }: {
+  data: ThreadData & { project: { id: string; name: string } };
+  onDone: () => void;
+  prompted?: boolean;
+  branch?: string;
+  onReview?: () => void;
+  onCancel?: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [needsBackup, setNeedsBackup] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
@@ -175,7 +182,10 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
   return (
     <div className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
       <div className="flex flex-wrap items-center justify-between gap-work">
-        <p className="text-body text-ink">There’s finished work here that isn’t live yet.</p>
+        <div>
+          <p className="text-body font-medium text-ink">{prompted ? 'Ready to ship these changes?' : 'There’s finished work here that isn’t live yet.'}</p>
+          {prompted && <p className="mt-1 text-meta text-ink-dim">This will commit the current workshop changes and push them to {branch ?? 'the project branch'}. If hosting follows that branch, a deployment will begin.</p>}
+        </div>
         <div className="flex items-center gap-work">
           {lastShip && (
             <button disabled={busy} onClick={() => void undo()} className="text-meta text-ink-quiet hover:text-thread disabled:opacity-50">
@@ -189,6 +199,8 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
           >
             {busy ? 'Shipping…' : 'Ship it'}
           </button>
+          {prompted && onReview && <button type="button" disabled={busy} onClick={onReview} className="text-meta text-ink-quiet underline hover:text-ink-dim disabled:opacity-50">Review changes</button>}
+          {prompted && onCancel && <button type="button" disabled={busy} onClick={onCancel} className="text-meta text-ink-quiet hover:text-ink-dim disabled:opacity-50">Not yet</button>}
         </div>
       </div>
       {needsBackup && (
@@ -588,6 +600,7 @@ export function ThreadPane({
   // The third refusal with a way through, and the only one that is a MOVE
   // rather than a permission: this idea has nowhere to build yet.
   const [needsProject, setNeedsProject] = useState<{ refusal: NeedsProject; message: string } | null>(null);
+  const [shipRequested, setShipRequested] = useState<{ branch: string } | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
   // Narrows the join-or-create list — on a real account it is twenty-eight
   // projects long, and scrolling a list is slower than typing three letters.
@@ -823,8 +836,13 @@ export function ThreadPane({
       const stale = body409 ? staleRefusalOf(body409) : null;
       const hit = body409 ? ceilingRefusalOf(body409) : null;
       const nowhere = body409 ? needsProjectOf(body409) : null;
+      const shipConfirmation = body409?.ship_confirmation as Record<string, unknown> | undefined;
+      const wantsShip = body409?.code === 'confirm_ship' && typeof shipConfirmation?.branch === 'string';
       const message = err instanceof Error ? err.message : '';
-      if (stale) setStaleRefusal({ refusal: stale, message });
+      if (wantsShip) {
+        setText('');
+        setShipRequested({ branch: shipConfirmation!.branch as string });
+      } else if (stale) setStaleRefusal({ refusal: stale, message });
       else if (hit) setCeiling({ refusal: hit, message });
       else if (nowhere) setNeedsProject({ refusal: nowhere, message });
       else setNote(message || "that didn't go through");
@@ -1046,7 +1064,14 @@ export function ThreadPane({
       )}
 
       {workshop && data.project && data.staged_changes_ready && (
-        <ShipControls data={{ ...data, project: data.project }} onDone={onReload} />
+        <ShipControls
+          data={{ ...data, project: data.project }}
+          prompted={Boolean(shipRequested)}
+          branch={shipRequested?.branch}
+          onReview={shipRequested ? onShowPreview : undefined}
+          onCancel={shipRequested ? () => setShipRequested(null) : undefined}
+          onDone={() => { setShipRequested(null); onReload(); }}
+        />
       )}
 
       <div className="workbench-composer border-t border-hairline px-work-loose py-work">

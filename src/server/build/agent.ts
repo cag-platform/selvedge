@@ -454,7 +454,8 @@ export async function runAgentTurn(
   // The handover, when there is one, goes at the head: what the project is,
   // what has happened, where the work stands — then the ask itself.
   const attached = renderDocuments(options.documents ?? []);
-  const cliPrompt = [options.contextCapsule ? renderTaskContextCapsule(options.contextCapsule) : null, options.handoff, attached, withNotes].filter(Boolean).join('\n\n---\n\n');
+  const repositoryBoundary = 'Repository boundary: do not commit, push, merge, deploy, publish, or force-push. Prepare and verify changes only. Selvedge handles shipping after explicit owner confirmation.';
+  const cliPrompt = [repositoryBoundary, options.contextCapsule ? renderTaskContextCapsule(options.contextCapsule) : null, options.handoff, attached, withNotes].filter(Boolean).join('\n\n---\n\n');
 
   // The live activity row: inserted once, updated in place as the log grows.
   // `inserted` and the shown count are tracked separately, and a retried

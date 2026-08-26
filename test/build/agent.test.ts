@@ -283,6 +283,7 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     const startCmd = commands.find((c) => c.includes('nohup'))!;
     expect(startCmd).toContain('.selvedge/uploads');
     expect(startCmd).toContain('sample.csv');
+    expect(startCmd).toContain('do not commit, push, merge, deploy, publish, or force-push');
 
     // The image is persisted for the thread; the CSV is not (transient input only).
     const owner = (await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'owner'))))[0]!;

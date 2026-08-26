@@ -61,7 +61,7 @@ import { imageApiKeyFor } from '../../visuals/credentials.js';
 import { OpenAIVisualRenderer, runVisualJob } from '../../visuals/render.js';
 import { wantsVisual } from '../../../shared/visualIntent.js';
 import { cancelVisualJobs } from '../../visuals/live.js';
-import { executionModeFor, type ExecutionMode } from '../../../shared/executionIntent.js';
+import { executionModeFor, isShipRequest, type ExecutionMode } from '../../../shared/executionIntent.js';
 import { consultationStatuses } from '../../consultations/status.js';
 import { compileTaskContext, type CompileContextInput } from '../../context/compiler.js';
 import { deleteSandbox, inspectSandboxWorktree, isSandboxCapacityError, type SandboxExecutionSnapshot } from '../../build/sandbox.js';
@@ -1169,6 +1169,22 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
+        return;
+      }
+
+      // Shipping is an owner decision, never a coding-agent command. Intercept
+      // it before mentions, retrieval, uploads, or a sandbox turn can run.
+      if (thread.projectId && isShipRequest(text)) {
+        const build = await getBuild(db, orgId, thread.projectId);
+        if (!build?.stagedChangesReady || !build.sandboxId) {
+          res.status(409).json({ error: "There’s nothing waiting to ship yet — ask a builder for a change first.", code: 'nothing_to_ship' });
+          return;
+        }
+        res.status(409).json({
+          error: `Ready to ship the current workshop changes to ${build.branch}?`,
+          code: 'confirm_ship',
+          ship_confirmation: { project_id: thread.projectId, branch: build.branch },
+        });
         return;
       }
 

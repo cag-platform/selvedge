@@ -340,6 +340,28 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(seen.handoff).toBeUndefined();
   });
 
+  it('turns push language into owner confirmation before a builder can run', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1', stagedChangesReady: true, branch: 'main' });
+    let started = false;
+    const result = await request(app({ runTurn: (async () => {
+      started = true;
+      throw new Error('must not run');
+    }) as ThreadsDeps['runTurn'] }))
+      .post(`/api/threads/${thread.id}/message`)
+      .send({ text: 'commit and push this to main' });
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({ code: 'confirm_ship', ship_confirmation: { project_id: 'loom', branch: 'main' } });
+    expect(started).toBe(false);
+  });
+
+  it('does not offer a ship confirmation when no changes are waiting', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    const result = await request(app()).post(`/api/threads/${thread.id}/message`).send({ text: 'ship it' });
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({ code: 'nothing_to_ship' });
+  });
+
   it('a general message runs a chat turn instead, with no sandbox anywhere near it', async () => {
     const chat = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Pricing' });
     let seen = '';
