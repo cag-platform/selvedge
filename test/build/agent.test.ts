@@ -95,6 +95,9 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(out.costCents).toBe(5);
     expect(out.reply).toBe('I made the header dark.');
     expect(out.stagedChangesReady).toBe(true);
+    const ownedBuild = await getBuild(db, orgId, 'loom');
+    expect(ownedBuild).toMatchObject({ dirtyRunId: out.runId, dirtyThreadId: expect.any(String), dirtyAgent: 'claude-code' });
+    expect(ownedBuild?.dirtyObservedAt).toBeInstanceOf(Date);
 
     // The live feed existed BEFORE the turn finished, and reads like work.
     expect(activitySnapshots.some((s) => s.includes('Reading src/App.tsx'))).toBe(true);

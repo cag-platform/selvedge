@@ -616,6 +616,11 @@ export async function runAgentTurn(
   await setBuild(db, orgId, projectId, {
     ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
     stagedChangesReady,
+    ...(succeeded && !planning
+      ? stagedChangesReady
+        ? { dirtyRunId: runId, dirtyThreadId: threadId, dirtyAgent: agent, dirtyObservedAt: new Date() }
+        : { dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null }
+      : {}),
   });
 
   return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents, reply, stagedChangesReady };

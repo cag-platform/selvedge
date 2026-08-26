@@ -23,9 +23,16 @@ import { refuse } from '../middleware/limit.js';
 import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
 import { goLive } from '../../build/golive.js';
+import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
+import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
+}
+
+function surfaceOf(req: Request): ProductSurface {
+  const value = req.header('x-selvedge-surface');
+  return value === 'desktop_web' || value === 'responsive_web' || value === 'ios_native' ? value : 'unknown';
 }
 
 /**
@@ -64,6 +71,7 @@ export type WorkshopDeps = {
   env?: () => EngineEnv | null;
   /** How the repo's default branch is looked up; injected for tests. */
   lookup?: LookupRepoInfo;
+  checkoutGuardEnabled?: boolean;
 };
 
 export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
@@ -71,6 +79,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   const runTurn = deps.runTurn ?? runAgentTurn;
   const preview = deps.preview ?? ensurePreview;
   const env = deps.env ?? engineEnv;
+  const checkoutGuardEnabled = deps.checkoutGuardEnabled ?? false;
 
   /** The pack's GitHub source + engine creds, or a plain reason why not. */
   const lookup = deps.lookup ?? lookupRepoInfo;
@@ -203,7 +212,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
       const projectId = req.params.projectId ?? '';
-      const body = req.body as { text?: unknown; images?: unknown; files?: unknown; mode?: unknown };
+      const body = req.body as { text?: unknown; images?: unknown; files?: unknown; mode?: unknown; checkout_resolution?: unknown };
       const text = typeof body?.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want changed' });
@@ -215,6 +224,20 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       if (mode === null) {
         res.status(400).json({ error: "mode must be 'build' or 'plan'" });
         return;
+      }
+      if (checkoutGuardEnabled && mode === 'build') {
+        const guard = await inspectCheckout(db, orgId, projectId, { goal: text });
+        if (!canResolveCheckout(guard, body?.checkout_resolution)) {
+          await recordProductEvent(db, orgId, 'checkout_conflict', { surface: surfaceOf(req), projectId, properties: { state: guard.state, legacy_workshop_route: true } });
+          res.status(409).json({
+            error: guard.state === 'active_mutation'
+              ? "I'm already working on this project — let me finish that first."
+              : 'This checkout already contains work that needs a deliberate choice before another change starts.',
+            code: 'checkout_conflict',
+            checkout_guard: guard,
+          });
+          return;
+        }
       }
       const images = validateImages(body?.images);
       if ('error' in images) {
@@ -232,7 +255,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(resolved.status).json({ error: resolved.error });
         return;
       }
-      if (await activeRun(orgId, projectId)) {
+      if (!checkoutGuardEnabled && await activeRun(orgId, projectId)) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
         return;
       }

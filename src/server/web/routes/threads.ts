@@ -31,7 +31,7 @@ import {
 } from '../../threads/store.js';
 import { getSubject, listSubjects } from '../../threads/subjects.js';
 import { setPlacePutAway } from '../../threads/putAway.js';
-import { markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
+import { getHandoffReceipt, listThreadHandoffReceipts, markHandoffSpent, pendingHandoff, switchThreadAgent } from '../../threads/switch.js';
 import { agentRoster } from '../../threads/roster.js';
 import { raiseCeiling, threadCeiling } from '../../threads/ceiling.js';
 import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
@@ -40,7 +40,8 @@ import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { referenceLine, type SearchScope } from '../../../shared/references.js';
 import { boundDocuments } from '../../../shared/documents.js';
-import { findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
+import { conversationReferenceById, findRelatedConversations, listReferenceCandidates, renderReferences, resolveReferences } from '../../references/resolve.js';
+import { boundContextThreadIds, boundContinuationSources } from '../../continuations/store.js';
 import { consoleLinks } from '../../connectors/consoles.js';
 import { isThreadKind, DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../../shared/types/thread.js';
 import { canStartBuild } from '../../billing/entitlements.js';
@@ -48,9 +49,17 @@ import { createProject } from '../../packs/create.js';
 import type { StakesTier } from '../../../shared/types/pack.js';
 import { refuse } from '../middleware/limit.js';
 import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
+import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
+import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
+import { cardEvidenceSheet, runEvidenceSheet, summarizeRunEvidence } from '../../build/evidenceSheet.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
+}
+
+function surfaceOf(req: Request): ProductSurface {
+  const value = req.header('x-selvedge-surface');
+  return value === 'desktop_web' || value === 'responsive_web' || value === 'ios_native' ? value : 'unknown';
 }
 
 /**
@@ -91,6 +100,7 @@ export type ThreadsDeps = {
    * is not offered at all rather than offered and then refused.
    */
   createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
+  checkoutGuardEnabled?: boolean;
 };
 
 export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
@@ -104,6 +114,69 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   // router that behaves differently in a test than in production, and this one
   // decides whether to offer somebody a real repo.
   const makeRepo = deps.createRepo;
+  const checkoutGuardEnabled = deps.checkoutGuardEnabled ?? false;
+
+  router.post(
+    '/api/projects/:projectId/checkout/preflight',
+    asyncHandler(async (req, res) => {
+      if (!checkoutGuardEnabled) {
+        res.status(404).json({ error: "There's nothing at that address." });
+        return;
+      }
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) {
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      const body = (req.body ?? {}) as { thread_id?: unknown; goal?: unknown; expected_files?: unknown };
+      const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
+      if (!goal) {
+        res.status(400).json({ error: 'say what you want to change' });
+        return;
+      }
+      const threadId = typeof body.thread_id === 'string' ? body.thread_id : null;
+      if (threadId) {
+        const thread = await getThread(db, orgId, threadId);
+        if (!thread || thread.projectId !== projectId) {
+          res.status(404).json({ error: 'no such project conversation' });
+          return;
+        }
+      }
+      const expectedFiles = Array.isArray(body.expected_files) ? body.expected_files.filter((p): p is string => typeof p === 'string') : [];
+      const guard = await inspectCheckout(db, orgId, projectId, { threadId, goal, expectedFiles });
+      await recordProductEvent(db, orgId, 'checkout_preflight', { surface: surfaceOf(req), projectId, threadId, properties: { state: guard.state, safe_to_start: guard.safe_to_start } });
+      res.json(guard);
+    }),
+  );
+
+  router.get(
+    '/api/projects/:projectId/runs/:runId/evidence',
+    asyncHandler(async (req, res) => {
+      if (!checkoutGuardEnabled) { res.status(404).json({ error: "There's nothing at that address." }); return; }
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) { res.status(404).json({ error: 'no such project' }); return; }
+      const sheet = await runEvidenceSheet(db, orgId, projectId, req.params.runId ?? '');
+      if (!sheet) { res.status(404).json({ error: 'no such run evidence' }); return; }
+      await recordProductEvent(db, orgId, 'evidence_sheet_viewed', { surface: surfaceOf(req), projectId, threadId: sheet.source.thread_id, properties: { source_kind: 'run', outcome: sheet.outcome } });
+      res.json(sheet);
+    }),
+  );
+
+  router.get(
+    '/api/projects/:projectId/cards/:cardId/evidence',
+    asyncHandler(async (req, res) => {
+      if (!checkoutGuardEnabled) { res.status(404).json({ error: "There's nothing at that address." }); return; }
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) { res.status(404).json({ error: 'no such project' }); return; }
+      const sheet = await cardEvidenceSheet(db, orgId, projectId, req.params.cardId ?? '');
+      if (!sheet) { res.status(404).json({ error: 'no such card evidence' }); return; }
+      await recordProductEvent(db, orgId, 'evidence_sheet_viewed', { surface: surfaceOf(req), projectId, properties: { source_kind: 'card', outcome: sheet.outcome } });
+      res.json(sheet);
+    }),
+  );
 
   async function activeRun(orgId: string, projectId: string) {
     const cutoff = new Date(Date.now() - STUCK_RUN_MS);
@@ -347,6 +420,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       }
 
       const pending = await pendingHandoff(db, orgId, thread.id).catch(() => null);
+      const recordByRun = new Map(messages.filter((m) => m.role === 'activity' && m.runId).map((m) => [m.runId!, m.meta as import('../../../shared/types/toolEvent.js').RunRecord | null]));
 
       res.json({
         thread: {
@@ -427,6 +501,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           agent: r.agent,
           model: r.model,
           changed_paths: (r.changedPaths as string[] | null) ?? null,
+          ...(checkoutGuardEnabled && r.prompt.startsWith('ship:') === false && r.prompt.startsWith('undo:') === false
+            ? { evidence: { ...summarizeRunEvidence(r, recordByRun.get(r.id) ?? null), path: `/api/projects/${encodeURIComponent(r.projectId)}/runs/${encodeURIComponent(r.id)}/evidence` } }
+            : {}),
         })),
       });
     }),
@@ -581,6 +658,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           switched: out.changed,
           line: out.line,
           handoff_tokens: out.handoff?.estimated_tokens ?? 0,
+          receipt: out.receipt,
         });
         return;
       }
@@ -591,6 +669,24 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
       res.json({ thread: { id: thread.id, kind: thread.kind, title: thread.title, agent: thread.agent, archived: thread.archivedAt !== null } });
+    }),
+  );
+
+  router.get(
+    '/api/threads/:threadId/handoffs',
+    asyncHandler(async (req, res) => {
+      const receipts = await listThreadHandoffReceipts(db, orgIdOf(req), req.params.threadId ?? '');
+      if (!receipts) { res.status(404).json({ error: 'no such thread' }); return; }
+      res.json({ thread_id: req.params.threadId, receipts });
+    }),
+  );
+
+  router.get(
+    '/api/threads/:threadId/handoffs/:receiptId',
+    asyncHandler(async (req, res) => {
+      const receipt = await getHandoffReceipt(db, orgIdOf(req), req.params.threadId ?? '', req.params.receiptId ?? '');
+      if (!receipt) { res.status(404).json({ error: 'no such handoff receipt' }); return; }
+      res.json({ receipt });
     }),
   );
 
@@ -836,7 +932,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -976,7 +1072,33 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             }
             return findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
           })();
-      const references = { resolved: [...named.resolved, ...found], missed: named.missed };
+      // A continuation's reviewed conversations travel on every turn. They are
+      // exact links, not fuzzy search results, and imported provenance remains
+      // visible in both the prompt and the thread's reference line.
+      const boundIds = await boundContextThreadIds(db, orgId, thread.id).catch(() => []);
+      const bound = (await Promise.all(boundIds.map((id) => conversationReferenceById(db, orgId, id)))).filter((item) => item !== null);
+      const continuationSources = await boundContinuationSources(db, orgId, thread.id).catch(() => []);
+      let supportingChars = 0;
+      const supporting = continuationSources.filter((source) => source.kind !== 'repository' && source.kind !== 'imported_thread').flatMap((source) => {
+        const remaining = 24_000 - supportingChars;
+        if (remaining <= 0) return [];
+        const content = source.content?.trim() || 'No contents were supplied.';
+        const excerpt = content.slice(0, Math.min(8_000, remaining));
+        supportingChars += excerpt.length;
+        return [{
+          kind: 'continuation_source' as const,
+          id: source.id,
+          label: source.title,
+          found: false,
+          note: `${source.kind.replaceAll('_', ' ')} · observed ${source.observedAt.toISOString().slice(0, 10)}`,
+          text: [
+            `Reviewed continuation source: ${source.title} (${source.kind.replaceAll('_', ' ')}).`, excerpt,
+            ...(Array.isArray(source.limitations) ? source.limitations.filter((item): item is string => typeof item === 'string').map((item) => `Limitation: ${item}`) : []),
+          ].join('\n\n'),
+        }];
+      });
+      const resolvedById = new Map([...bound, ...supporting, ...named.resolved, ...found].map((item) => [item.id, item]));
+      const references = { resolved: [...resolvedById.values()], missed: named.missed };
       const referenced = renderReferences(references);
       const referenceNote = references.resolved.length
         ? referenceLine(
@@ -1153,12 +1275,26 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(409).json({ error: 'That conversation has no project to build in.', code: 'needs_project' });
         return;
       }
+      if (checkoutGuardEnabled && mode === 'build') {
+        const guard = await inspectCheckout(db, orgId, buildIn, { threadId: thread.id, goal: text });
+        if (!canResolveCheckout(guard, body.checkout_resolution)) {
+          await recordProductEvent(db, orgId, 'checkout_conflict', { surface: surfaceOf(req), projectId: buildIn, threadId: thread.id, properties: { state: guard.state } });
+          res.status(409).json({
+            error: guard.state === 'active_mutation'
+              ? "I'm already working on this project — let me finish that first."
+              : 'This checkout already contains work that needs a deliberate choice before another change starts.',
+            code: 'checkout_conflict',
+            checkout_guard: guard,
+          });
+          return;
+        }
+      }
       const resolved = await configFor(db, orgId, buildIn, env, undefined, lookup);
       if ('error' in resolved) {
         res.status(resolved.status).json({ error: resolved.error });
         return;
       }
-      if (await activeRun(orgId, buildIn)) {
+      if (!checkoutGuardEnabled && await activeRun(orgId, buildIn)) {
         res.status(409).json({ error: "I'm already working on this project — let me finish that first." });
         return;
       }

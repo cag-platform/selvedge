@@ -33,7 +33,7 @@ export type LedgerSummaryData = {
 
 /** The edge for a finished change — a clean result is healthy, a miss is dashed unknown, never healthy. */
 export function entryEdge(entry: Pick<LedgerEntryData, 'outcome' | 'verdict'>): EdgeStatus {
-  if (entry.outcome === 'done' && (entry.verdict === 'verified' || entry.verdict === 'probably')) return 'healthy';
+  if (entry.outcome === 'done' && entry.verdict === 'verified') return 'healthy';
   if (entry.outcome === 'declined') return 'working'; // a deliberate close, not a failure
   return 'unknown'; // stopped, failed, or done-without-a-clean-verdict
 }

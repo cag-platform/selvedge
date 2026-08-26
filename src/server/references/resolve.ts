@@ -49,7 +49,7 @@ const MAX_MESSAGE_CHARS = 700;
 /** Threads listed under a referenced subject. */
 const MAX_SUBJECT_THREADS = 5;
 
-export type ReferenceKind = 'project' | 'subject' | 'conversation';
+export type ReferenceKind = 'project' | 'subject' | 'conversation' | 'continuation_source';
 
 export type ResolvedReference = {
   kind: ReferenceKind;
@@ -144,6 +144,14 @@ async function renderConversation(
       'Only the most recent part of it is here. Where it is silent, that means it was not carried, not that it did not happen.',
     ].join('\n\n'),
   };
+}
+
+/** Resolve one specifically selected conversation by id. Unlike fuzzy search,
+ * this never guesses and keeps imported provenance in the rendered block. */
+export async function conversationReferenceById(db: Db, orgId: string, threadId: string): Promise<ResolvedReference | null> {
+  const [thread] = await db.select({ id: threads.id, title: threads.title, importedFrom: threads.importedFrom })
+    .from(threads).where(and(eq(threads.orgId, orgId), eq(threads.id, threadId), isNull(threads.archivedAt))).limit(1);
+  return thread ? renderConversation(db, orgId, thread) : null;
 }
 
 /**

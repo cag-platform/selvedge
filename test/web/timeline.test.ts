@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, cards, orgs } from '../../src/server/db/schema/index.js';
+import { agentMessages, cards, continuationClaims, continuationSessions, decisionBriefs, handoffReceipts, orgs, projectSeenCursors } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThread } from '../../src/server/threads/store.js';
 import { createTimelineRouter } from '../../src/server/web/routes/timeline.js';
 import { appWithOrg } from './helpers.js';
 import { onPlan } from '../helpers/plan.js';
+import { eq } from 'drizzle-orm';
 
 describe('web/routes/timeline — the record, made visible', () => {
   let db: TestDb;
@@ -111,6 +112,59 @@ describe('web/routes/timeline — the record, made visible', () => {
 
     const empty = await request(app()).get('/api/projects/loom/search?q=');
     expect(empty.body.hits).toEqual([]);
+  });
+
+  it('does not mark Since you left seen until its returned cursor is explicitly acknowledged', async () => {
+    const first = await request(app()).get('/api/projects/loom/since-you-left');
+    const second = await request(app()).get('/api/projects/loom/since-you-left');
+    expect(first.status).toBe(200);
+    expect(first.body.first_visit).toBe(true);
+    expect(second.body.first_visit).toBe(true);
+    expect(await db.select().from(projectSeenCursors)).toHaveLength(0);
+
+    const acknowledged = await request(app()).post('/api/projects/loom/since-you-left/acknowledge').send({ through: first.body.through });
+    expect(acknowledged.status).toBe(200);
+    expect(await db.select().from(projectSeenCursors)).toHaveLength(1);
+
+    const afterAt = new Date(new Date(first.body.through).getTime() + 1_000);
+    await db.insert(cards).values({ id: 'after_seen', orgId, projectId: 'loom', trigger: 'request', title: 'new context change',
+      proposal: 'Review the newly changed context.', risk: 'ordinary', gate: 'normal', state: 'proposed', estimate: {}, stop: {}, acts: [], createdAt: afterAt, updatedAt: afterAt });
+    const after = await request(app()).get('/api/projects/loom/since-you-left');
+    expect(after.body.first_visit).toBe(false);
+    expect(after.body.entries.some((entry: { sentence: string }) => entry.sentence.includes('context change'))).toBe(true);
+  });
+
+  it('searches canonical decisions, confirmed claims, receipts, thread titles, and the project with typed destinations', async () => {
+    const threadId = (await db.select().from(agentMessages).where(eq(agentMessages.id, 'm1')))[0]!.threadId!;
+    await db.insert(decisionBriefs).values({ id: 'decision_1', orgId, projectId: 'loom', thinkingThreadId: threadId,
+      title: 'Returns policy', decision: 'Offer thirty-day returns.', evidenceMessages: 1 });
+    await db.insert(continuationSessions).values({ id: 'continuation_1', orgId, projectId: 'loom' });
+    await db.insert(continuationClaims).values({ id: 'claim_1', orgId, continuationId: 'continuation_1', projectId: 'loom',
+      claimKey: 'returns.window', claimGroup: 'Policy', text: 'Returns remain open for thirty days.', value: {}, status: 'understood',
+      confidence: 'confirmed', consequence: 'high', evidence: [] });
+    await db.insert(handoffReceipts).values({ id: 'receipt_1', orgId, threadId, projectId: 'loom', fromAgent: 'claude', toAgent: 'codex',
+      included: [], omitted: [], repository: {}, estimatedTokens: 10, transcriptTokens: 10 });
+
+    const cases = [
+      ['Loom', 'project'], ['Checkout', 'thread'], ['thirty-day', 'decision'], ['Returns remain', 'project_brief_claim'], ['codex', 'handoff_receipt'],
+    ] as const;
+    for (const [query, kind] of cases) {
+      const result = await request(app()).get(`/api/projects/loom/search?q=${encodeURIComponent(query)}`);
+      const hit = result.body.hits.find((item: { kind: string }) => item.kind === kind);
+      expect(hit, `${kind} hit`).toBeTruthy();
+      expect(hit.destination.kind).toBe(kind === 'message' ? 'thread' : kind);
+      expect(hit.destination.web_path).toMatch(/^\//);
+      expect(hit.destination.ios_path).toMatch(/^selvedge:\/\//);
+    }
+  });
+
+  it('lists project handoff history with stable destinations and tenant scoping', async () => {
+    const threadId = (await db.select().from(agentMessages).where(eq(agentMessages.id, 'm1')))[0]!.threadId!;
+    await db.insert(handoffReceipts).values({ id: 'receipt_history', orgId, threadId, projectId: 'loom', fromAgent: 'claude', toAgent: 'codex',
+      included: [], omitted: [], repository: {}, estimatedTokens: 10, transcriptTokens: 10 });
+    const history = await request(app()).get('/api/projects/loom/handoffs');
+    expect(history.body.receipts[0].destination).toMatchObject({ kind: 'handoff_receipt', receipt_id: 'receipt_history', thread_id: threadId });
+    expect((await request(appWithOrg('org_2', createTimelineRouter(db))).get('/api/projects/loom/handoffs')).status).toBe(404);
   });
 
   it('is org-scoped, and a project that is not yours is not there', async () => {

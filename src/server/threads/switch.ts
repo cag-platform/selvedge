@@ -1,13 +1,16 @@
 import { ulid } from 'ulid';
+import { createHash } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { agentMessages, agentRuns } from '../db/schema/index.js';
+import { agentMessages, agentRuns, handoffReceipts } from '../db/schema/index.js';
 import { getPack } from '../packs/store.js';
 import { getBuild } from '../build/store.js';
 import { costUsd, isPricedModel } from '../llm/pricing.js';
 import { composeHandoff, type HandoffPayload, type HandoffRun } from '../handoff/compose.js';
 import { agentById, isAgentId, type AgentId } from '../../shared/agents.js';
 import { getThread, setThreadAgent, type Thread } from './store.js';
+import type { HandoffReceipt } from '../../shared/types/continuation.js';
+import { recordProductEvent } from '../telemetry/productEvents.js';
 
 /**
  * SWITCHING AGENTS MID-THREAD — the interaction the Inbox exists for.
@@ -41,7 +44,7 @@ import { getThread, setThreadAgent, type Thread } from './store.js';
  */
 
 export type SwitchResult =
-  | { ok: true; thread: Thread; changed: boolean; line: string | null; handoff: HandoffPayload | null }
+  | { ok: true; thread: Thread; changed: boolean; line: string | null; handoff: HandoffPayload | null; receipt: HandoffReceipt | null }
   | { ok: false; reason: 'no_such_thread' | 'unknown_agent'; message: string };
 
 /** What a parked handoff looks like on the thread — the evidence of what was handed over. */
@@ -54,6 +57,7 @@ export type SwitchMeta = {
     /** The payload itself, waiting for the next turn to spend it. Cleared once spent. */
     payload: string | null;
     pending: boolean;
+    receipt_id: string;
   };
 };
 
@@ -134,7 +138,7 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   const before = await getThread(db, orgId, threadId);
   if (!before) return { ok: false, reason: 'no_such_thread', message: 'no such thread' };
   const descriptor = agentById(target)!;
-  if (before.agent === target) return { ok: true, thread: before, changed: false, line: null, handoff: null };
+  if (before.agent === target) return { ok: true, thread: before, changed: false, line: null, handoff: null, receipt: null };
 
   const from = before.agent as AgentId;
   const switched = await setThreadAgent(db, orgId, threadId, target, descriptor.pricingModel);
@@ -142,6 +146,7 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
   const thread = switched.thread;
 
   const quote = await quoteHandoff(db, orgId, thread, from, target);
+  const receipt = await recordHandoffReceipt(db, orgId, thread, from, target, quote.handoff);
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,
@@ -159,11 +164,86 @@ export async function switchThreadAgent(db: Db, orgId: string, threadId: string,
         // Only a real handover waits to be spent; a free switch has nothing
         // parked for the next turn to pick up.
         pending: quote.handoff !== null,
+        receipt_id: receipt.id,
       },
     } satisfies SwitchMeta,
   });
+  await recordProductEvent(db, orgId, 'agent_switched', { projectId: thread.projectId, threadId: thread.id,
+    properties: { from, to: target, handoff_tokens: quote.handoff?.estimated_tokens ?? 0 } });
+  return { ok: true, thread, changed: true, line: quote.line, handoff: quote.handoff, receipt };
+}
 
-  return { ok: true, thread, changed: true, line: quote.line, handoff: quote.handoff };
+async function recordHandoffReceipt(
+  db: Db,
+  orgId: string,
+  thread: Thread,
+  from: AgentId,
+  to: AgentId,
+  handoff: HandoffPayload | null,
+): Promise<HandoffReceipt> {
+  const id = ulid();
+  const createdAt = new Date();
+  const included = handoff
+    ? [
+        { kind: 'project', count: handoff.sections.project.length },
+        { kind: 'story', count: handoff.sections.story.length },
+        { kind: 'current_work', count: handoff.sections.standing.length },
+        { kind: 'decisions', count: 0 },
+        { kind: 'open_questions', count: 0 },
+        { kind: 'latest_request', count: handoff.sections.ask ? 1 : 0 },
+      ]
+    : [{ kind: 'conversation', count: 1, detail: 'The receiving agent reads this thread directly.' }];
+  const omitted = handoff?.sections.omitted
+    ? [{ kind: 'older_conversation_lines', count: handoff.sections.omitted, reason: 'Summarized to keep the handoff bounded.' }]
+    : [];
+  const repository = { project_id: thread.projectId, staged_changes_ready: handoff ? handoff.sections.standing.some((line) => line.includes('NOT been shipped')) : null };
+  const estimatedTokens = handoff?.estimated_tokens ?? 0;
+  const transcriptTokens = handoff?.transcript_tokens ?? 0;
+  await db.insert(handoffReceipts).values({
+    id, orgId, threadId: thread.id, projectId: thread.projectId, fromAgent: from, toAgent: to,
+    included, omitted, repository, estimatedTokens, transcriptTokens,
+    payloadHash: handoff ? createHash('sha256').update(handoff.text).digest('hex') : null, createdAt,
+  });
+  return { id, thread_id: thread.id, from_agent: from, to_agent: to, created_at: createdAt.toISOString(), included, omitted,
+    repository, estimated_tokens: estimatedTokens, transcript_tokens: transcriptTokens, destination: receiptDestination(thread.id, id, thread.projectId) };
+}
+
+function receiptDestination(threadId: string, receiptId: string, projectId: string | null) {
+  return { kind: 'handoff_receipt' as const, web_path: `/inbox/${encodeURIComponent(threadId)}?handoff=${encodeURIComponent(receiptId)}`,
+    ios_path: `selvedge://threads/${encodeURIComponent(threadId)}/handoffs/${encodeURIComponent(receiptId)}`,
+    ...(projectId ? { project_id: projectId } : {}), thread_id: threadId, receipt_id: receiptId };
+}
+
+export async function getHandoffReceipt(db: Db, orgId: string, threadId: string, receiptId: string): Promise<HandoffReceipt | null> {
+  const [row] = await db.select().from(handoffReceipts).where(and(
+    eq(handoffReceipts.orgId, orgId), eq(handoffReceipts.threadId, threadId), eq(handoffReceipts.id, receiptId),
+  )).limit(1);
+  if (!row) return null;
+  return { id: row.id, thread_id: row.threadId, from_agent: row.fromAgent, to_agent: row.toAgent,
+    created_at: row.createdAt.toISOString(), included: row.included as HandoffReceipt['included'], omitted: row.omitted as HandoffReceipt['omitted'],
+    repository: row.repository as HandoffReceipt['repository'], estimated_tokens: row.estimatedTokens, transcript_tokens: row.transcriptTokens,
+    destination: receiptDestination(row.threadId, row.id, row.projectId) };
+}
+
+function shapeReceipt(row: typeof handoffReceipts.$inferSelect): HandoffReceipt {
+  return { id: row.id, thread_id: row.threadId, from_agent: row.fromAgent, to_agent: row.toAgent, created_at: row.createdAt.toISOString(),
+    included: row.included as HandoffReceipt['included'], omitted: row.omitted as HandoffReceipt['omitted'],
+    repository: row.repository as HandoffReceipt['repository'], estimated_tokens: row.estimatedTokens, transcript_tokens: row.transcriptTokens,
+    destination: receiptDestination(row.threadId, row.id, row.projectId) };
+}
+
+export async function listThreadHandoffReceipts(db: Db, orgId: string, threadId: string): Promise<HandoffReceipt[] | null> {
+  const thread = await getThread(db, orgId, threadId);
+  if (!thread) return null;
+  const rows = await db.select().from(handoffReceipts).where(and(eq(handoffReceipts.orgId, orgId), eq(handoffReceipts.threadId, threadId)))
+    .orderBy(desc(handoffReceipts.createdAt));
+  return rows.map(shapeReceipt);
+}
+
+export async function listProjectHandoffReceipts(db: Db, orgId: string, projectId: string): Promise<HandoffReceipt[]> {
+  const rows = await db.select().from(handoffReceipts).where(and(eq(handoffReceipts.orgId, orgId), eq(handoffReceipts.projectId, projectId)))
+    .orderBy(desc(handoffReceipts.createdAt));
+  return rows.map(shapeReceipt);
 }
 
 /**

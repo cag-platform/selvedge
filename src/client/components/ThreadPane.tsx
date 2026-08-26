@@ -37,6 +37,8 @@ import { needsOwner, type WorkCardData } from '../lib/card.js';
 import { groupPairedConsultations } from '../lib/consultation.js';
 import type { ThreadData, ThreadMessage } from '../lib/inbox.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
+import type { EvidenceSheet } from '../../shared/types/evidenceSheet.js';
+import { SelvedgeEdge } from './SelvedgeEdge.js';
 
 type ContextReceipt = { sections: { about: string[]; recent: string[]; open: string[] } };
 
@@ -200,7 +202,7 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
 
 function Message({ message, data }: { message: ThreadMessage; data: ThreadData }) {
   if (message.role === 'switch') {
-    return <BuilderHandoff content={message.content} meta={message.meta} detail={data.effective_technical_detail} />;
+    return <BuilderHandoff threadId={data.thread.id} content={message.content} meta={message.meta} detail={data.effective_technical_detail} />;
   }
 
   if (message.role === 'activity') {
@@ -213,6 +215,7 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
         <p className={simple ? 'text-body text-ink-dim' : 'font-mono text-tech text-ink-dim'}>
           {simple ? simpleActivitySummary(record, run ?? null) : technicalActivitySummary(record, run ?? null)}
         </p>
+        {run?.evidence && <EvidenceSheetPanel path={run.evidence.path} summary={run.evidence} autoOpen={typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('evidence') === run.id} />}
         <Reveal summary={simple ? 'Technical details' : 'Show technical record'}>
           {record?.tools?.length ? (
             record.tools.map((tool) => <div key={tool.id}>{describeToolEvent(tool)}</div>)
@@ -263,6 +266,52 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
       )}
     </div>
   );
+}
+
+function EvidenceSheetPanel({ path, summary, autoOpen }: { path: string; summary: NonNullable<ThreadData['runs'][number]['evidence']>; autoOpen: boolean }) {
+  const [open, setOpen] = useState(autoOpen);
+  const [sheet, setSheet] = useState<EvidenceSheet | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function load() {
+    if (sheet || busy) return;
+    setBusy(true); setError(null);
+    try { setSheet(await api.get<EvidenceSheet>(path)); }
+    catch (e) { setError(e instanceof Error ? e.message : "I couldn't load that evidence."); }
+    finally { setBusy(false); }
+  }
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    await load();
+  }
+  useEffect(() => { if (autoOpen) void load(); }, [autoOpen]);
+  return <div className="relative mt-work-tight rounded-inset border border-hairline bg-panel-soft px-3 py-2 pl-work">
+    <SelvedgeEdge status={summary.status} />
+    <button type="button" onClick={() => void toggle()} className="flex w-full items-start justify-between gap-3 text-left">
+      <span><span className="block text-body font-medium text-ink">{summary.summary}</span><span className="block text-meta text-ink-dim">{summary.explanation}</span></span>
+      <span className="shrink-0 text-meta text-action-bright">{open ? 'Hide evidence' : 'Evidence sheet'}</span>
+    </button>
+    {open && <div className="mt-3 border-t border-hairline pt-3 text-meta text-ink-dim">
+      {busy && <p>Reading the recorded evidence…</p>}
+      {error && <p className="text-thread">{error}</p>}
+      {sheet && <div className="space-y-3">
+        <p>{sheet.explanation}</p>
+        <div><p className="font-medium text-ink">Changed files · {sheet.changed_files.total}</p>{sheet.changed_files.paths.length ? <ul className="mt-1 font-mono text-tech">{sheet.changed_files.paths.map((path) => <li key={path}>{path}</li>)}</ul> : <p>No changed-file list was recorded.</p>}</div>
+        <div><p className="font-medium text-ink">Checks run · {sheet.checks_run.length}</p>{sheet.checks_run.length ? sheet.checks_run.map((check, index) => <p key={`${check.name}-${index}`}>{check.outcome} · {check.name}{check.detail ? ` — ${check.detail}` : ''}</p>) : <p>No completed check was recorded.</p>}</div>
+        <div><p className="font-medium text-ink">Acceptance observation</p><p>{sheet.acceptance_observation ? `${sheet.acceptance_observation.outcome} · ${sheet.acceptance_observation.name}${sheet.acceptance_observation.detail ? ` — ${sheet.acceptance_observation.detail}` : ''}` : 'No acceptance observation was recorded.'}</p></div>
+        {sheet.unavailable_checks.length > 0 && <div><p className="font-medium text-ink">Unavailable checks</p>{sheet.unavailable_checks.map((check, index) => <p key={`${check.name}-${index}`}>{check.name}{check.detail ? ` — ${check.detail}` : ''}</p>)}</div>}
+        {sheet.warnings.map((warning) => <p key={warning} className="text-thread">{warning}</p>)}
+        <Reveal summary="Raw evidence">
+          <p>Started {sheet.timestamps.started_at ? new Date(sheet.timestamps.started_at).toLocaleString() : 'at an unknown time'} · finished {sheet.timestamps.finished_at ? new Date(sheet.timestamps.finished_at).toLocaleString() : 'not recorded'}</p>
+          {sheet.raw_evidence.tools.map((tool) => <div key={tool.id}>{describeToolEvent(tool)}</div>)}
+          {sheet.raw_evidence.acts.map((act, index) => <div key={`${act.at}-${index}`}>{act.at} · {act.kind} · {act.detail}</div>)}
+          {!sheet.raw_evidence.tools.length && !sheet.raw_evidence.acts.length && <p>No raw steps were recorded.</p>}
+        </Reveal>
+        <a href={sheet.destinations.project_history.web_path} className="inline-block text-action-bright hover:underline">Open project history</a>
+      </div>}
+    </div>}
+  </div>;
 }
 
 function TechnicalDetailControl({ data, onDone }: { data: ThreadData; onDone: () => void }) {

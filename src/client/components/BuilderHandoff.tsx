@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { agentById } from '../../shared/agents.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
+import type { HandoffReceipt } from '../../shared/types/continuation.js';
+import { api } from '../lib/api.js';
 
 type SwitchRecord = {
   from: string;
   to: string;
   tokens: number | null;
   costUsd: number | null;
+  receiptId: string | null;
 };
 
 function switchRecord(meta: unknown): SwitchRecord | null {
@@ -16,6 +20,7 @@ function switchRecord(meta: unknown): SwitchRecord | null {
     to: value.to,
     tokens: typeof value.tokens === 'number' && Number.isFinite(value.tokens) ? value.tokens : null,
     costUsd: typeof value.cost_usd === 'number' && Number.isFinite(value.cost_usd) ? value.cost_usd : null,
+    receiptId: typeof value.receipt_id === 'string' ? value.receipt_id : null,
   };
 }
 
@@ -41,14 +46,18 @@ function costLine(usd: number): string {
  * technical log line.
  */
 export function BuilderHandoff({
+  threadId,
   content,
   meta,
   detail,
 }: {
+  threadId: string;
   content: string;
   meta: unknown;
   detail: TechnicalDetail;
 }) {
+  const [receiptDetail, setReceiptDetail] = useState<HandoffReceipt | null>(null);
+  const [loading, setLoading] = useState(false);
   const switched = switchRecord(meta);
   // `switch` is also the historical role for a few system/context notes. Only
   // the structured record proves that this row is a builder handoff.
@@ -78,6 +87,25 @@ export function BuilderHandoff({
       <p className="mt-1 text-center text-meta text-ink-dim">Project context carried over</p>
       {detail === 'full' && receipt && (
         <p className="mt-1 text-center font-mono text-tech text-ink-quiet">Handoff · {receipt}</p>
+      )}
+      {switched.receiptId && (
+        <div className="mt-2 text-center">
+          <button type="button" className="text-meta font-medium text-action hover:underline" onClick={() => {
+            if (receiptDetail || loading) { setReceiptDetail(null); return; }
+            setLoading(true);
+            api.get<HandoffReceipt>(`/api/threads/${encodeURIComponent(threadId)}/handoffs/${encodeURIComponent(switched.receiptId!)}`)
+              .then(setReceiptDetail).finally(() => setLoading(false));
+          }}>{loading ? 'Opening receipt…' : receiptDetail ? 'Hide handoff receipt' : 'View handoff receipt'}</button>
+          {receiptDetail && <div className="mx-auto mt-3 max-w-lg rounded-card border border-hairline bg-panel p-4 text-left">
+            <p className="section-label">Handoff receipt</p>
+            <p className="mt-2 text-body text-ink">Included</p>
+            <p className="text-meta text-ink-dim">{receiptDetail.included.filter((item) => item.count > 0).map((item) => `${item.count} ${item.kind.replaceAll('_', ' ')}`).join(' · ')}</p>
+            <p className="mt-3 text-body text-ink">Repository</p>
+            <p className="text-meta text-ink-dim">{receiptDetail.repository.project_id ? 'Project repository included' : 'No repository attached'} · {receiptDetail.repository.staged_changes_ready === true ? 'Unshipped changes noted' : 'No unshipped-change claim'}</p>
+            <p className="mt-3 text-body text-ink">Omitted</p>
+            <p className="text-meta text-ink-dim">{receiptDetail.omitted.length ? receiptDetail.omitted.map((item) => `${item.count} ${item.kind.replaceAll('_', ' ')} — ${item.reason}`).join(' · ') : 'Nothing reported omitted'}</p>
+          </div>}
+        </div>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import type { CardState, CardVerdict } from '../cards/types.js';
+import type { DeepLinkDestination } from '../../shared/types/continuation.js';
 
 /**
  * THE TIMELINE'S VOCABULARY — one plain sentence per thing that happened, and
@@ -20,7 +21,7 @@ import type { CardState, CardVerdict } from '../cards/types.js';
  */
 
 export type TimelineStatus = 'healthy' | 'working' | 'needs' | 'unknown';
-export type TimelineKind = 'ask' | 'verdict' | 'thread' | 'ship' | 'undo' | 'switch' | 'event' | 'session';
+export type TimelineKind = 'ask' | 'verdict' | 'thread' | 'evidence' | 'ship' | 'undo' | 'switch' | 'event' | 'session';
 
 export type TimelineEntry = {
   id: string;
@@ -33,6 +34,7 @@ export type TimelineEntry = {
   /** What the sentence rests on, shown when the entry is opened. Never a claim the sentence didn't make. */
   evidence: string[];
   ref: { thread_id?: string; card_id?: string; run_id?: string; commit?: string; event_id?: string };
+  destination?: DeepLinkDestination;
 };
 
 function trim(text: string, max = 140): string {
@@ -49,7 +51,7 @@ function money(cents: number | null | undefined): string | null {
 export function cardStatus(state: CardState, verdict: CardVerdict | null): TimelineStatus {
   if (state === 'proposed' || state === 'blocked') return 'needs';
   if (state === 'approved' || state === 'working' || state === 'verifying') return 'working';
-  if (state === 'done') return verdict === 'verified' || verdict === 'probably' ? 'healthy' : 'unknown';
+  if (state === 'done') return verdict === 'verified' ? 'healthy' : 'unknown';
   if (state === 'failed') return 'needs';
   return 'unknown'; // declined, stopped — closed without a clean result
 }
@@ -150,13 +152,26 @@ export type RunRow = {
   costCents: number | null;
   changedPaths: string[] | null;
   createdAt: Date;
+  evidence?: { summary: string; explanation: string; status: 'healthy' | 'unknown' | 'needs' };
 };
 
 /** A ship, an undo — the two moments a project's real world changed. */
 export function runEntry(run: RunRow): TimelineEntry | null {
   const isShip = run.prompt.startsWith('ship:');
   const isUndo = run.prompt.startsWith('undo:');
-  if (!isShip && !isUndo) return null; // a turn is conversation, not history
+  if (!isShip && !isUndo) {
+    if (run.prompt.startsWith('plan:') || run.status === 'queued' || run.status === 'running' || !run.evidence) return null;
+    const files = run.changedPaths ?? [];
+    return {
+      id: `evidence:${run.id}`,
+      at: run.createdAt.toISOString(),
+      kind: 'evidence',
+      sentence: `${trim(run.prompt)} — ${run.evidence.summary}.`,
+      status: run.evidence.status,
+      evidence: [run.evidence.explanation, files.length ? `${files.length} changed file${files.length === 1 ? '' : 's'} recorded.` : 'No changed-file list was recorded.'],
+      ref: { run_id: run.id, ...(run.threadId ? { thread_id: run.threadId } : {}) },
+    };
+  }
 
   const files = run.changedPaths ?? [];
   const shortCommit = run.commitSha ? run.commitSha.slice(0, 7) : null;

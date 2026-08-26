@@ -63,7 +63,7 @@ export type ThreadMessage = {
   documents?: Array<{ index: number; name: string; chars: number }>;
   meta?:
     | RunRecordView
-    | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null } }
+    | { switch?: { from: string; to: string; tokens: number; cost_usd: number | null; receipt_id?: string } }
     | {
         consulted?: string[];
         skipped?: string[];
@@ -84,6 +84,7 @@ export type ThreadRun = {
   agent?: string | null;
   model?: string | null;
   changed_paths?: string[] | null;
+  evidence?: { outcome: string; status: 'healthy' | 'unknown' | 'needs'; summary: string; explanation: string; path: string };
 };
 
 export type ConsoleLink = { provider: string; label: string; url: string };

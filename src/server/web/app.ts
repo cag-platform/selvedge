@@ -46,6 +46,7 @@ import { createGithubArrivalRouter } from './routes/githubArrival.js';
 import { createDecisionsRouter } from './routes/decisions.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createCompanionKeysRouter } from './routes/companionKeys.js';
+import { createContinuationsRouter } from './routes/continuations.js';
 import { buildBuildEngine } from '../runner/daytona/factory.js';
 import { driveCard } from '../cards/drive.js';
 
@@ -180,21 +181,26 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     : undefined;
   app.use(createCardsRouter(db, onRunnable ? { onRunnable } : {}));
   app.use(createLedgerRouter(db));
-  app.use(createWorkshopRouter(db));
+  const continuationWedgeEnabled = process.env.CONTINUATION_WEDGE_ENABLED === 'true';
+  app.use(createWorkshopRouter(db, { checkoutGuardEnabled: continuationWedgeEnabled }));
   // The Inbox: the rail, a thread, and what you do inside one. Project-scoped
   // work (ship, preview, go-live, attachments) stays on the workshop router.
   // The repo maker is handed in rather than reached for, so a deployment
   // without GITHUB_TOKEN simply does not offer "start a new one" — see the
   // needs_project refusal in the threads router.
-  app.use(createThreadsRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
+  app.use(createThreadsRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}), checkoutGuardEnabled: continuationWedgeEnabled }));
   // Visible memory: one project's history, and search inside it.
-  app.use(createTimelineRouter(db));
+  app.use(createTimelineRouter(db, { evidenceEnabled: continuationWedgeEnabled }));
   app.use(createSubjectsRouter(db));
   app.use(createDecisionsRouter(db));
   app.use(createImportHistoryRouter(db));
   app.use(createImportReplitRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
   app.use(createGithubArrivalRouter());
   app.use(createCompanionKeysRouter(db));
+  // The continuation wedge is additive and can be rolled back without
+  // changing any project/thread data it created. Keep the HTTP surface absent
+  // until the first clients are ready for it.
+  if (continuationWedgeEnabled) app.use(createContinuationsRouter(db, { ...(pushSender ? { pushSender } : {}) }));
 
   app.use(express.static(clientDir));
 

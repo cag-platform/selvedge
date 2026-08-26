@@ -13,7 +13,7 @@ describe('cardEdge — read the state from the edge, never a false all-clear', (
 
   it('only a clean verdict is healthy', () => {
     expect(cardEdge('done', 'verified')).toBe('healthy');
-    expect(cardEdge('done', 'probably')).toBe('healthy');
+    expect(cardEdge('done', 'probably')).toBe('unknown');
   });
 
   it('an unclear or halted ending is dashed unknown, never healthy', () => {

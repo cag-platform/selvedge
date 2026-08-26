@@ -73,7 +73,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(path, {
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: { 'Content-Type': 'application/json', 'x-selvedge-surface': productSurface(), ...init?.headers },
       ...init,
     });
   } catch {
@@ -115,7 +115,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: 'POST', credentials: 'same-origin', body: form });
+    res = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'x-selvedge-surface': productSurface() }, body: form });
   } catch {
     throw new ApiError(sayFailure(0), 0, {});
   }
@@ -125,6 +125,10 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     throw new ApiError(sentence, res.status, body);
   }
   return body as T;
+}
+
+function productSurface(): 'desktop_web' | 'responsive_web' {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'responsive_web' : 'desktop_web';
 }
 
 export const api = {

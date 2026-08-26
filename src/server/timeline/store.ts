@@ -1,9 +1,13 @@
 import { and, desc, eq, gte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { agentMessages, agentRuns, cards, externalSessions, narrations, threads } from '../db/schema/index.js';
+import { agentMessages, agentRuns, cards, continuationClaims, continuationSessions, decisionBriefs, externalSessions, handoffReceipts, narrations, threads } from '../db/schema/index.js';
 import { agentById } from '../../shared/agents.js';
 import { sessionAgentName } from '../../shared/types/session.js';
 import type { CardState, CardVerdict } from '../cards/types.js';
+import type { DeepLinkDestination } from '../../shared/types/continuation.js';
+import type { RunRecord } from '../../shared/types/toolEvent.js';
+import { summarizeRunEvidence } from '../build/evidenceSheet.js';
+import { getPack } from '../packs/store.js';
 import {
   askEntry,
   eventEntry,
@@ -36,18 +40,19 @@ export type TimelineOptions = {
   /** Only what happened since this moment — "the last two weeks" is this. */
   since?: Date;
   limit?: number;
+  includeEvidence?: boolean;
 };
 
 export async function projectTimeline(
   db: Db,
   orgId: string,
   projectId: string,
-  { since, limit = DEFAULT_LIMIT }: TimelineOptions = {},
+  { since, limit = DEFAULT_LIMIT, includeEvidence = false }: TimelineOptions = {},
 ): Promise<TimelineEntry[]> {
   const scoped = <T extends { orgId: unknown; projectId: unknown }>(table: T) =>
     and(eq(table.orgId as never, orgId), eq(table.projectId as never, projectId));
 
-  const [cardRows, threadRows, runRows, switchRows, narrationRows, sessionRows] = await Promise.all([
+  const [cardRows, threadRows, runRows, switchRows, activityRows, narrationRows, sessionRows] = await Promise.all([
     db
       .select()
       .from(cards)
@@ -71,6 +76,10 @@ export async function projectTimeline(
           : and(scoped(agentMessages), eq(agentMessages.role, 'switch')),
       ),
     db
+      .select({ runId: agentMessages.runId, meta: agentMessages.meta })
+      .from(agentMessages)
+      .where(since ? and(scoped(agentMessages), eq(agentMessages.role, 'activity'), gte(agentMessages.createdAt, since)) : and(scoped(agentMessages), eq(agentMessages.role, 'activity'))),
+    db
       .select()
       .from(narrations)
       .where(
@@ -93,6 +102,7 @@ export async function projectTimeline(
   ]);
 
   const entries: TimelineEntry[] = [];
+  const recordByRun = new Map(activityRows.filter((row) => row.runId).map((row) => [row.runId!, row.meta as RunRecord | null]));
 
   for (const row of cardRows) {
     const card = {
@@ -113,7 +123,10 @@ export async function projectTimeline(
     const verdict = verdictEntry(card);
     // A card that finished in the same breath it was asked (a decline, say)
     // still gets both lines: the asking and the outcome are different facts.
-    if (verdict) entries.push(verdict);
+    if (verdict) entries.push({
+      ...verdict,
+      ...(includeEvidence ? { destination: { kind: 'card_evidence' as const, web_path: `/projects/${encodeURIComponent(projectId)}?tab=history&card=${encodeURIComponent(row.id)}`, ios_path: `selvedge://projects/${encodeURIComponent(projectId)}/evidence/cards/${encodeURIComponent(row.id)}`, project_id: projectId, card_id: row.id } } : {}),
+    });
   }
 
   for (const row of threadRows) {
@@ -131,8 +144,12 @@ export async function projectTimeline(
       costCents: row.costCents,
       changedPaths: (row.changedPaths as string[] | null) ?? null,
       createdAt: row.createdAt,
+      ...(includeEvidence ? { evidence: summarizeRunEvidence(row, recordByRun.get(row.id) ?? null) } : {}),
     });
-    if (entry) entries.push(entry);
+    if (entry) entries.push({
+      ...entry,
+      ...(entry.kind === 'evidence' ? { destination: { kind: 'run_evidence' as const, web_path: row.threadId ? `/inbox/${encodeURIComponent(row.threadId)}?evidence=${encodeURIComponent(row.id)}` : `/projects/${encodeURIComponent(projectId)}?tab=history&run=${encodeURIComponent(row.id)}`, ios_path: `selvedge://projects/${encodeURIComponent(projectId)}/evidence/runs/${encodeURIComponent(row.id)}`, project_id: projectId, ...(row.threadId ? { thread_id: row.threadId } : {}), run_id: row.id } } : {}),
+    });
   }
 
   for (const row of switchRows) {
@@ -187,13 +204,14 @@ export async function projectTimeline(
 }
 
 export type SearchHit = {
-  kind: 'message' | 'card' | 'event';
+  kind: 'project' | 'thread' | 'message' | 'card' | 'event' | 'decision' | 'project_brief_claim' | 'handoff_receipt';
   at: string;
   /** Where it was said — the thread's name, or the card's title. */
   where: string;
   /** The matching text, bounded. */
   excerpt: string;
   ref: { thread_id?: string; card_id?: string };
+  destination: DeepLinkDestination;
 };
 
 const SEARCH_LIMIT = 30;
@@ -226,7 +244,10 @@ export async function searchProject(db: Db, orgId: string, projectId: string, qu
   const matches = (column: ReturnType<typeof sql>) =>
     or(sql`${column} ILIKE ${like}`, sql`to_tsvector('english', ${column}) @@ websearch_to_tsquery('english', ${q})`);
 
-  const [messageRows, cardRows, narrationRows] = await Promise.all([
+  const pack = await getPack(db, orgId, projectId);
+  const [threadRows, messageRows, cardRows, narrationRows, decisionRows, claimRows, receiptRows] = await Promise.all([
+    db.select().from(threads).where(and(eq(threads.orgId, orgId), eq(threads.projectId, projectId), matches(sql`${threads.title}`)))
+      .orderBy(desc(threads.createdAt)).limit(SEARCH_LIMIT),
     db
       .select({
         id: agentMessages.id,
@@ -270,15 +291,35 @@ export async function searchProject(db: Db, orgId: string, projectId: string, qu
       )
       .orderBy(desc(narrations.occurredAt))
       .limit(SEARCH_LIMIT),
+    db.select().from(decisionBriefs).where(and(eq(decisionBriefs.orgId, orgId), eq(decisionBriefs.projectId, projectId),
+      or(matches(sql`${decisionBriefs.title}`), matches(sql`${decisionBriefs.decision}`), matches(sql`coalesce(${decisionBriefs.why}, '')`))))
+      .orderBy(desc(decisionBriefs.createdAt)).limit(SEARCH_LIMIT),
+    db.select({ claim: continuationClaims, continuationId: continuationSessions.id }).from(continuationClaims)
+      .innerJoin(continuationSessions, and(eq(continuationSessions.orgId, continuationClaims.orgId), eq(continuationSessions.id, continuationClaims.continuationId)))
+      .where(and(eq(continuationClaims.orgId, orgId), eq(continuationClaims.projectId, projectId), eq(continuationClaims.status, 'understood'),
+        eq(continuationClaims.confidence, 'confirmed'), matches(sql`${continuationClaims.text}`)))
+      .orderBy(desc(continuationClaims.updatedAt)).limit(SEARCH_LIMIT),
+    db.select({ receipt: handoffReceipts, title: threads.title }).from(handoffReceipts)
+      .innerJoin(threads, and(eq(threads.orgId, handoffReceipts.orgId), eq(threads.id, handoffReceipts.threadId)))
+      .where(and(eq(handoffReceipts.orgId, orgId), eq(handoffReceipts.projectId, projectId),
+        or(matches(sql`${handoffReceipts.toAgent}`), matches(sql`${handoffReceipts.fromAgent}`), matches(sql`${threads.title}`))))
+      .orderBy(desc(handoffReceipts.createdAt)).limit(SEARCH_LIMIT),
   ]);
 
   const hits: SearchHit[] = [
+    ...(pack && pack.identity.name.toLowerCase().includes(q.toLowerCase()) ? [{
+      kind: 'project' as const, at: new Date().toISOString(), where: pack.identity.name, excerpt: pack.identity.owner_description,
+      ref: {}, destination: { kind: 'project' as const, web_path: `/projects/${encodeURIComponent(projectId)}`, ios_path: `selvedge://projects/${encodeURIComponent(projectId)}`, project_id: projectId },
+    }] : []),
+    ...threadRows.map((r) => ({ kind: 'thread' as const, at: r.createdAt.toISOString(), where: r.title, excerpt: r.title,
+      ref: { thread_id: r.id }, destination: { kind: 'thread' as const, web_path: `/inbox/${encodeURIComponent(r.id)}`, ios_path: `selvedge://threads/${encodeURIComponent(r.id)}`, project_id: projectId, thread_id: r.id } })),
     ...messageRows.map((r) => ({
       kind: 'message' as const,
       at: r.createdAt.toISOString(),
       where: r.title ?? 'a conversation',
       excerpt: excerpt(r.content, q),
       ref: { ...(r.threadId ? { thread_id: r.threadId } : {}) },
+      destination: { kind: 'thread' as const, web_path: `/inbox/${encodeURIComponent(r.threadId ?? '')}`, ios_path: `selvedge://threads/${encodeURIComponent(r.threadId ?? '')}`, project_id: projectId, ...(r.threadId ? { thread_id: r.threadId } : {}) },
     })),
     ...cardRows.map((r) => ({
       kind: 'card' as const,
@@ -286,6 +327,7 @@ export async function searchProject(db: Db, orgId: string, projectId: string, qu
       where: r.title,
       excerpt: excerpt(r.proposal, q),
       ref: { card_id: r.id },
+      destination: { kind: 'project' as const, web_path: `/projects/${encodeURIComponent(projectId)}`, ios_path: `selvedge://projects/${encodeURIComponent(projectId)}`, project_id: projectId },
     })),
     ...narrationRows.map((r) => ({
       kind: 'event' as const,
@@ -293,7 +335,22 @@ export async function searchProject(db: Db, orgId: string, projectId: string, qu
       where: 'what I saw',
       excerpt: excerpt(r.fragment ?? '', q),
       ref: {},
+      destination: { kind: 'project' as const, web_path: `/projects/${encodeURIComponent(projectId)}`, ios_path: `selvedge://projects/${encodeURIComponent(projectId)}`, project_id: projectId },
     })),
+    ...decisionRows.map((r) => ({ kind: 'decision' as const, at: (r.editedAt ?? r.extractedAt).toISOString(), where: r.title,
+      excerpt: excerpt(r.decision, q), ref: { thread_id: r.thinkingThreadId }, destination: { kind: 'decision' as const,
+        web_path: `/inbox/${encodeURIComponent(r.thinkingThreadId)}?decision=${encodeURIComponent(r.id)}`, ios_path: `selvedge://decisions/${encodeURIComponent(r.id)}`,
+        project_id: projectId, thread_id: r.thinkingThreadId, decision_id: r.id } })),
+    ...claimRows.map(({ claim, continuationId }) => ({ kind: 'project_brief_claim' as const, at: claim.updatedAt.toISOString(), where: claim.claimGroup,
+      excerpt: excerpt(claim.text, q), ref: {}, destination: { kind: 'project_brief_claim' as const,
+        web_path: `/continue/${encodeURIComponent(continuationId)}/claims/${encodeURIComponent(claim.id)}`,
+        ios_path: `selvedge://continuations/${encodeURIComponent(continuationId)}/claims/${encodeURIComponent(claim.id)}`,
+        project_id: projectId, continuation_id: continuationId, claim_id: claim.id } })),
+    ...receiptRows.map(({ receipt, title }) => ({ kind: 'handoff_receipt' as const, at: receipt.createdAt.toISOString(), where: title,
+      excerpt: `${receipt.fromAgent} → ${receipt.toAgent}`, ref: { thread_id: receipt.threadId }, destination: { kind: 'handoff_receipt' as const,
+        web_path: `/inbox/${encodeURIComponent(receipt.threadId)}?handoff=${encodeURIComponent(receipt.id)}`,
+        ios_path: `selvedge://threads/${encodeURIComponent(receipt.threadId)}/handoffs/${encodeURIComponent(receipt.id)}`,
+        project_id: projectId, thread_id: receipt.threadId, receipt_id: receipt.id } })),
   ];
 
   return hits.sort((a, b) => b.at.localeCompare(a.at)).slice(0, SEARCH_LIMIT);

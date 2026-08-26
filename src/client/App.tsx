@@ -20,6 +20,7 @@ import { Landing } from './pages/Landing.js';
  */
 const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.Inbox })));
 const Now = lazy(() => import('./pages/Now.js').then((m) => ({ default: m.Now })));
+const Continue = lazy(() => import('./pages/Continue.js').then((m) => ({ default: m.Continue })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
 const ProjectMemory = lazy(() => import('./pages/ProjectMemory.js').then((m) => ({ default: m.ProjectMemory })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
@@ -133,6 +134,8 @@ function AuthedApp() {
             <Routes>
               {/* Now is the scheduler and launchpad; Threads is the workbench. */}
               <Route path="/" element={<Now />} />
+              <Route path="/continue" element={<Continue />} />
+              <Route path="/continue/:continuationId/claims/:claimId" element={<Continue />} />
               <Route path="/today" element={<Navigate to="/projects" replace />} />
               {/* The moment sign-in/up completes, these paths are the app's. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
@@ -186,6 +189,7 @@ function AuthedApp() {
  * contents are not.
  */
 const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
+  ['/continue', 'Continue a project'],
   ['/inbox', 'Threads'],
   ['/projects', 'Projects'],
   // Longest prefix first: /admin/billing must not be matched by /admin.

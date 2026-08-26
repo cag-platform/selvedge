@@ -7,7 +7,7 @@ import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, getThread } from '../../src/server/threads/store.js';
-import { markHandoffSpent, pendingHandoff, switchThreadAgent, switchLine, quoteNote, sayMoney } from '../../src/server/threads/switch.js';
+import { getHandoffReceipt, markHandoffSpent, pendingHandoff, switchThreadAgent, switchLine, quoteNote, sayMoney } from '../../src/server/threads/switch.js';
 
 /**
  * SWITCHING BUILDERS MID-TASK — the interaction the Inbox is for.
@@ -61,6 +61,10 @@ describe('switching the agent behind a thread', () => {
     expect(out.changed).toBe(true);
     expect(out.thread.agent).toBe('codex');
     expect(out.handoff).not.toBeNull();
+    expect(out.receipt).not.toBeNull();
+    expect(out.receipt!.included.some((item) => item.kind === 'project')).toBe(true);
+    expect((await getHandoffReceipt(db, orgId, thread.id, out.receipt!.id))?.id).toBe(out.receipt!.id);
+    expect(await getHandoffReceipt(db, 'org_2', thread.id, out.receipt!.id)).toBeNull();
 
     // What the next agent will be started with: the project, the work so far,
     // and the state of the sandbox it is inheriting.
@@ -148,6 +152,8 @@ describe('switching the agent behind a thread', () => {
     expect(out.handoff!.estimated_tokens).toBeGreaterThan(0);
     expect(out.line).toMatch(/Claude Code/);
     expect(out.line).toMatch(/handoff/i);
+    const switchMessage = (await db.select().from(agentMessages).where(eq(agentMessages.threadId, thread.id))).find((message) => message.role === 'switch');
+    expect((switchMessage!.meta as { switch: { receipt_id: string } }).switch.receipt_id).toBe(out.receipt!.id);
 
     // And what was decided came with it, so nobody explains it twice.
     expect(out.handoff!.text).toMatch(/per-order/i);
