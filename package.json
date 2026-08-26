@@ -20,6 +20,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:seed": "tsx src/server/db/seed.ts",
+    "db:seed:demo": "tsx src/server/db/seedDemo.ts",
+    "demo:login": "tsx src/server/demo/accessCli.ts",
     "evals": "tsx evals/run.ts",
     "companion": "tsx src/cli/index.ts",
     "fixtures": "tsx scripts/make-fixtures.ts",

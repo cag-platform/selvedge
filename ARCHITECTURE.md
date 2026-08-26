@@ -17,7 +17,13 @@ routing contract).
 
 A multi-tenant TypeScript monolith: one Node process serving one React SPA,
 backed by one Postgres database, calling out to a handful of third-party
-services. Roughly **20k lines of source, 11.6k lines of test**.
+services. A native SwiftUI companion uses the same Clerk organization and API;
+it is a second client, not a second product model.
+
+The governing product invariant is: **the work belongs to the project, not the
+agent.** Project context, decisions, evidence, accepted language, history and
+open questions must survive a change of conversation, tool or builder. Agents
+are participants in that record, never its owner.
 
 It does four things, and the layering follows them exactly:
 
@@ -41,15 +47,17 @@ deliberately breaking it once.
 
 | Piece | Choice |
 |---|---|
-| Runtime | Node ≥ 20, ESM, TypeScript 5.6 (strict) |
+| Runtime | Node ≥ 22, ESM, TypeScript 5.6 (strict) |
 | Server | Express 4, `src/server/index.ts` → `web/app.ts` |
 | Client | React 18 + React Router 6, Vite 5, Tailwind 3 |
+| Native client | SwiftUI + ClerkKit in the companion `Selvedge-mobile` repository |
 | Database | Postgres via `postgres` + Drizzle ORM 0.36; migrations by drizzle-kit |
 | Auth | Clerk (`@clerk/express` server, `@clerk/clerk-react` client) |
 | Scheduling | `node-cron`, in-process |
 | Sandboxes | Daytona SDK (one persistent sandbox per project) |
-| Agent | Claude Code CLI, executed *inside* the sandbox |
-| Models | Anthropic SDK, per-org key, through one narrow seam (`llm/types.ts`) |
+| Builders | Claude Code and Codex, executed *inside the shared project sandbox* |
+| Talkers | Claude, GPT, Gemini, Kimi, Grok, DeepSeek and Mistral |
+| Models | Anthropic and OpenAI/OpenAI-compatible providers, per-org fuel, behind `llm/types.ts` |
 | Tests | Vitest + PGlite (real Postgres semantics in-process), Supertest, Playwright |
 
 **One process.** The web server, the cron jobs, and the pollers all live in the
@@ -71,7 +79,7 @@ first.
                      │              sweeps                       │
                      └────────────┬──────────────────────────────┘
                                   │
-        Anthropic · Daytona · GitHub · Railway · Vercel · Neon · Supabase · APNs
+        Model providers · Daytona · GitHub · Railway · Vercel · Neon · Supabase · APNs
 ```
 
 ---
@@ -203,22 +211,36 @@ When a card becomes runnable and the build engine is configured, `cards/drive.ts
 composes the back half: run, and *only if the run finished the work*, verify.
 
 **The Inbox** (`server/threads`, `server/chat`, `web/routes/threads.ts`) is where
-that engine is now driven from. A project holds many **threads**; a thread is
-`workshop` (a coding agent in the project's sandbox, can ship) or `general`
-(direct model calls, no sandbox, nothing to ship). Three pieces:
+that engine is now driven from. A project holds many **threads**. The persisted
+`kind` (`workshop | general`) records how a thread began and still affects some
+presentation, including whether Preview is relevant, but it is no longer a
+wall between talking and building. Runtime behavior comes from the selected
+agent's `changesFiles` capability in `shared/agents.ts`: a talker answers from
+stored project history; a builder works in the project's sandbox. One
+conversation can move from deciding to building without making its owner repeat
+the project.
+
+The pieces:
 
 - `threads/store.ts` — the one reader and writer of a project's conversations,
   org-scoped by (orgId, threadId).
-- `threads/switch.ts` — changing who answers. A general thread carries its own
-  history, so nothing is handed over; a workshop thread composes a handoff
-  (`handoff/compose.ts`), parks it on the thread as one mono system line stating
-  the payload's real size and what carrying it costs at the incoming agent's
-  published input rate, and the next turn spends it. Marked spent only once a
-  turn has actually taken it, so a failed start never eats the handover.
-- `chat/turn.ts` — a general thread's turn, on the existing LLM seam
+- `threads/switch.ts` — changing who owns the next answer. A talker reads the
+  stored history directly. An incoming builder receives a bounded handoff
+  (`handoff/compose.ts`) made from the project pack and thread record. The
+  measured payload and input-cost receipt are parked on the thread and spent
+  only after the next turn actually starts, so a failed launch never consumes
+  the handoff. A builder needs a project; asking one to edit a subject returns a
+  409 with an honest join/create path before any switch occurs.
+- `chat/turn.ts` — a talker's turn, on the existing LLM seam
   (structured output, one `reply` string), metered as purpose `chat` against
   the thread, and gated by the thinking-side budget so an afternoon of chat can
   never turn tomorrow's brief mechanical.
+- `chat/turn.ts` + `web/routes/threads.ts` — mention dispatch. No mention keeps
+  the current agent. One `@agent` hands ownership to that agent. Two or three
+  names create a bounded parallel consultation and do **not** change the current
+  builder. Each consultation receives a generated id, and its prompt and replies
+  carry `consultation_id`, `in_reply_to` and `answered_by`; clients group only
+  exact correlated answers, never adjacent messages that merely look related.
 - `threads/subjects.ts` — a **subject** is somewhere to put work that isn't a
   codebase, so `threads.project_id` is nullable and exactly one of project or
   subject is set. A subject has a name and threads and nothing else: no stakes,
@@ -253,9 +275,12 @@ double a history), never prose.
 **The Workshop** (`server/build`, `web/routes/workshop.ts`) is the same engine
 with a conversational surface:
 
-- `sandbox.ts` — one persistent Daytona sandbox per project, created with native
-  idle auto-stop at **15 minutes**. A stopped sandbox bills only storage; the
-  next use resumes it. Never one sandbox per change.
+- `sandbox.ts` — one persistent Daytona sandbox per project, never one per
+  change. Daytona's native **5-minute** auto-stop is the backstop; the server's
+  minute sweep ends ordinary completed work promptly after a 2-minute quiet
+  threshold and enforces a 30-minute hard segment ceiling. Active Preview use
+  holds the sandbox for 10 minutes. A stopped sandbox bills only storage; the
+  next use resumes it.
 - `agent.ts` — one turn: the builder's CLI runs backgrounded inside the
   sandbox writing JSON events to a log; this loop polls the log, parses tool
   activity, and updates a live `activity` row in place, so the owner watches
@@ -274,7 +299,15 @@ with a conversational surface:
   code and zips are streamed to local disk by multer, referenced by id, then
   streamed disk → sandbox, so a several-hundred-MB export never sits whole in
   memory or in a JSON body.
-- `preview.ts` + `web/previewProxy.ts` — the live preview iframe (§8).
+- `preview.ts` + `web/previewProxy.ts` — the explicit sandbox preview (§8),
+  separate from the project's production `live_url`. Preview may wake or create
+  the project checkout before any agent turn, starts the configured development
+  script or nearest static index on port 3000, and returns an honest `none` for
+  repositories with no web surface. Startup failures are diagnosed in plain
+  language while the live-app link remains available. Preview-only environment
+  values live encrypted in `preview_env`; clients receive names and presence,
+  never values. A refused Postgres connection may offer a throwaway sandbox
+  database rather than asking the user to understand local infrastructure.
 - `ship.ts` — **the one moment the workshop touches the real world, and therefore
   the one moment safety bites.** It classifies risk from *which files actually
   changed*, not from the conversation: an innocent-sounding ask that ended up
@@ -410,17 +443,23 @@ whether it held up. Nothing on this path may ever produce a verdict.
 
 ## 7. Data model
 
-Postgres, 27 tables, Drizzle schema in `server/db/schema/`, 26 forward-only
-migrations in `server/db/migrations/`.
+Postgres with the exported Drizzle schema in `server/db/schema/` and
+forward-only migrations in `server/db/migrations/`. Avoid putting table or test
+counts in contracts: they drift while the boundaries below should not.
 
 | Group | Tables |
 |---|---|
-| Tenancy | `orgs` |
+| Tenancy and preferences | `orgs`, `subscriptions`, `usage_build_minutes`, `stripe_events` |
 | Timeline | `events` (partitioned), `narrations`, `digests`, `narration_library`, `narration_library_uses` |
 | Understanding | `packs` |
-| Work | `cards`, `threads`, `project_build`, `agent_messages`, `agent_message_attachments`, `agent_runs`, `external_sessions`, `sketches`, `sketch_messages` |
-| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state`, `companion_tokens` |
-| Accounting & trust | `llm_usage`, `trust_incidents`, `feedback`, `devices` |
+| Conversations and decisions | `subjects`, `threads`, `decision_briefs`, `agent_messages`, `agent_message_attachments`, `external_sessions` |
+| Work and preview | `cards`, `project_build`, `agent_runs`, `sandbox_runs`, `preview_env` |
+| Connections | `connector_credentials`, `connector_health`, `health_checks`, `project_beacons`, `error_rate_state`, `companion_tokens`, `ignored_sources`, `oauth_states` |
+| Accounting and trust | `llm_usage`, `trust_incidents`, `feedback`, `devices` |
+
+Retired Sketch tables remain in migration history but are no longer exported by
+the active schema. Forward history is preserved; retired features are not
+silently rewritten out of old databases.
 
 Four properties worth knowing before you add a table:
 
@@ -428,10 +467,10 @@ Four properties worth knowing before you add a table:
 Tenancy is not a convention here, it is enforced by the suite.
 
 **A project has many conversations, and every message names its own.** `threads`
-is the unit of work — `kind` is `workshop` (runs a coding agent in the project's
-sandbox, can ship) or `general` (direct model calls, no sandbox, nothing to
-ship) — and `agent_messages.thread_id` / `agent_runs.thread_id` attach the
-record to it. Migration 0022 turned each project's single pre-existing
+is the unit of work. Its `kind` records the thread's starting intent; the active
+agent's `changesFiles` capability decides whether a turn uses the model seam or
+the project sandbox. `agent_messages.thread_id` / `agent_runs.thread_id` attach
+the record to it. Migration 0022 turned each project's single pre-existing
 conversation into its thread #1, with a *derived* id (`thread_ || md5(org:project)`)
 so the backfill is re-runnable and every legacy row maps to exactly one thread;
 threads minted since carry ulids. The columns are nullable — a background writer
@@ -453,6 +492,11 @@ carelessly.
 
 `events.raw` is stored and **never read by any layer downstream of the connector
 that wrote it.**
+
+`orgs.technical_detail` stores the account default (`full` unless explicitly
+changed). `threads.technical_detail` is nullable: null inherits the account;
+`full | simple` overrides presentation for that conversation. The underlying
+messages, tool records and runs are identical in both modes.
 
 ---
 
@@ -512,11 +556,11 @@ the first request. Everything else degrades, and the degradation is the point:
 |---|---|
 | `CLERK_*` | `/healthz` green, webhooks still accepted, `/api` returns a clear 503. A fresh service must be able to boot before its keys exist. |
 | `CREDENTIALS_KEY` | App boots and watches; only storing or reading a credential fails. Deliberately *not* boot-fatal, so setting it later on a live deploy never means a crash loop. |
-| Org fuel (and `ANTHROPIC_API_KEY`) | The deterministic path: template narration, mechanical brief. |
-| `DAYTONA_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` / `GITHUB_TOKEN` | No build engine. An approved card simply waits — no inert half-run, no surprise spend. |
+| Org fuel (and provider fallbacks) | The deterministic path: template narration and mechanical brief. An unavailable agent says which provider is not connected rather than disappearing from the roster. |
+| `DAYTONA_API_KEY` | No machine layer. An approved build waits — no inert half-run, no surprise spend. GitHub and model credentials are resolved per organization at the moment of use, with deployment fallbacks only when configured. |
 | `PREVIEW_DOMAIN` | Proxy inert; previews fall back to signed Daytona URLs. |
 | APNs keys | Push-routed narrations are stored and fold into the brief; nothing is sent. |
-| `EVAL_MODEL` | Nothing — reserved for a grader that doesn't exist yet (see §12). Setting it does not produce an independent check. |
+| Independent OpenAI fuel / `EVAL_MODEL` | Verification honestly tops out at `probably`; with independent fuel the grader may make `verified` reachable. `EVAL_MODEL` defaults to `gpt-5.6-luna`. |
 
 **The daily model-spend cap** (`llm/budget.ts`) is per-org and enforced. Over the
 cap does not error and does not silence the product — it drops the org to the
@@ -535,44 +579,127 @@ fact, not a global env check.
 | Cadence | Job |
 |---|---|
 | `*/15 * * * *` | Digest schedule (7:00-hour orgs); staged-upload sweep (30-min idle) |
-| `* * * * *` | Health poll; Railway/Vercel deploy-state poll |
-| `0 3 * * *` | Stall sweep; ensure event partitions; revalidate learned baselines |
+| `* * * * *` | Health poll; Railway/Vercel deploy-state poll; sandbox cost/reaping sweep when Daytona is configured |
+| `0 3 * * *` | Stall sweep; sandbox reconciliation; OAuth-state sweep; ensure event partitions; revalidate learned baselines |
 
 ---
 
 ## 10. The client
 
 A single Vite-built SPA in `src/client`, served by the same Express process as
-static files with an SPA catch-all. Clerk guards the whole tree; pages are
-`Today`, `Inbox`, `Work`, `TrackRecord`, `Connections`, `Projects`,
-`Tray`, `PackEditor`, `Admin`, `Styleguide`.
+static files with an SPA catch-all. Clerk guards the signed-in tree. Signed-out
+`/` is the marketing landing page; signed-in `/` is Home. The global product
+navigation is deliberately four things:
+
+| Surface | Route | Contract |
+|---|---|---|
+| Home | `/` | Intent-first composer plus secondary Needs you, Running, Recent and compact memory. |
+| Work | `/inbox`; `/work` aliases it | The conversation workbench, including project and thread deep links. |
+| Projects | `/projects`; `/projects/:id` | Portfolio and Project Memory. |
+| Search | `/inbox?search=1` | The conversation/project command palette; not a separate route. |
+
+Record, Your apps, Connections, Billing, Preferences and Under the hood live
+under `/admin`. Old top-level addresses redirect rather than breaking saved
+links. `/projects/:id/workshop` likewise redirects into that project's workshop
+conversation.
+
+**Home begins with the outcome** (`pages/Now.tsx`). The composer asks what to
+move forward before exposing internal taxonomy. Project suggestion is
+deterministic: existing project and thread-title words rank likely destinations.
+The selected project, available context and automatic agent routing are visible
+before submission. The flow reuses an appropriate existing conversation or
+creates a new one under the selected project; a subject is created only when
+there is genuinely no project destination. Home's operational lists are useful
+secondary information, not the page's center of gravity.
 
 **The Inbox is the workbench**: one persistent three-pane layout (rail →
-thread → context) that replaced the Workshop page. `/projects/:id/workshop`
-still resolves — it redirects into that project's workshop thread, because a
-link that used to work and now 404s is a small betrayal. Its density is a
-second setting of the same cloth: `--space-work*` tokens beside the reading
-register's, no new colours, and no type below the AA-passing sizes. Agent
-identity is deliberately non-colour (mono chips, `shared/agents.ts`), because
-`--thread` red means "this needs you" and nothing else.
+conversation → context) that replaced the separate Workshop page. The rail is
+resizable from 220–440px and context from 280–620px; widths persist in local
+storage. The separators are real accessible controls: drag them or use arrow
+keys. Context opens by default on wide screens. Under 768px the same information
+becomes a rail → conversation → context drill-down rather than compressed
+columns. Polling is 3 seconds while work is active and 12 seconds when quiet.
+
+The conversation heading names the current outcome. Its context receipt says
+what the agent received. The right tabs are **Memory, Preview, History and
+About**. `BuilderHandoff.tsx` renders a visible builder→builder divider and says
+project context was carried over. Correlated consultations use
+`OpinionComparison.tsx`: exactly two complete answers render in two columns
+when their container has room and stack when it does not. Incomplete, duplicate
+or legacy uncorrelated replies remain chronological; the UI never infers a pair
+from adjacency.
+
+**Project Memory** (`pages/ProjectMemory.tsx`) is a read model composed from
+existing endpoints, not a new memory store. It combines the context pack and
+graduated narration library (`/memory`), the same grounded recent/open context
+used by MCP and handoffs (`/context`), pack identity, Inbox builder state and
+timeline. It surfaces the governing understanding, observed behavior, accepted
+language, evidence, open items, history, current builder/context transfer and a
+45-day freshness rule. The governing understanding currently comes from the
+pack's grounded About context rather than a standalone list of decision briefs;
+export is organization-wide at `/api/export`.
+
+**Preview** is the sandbox copy, not a euphemism for production. The thread
+header and Preview tab expose it explicitly, while a separate live-app link
+remains available when `live_url` exists. Failure to start the sandbox preview
+does not erase that live destination.
+
+**Detail and appearance are presentation state, not data state.** The account
+default for technical detail is `full`, managed under Admin → Preferences; a
+nullable per-thread setting inherits or overrides it. `simple` summarizes
+activity, commands and handoff receipts but never rewrites owner/agent messages
+or discards the exact structured run beneath its disclosure. The light-first
+mineral/pale-sage theme and Night Weave use the same semantic tokens. Browser
+choice is Light, Night or System in local storage; reduced motion and reduced
+transparency remain respected.
+
+Agent identity is deliberately non-colour (mono chips from
+`shared/agents.ts`), because the needs-attention colour means “this needs you”
+and nothing else. Keyboard behavior is part of the product contract: Cmd/Ctrl-K
+searches, Cmd/Ctrl-J changes agent, Cmd/Ctrl-N starts a conversation, j/k moves
+the rail, and Escape closes transient UI.
 
 There is **no streaming anywhere** — no SSE, no websockets except the preview's
 HMR passthrough. The Workshop's liveness is polling against a log the sandbox
 writes. That is adequate today and is a known, deliberate simplification.
 
-Two client conventions worth preserving: the Inbox is the only full-bleed
-layout (three panes, its own scrolling) while every other page keeps the calm
-single-column measure; and first sign-in from any browser teaches the org its
-timezone so the brief lands at the owner's real 7am without a settings visit —
-auto-detect never overrides an explicit choice, and the server enforces that too.
+Two web conventions worth preserving: Work is the full-bleed, independently
+scrolling surface while the other pages maintain a clear center of gravity; and
+first sign-in from any browser teaches the org its timezone so the brief lands
+at the owner's real 7am without a settings visit. Auto-detect never overrides an
+explicit choice, and the server enforces that too.
+
+### Native iOS client
+
+The SwiftUI companion is in the `Selvedge-mobile` repository and consumes the
+same `/api/inbox`, thread, project, memory and preference endpoints under the
+same Clerk organization. Its primary tabs are Home, Work, Projects and Search.
+Work uses phone-native drill-down; Context presents Memory, Preview, History and
+About; two-agent comparisons use an explicit segmented, one-answer-at-a-time
+control rather than two squeezed columns. Full/Simple follows the account
+default with a conversation override, and Night Weave follows system appearance.
+
+The mobile `ProjectMemory` DTO is deliberately distinct from account-wide
+`StackMemory`: learned signatures, cadence, known-flaky behavior, glossary and
+freshness come from `/api/projects/:id/memory`; richer current decisions and
+evidence remain in thread/context responses. Keep that boundary honest when
+adding fields.
+
+Production authentication is ordinary Clerk OAuth or email/phone and persists
+the active organization in the session. The simulator capture ticket is an
+operator-only, one-use five-minute path compiled under `#if DEBUG`; Release does
+not contain its parser, UI or redemption code. It refuses account switching,
+selects only a remembered or sole organization, and accepts completion only
+after Clerk can issue a bearer token. A simulator build must be locally signed
+so Clerk can store its device credential in Keychain.
 
 ---
 
 ## 11. How this codebase is meant to be tested
 
-**1,199 tests across 151 files**, all green, under `test/` — mirroring
-`src/server`'s directories, plus `test/integration`, `test/client` and
-`test/evals`. A full run takes about three minutes.
+The suite lives under `test/`, mirroring `src/server`'s directories, plus
+`test/integration`, `test/client` and `test/evals`. CI runs type checking and the
+coverage-enforced full suite before main is considered green.
 
 - **The honesty rules live in pure, isolated files** — `verdict.ts`, `risk.ts`,
   `observe.ts`, `machine.ts`, `ship.ts` — each tested on its own, and each
@@ -602,14 +729,16 @@ Design tradeoffs that are chosen, and should be changed only on purpose:
    re-attaching. Horizontal scaling starts by moving these three.
 2. **No streaming.** Polling a sandbox-written log fakes liveness in the
    Workshop.
-3. **One GitHub PAT** for the build engine, a stopgap until per-repo GitHub App
-   tokens replace it.
+3. **Repository authority has two paths.** Existing repositories use the
+   organization's GitHub App installation. `GITHUB_TOKEN` remains an optional
+   deployment fallback and the authority used by the create-new-repository path;
+   it must never silently replace an organization's installation for reads.
 4. **`connector_credentials.provider` is free text**; the per-surface
    allow-lists derive from one table (`connectors/registry.ts`). Ids are
    AES-GCM AAD components — add rows, never rename them.
 5. **Auto-rollback posts twice** to the thread (the revert and the observer each
    speak). Cosmetic.
-7. **Two cost ledgers** (§7) that must not be naively summed.
+6. **Two cost ledgers** (§7) that must not be naively summed.
 
 Built but **not yet verified against live APIs** (written to published docs,
 unit-tested, no real call made from this environment): Railway provisioning,
@@ -624,10 +753,10 @@ going quiet. See STATUS.md for the live picture.
 Places designed to be extended, so the extension is a swap rather than a rewrite:
 
 - **Model provider** — `llm/types.ts` is a narrow, single-string,
-  structured-output-only seam. `FUEL_PROVIDERS` already lists
-  `anthropic | openai | gemini | kimi` with only Anthropic implemented; Kimi
-  speaks Anthropic's API format, so the same agent can run on it through a
-  different endpoint.
+  structured-output-only seam. Anthropic and the OpenAI/OpenAI-compatible
+  providers behind Claude, GPT, Gemini, Kimi, Grok, DeepSeek and Mistral are
+  wired; adding another compatible talker is a provider/registry addition, not
+  a new conversation engine.
 - **Narration path** — `narrate(event, pack, decision)` is the contract. The
   routing decision's `intended_path` is reported even when collapsed, so a new
   narration implementation slots in behind routing untouched.
@@ -636,11 +765,12 @@ Places designed to be extended, so the extension is a swap rather than a rewrite
 - **Build engine** — `runner/daytona/factory.ts` is the single place live
   credentials are read; everything below it is injected, so an alternative
   sandbox provider is one factory.
-- **Read-only planning** — wired: the Workshop's "think it first" checkbox
-  sends `mode: 'plan'` through to `build/agent.ts`.
-- **Which agent does the work** — `shared/agents.ts` is one table (the
-  `connectors/registry.ts` pattern): id, mono chip, which thread kinds it can
-  run, whose fuel it burns, an honest cost note, and whether it is `live`.
+- **Read-only planning** — the server path remains wired through
+  `mode: 'plan'` in `build/agent.ts`, but the current workbench does not expose a
+  dedicated checkbox. Reintroducing the control is client work, not a new runner.
+- **Which agent participates** — `shared/agents.ts` is one table (the
+  `connectors/registry.ts` pattern): id, mono chip, whether it changes files,
+  whose fuel it burns, an honest cost note, and whether it is `live`.
   Declared-but-not-live is deliberate — the seam can be honest about the roadmap
   without a picker offering something that fails on first use. Ids are stored in
   `threads.agent`, so they may be added and never renamed.
@@ -669,3 +799,8 @@ Places designed to be extended, so the extension is a swap rather than a rewrite
 6. `server/verify/verdict.ts` — the honesty heart.
 7. `server/build/ship.ts` — where safety bites.
 8. `server/web/app.ts` — how it is all mounted, and in what order, and why.
+9. `shared/agents.ts` + `server/web/routes/threads.ts` — capability-based
+   dispatch, handoffs and correlated consultations.
+10. `client/pages/Now.tsx`, `client/pages/Inbox.tsx` and
+    `client/pages/ProjectMemory.tsx` — the three primary product surfaces and
+    the API read models they compose.

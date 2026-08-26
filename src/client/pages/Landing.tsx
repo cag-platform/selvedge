@@ -211,7 +211,7 @@ function ProductDemo() {
 }
 
 export function Landing() {
-  return <div className="overflow-hidden">
+  return <div className="landing-site overflow-hidden">
     <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#memory">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
       <section className="landing-hero mx-auto max-w-6xl px-4 pt-14 sm:px-6 sm:pt-20 lg:pt-24"><div className="landing-hero-copy"><p className={eyebrowCls}>The project layer for all your AI</p><h1 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Your project remembers, even when the AI changes.</h1><p className="mt-6 max-w-2xl text-hero-sub text-ink-dim">Think with Claude. Challenge it with GPT. Build with Codex. Every decision, conversation, and preview stays with the project.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/sign-up" className={btnPrimary}>Start a project</Link><a href="#product" className={btnGhost}>Try the demo ↓</a></div></div><div id="product" className="landing-product-stage"><ProductDemo /></div><p className="landing-scroll-cue font-mono text-tech text-ink-quiet">The work belongs to the project, not the agent. ↓</p></section>
@@ -226,6 +226,6 @@ export function Landing() {
 
       <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><p className={eyebrowCls}>Start with the work</p><h2 className="mt-4 max-w-4xl font-display text-hero font-medium text-ink">Give your project a memory that outlasts every model.</h2><div className="mt-8 flex flex-wrap items-center gap-5"><Link to="/sign-up" className={btnPrimary}>Start free</Link><p className="font-mono text-tech text-ink-quiet">Bring a conversation, a repo, or just a question.</p></div></section>
     </main>
-    <footer className="border-t border-hairline"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-meta text-ink-quiet sm:px-6"><p><span className="font-display italic text-ink-dim">selvedge</span> — the project layer across the AI you already use.</p><div className="flex gap-5"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/sign-in">Sign in</Link></div></div></footer>
+    <footer className="border-t border-hairline"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-8 text-meta text-ink-quiet sm:px-6"><p><span className="font-display font-semibold text-ink-dim">Selvedge</span> — the project layer across the AI you already use.</p><div className="flex gap-5"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/sign-in">Sign in</Link></div></div></footer>
   </div>;
 }

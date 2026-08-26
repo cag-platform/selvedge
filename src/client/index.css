@@ -83,6 +83,15 @@
 @media (prefers-reduced-motion:reduce){.product-shell{transition:none}}
 
 /* Landing: one continuous project history, composed with product fragments. */
+.landing-site {
+  /* The marketing surface uses the product's tighter grotesk throughout.
+     Fraunces remains available to the signed-in product, but no longer makes
+     the public page read like an editorial AI template. */
+  --font-display: var(--font-body);
+}
+.landing-site h1,.landing-site h2 { font-weight:650; letter-spacing:-.045em; }
+.landing-site h1 { line-height:1.02; }
+.landing-site h2 { line-height:1.08; }
 .landing-nav { background: var(--glass-fill); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
 .landing-public-links { display:flex; align-items:center; gap:1.75rem; color:var(--ink-dim); font-size:var(--text-body); }
 .landing-public-links a:hover { color:var(--ink); }

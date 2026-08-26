@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
+import { ClerkLoaded, SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Landing } from './pages/Landing.js';
 
@@ -32,6 +32,9 @@ const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ def
 const Docs = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Docs })));
 const Security = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Security })));
 const Changelog = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Changelog })));
+const DemoLoginTransfer = lazy(() =>
+  import('./pages/DemoLoginTransfer.js').then((m) => ({ default: m.DemoLoginTransfer })),
+);
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -225,6 +228,16 @@ export default function App() {
       <Route path="/docs/:page" element={<Suspense fallback={null}><Docs /></Suspense>} />
       <Route path="/security" element={<Suspense fallback={null}><Security /></Suspense>} />
       <Route path="/changelog" element={<Suspense fallback={null}><Changelog /></Suspense>} />
+      <Route
+        path="/operator/demo-login"
+        element={
+          <ClerkLoaded>
+            <Suspense fallback={null}>
+              <DemoLoginTransfer />
+            </Suspense>
+          </ClerkLoaded>
+        }
+      />
       <Route path="*" element={<AuthedApp />} />
     </Routes>
   );
