@@ -5,6 +5,8 @@ import { SelvedgeEdge } from './SelvedgeEdge.js';
 import { whenShort } from '../lib/inbox.js';
 import { LockedOlder } from './UpgradeNote.js';
 import { EmptyState } from './ui.js';
+import type { DeepLinkDestination } from '../../shared/types/continuation.js';
+import type { EvidenceSheet } from '../../shared/types/evidenceSheet.js';
 
 /**
  * WHAT HAPPENED TO THIS PROJECT — the record, finally with a face.
@@ -29,6 +31,7 @@ type Entry = {
   status: 'healthy' | 'working' | 'needs' | 'unknown';
   evidence: string[];
   ref: { thread_id?: string; card_id?: string; run_id?: string; commit?: string };
+  destination?: DeepLinkDestination;
 };
 
 type Hit = {
@@ -50,6 +53,7 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
   // search separately, because they are cut short independently.
   const [lockedEntries, setLockedEntries] = useState(0);
   const [lockedHits, setLockedHits] = useState(0);
+  const [evidence, setEvidence] = useState<{ entryId: string; sheet: EvidenceSheet } | null>(null);
 
   const load = useCallback(() => {
     setEntries(null);
@@ -89,6 +93,30 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
     }, 200);
     return () => clearTimeout(timer);
   }, [query, projectId]);
+
+  const openEvidence = useCallback(async (entry: Entry) => {
+    const destination = entry.destination;
+    if (!destination) return;
+    const path = destination.run_id
+      ? `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(destination.run_id)}/evidence`
+      : destination.card_id
+        ? `/api/projects/${encodeURIComponent(projectId)}/cards/${encodeURIComponent(destination.card_id)}/evidence`
+        : null;
+    if (!path) return;
+    try {
+      const sheet = await api.get<EvidenceSheet>(path);
+      setEvidence({ entryId: entry.id, sheet });
+      window.history.replaceState(null, '', destination.web_path);
+    } catch (e) { setError(e instanceof Error ? e.message : "I couldn't load that evidence."); }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!entries || evidence) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('run') ?? params.get('card');
+    const entry = entries.find((item) => item.destination?.run_id === id || item.destination?.card_id === id);
+    if (entry) void openEvidence(entry);
+  }, [entries, evidence, openEvidence]);
 
   return (
     <div className="space-y-work">
@@ -179,6 +207,9 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
                   </Reveal>
                 )}
                 <div className="mt-work-tight flex flex-wrap gap-work">
+                  {entry.destination && (
+                    <button onClick={() => void openEvidence(entry)} className="text-meta text-action-bright hover:underline">View evidence sheet</button>
+                  )}
                   {entry.ref.thread_id && (
                     <button onClick={() => onOpenThread(entry.ref.thread_id!)} className="text-meta text-action-bright hover:underline">
                       Open the conversation
@@ -196,6 +227,7 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
                     </a>
                   )}
                 </div>
+                {evidence?.entryId === entry.id && <TimelineEvidence sheet={evidence.sheet} />}
               </li>
             ))}
           </ol>
@@ -218,4 +250,20 @@ export function TimelineTab({ projectId, onOpenThread }: { projectId: string; on
       )}
     </div>
   );
+}
+
+function TimelineEvidence({ sheet }: { sheet: EvidenceSheet }) {
+  return <div className="mt-3 rounded-inset border border-hairline bg-panel-soft p-3 text-meta text-ink-dim">
+    <p className="text-body font-medium text-ink">{sheet.summary}</p>
+    <p>{sheet.explanation}</p>
+    <p className="mt-2">{sheet.changed_files.total} changed file{sheet.changed_files.total === 1 ? '' : 's'} · {sheet.checks_run.length} completed check{sheet.checks_run.length === 1 ? '' : 's'}</p>
+    <p>Acceptance: {sheet.acceptance_observation ? `${sheet.acceptance_observation.outcome} — ${sheet.acceptance_observation.name}` : 'not recorded'}</p>
+    {sheet.unavailable_checks.map((check, index) => <p key={`${check.name}-${index}`}>Unavailable: {check.name}{check.detail ? ` — ${check.detail}` : ''}</p>)}
+    {sheet.warnings.map((warning) => <p key={warning} className="text-thread">{warning}</p>)}
+    <Reveal summary="Raw evidence">
+      {sheet.raw_evidence.tools.map((tool) => <div key={tool.id}>{tool.detail}{tool.ok === undefined ? '' : tool.ok ? ' · ok' : ` · failed${tool.note ? ` — ${tool.note}` : ''}`}</div>)}
+      {sheet.raw_evidence.acts.map((act, index) => <div key={`${act.at}-${index}`}>{act.at} · {act.kind} · {act.detail}</div>)}
+      {!sheet.raw_evidence.tools.length && !sheet.raw_evidence.acts.length && <p>No raw steps were recorded.</p>}
+    </Reveal>
+  </div>;
 }

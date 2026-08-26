@@ -307,6 +307,7 @@ describe('web/routes/importHistory', () => {
       const res = await request(app()).post('/api/import/history').attach('file', bare, 'conversations.json').expect(201);
       expect(res.body.vendor).toBe('chatgpt');
       expect(res.body.filed).toBe(1);
+      expect(res.body.thread_ids).toHaveLength(1);
 
       const [thread] = await db.select().from(threads).where(eq(threads.orgId, orgId));
       expect(thread!.title).toBe('Pricing the winter line');

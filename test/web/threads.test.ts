@@ -37,6 +37,36 @@ describe('web/routes/threads — the Inbox surface', () => {
 
   const app = (deps: ThreadsDeps = {}) => appWithOrg(orgId, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...deps }));
 
+  it('feature-gates the read-only checkout preflight and validates its thread belongs to the project', async () => {
+    await request(app()).post('/api/projects/loom/checkout/preflight').send({ goal: 'change it' }).expect(404);
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    const enabled = app({ checkoutGuardEnabled: true });
+    const result = await request(enabled).post('/api/projects/loom/checkout/preflight').send({ thread_id: thread.id, goal: 'change it' }).expect(200);
+    expect(result.body).toMatchObject({ project_id: 'loom', thread_id: thread.id, state: 'clean', safe_to_start: true });
+    expect(result.body.plan.automatic_stop.after_minutes).toBe(20);
+    await request(enabled).post('/api/projects/loom/checkout/preflight').send({ thread_id: 'not-here', goal: 'change it' }).expect(404);
+  });
+
+  it('returns a structured checkout-conflict refusal before a mutating turn', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    await setBuild(db, orgId, 'loom', { stagedChangesReady: true });
+    const runTurn = async () => { throw new Error('must not start'); };
+    const result = await request(app({ checkoutGuardEnabled: true, runTurn: runTurn as ThreadsDeps['runTurn'] }))
+      .post(`/api/threads/${thread.id}/message`).send({ text: 'Change the sign-in screen' }).expect(409);
+    expect(result.body).toMatchObject({ code: 'checkout_conflict', checkout_guard: { state: 'unattributed_dirty', safe_to_start: false } });
+    expect(result.body.checkout_guard.choices.map((choice: { id: string }) => choice.id)).toContain('fresh_isolated');
+  });
+
+  it('serves tenant-scoped run evidence with native telemetry behind the wedge flag', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    await db.insert(agentRuns).values({ id: 'evidence_run', orgId, projectId: 'loom', threadId: thread.id, prompt: 'Change copy', status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+    await request(app()).get('/api/projects/loom/runs/evidence_run/evidence').expect(404);
+    const result = await request(app({ checkoutGuardEnabled: true })).get('/api/projects/loom/runs/evidence_run/evidence').set('x-selvedge-surface', 'ios_native').expect(200);
+    expect(result.body).toMatchObject({ schema_version: 1, outcome: 'did_not_work', status: 'needs', source: { kind: 'run', id: 'evidence_run', thread_id: thread.id } });
+    expect(result.body.destinations.evidence.ios_path).toContain('/evidence/runs/evidence_run');
+    await request(appWithOrg('org_2', createThreadsRouter(db, { checkoutGuardEnabled: true }))).get('/api/projects/loom/runs/evidence_run/evidence').expect(404);
+  });
+
   it('the rail: every project with its threads newest-first', async () => {
     const first = await ensureWorkshopThread(db, orgId, 'loom');
     const second = await createThread(db, orgId, 'loom', { kind: 'general', title: 'Pricing' });
@@ -226,6 +256,12 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(back.status).toBe(200);
     expect(back.body.thread.agent).toBe('gpt');
     expect(back.body.line).toMatch(/carries over as it is/i);
+
+    const history = await request(app()).get(`/api/threads/${thread.id}/handoffs`);
+    expect(history.status).toBe(200);
+    expect(history.body.receipts).toHaveLength(2);
+    expect(history.body.receipts[0].destination).toMatchObject({ kind: 'handoff_receipt', thread_id: thread.id });
+    expect((await request(appWithOrg('org_2', createThreadsRouter(db))).get(`/api/threads/${thread.id}/handoffs`)).status).toBe(404);
   });
 
   it('a workshop message starts a build turn, carrying the thread and any parked handoff', async () => {

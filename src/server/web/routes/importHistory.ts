@@ -135,6 +135,9 @@ export function createImportHistoryRouter(db: Db) {
         file: read.file,
         filed: filed.filed,
         already_had: filed.alreadyHad,
+        // Stable handles let the continuation journey attach exactly what was
+        // just imported without trying to rediscover it by title or time.
+        thread_ids: filed.threadIds,
         // Never a bare success count.
         unreadable_count: read.unreadable.length,
         unreadable: read.unreadable.slice(0, MAX_UNREADABLE_LISTED),

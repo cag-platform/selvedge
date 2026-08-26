@@ -66,7 +66,7 @@ export function cardEdge(state: CardState, verdict: CardVerdict | null): EdgeSta
     case 'verifying':
       return 'working';
     case 'done':
-      return verdict === 'verified' || verdict === 'probably' ? 'healthy' : 'unknown';
+      return verdict === 'verified' ? 'healthy' : 'unknown';
     default:
       return 'unknown'; // stopped, failed, declined — closed without a clean result
   }

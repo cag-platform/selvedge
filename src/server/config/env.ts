@@ -70,7 +70,7 @@ export const FEATURES: FeatureSpec[] = [
 // switch. The token covers orgs that haven't connected their own account;
 // MANAGED_FUEL=off stops it covering anybody, which is the setting for a
 // deployment where bring-your-own is the promise rather than the default.
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG', 'CLAUDE_CODE_OAUTH_TOKEN', 'MANAGED_FUEL'];
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG', 'CLAUDE_CODE_OAUTH_TOKEN', 'MANAGED_FUEL', 'CONTINUATION_WEDGE_ENABLED'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

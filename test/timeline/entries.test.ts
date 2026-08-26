@@ -119,6 +119,12 @@ describe('the timeline vocabulary', () => {
     expect(undo.sentence).toMatch(/undone/);
   });
 
+  it('puts completed run evidence in history without treating probably as healthy', () => {
+    const entry = runEntry({ id: 'run_1', threadId: 'thread_1', prompt: 'Fix sign in', status: 'succeeded', agent: 'codex', commitSha: null, costCents: 2, changedPaths: ['src/auth.ts'], createdAt: new Date(), evidence: { summary: 'Probably working', explanation: 'No acceptance observation confirmed it.', status: 'unknown' } });
+    expect(entry).toMatchObject({ kind: 'evidence', status: 'unknown', ref: { run_id: 'run_1', thread_id: 'thread_1' } });
+    expect(entry?.sentence).toContain('Probably working');
+  });
+
   it('leaves ordinary turns out — a conversation is not history', () => {
     expect(
       runEntry({

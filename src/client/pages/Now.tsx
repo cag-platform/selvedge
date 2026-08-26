@@ -22,9 +22,11 @@ export function Now() {
   const [selectionLocked, setSelectionLocked] = useState(false);
   const [memory, setMemory] = useState<ProjectMemory | null>(null);
   const [starting, setStarting] = useState(false);
+  const [continuationAvailable, setContinuationAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { api.get<InboxData>('/api/inbox').then(setData).catch((e: Error) => setError(e.message)); }, []);
+  useEffect(() => { api.get<{ available: boolean }>('/api/continuations/availability').then((v) => setContinuationAvailable(v.available)).catch(() => setContinuationAvailable(false)); }, []);
   const places = useMemo(() => railPlaces(data?.projects ?? [], data?.subjects ?? []).filter((p) => !p.putAway), [data]);
   const selected = places.find((p) => p.id === selectedId) ?? null;
 
@@ -83,6 +85,11 @@ export function Now() {
         <h1 className="mt-5 font-display text-[clamp(2.9rem,6.6vw,4.8rem)] font-normal leading-[0.98] tracking-[-0.055em] text-ink">What should we move forward?</h1>
         <p className="mx-auto mt-4 max-w-xl text-lede text-ink-dim">Start with the outcome. Selvedge will bring the right project memory and builder.</p>
       </header>
+
+      {continuationAvailable && <div className="mx-auto mt-8 max-w-3xl rounded-card border border-action/30 bg-sage p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
+        <div><strong className="block text-body-lg text-ink">Already building somewhere else?</strong><p className="mt-1 text-body text-ink-dim">Bring an existing project and AI conversation. Continue without explaining it all again.</p></div>
+        <button type="button" onClick={() => navigate('/continue')} className="mt-4 shrink-0 rounded-inset bg-action px-4 py-2 text-body font-medium text-ink sm:mt-0">Continue a project →</button>
+      </div>}
 
       <form onSubmit={(e) => void start(e)} className="mx-auto mt-10 max-w-3xl rounded-pane border border-hairline bg-panel p-5 shadow-[0_22px_60px_rgba(26,58,40,0.08)] focus-within:border-action">
         <textarea value={command} onChange={(e) => setCommand(e.target.value)} rows={3} aria-label="Describe what you want to move forward" placeholder="Describe an outcome, ask a question, or drop in a rough idea…" className="w-full resize-none bg-transparent text-[17px] leading-relaxed text-ink outline-none placeholder:text-ink-quiet" />

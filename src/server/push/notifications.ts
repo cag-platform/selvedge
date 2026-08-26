@@ -31,3 +31,13 @@ export function criticalNotification(fragment: string, projectId: string | null)
     data: projectId ? { project_id: projectId } : {},
   };
 }
+
+/** A reviewed context change needs attention, but is not an outage. The route
+ * is explicit so native clients never have to infer a destination from copy. */
+export function contextChangeNotification(input: { projectId: string; projectName: string; continuationId: string; claimId: string; summary: string }): PushNotification {
+  return { title: `Review ${input.projectName} context`, body: input.summary, interruptionLevel: 'active', data: {
+    route: 'project_brief_claim', project_id: input.projectId, continuation_id: input.continuationId, claim_id: input.claimId,
+    ios_path: `selvedge://continuations/${encodeURIComponent(input.continuationId)}/claims/${encodeURIComponent(input.claimId)}`,
+    web_path: `/continue/${encodeURIComponent(input.continuationId)}/claims/${encodeURIComponent(input.claimId)}`,
+  } };
+}

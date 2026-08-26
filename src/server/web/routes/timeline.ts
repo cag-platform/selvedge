@@ -4,9 +4,15 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getPack } from '../../packs/store.js';
 import { projectTimeline, searchProject } from '../../timeline/store.js';
 import { historyWindow } from '../../billing/entitlements.js';
+import { and, eq, sql } from 'drizzle-orm';
+import { projectSeenCursors } from '../../db/schema/index.js';
+import { listProjectHandoffReceipts } from '../../threads/switch.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
+}
+function userIdOf(req: Request): string {
+  return (req as Request & { userId?: string | null }).userId ?? orgIdOf(req);
 }
 
 /**
@@ -47,8 +53,58 @@ function applyWindow<T extends { at: string }>(rows: T[], since: Date | null): {
   return { visible, lockedOlderCount: rows.length - visible.length };
 }
 
-export function createTimelineRouter(db: Db) {
+export function createTimelineRouter(db: Db, deps: { evidenceEnabled?: boolean } = {}) {
   const router = Router();
+  const evidenceEnabled = deps.evidenceEnabled ?? false;
+
+  router.get(
+    '/api/projects/:projectId/since-you-left',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const pack = await getPack(db, orgId, projectId);
+      if (!pack) { res.status(404).json({ error: 'no such project' }); return; }
+      const [cursor] = await db.select().from(projectSeenCursors).where(and(
+        eq(projectSeenCursors.orgId, orgId), eq(projectSeenCursors.userId, userIdOf(req)), eq(projectSeenCursors.projectId, projectId),
+      )).limit(1);
+      const through = new Date();
+      const firstVisit = !cursor;
+      const since = cursor?.seenThrough ?? new Date(through.getTime() - 7 * 86_400_000);
+      const rows = await projectTimeline(db, orgId, projectId, { since, limit: 51, includeEvidence: evidenceEnabled });
+      res.json({ project: { id: projectId, name: pack.identity.name }, first_visit: firstVisit,
+        seen_through: cursor?.seenThrough.toISOString() ?? null, through: through.toISOString(),
+        entries: rows.slice(0, 50), unread_count: rows.length > 50 ? null : rows.length,
+        unread_count_lower_bound: Math.min(rows.length, 50), has_more: rows.length > 50,
+        acknowledgement: { method: 'POST', path: `/api/projects/${encodeURIComponent(projectId)}/since-you-left/acknowledge`, body: { through: through.toISOString() } } });
+    }),
+  );
+
+  router.post(
+    '/api/projects/:projectId/since-you-left/acknowledge',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) { res.status(404).json({ error: 'no such project' }); return; }
+      const through = typeof req.body?.through === 'string' ? new Date(req.body.through) : new Date(NaN);
+      if (Number.isNaN(through.getTime()) || through.getTime() > Date.now() + 60_000) { res.status(400).json({ error: 'through must be a valid cursor returned by Since you left' }); return; }
+      const userId = userIdOf(req);
+      const now = new Date();
+      const [row] = await db.insert(projectSeenCursors).values({ orgId, userId, projectId, seenThrough: through, updatedAt: now })
+        .onConflictDoUpdate({ target: [projectSeenCursors.orgId, projectSeenCursors.userId, projectSeenCursors.projectId],
+          set: { seenThrough: sql`greatest(${projectSeenCursors.seenThrough}, excluded.seen_through)`, updatedAt: now } }).returning();
+      res.json({ project_id: projectId, seen_through: row!.seenThrough.toISOString() });
+    }),
+  );
+
+  router.get(
+    '/api/projects/:projectId/handoffs',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) { res.status(404).json({ error: 'no such project' }); return; }
+      res.json({ project_id: projectId, receipts: await listProjectHandoffReceipts(db, orgId, projectId) });
+    }),
+  );
 
   router.get(
     '/api/projects/:projectId/timeline',
@@ -65,7 +121,7 @@ export function createTimelineRouter(db: Db) {
       const since = days > 0 ? new Date(Date.now() - days * 86_400_000) : undefined;
 
       const window = await historyWindow(db, orgId);
-      const entries = await projectTimeline(db, orgId, projectId, { ...(since ? { since } : {}) });
+      const entries = await projectTimeline(db, orgId, projectId, { ...(since ? { since } : {}), includeEvidence: evidenceEnabled });
       const { visible, lockedOlderCount } = applyWindow(entries, window.since);
 
       res.json({

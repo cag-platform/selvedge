@@ -4,7 +4,7 @@ import { entryEdge, outcomeLabel, formatCents } from '../../src/client/lib/ledge
 describe('entryEdge — a miss is never dressed as a win', () => {
   it('only a clean verdict is healthy', () => {
     expect(entryEdge({ outcome: 'done', verdict: 'verified' })).toBe('healthy');
-    expect(entryEdge({ outcome: 'done', verdict: 'probably' })).toBe('healthy');
+    expect(entryEdge({ outcome: 'done', verdict: 'probably' })).toBe('unknown');
   });
 
   it('a stopped, failed, or unclear finish is dashed unknown', () => {

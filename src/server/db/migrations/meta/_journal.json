@@ -260,6 +260,34 @@
       "when": 1787619600000,
       "tag": "0036_technical_detail",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787706000000,
+      "tag": "0037_continuation_wedge",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787792400000,
+      "tag": "0038_continuation_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787878800000,
+      "tag": "0039_project_seen_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787965200000,
+      "tag": "0040_checkout_guard",
+      "breakpoints": true
     }
   ]
 }

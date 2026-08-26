@@ -36,6 +36,11 @@ export const projectBuild = pgTable(
     previewSlug: text('preview_slug'),
     /** Set when an edit left changes ready to ship; cleared on ship or sandbox loss. */
     stagedChangesReady: boolean('staged_changes_ready').notNull().default(false),
+    /** The last successful mutating turn that observed the current dirty tree. */
+    dirtyRunId: text('dirty_run_id'),
+    dirtyThreadId: text('dirty_thread_id'),
+    dirtyAgent: text('dirty_agent'),
+    dirtyObservedAt: timestamp('dirty_observed_at', { withTimezone: true }),
     /** Claude model alias the agent runs under (haiku | sonnet | opus). */
     agentModel: text('agent_model').notNull().default('sonnet'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

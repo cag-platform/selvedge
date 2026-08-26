@@ -115,7 +115,7 @@ export async function shipChanges(
   }
   const paths = (diff.result ?? '').split('\n').map((p) => p.trim()).filter(Boolean);
   if (paths.length === 0) {
-    await setBuild(db, orgId, projectId, { stagedChangesReady: false });
+    await setBuild(db, orgId, projectId, { stagedChangesReady: false, dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null });
     return { outcome: 'nothing_to_ship', message: 'The workshop has no actual file changes to ship.' };
   }
   const risk = classifyRisk(pathSignals(paths));
@@ -174,7 +174,7 @@ export async function shipChanges(
     content: line,
     meta: { ship: { commit, reach } },
   });
-  await setBuild(db, orgId, projectId, { stagedChangesReady: false });
+  await setBuild(db, orgId, projectId, { stagedChangesReady: false, dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null });
 
   return { outcome: 'shipped', commit, message: line };
 }
