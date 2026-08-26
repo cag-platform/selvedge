@@ -152,8 +152,8 @@ describe('metering a sandbox', () => {
       };
     };
 
-    /** The ordinary end of every turn, and the one that saves the most money. */
-    it('stops a sandbox whose work has finished', async () => {
+    /** A finished build remains observable briefly and can hand its lease to Preview. */
+    it('does not stop a sandbox immediately when work finishes', async () => {
       await openSandboxRun(db, orgId, projectId, 'sb_1', new Date(Date.now() - 3 * minute));
       // The turn loop keeps a heartbeat going, so a sandbox that has just
       // finished working is recently alive rather than long quiet.
@@ -161,9 +161,9 @@ describe('metering a sandbox', () => {
       const s = sweep();
       const result = await s.run();
 
-      expect(s.stopped).toEqual(['sb_1']);
-      expect(result.closed[0]).toMatchObject({ sandboxId: 'sb_1', reason: 'completed' });
-      expect(await minutesUsed()).toBe(3);
+      expect(s.stopped).toEqual([]);
+      expect(result.closed).toEqual([]);
+      expect(await minutesUsed()).toBe(0);
     });
 
     /**
@@ -195,6 +195,14 @@ describe('metering a sandbox', () => {
       expect(result.closed[0]!.reason).toBe('ceiling_stop');
     });
 
+    it('does not mistake an actively viewed preview for a runaway agent', async () => {
+      await openSandboxRun(db, orgId, projectId, 'sb_preview', new Date(Date.now() - MAX_SEGMENT_MS - minute));
+      const s = sweep({ isWorking: async () => true, hasActivePreview: async () => true });
+      await s.run();
+      expect(s.stopped).toEqual([]);
+      expect(await openSegments(db)).toHaveLength(1);
+    });
+
     /**
      * When we never saw it stop, the honest end time is the last moment we knew
      * it was alive. Later would overcharge; `startedAt` would hide money we
@@ -217,11 +225,9 @@ describe('metering a sandbox', () => {
       await touchSandboxRun(db, 'sb_1', new Date(Date.now() - IDLE_STOP_MS + 30_000));
 
       const result = await sweep().run();
-      // Recently alive and not working: still stopped, but as a finished turn
-      // rather than as an idle one — and metered to now, because it really was
-      // up until now.
-      expect(result.closed[0]!.reason).toBe('completed');
-      expect(await minutesUsed()).toBe(20);
+      expect(result.closed).toEqual([]);
+      expect(await openSegments(db)).toHaveLength(1);
+      expect(await minutesUsed()).toBe(0);
     });
 
     /**
@@ -232,7 +238,6 @@ describe('metering a sandbox', () => {
      */
     it('meters a segment it could not stop', async () => {
       await openSandboxRun(db, orgId, projectId, 'sb_1', new Date(Date.now() - 6 * minute));
-      await touchSandboxRun(db, 'sb_1');
       await reapSandboxes(db, {
         stop: async () => {
           throw new Error('Daytona said no');
@@ -240,7 +245,7 @@ describe('metering a sandbox', () => {
         isWorking: async () => false,
       });
       expect(await openSegments(db)).toHaveLength(0);
-      expect(await minutesUsed()).toBe(6);
+      expect(await minutesUsed()).toBe(1);
     });
 
     /**
@@ -279,13 +284,13 @@ describe('metering a sandbox', () => {
     it('sweeps every org, not just the first', async () => {
       await openSandboxRun(db, orgId, projectId, 'sb_1', new Date(Date.now() - 3 * minute));
       await openSandboxRun(db, 'org_2', projectId, 'sb_2', new Date(Date.now() - 4 * minute));
-      await touchSandboxRun(db, 'sb_1');
-      await touchSandboxRun(db, 'sb_2');
+      await touchSandboxRun(db, 'sb_1', new Date(Date.now() - 2 * minute - 1));
+      await touchSandboxRun(db, 'sb_2', new Date(Date.now() - 2 * minute - 1));
       const s = sweep();
       await s.run();
       expect(s.stopped.sort()).toEqual(['sb_1', 'sb_2']);
-      expect(await minutesUsed()).toBe(3);
-      expect(await buildMinutesThisMonth(db, 'org_2')).toBe(4);
+      expect(await minutesUsed()).toBe(1);
+      expect(await buildMinutesThisMonth(db, 'org_2')).toBe(2);
     });
   });
 

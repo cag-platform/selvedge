@@ -1,6 +1,7 @@
 import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild } from './store.js';
+import { PREVIEW_TTL_MS } from './metering.js';
 import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
 import { isAllowedPreviewUrl } from '../../shared/preview.js';
 import { previewSlugFor } from '../web/previewProxy.js';
@@ -325,7 +326,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
    *
    * Safe to do now in a way it was not before: previews are checked against
    * the plan's build minutes at the route, metered per second from the moment
-   * the sandbox exists, and stopped by the sweep within a minute of going
+   * the sandbox exists, and stopped by the sweep after its preview lease goes
    * quiet. A preview that starts a sandbox is a bounded, visible cost rather
    * than an open tap.
    */
@@ -372,6 +373,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
     // Without it, the signed direct Daytona URL, warning included.
     const domain = process.env.PREVIEW_DOMAIN?.trim();
     const url = domain ? `https://${slug}.${domain}/` : withPreviewToken(link.url, token!);
+    await setBuild(db, orgId, projectId, { previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS) });
     return { state: 'ready', url, message: null };
   } catch (err) {
     /**

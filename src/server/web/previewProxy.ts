@@ -7,6 +7,8 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { projectBuild } from '../db/schema/index.js';
 import { isAllowedPreviewUrl } from '../../shared/preview.js';
+import { PREVIEW_TTL_MS } from '../build/metering.js';
+import { renewPreviewLeaseBySlug } from '../build/store.js';
 
 /**
  * The preview proxy — ported from Toile (its Phase 19). Daytona shows a
@@ -65,6 +67,7 @@ export function createPreviewProxy(db: Db): PreviewProxy {
   proxy.on('error', () => {});
 
   const cache = new Map<string, { target: string | null; expires: number }>();
+  const lease = (slug: string) => renewPreviewLeaseBySlug(db, slug, new Date(Date.now() + PREVIEW_TTL_MS)).catch(() => undefined);
 
   async function targetForSlug(slug: string): Promise<string | null> {
     const now = Date.now();
@@ -94,6 +97,7 @@ export function createPreviewProxy(db: Db): PreviewProxy {
           sendUnavailable(res, 503);
           return;
         }
+        void lease(slug);
         proxy.web(req, res, { target }, () => sendUnavailable(res, 502));
       })
       .catch(() => sendUnavailable(res, 502));
@@ -109,6 +113,9 @@ export function createPreviewProxy(db: Db): PreviewProxy {
           socket.destroy();
           return;
         }
+        void lease(slug);
+        const heartbeat = setInterval(() => void lease(slug), 60_000);
+        socket.once('close', () => clearInterval(heartbeat));
         proxy.ws(req, socket, head, { target }, () => socket.destroy());
       })
       .catch(() => socket.destroy());

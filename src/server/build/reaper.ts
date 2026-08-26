@@ -1,8 +1,9 @@
 import { and, eq, gte } from 'drizzle-orm';
 import { Daytona } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
-import { agentRuns } from '../db/schema/index.js';
+import { agentRuns, projectBuild } from '../db/schema/index.js';
 import { reapSandboxes, reconcileSandboxes, type OpenSegment, type ReapResult, type Reconciliation } from './metering.js';
+import { SANDBOX_AUTO_ARCHIVE_MINUTES } from './sandbox.js';
 
 /**
  * THE SWEEP, WIRED TO THE REAL WORLD.
@@ -48,13 +49,21 @@ export async function projectIsWorking(db: Db, segment: OpenSegment, now = new D
       ),
     )
     .limit(1);
-  return Boolean(row);
+  if (row) return true;
+  return previewIsActive(db, segment, now);
+}
+
+export async function previewIsActive(db: Db, segment: OpenSegment, now = new Date()): Promise<boolean> {
+  const [preview] = await db.select({ activeUntil: projectBuild.previewActiveUntil }).from(projectBuild)
+    .where(and(eq(projectBuild.orgId, segment.orgId), eq(projectBuild.projectId, segment.projectId))).limit(1);
+  return Boolean(preview?.activeUntil && preview.activeUntil.getTime() > now.getTime());
 }
 
 export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapResult> {
   return reapSandboxes(db, {
     now,
     isWorking: (segment) => projectIsWorking(db, segment, now),
+    hasActivePreview: (segment) => previewIsActive(db, segment, now),
     stop: async (segment) => {
       const sandbox = await daytona().get(segment.sandboxId);
       if (sandbox.state === 'started') await sandbox.stop();
@@ -74,6 +83,11 @@ export async function runSandboxReconciliation(db: Db): Promise<Reconciliation> 
       // this walks it rather than treating it as an array.
       const running: string[] = [];
       for await (const sandbox of daytona().list()) {
+        if (sandbox.labels?.['selvedge/org'] && sandbox.labels?.['selvedge/project']) {
+          await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES).catch((err) =>
+            console.error(`could not apply archive policy to ${sandbox.id}:`, err),
+          );
+        }
         if (sandbox.state === 'started') running.push(sandbox.id);
       }
       return running;

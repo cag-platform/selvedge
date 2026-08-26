@@ -1,4 +1,5 @@
 import { Daytona, DaytonaNotFoundError, type Sandbox } from '@daytonaio/sdk';
+import { createHash } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
 import { SANDBOX_AUTOSTOP_MINUTES, closeSandboxRun, openSandboxRun, type EndReason } from './metering.js';
@@ -25,15 +26,23 @@ export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
  * Idle minutes before a sandbox stops itself.
  *
  * Down from fifteen, and no longer the main guard: `build/metering.ts` runs a
- * sweep every minute that knows whether a turn is actually in flight, and stops
- * a sandbox within a minute of its work finishing. Daytona's own timer is the
+ * sweep every minute that knows whether a turn or preview is actually in flight,
+ * and stops a sandbox after its idle grace. Daytona's own timer is the
  * backstop for when this server isn't running to sweep, which is why it is not
  * set as tight as the sweep — a native auto-stop firing between two commands of
  * one turn would destroy work to save pennies.
  */
 export const SANDBOX_IDLE_MINUTES = SANDBOX_AUTOSTOP_MINUTES;
+/** Preserve the filesystem but move it off quota after one stopped hour. */
+export const SANDBOX_AUTO_ARCHIVE_MINUTES = 60;
 
 const DEAD_STATES = new Set(['destroyed', 'destroying', 'error', 'build_failed']);
+
+export function sandboxNameFor(orgId: string, projectId: string): string {
+  const project = projectId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'project';
+  const owner = createHash('sha256').update(orgId).digest('hex').slice(0, 6);
+  return `selvedge-${project}-${owner}`;
+}
 
 let client: Daytona | null = null;
 function daytona(): Daytona {
@@ -158,9 +167,11 @@ async function prepare(sandbox: Sandbox, cfg: SandboxConfig): Promise<void> {
 async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {
   const sandbox = await daytona().create(
     {
+      name: sandboxNameFor(orgId, projectId),
       labels: { 'selvedge/org': orgId, 'selvedge/project': projectId },
       public: false,
       autoStopInterval: SANDBOX_IDLE_MINUTES, // the sandbox-cost guard
+      autoArchiveInterval: SANDBOX_AUTO_ARCHIVE_MINUTES,
       // NO CREDENTIALS ARE BAKED IN HERE. A sandbox outlives any secret by
       // days: a token pinned at creation is an hour's worth of working and then
       // a puzzling failure. Every secret travels with the command that needs
@@ -243,6 +254,8 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
     if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
     return create(db, orgId, projectId, cfg);
   }
+  // Also upgrades sandboxes created before the archive policy existed.
+  await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES).catch(() => undefined);
   if (sandbox.state !== 'started') await sandbox.start(300);
   await openSandboxRun(db, orgId, projectId, sandbox.id).catch((err) => {
     // A meter that fails must not take the turn down with it. It is loud

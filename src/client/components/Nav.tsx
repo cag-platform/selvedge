@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
 import { SelvedgeLockup, SelvedgeMark } from './Logo.js';
@@ -36,9 +37,30 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
 }) {
   const pathname = useLocation().pathname;
   const workActive = pathname.startsWith('/inbox') || pathname === '/work';
+  const secondaryMenu = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (!secondaryMenu.current?.contains(event.target as Node)) secondaryMenu.current?.removeAttribute('open');
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        secondaryMenu.current?.removeAttribute('open');
+        secondaryMenu.current?.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
+
+  const closeSecondaryMenu = () => secondaryMenu.current?.removeAttribute('open');
   return (
     <header
-      className="border-b border-hairline"
+      className="relative z-50 border-b border-hairline"
       style={{
         background: 'var(--glass-fill)',
         backdropFilter: 'var(--glass-blur)',
@@ -76,12 +98,12 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
             last: you can always tell which account you are in from the picture,
             and never from a name clipped to three letters. */}
         <div className="flex min-w-0 shrink items-center gap-1.5 sm:gap-3">
-          <details className="relative shrink-0">
+          <details ref={secondaryMenu} className="relative shrink-0">
             <summary aria-label="Secondary navigation" className="cursor-pointer list-none rounded-inset px-2 py-1 text-body text-ink-dim hover:bg-panel-soft">•••</summary>
             <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-56 rounded-card border border-hairline bg-panel p-2 shadow-pane">
-              <Link to="/admin/record" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
-              <Link to="/admin/connections" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
-              <Link to="/admin" className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
+              <Link to="/admin/record" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
+              <Link to="/admin/connections" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
+              <Link to="/admin" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
               <div className="mt-2 border-t border-hairline px-2 pt-3">
                 <p className="text-label font-semibold uppercase tracking-widest text-ink-quiet">Appearance</p>
                 <div className="mt-2 grid grid-cols-3 gap-1" role="group" aria-label="Color theme">
@@ -90,7 +112,10 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
                       key={option}
                       type="button"
                       aria-pressed={theme === option}
-                      onClick={() => onThemeChange(option)}
+                      onClick={() => {
+                        onThemeChange(option);
+                        closeSecondaryMenu();
+                      }}
                       className={`rounded-inset px-2 py-1.5 text-meta capitalize focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright ${theme === option ? 'bg-action text-ink' : 'text-ink-dim hover:bg-panel-soft hover:text-ink'}`}
                     >
                       {option === 'night' ? 'Night' : option}

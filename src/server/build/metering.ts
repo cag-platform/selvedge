@@ -37,8 +37,8 @@ import { monthStartUtc } from '../billing/entitlements.js';
  * which is why this is not the ninety seconds the plan for this work asked for.
  *
  * It is the BACKSTOP, not the mechanism. The primary is the reaper below, which
- * can see whether a turn is actually in flight and Daytona cannot, and which
- * stops a sandbox within a minute of its work finishing. Daytona's timer only
+ * can see whether a turn or preview is actually in flight and Daytona cannot,
+ * and which stops a sandbox after its short idle grace. Daytona's timer only
  * matters when this server is not running to sweep — so it is set well below
  * the fifteen minutes it used to be, and comfortably above any gap between two
  * commands inside one turn, because a native auto-stop that fires mid-build
@@ -220,6 +220,8 @@ export type ReaperDeps = {
   stop(segment: OpenSegment): Promise<void>;
   /** Is a turn genuinely in flight for this project right now? */
   isWorking(segment: OpenSegment): Promise<boolean>;
+  /** A viewed preview is intentional runtime, not a stuck agent loop. */
+  hasActivePreview?(segment: OpenSegment): Promise<boolean>;
   now?: Date;
 };
 
@@ -237,9 +239,9 @@ export type ReapResult = { closed: Array<{ sandboxId: string; reason: EndReason;
  *    in flight" half is the difference between this and Daytona's own timer:
  *    this one knows the difference between a quiet sandbox and a working one,
  *    and will not kill a build that simply has not spoken for two minutes.
- *  3. FINISHED. A segment whose work is done but whose sandbox is still up.
- *    Undramatic, and the one that saves the most money — it is the ordinary end
- *    of every single turn.
+ * A finished turn is not stopped immediately: it receives the same small idle
+ * window as every other use. That makes the machine observable and allows a
+ * preview request arriving just after a build to take over the lease.
  *
  * A stop that fails at Daytona still closes and meters the segment. Refusing to
  * record it would mean the one case where we know least about a sandbox is also
@@ -261,15 +263,14 @@ export async function reapSandboxes(db: Db, deps: ReaperDeps): Promise<ReapResul
     // owner's to pay for twice over.
     let endedAt = now;
 
-    if (age >= MAX_SEGMENT_MS) {
+    const previewActive = await deps.hasActivePreview?.(segment).catch(() => false) ?? false;
+    if (age >= MAX_SEGMENT_MS && !previewActive) {
       reason = 'ceiling_stop';
     } else {
       const working = await deps.isWorking(segment).catch(() => true);
       if (!working && quiet >= IDLE_STOP_MS) {
         reason = 'idle_stop';
         endedAt = segment.lastAliveAt;
-      } else if (!working) {
-        reason = 'completed';
       }
     }
     if (!reason) continue;

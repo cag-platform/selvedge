@@ -337,6 +337,13 @@
       "when": 1788570000000,
       "tag": "0047_distribution_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1788656400000,
+      "tag": "0048_preview_leases",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,11 @@ export async function setBuild(
     });
 }
 
+/** Renew a temporary development-preview lease from its proxy hostname. */
+export async function renewPreviewLeaseBySlug(db: Db, slug: string, activeUntil: Date): Promise<void> {
+  await db.update(projectBuild).set({ previewActiveUntil: activeUntil }).where(eq(projectBuild.previewSlug, slug));
+}
+
 /**
  * Detach the sandbox from a project (it was stopped/deleted). Clears the session
  * and staged-changes flag too: both live on the sandbox disk, so neither can
@@ -55,5 +60,6 @@ export async function clearSandbox(db: Db, orgId: string, projectId: string): Pr
     previewUrl: null,
     previewToken: null,
     previewTokenExpiresAt: null,
+    previewActiveUntil: null,
   });
 }
