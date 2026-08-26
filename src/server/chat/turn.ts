@@ -13,6 +13,8 @@ import type { LlmClient } from '../llm/types.js';
 import { agentById, type AgentId, type AgentProvider } from '../../shared/agents.js';
 import type { Thread } from '../threads/store.js';
 import { publishLiveChat } from './live.js';
+import { renderTaskContextCapsule } from '../context/compiler.js';
+import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
 
 /**
  * A general thread's turn: plain conversation, no sandbox, nothing to ship.
@@ -34,7 +36,21 @@ import { publishLiveChat } from './live.js';
 
 export type ChatOutcome =
   | { ok: true; reply: string; model: string; costed: true }
-  | { ok: false; reason: 'no_fuel' | 'over_budget' | 'model_failed'; message: string };
+  | { ok: false; reason: 'no_fuel' | 'over_budget' | 'model_failed'; message: string; failure_code?: string; retryable?: boolean };
+
+export type ModelFailure = { code: string; retryable: boolean; message: string };
+
+/** Provider errors become stable product states rather than raw status codes. */
+export function classifyModelFailure(reason: string, model?: string): ModelFailure {
+  if (reason === 'api_error_404') return { code: 'model_unavailable', retryable: false, message: `${model ?? 'That model'} is not available to this OpenAI account. Choose another GPT model under the agent menu, or check the account's model access.` };
+  if (reason === 'api_error_401' || reason === 'api_error_403') return { code: 'credential_rejected', retryable: false, message: 'The model provider rejected the connected credential. Reconnect it under Connections, then retry this agent.' };
+  if (reason === 'api_error_429') return { code: 'rate_limited', retryable: true, message: 'The model provider is rate-limiting this agent right now. Wait a moment, then retry this agent only.' };
+  if (reason.startsWith('api_error_5')) return { code: 'provider_unavailable', retryable: true, message: 'The model provider is temporarily unavailable. Retry this agent only in a moment.' };
+  if (reason === 'network_or_timeout') return { code: 'network_or_timeout', retryable: true, message: "I couldn't reach the model just then. Nothing was lost—ask me again, or retry only this agent in a consultation." };
+  if (reason === 'max_tokens') return { code: 'answer_too_long', retryable: true, message: 'That answer ran longer than I allow in one go. Retry this agent with a shorter, narrower question.' };
+  if (reason === 'refusal' || reason === 'content_filter') return { code: 'declined', retryable: false, message: 'The model declined that request. The other consultation answers are unaffected.' };
+  return { code: 'model_failed', retryable: true, message: "I couldn't get an answer just then. Retry this agent only; the other answers are safe." };
+}
 
 /** Bounds — the context must not grow without limit as a thread gets long. */
 const MAX_HISTORY = 20;
@@ -175,6 +191,8 @@ export type ChatDeps = {
    * without guessing from arrival order or agent names.
    */
   consultation?: { id: string; promptId: string };
+  /** One frozen compiler projection shared by every lane of a consultation. */
+  contextCapsule?: TaskContextCapsule;
 };
 
 /**
@@ -217,26 +235,6 @@ async function projectContext(db: Db, orgId: string, projectId: string): Promise
 }
 
 /**
- * WHY THERE ISN'T AN ANSWER.
- *
- * The client already knows — refusal, max_tokens, api_error_429, a timeout —
- * and every one of those was collapsed into "I couldn't get an answer just
- * then. Nothing was lost — ask me again." That sentence is true and useless:
- * it sends somebody to retry a request that will fail identically, and it
- * hides the two failures they could actually act on.
- */
-function whyNoAnswer(reason: string): string {
-  if (reason === 'max_tokens') {
-    return 'That answer ran longer than I allow in one go, so none of it came back. Ask for a shorter take, or ask about one part of it.';
-  }
-  if (reason === 'refusal') return 'The model declined to answer that one. Nothing was lost — try asking it differently.';
-  if (reason === 'api_error_429') return "The model is rate-limiting right now — that's a wait, not a problem with what you asked. Try again in a moment.";
-  if (reason.startsWith('api_error_')) return `The model service refused that call (${reason.replace('api_error_', 'error ')}). Nothing was lost — ask me again.`;
-  if (reason === 'network_or_timeout') return "I couldn't reach the model just then. Nothing was lost — ask me again.";
-  return "I couldn't get an answer just then. Nothing was lost — ask me again.";
-}
-
-/**
  * Every answer records who gave it. Without this a consultation is two
  * paragraphs from nobody in particular, and the whole point of asking two
  * agents is knowing which one said which.
@@ -248,6 +246,8 @@ async function say(
   content: string,
   answeredBy: AgentId,
   consultation?: ChatDeps['consultation'],
+  contextCapsule?: TaskContextCapsule,
+  lane?: { status: 'answered' | 'failed'; failure_code?: string; retryable?: boolean },
 ): Promise<void> {
   await db.insert(agentMessages).values({
     id: ulid(),
@@ -259,6 +259,8 @@ async function say(
     meta: {
       answered_by: answeredBy,
       ...(consultation ? { consultation_id: consultation.id, in_reply_to: consultation.promptId } : {}),
+      ...(contextCapsule ? { context_capsule_id: contextCapsule.capsule_id, context_capsule_hash: contextCapsule.content_hash } : {}),
+      ...(consultation && lane ? { consultation_lane: lane } : {}),
     },
   });
 }
@@ -318,7 +320,7 @@ export async function runChatTurn(
   if (!provider || !deps.client) {
     const name = agentById(speaking)?.name ?? speaking;
     const message = `This thread runs on ${name}, and there's no key connected for it — so I can't answer here yet. Connect one under Connections, or switch this thread to a model you have connected.`;
-    await say(db, orgId, thread, message, speaking, deps.consultation);
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'no_fuel', retryable: false });
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'no_fuel', message };
   }
@@ -328,7 +330,7 @@ export async function runChatTurn(
   const budget = await checkThinkingBudget(db, orgId, now());
   if (budget.over) {
     const message = `This account has reached its daily limit for chat ($${budget.capUsd.toFixed(2)}). It resets tomorrow — the watching and your morning brief are unaffected.`;
-    await say(db, orgId, thread, message, speaking, deps.consultation);
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'over_budget', retryable: true });
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'over_budget', message };
   }
@@ -373,6 +375,7 @@ export async function runChatTurn(
     model,
     system: systemFor(speaking, deps.asTake === true),
     userContent: [
+      ...(deps.contextCapsule ? [renderTaskContextCapsule(deps.contextCapsule), ''] : []),
       project ? `The project this conversation is about:\n${JSON.stringify(project, null, 2)}` : 'I have no context pack for this project, so I know nothing about it beyond this conversation.',
       '',
       ...(referenced ? [referenced, ''] : []),
@@ -410,20 +413,21 @@ export async function runChatTurn(
     // In the log with the model that produced it, so a run of these is
     // diagnosable rather than a mystery reported three times by three agents.
     console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
-    const message = whyNoAnswer(result.reason);
-    await say(db, orgId, thread, message, speaking, deps.consultation);
-    return { ok: false, reason: 'model_failed', message };
+    const failure = classifyModelFailure(result.reason, model);
+    const message = failure.message;
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: failure.code, retryable: failure.retryable });
+    return { ok: false, reason: 'model_failed', message, failure_code: failure.code, retryable: failure.retryable };
   }
 
   const reply = (result.json as { reply?: unknown }).reply;
   if (typeof reply !== 'string' || reply.trim() === '') {
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
-    await say(db, orgId, thread, message, speaking, deps.consultation);
-    return { ok: false, reason: 'model_failed', message };
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'empty_answer', retryable: true });
+    return { ok: false, reason: 'model_failed', message, failure_code: 'empty_answer', retryable: true };
   }
 
-  await say(db, orgId, thread, reply.trim(), speaking, deps.consultation);
+  await say(db, orgId, thread, reply.trim(), speaking, deps.consultation, deps.contextCapsule, { status: 'answered' });
   publishLiveChat(orgId, thread.id, { type: 'reply_finished', ...liveIdentity });
   return { ok: true, reply: reply.trim(), model, costed: true };
 }

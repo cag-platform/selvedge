@@ -51,11 +51,12 @@ function ReceivedContext({ projectId }: { projectId: string }) {
   if (!received) return null;
   const count = received.sections.about.length + received.sections.recent.length + received.sections.open.length;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Context received by the current builder">
-      <span className="font-medium text-action-bright">Context received</span>
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Durable project memory available">
+      <span className="font-medium text-action-bright">Project memory available</span>
       <span aria-hidden>·</span><span>{count} grounded lines</span>
       <span aria-hidden>·</span><span>{received.sections.recent.length} recent records</span>
       <span aria-hidden>·</span><span>{received.sections.open.length} open questions</span>
+      <span aria-hidden>·</span><span>live repository access is reported per answer</span>
     </span>
   );
 }
@@ -202,8 +203,30 @@ function ShipControls({ data, onDone }: { data: ThreadData & { project: { id: st
 }
 
 function Message({ message, data }: { message: ThreadMessage; data: ThreadData }) {
+  const [retryingLane, setRetryingLane] = useState(false);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
+  const [cleanupCandidates, setCleanupCandidates] = useState<Array<{ project_id: string; name: string; last_used_at: string }> | null>(null);
   if (message.role === 'switch') {
-    return <BuilderHandoff threadId={data.thread.id} content={message.content} meta={message.meta} detail={data.effective_technical_detail} />;
+    const consultationId = (message.meta as { consultation?: { id?: string } } | null)?.consultation?.id;
+    const status = consultationId ? data.consultations?.find((item) => item.id === consultationId) : null;
+    return <>
+      <BuilderHandoff threadId={data.thread.id} content={message.content} meta={message.meta} detail={data.effective_technical_detail} />
+      {status && <div className={`ml-work mt-2 rounded-inset border px-3 py-2 text-meta ${status.state === 'partial' ? 'border-thread/40 bg-panel-soft text-ink' : 'border-hairline bg-panel-soft text-ink-dim'}`}>
+        <span className="font-medium">{status.state === 'complete' ? 'Consultation complete' : status.state === 'partial' ? 'Consultation incomplete' : 'Consultation running'}</span>
+        <span aria-hidden> · </span>{status.summary}
+        {status.state === 'partial' && <span className="block mt-1 text-ink-dim">Available answers are preliminary until the failed lanes are resolved; no opinion is treated as project truth.</span>}
+        <span className="mt-1 block text-ink">{status.outcome}</span>
+        <details className="mt-2 text-ink-dim">
+          <summary className="cursor-pointer select-none">Context receipt{status.evidence.capsule_id ? ` · ${status.evidence.capsule_id}` : ''}</summary>
+          <div className="mt-1 space-y-0.5 border-l border-hairline pl-3 font-mono text-tech">
+            <div>{status.receipt.known_facts} known facts · {status.receipt.observed_facts} current observations</div>
+            <div>{status.evidence.repository_observed ? `${status.evidence.changed_files} changed files observed` : 'live repository unavailable'} · {status.evidence.verification_available ? 'verification included' : 'verification unavailable'}</div>
+            <div>{status.receipt.generated_at ? `compiled ${new Date(status.receipt.generated_at).toLocaleString()}` : 'compilation time unavailable'}</div>
+            {status.receipt.omissions.length > 0 && <div>omitted: {status.receipt.omissions.join(', ')}</div>}
+          </div>
+        </details>
+      </div>}
+    </>;
   }
 
   if (message.role === 'activity') {
@@ -250,6 +273,53 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
           asking two agents was meant to resolve. */}
       <p className="text-label font-body uppercase tracking-widest text-ink-quiet">{speakerOf(message)}</p>
       <p className="whitespace-pre-line text-body text-ink">{message.content}</p>
+      {message.role === 'agent' && message.consultation_id && message.answered_by && message.consultation_lane?.status === 'failed' && (
+        <div className="mt-work-tight space-y-2 text-meta">
+          <div className="flex items-center gap-work-tight">
+          {message.consultation_lane.recovery === 'free_sandbox_storage' && cleanupCandidates === null && (
+            <button type="button" disabled={retryingLane} className="rounded-inset border border-hairline px-3 py-1.5 text-ink hover:border-action disabled:opacity-50"
+              onClick={() => {
+                setRetryingLane(true); setRetryNote(null);
+                void api.get<{ candidates: Array<{ project_id: string; name: string; last_used_at: string }> }>(`/api/sandbox-capacity/candidates?project_id=${encodeURIComponent(data.project?.id ?? '')}`)
+                  .then((result) => { setCleanupCandidates(result.candidates); if (!result.candidates.length) setRetryNote('No safe inactive workshops can be archived automatically. Workshops with unshipped or active work are protected.'); })
+                  .catch((error) => setRetryNote(error instanceof Error ? error.message : 'I could not check sandbox storage.'))
+                  .finally(() => setRetryingLane(false));
+              }}>Find safe space to free</button>
+          )}
+          {message.consultation_lane.retryable !== false && (
+            <button
+              type="button"
+              disabled={retryingLane}
+              className="rounded-inset border border-hairline px-3 py-1.5 text-ink hover:border-action disabled:opacity-50"
+              onClick={() => {
+                setRetryingLane(true);
+                setRetryNote(null);
+                void api.post(`/api/threads/${encodeURIComponent(data.thread.id)}/consultations/${encodeURIComponent(message.consultation_id!)}/retry`, { agent: message.answered_by })
+                  .then(() => setRetryNote(`Retrying ${agentById(message.answered_by!)?.name ?? message.answered_by} only…`))
+                  .catch((error) => setRetryNote(error instanceof Error ? error.message : 'That retry did not start.'))
+                  .finally(() => setRetryingLane(false));
+              }}
+            >
+              {retryingLane ? 'Retrying…' : `Retry ${agentById(message.answered_by)?.name ?? message.answered_by} only`}
+            </button>
+          )}
+          {retryNote && <span className="text-ink-dim">{retryNote}</span>}
+          </div>
+          {cleanupCandidates && cleanupCandidates.length > 0 && <div className="rounded-inset border border-hairline bg-panel-soft p-3">
+            <p className="text-ink-dim">Archive one inactive workshop. Its repository and conversation remain; the sandbox is recreated next time.</p>
+            <div className="mt-2 flex flex-wrap gap-2">{cleanupCandidates.map((candidate) => <button key={candidate.project_id} type="button" disabled={retryingLane}
+              className="rounded-inset border border-hairline bg-panel px-3 py-1.5 text-ink hover:border-action disabled:opacity-50"
+              onClick={() => {
+                setRetryingLane(true); setRetryNote(null);
+                void api.post('/api/sandbox-capacity/free', { project_id: candidate.project_id })
+                  .then(() => api.post(`/api/threads/${encodeURIComponent(data.thread.id)}/consultations/${encodeURIComponent(message.consultation_id!)}/retry`, { agent: message.answered_by }))
+                  .then(() => { setCleanupCandidates(null); setRetryNote(`Archived ${candidate.name} and retrying ${agentById(message.answered_by!)?.name ?? message.answered_by} only…`); })
+                  .catch((error) => setRetryNote(error instanceof Error ? error.message : 'That cleanup and retry did not finish.'))
+                  .finally(() => setRetryingLane(false));
+              }}>Archive {candidate.name} and retry</button>)}</div>
+          </div>}
+        </div>
+      )}
       {/* WHAT WAS ATTACHED, on the record. A document that only existed in the
           prompt would make the thread a partial account of what was asked. */}
       {(message.documents ?? []).map((doc) => (

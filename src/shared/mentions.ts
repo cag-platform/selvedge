@@ -103,6 +103,7 @@ export function consultationLine(
    * success.
    */
   skipped: AgentId[] = [],
+  builderMode: 'plan' | 'build' = 'build',
 ): string {
   const said = agents.map(names);
   const list = said.length === 2 ? said.join(' and ') : `${said.slice(0, -1).join(', ')} and ${said.at(-1)}`;
@@ -111,7 +112,9 @@ export function consultationLine(
     : '';
   const builders = agents.filter((id) => AGENTS.find((agent) => agent.id === id)?.changesFiles);
   const action = builders.length === 1
-    ? `${names(builders[0]!)} is building while the others answer; the conversation stays where it is.`
+    ? builderMode === 'plan'
+      ? `${names(builders[0]!)} is inspecting and planning without changing files while the others answer; the conversation stays where it is.`
+      : `${names(builders[0]!)} is building while the others answer; the conversation stays where it is.`
     : 'nothing was built, and the conversation stays where it is.';
   return `⇄ asked ${list} — ${action}${note}`;
 }

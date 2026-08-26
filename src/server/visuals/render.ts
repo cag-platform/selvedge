@@ -8,6 +8,8 @@ import { completeVisual, failVisual, queueVisual } from './store.js';
 import { visualStorageKey, type VisualObjectStore } from './storage.js';
 import { publishLiveChat } from '../chat/live.js';
 import { beginVisualJob } from './live.js';
+import { renderTaskContextCapsule } from '../context/compiler.js';
+import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
 
 const DIRECTION_SCHEMA = {
   type: 'object',
@@ -45,6 +47,7 @@ export async function runVisualJob(db: Db, orgId: string, input: {
   director: LlmClient;
   renderer: VisualRenderer;
   objectStore: VisualObjectStore;
+  contextCapsule?: TaskContextCapsule;
 }) {
   const visual = await queueVisual(db, orgId, {
     threadId: input.threadId,
@@ -65,7 +68,7 @@ export async function runVisualJob(db: Db, orgId: string, input: {
       model: input.directingModel,
       maxTokens: 700,
       system: 'Interpret the visual request in your own design voice. Return a short explanation for the owner and a precise standalone image-generation prompt. Do not claim you rendered the pixels.',
-      userContent: input.request,
+      userContent: input.contextCapsule ? `${renderTaskContextCapsule(input.contextCapsule)}\n\n---\n\n${input.request}` : input.request,
       schema: DIRECTION_SCHEMA,
     });
     const directionMs = Date.now() - directionStarted;
@@ -88,6 +91,7 @@ export async function runVisualJob(db: Db, orgId: string, input: {
       meta: {
         answered_by: input.directingAgent,
         ...(input.consultationId ? { consultation_id: input.consultationId, in_reply_to: input.promptId } : {}),
+        ...(input.contextCapsule ? { context_capsule_id: input.contextCapsule.capsule_id, context_capsule_hash: input.contextCapsule.content_hash } : {}),
         visual_id: visual.id,
       },
     });

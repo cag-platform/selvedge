@@ -69,6 +69,7 @@ describe('a general thread turn', () => {
       answered_by: 'codex',
       consultation_id: 'consultation-1',
       in_reply_to: 'owner-message-1',
+      consultation_lane: { status: 'answered' },
     });
   });
 

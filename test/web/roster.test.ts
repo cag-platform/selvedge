@@ -11,7 +11,7 @@ import { createThread, createSubjectThread } from '../../src/server/threads/stor
 import { createSubject } from '../../src/server/threads/subjects.js';
 import { switchThreadAgent } from '../../src/server/threads/switch.js';
 import { connectCredential } from '../../src/server/connectors/credentials/store.js';
-import type { AgentOffer } from '../../src/server/threads/roster.js';
+import { agentRoster, type AgentOffer } from '../../src/server/threads/roster.js';
 import { AGENTS } from '../../src/shared/agents.js';
 import { appWithOrg } from './helpers.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
@@ -213,6 +213,20 @@ describe('who could answer this, and what handing it over would cost', () => {
     expect(agents.find((a) => a.id === 'claude-code')!.available).toBe(true);
     // ...and connecting one builder's account says nothing about the other's.
     expect(agents.find((a) => a.id === 'codex')!.available).toBe(false);
+  });
+
+  it('does not offer a connected talker whose selected model probe is unavailable', async () => {
+    await connectCredential(db, orgId, 'openai', 'sk-test', { kind: 'api_key' });
+    const thread = await conversation();
+    const agents = await agentRoster(db, orgId, thread, engineOn,
+      async () => ({ available: true, note: null }),
+      async (_db, _org, provider) => provider === 'openai'
+        ? { state: 'unavailable', checked_at: new Date().toISOString(), code: 'model_unavailable', note: 'This model is not available to the connected account.' }
+        : { state: 'available', checked_at: new Date().toISOString(), code: null, note: null });
+    const gpt = agents.find((agent) => agent.id === 'gpt')!;
+    expect(gpt.available).toBe(false);
+    expect(gpt.readiness.code).toBe('model_unavailable');
+    expect(gpt.unavailable_note).toMatch(/not available/i);
   });
 
   it('is org-scoped', async () => {

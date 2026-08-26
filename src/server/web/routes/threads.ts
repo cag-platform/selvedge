@@ -3,7 +3,7 @@ import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, orgs, threads } from '../../db/schema/index.js';
+import { agentMessages, agentMessageAttachments, agentRuns, llmUsage, orgs, projectBuild, threads } from '../../db/schema/index.js';
 import { getPack, listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { getBuild } from '../../build/store.js';
@@ -37,7 +37,8 @@ import { agentRoster } from '../../threads/roster.js';
 import { raiseCeiling, threadCeiling } from '../../threads/ceiling.js';
 import { briefAsText, briefForThread, withFreshness } from '../../decisions/store.js';
 import { staleWarningFor } from '../../decisions/freshness.js';
-import { agentById, changesFiles, type AgentId } from '../../../shared/agents.js';
+import { agentById, changesFiles, isAgentId, type AgentId } from '../../../shared/agents.js';
+import type { TaskContextCapsule } from '../../../shared/types/contextCapsule.js';
 import { consultationLine, mentionIntent, MAX_CONSULTED } from '../../../shared/mentions.js';
 import { referenceLine, type SearchScope } from '../../../shared/references.js';
 import { boundDocuments } from '../../../shared/documents.js';
@@ -60,6 +61,10 @@ import { imageApiKeyFor } from '../../visuals/credentials.js';
 import { OpenAIVisualRenderer, runVisualJob } from '../../visuals/render.js';
 import { wantsVisual } from '../../../shared/visualIntent.js';
 import { cancelVisualJobs } from '../../visuals/live.js';
+import { executionModeFor, type ExecutionMode } from '../../../shared/executionIntent.js';
+import { consultationStatuses } from '../../consultations/status.js';
+import { compileTaskContext, type CompileContextInput } from '../../context/compiler.js';
+import { deleteSandbox, inspectSandboxWorktree, isSandboxCapacityError, type SandboxExecutionSnapshot } from '../../build/sandbox.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -110,6 +115,9 @@ export type ThreadsDeps = {
   createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
   checkoutGuardEnabled?: boolean;
   visualStore?: VisualObjectStore | null;
+  /** The single server-side compilation seam; injected so route tests can freeze it. */
+  compileContext?: (db: Db, input: CompileContextInput) => ReturnType<typeof compileTaskContext>;
+  captureExecutionState?: (db: Db, orgId: string, projectId: string) => Promise<SandboxExecutionSnapshot | null>;
 };
 
 export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
@@ -125,6 +133,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   const makeRepo = deps.createRepo;
   const checkoutGuardEnabled = deps.checkoutGuardEnabled ?? false;
   const visualStore = deps.visualStore === undefined ? visualObjectStore() : deps.visualStore;
+  const compileContext = deps.compileContext ?? compileTaskContext;
+  const captureExecutionState = deps.captureExecutionState ?? (process.env.NODE_ENV === 'test' ? async () => null : inspectSandboxWorktree);
 
   router.post(
     '/api/projects/:projectId/checkout/preflight',
@@ -569,6 +579,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           ...(m.role === 'agent' && (m.meta as { answered_by?: unknown } | null)?.answered_by
             ? { answered_by: (m.meta as { answered_by: string }).answered_by }
             : {}),
+          ...(m.role === 'agent' && (m.meta as { consultation_lane?: unknown } | null)?.consultation_lane
+            ? { consultation_lane: (m.meta as { consultation_lane: unknown }).consultation_lane }
+            : {}),
           // A consultation is parallel, so chronology cannot prove which
           // answer belongs to which prompt. These JSONB correlations do. They
           // are exposed on every correlated row while the full marker record
@@ -581,6 +594,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             : {}),
           ...(m.role === 'activity' || m.role === 'switch' ? { meta: m.meta } : {}),
         })),
+        consultations: consultationStatuses(messages),
         visuals: visuals.map((visual) => ({
           id: visual.id,
           message_id: visual.messageId,
@@ -1047,6 +1061,102 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
 
   /** Say something in a thread. Workshop threads build; general threads answer. */
   router.post(
+    '/api/sandbox-capacity/free',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const body = (req.body ?? {}) as { project_id?: unknown };
+      if (typeof body.project_id !== 'string' || body.project_id === '') { res.status(400).json({ error: 'Choose one inactive workshop to archive.' }); return; }
+      const [candidate] = await db.select().from(projectBuild).where(and(eq(projectBuild.orgId, orgId), eq(projectBuild.projectId, body.project_id))).limit(1);
+      if (!candidate?.sandboxId) { res.status(404).json({ error: 'That workshop has no sandbox to archive.' }); return; }
+      if (candidate.stagedChangesReady) { res.status(409).json({ error: 'That workshop has unshipped changes, so Selvedge will not archive it.' }); return; }
+      const active = await db.select({ id: agentRuns.id }).from(agentRuns)
+        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, body.project_id), inArray(agentRuns.status, ['queued', 'running']))).limit(1);
+      if (active.length) { res.status(409).json({ error: 'That workshop is still working, so Selvedge will not archive it.' }); return; }
+      await deleteSandbox(db, orgId, body.project_id);
+      res.json({ freed: true, project_id: body.project_id, recoverable: 'The repository and conversation remain; its workshop will be recreated next time.' });
+    }),
+  );
+
+  router.get(
+    '/api/sandbox-capacity/candidates',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const exclude = typeof req.query.project_id === 'string' ? req.query.project_id : null;
+      const builds = await db.select().from(projectBuild).where(eq(projectBuild.orgId, orgId)).orderBy(projectBuild.updatedAt);
+      const active = new Set((await db.select({ projectId: agentRuns.projectId }).from(agentRuns)
+        .where(and(eq(agentRuns.orgId, orgId), inArray(agentRuns.status, ['queued', 'running'])))).map((row) => row.projectId));
+      const packs = await listPacks(db, orgId);
+      const names = new Map(packs.map((pack) => [pack.identity.project_id, pack.identity.name]));
+      res.json({ candidates: builds
+        .filter((build) => build.sandboxId && build.projectId !== exclude && !build.stagedChangesReady && !active.has(build.projectId))
+        .map((build) => ({ project_id: build.projectId, name: names.get(build.projectId) ?? build.projectId, last_used_at: build.updatedAt.toISOString() })) });
+    }),
+  );
+
+  router.post(
+    '/api/threads/:threadId/consultations/:consultationId/retry',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      if (!thread) { res.status(404).json({ error: 'no such conversation' }); return; }
+      const consultationId = req.params.consultationId ?? '';
+      const body = (req.body ?? {}) as { agent?: unknown };
+      if (!isAgentId(body.agent)) {
+        res.status(400).json({ error: 'Choose one agent to retry.' });
+        return;
+      }
+      const rows = await db.select().from(agentMessages)
+        .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id)))
+        .orderBy(agentMessages.createdAt);
+      const marker = rows.find((row) => row.role === 'switch'
+        && (row.meta as { consultation_id?: unknown } | null)?.consultation_id === consultationId);
+      const consultation = (marker?.meta as { consultation?: { prompt_id?: unknown; agents?: unknown } } | null)?.consultation;
+      if (!marker || typeof consultation?.prompt_id !== 'string' || !Array.isArray(consultation.agents) || !consultation.agents.includes(body.agent)) {
+        res.status(404).json({ error: 'That consultation lane is not here.' });
+        return;
+      }
+      const prompt = rows.find((row) => row.id === consultation.prompt_id && row.role === 'owner');
+      const capsule = (prompt?.meta as { context_capsule?: unknown } | null)?.context_capsule as TaskContextCapsule | undefined;
+      if (!prompt || !capsule || typeof capsule.capsule_id !== 'string') {
+        res.status(409).json({ error: 'That older consultation did not retain a frozen context capsule, so it cannot be retried exactly.' });
+        return;
+      }
+      const alreadyAnswered = rows.some((row) => row.role === 'agent'
+        && (row.meta as { consultation_id?: unknown; answered_by?: unknown; consultation_lane?: { status?: unknown } } | null)?.consultation_id === consultationId
+        && (row.meta as { answered_by?: unknown } | null)?.answered_by === body.agent
+        && (row.meta as { consultation_lane?: { status?: unknown } } | null)?.consultation_lane?.status === 'answered');
+      if (alreadyAnswered) { res.status(409).json({ error: `${agentById(body.agent)?.name ?? body.agent} already answered this consultation.` }); return; }
+
+      if (changesFiles(body.agent)) {
+        if (!thread.projectId) { res.status(409).json({ error: 'That builder needs a project to work in.' }); return; }
+        const resolved = await configFor(db, orgId, thread.projectId, env, undefined, lookup);
+        if ('error' in resolved) { res.status(resolved.status).json({ error: resolved.error }); return; }
+        void runTurn(db, orgId, thread.projectId, prompt.content, { ...resolved.cfg, agent: body.agent }, {
+          mode: 'build', threadId: thread.id, recordOwnerMessage: false,
+          consultation: { id: consultationId, promptId: prompt.id }, contextCapsule: capsule,
+        }).catch(async (error) => {
+          console.error(`builder consultation retry failed for ${orgId}/${thread.id}/${body.agent}:`, error);
+          await failActiveRun(db, orgId, thread.projectId!).catch(() => undefined);
+          await db.insert(agentMessages).values({ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'agent', content:
+            isSandboxCapacityError(error) ? 'The sandbox host is still out of storage. Free another inactive workshop, then retry Codex only.' : "That builder retry didn't start. Nothing was changed.",
+            meta: { answered_by: body.agent, consultation_id: consultationId, in_reply_to: prompt.id,
+              context_capsule_id: capsule.capsule_id, context_capsule_hash: capsule.content_hash,
+              consultation_lane: { status: 'failed', failure_code: isSandboxCapacityError(error) ? 'sandbox_capacity' : 'builder_failed', retryable: true,
+                ...(isSandboxCapacityError(error) ? { recovery: 'free_sandbox_storage' } : {}) } } }).catch(() => undefined);
+        });
+      } else {
+        const provider = agentById(body.agent)?.provider ?? null;
+        const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
+        void chatTurn(db, orgId, thread, prompt.content, {
+          client: fuel?.client ?? null, recordOwnerMessage: false, answeringAs: body.agent, asTake: true,
+          consultation: { id: consultationId, promptId: prompt.id }, contextCapsule: capsule,
+        }).catch((error) => console.error(`consultation retry failed for ${orgId}/${thread.id}/${body.agent}:`, error));
+      }
+      res.status(202).json({ started: true, consultation_id: consultationId, agent: body.agent, context_capsule_id: capsule.capsule_id });
+    }),
+  );
+
+  router.post(
     '/api/threads/:threadId/message',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
@@ -1055,7 +1165,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown; raise_cap?: unknown; acknowledge_stale?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown; raise_cap?: unknown; acknowledge_stale?: unknown; search_everywhere?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -1189,9 +1299,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
                 limit: MAX_IN_HOME_THREAD,
               }).catch(() => []);
               if (inHome.length) return inHome;
-              // Nothing here. Whatever the wider search turns up is a weaker
-              // claim, and the line will say so.
-              scope.widened = true;
+              if (body.search_everywhere !== true) return [];
+              scope.widened = true; // explicitly requested, and said below
             }
             return findRelatedConversations(db, orgId, text, { excludeThreadId: thread.id }).catch(() => []);
           })();
@@ -1223,12 +1332,15 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const resolvedById = new Map([...bound, ...supporting, ...named.resolved, ...found].map((item) => [item.id, item]));
       const references = { resolved: [...resolvedById.values()], missed: named.missed };
       const referenced = renderReferences(references);
+      const askedForPriorContext = /\b(refer|chats?|conversations?|imports?|discussed|talked about|history)\b/i.test(text);
       const referenceNote = references.resolved.length
         ? referenceLine(
             references.resolved.map((r) => ({ label: r.label, ...(r.note ? { note: r.note } : {}), ...(r.found ? { found: true } : {}) })),
             scope,
           )
-        : undefined;
+        : askedForPriorContext && scope.searched && body.search_everywhere !== true
+          ? `⇄ found nothing matching that in ${scope.searched}; account-wide search was not used, so unrelated projects did not enter the answer.`
+          : undefined;
 
       // A CONSULTATION. Everyone named answers the same question, on their own
       // model and without the sandbox, and the conversation does not change
@@ -1240,6 +1352,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         // dropped in silence — see consultationLine.
         const skipped = intent.agents.slice(MAX_CONSULTED);
         const builders = asked.filter((agent) => changesFiles(agent));
+        const consultationMode = executionModeFor(text, body.mode);
         const visualRequest = wantsVisual(text);
         if (visualRequest && builders.length > 0) {
           res.status(400).json({ error: 'Visual comparisons currently use conversational models. Ask Claude and GPT, then hand the chosen direction to a builder.' });
@@ -1267,6 +1380,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           handoffMessageId?: string;
           files: AttachedFile[];
           paired: Awaited<ReturnType<typeof withFreshness>> | null;
+          mode: ExecutionMode;
         } | null = null;
         if (builders[0]) {
           const builder = builders[0];
@@ -1275,11 +1389,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             res.status(409).json({ error: `${agentById(builder)?.name ?? 'That builder'} needs a project to build in.`, code: 'needs_project', agent: builder });
             return;
           }
-          const mode = body.mode === undefined || body.mode === 'build' ? 'build' : body.mode === 'plan' ? 'plan' : null;
-          if (mode !== 'build') {
-            res.status(400).json({ error: 'A mixed talk-and-build request must use build mode.' });
-            return;
-          }
+          const mode = consultationMode;
           if (checkoutGuardEnabled) {
             const guard = await inspectCheckout(db, orgId, projectId, { threadId: thread.id, goal: text });
             if (!canResolveCheckout(guard, body.checkout_resolution)) {
@@ -1336,10 +1446,25 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             ...(handoff ? { handoffMessageId: handoff.messageId } : {}),
             files,
             paired,
+            mode,
           };
         }
         const ownerMessageId = ulid();
         const consultationId = ulid();
+        // Compile ONCE before fan-out. Every consulted model receives these
+        // exact bytes and records the same receipt; no lane can observe a
+        // later worktree and pretend the comparison was apples-to-apples.
+        const executionState = thread.projectId ? await captureExecutionState(db, orgId, thread.projectId).catch(() => null) : null;
+        const contextCapsule = await compileContext(db, {
+          orgId,
+          projectId: thread.projectId,
+          threadId: thread.id,
+          userRequest: text,
+          executionState,
+          referencedPriorAnswers: referenced
+            ? [{ value: referenced, source: 'thread', observed_at: new Date().toISOString(), freshness: 'current' }]
+            : [],
+        });
         // The batch is ordered deliberately. Database defaults give every row
         // in one INSERT the same timestamp, and ordering equal timestamps is
         // not a contract. Replies start only after this insert completes.
@@ -1355,7 +1480,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             threadId: thread.id,
             role: 'owner',
             content: text,
-            meta: { ...(documents.length ? { documents } : {}), consultation_id: consultationId },
+            meta: { ...(documents.length ? { documents } : {}), consultation_id: consultationId,
+              context_capsule_id: contextCapsule.capsule_id, context_capsule_hash: contextCapsule.content_hash,
+              context_capsule: contextCapsule },
             createdAt: askedAt,
           },
           {
@@ -1364,12 +1491,14 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             projectId: thread.projectId,
             threadId: thread.id,
             role: 'switch',
-            content: consultationLine(asked, (id) => agentById(id)?.name ?? id, skipped),
+            content: consultationLine(asked, (id) => agentById(id)?.name ?? id, skipped, consultationMode),
             meta: {
               consulted: asked,
               ...(skipped.length ? { skipped } : {}),
               consultation_id: consultationId,
               consultation: { id: consultationId, prompt_id: ownerMessageId, agents: asked },
+              context_capsule_id: contextCapsule.capsule_id,
+              context_capsule_hash: contextCapsule.content_hash,
             },
             createdAt: new Date(askedAt.getTime() + 1),
           },
@@ -1403,6 +1532,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
               threadId: consulted.id, consultationId, promptId: ownerMessageId,
               directingAgent: agent, directingModel: defaultChatModelFor(agent), request: text,
               director: fuel.client, renderer: new OpenAIVisualRenderer(imageKey), objectStore: visualStore,
+              contextCapsule,
             });
           } else {
             void chatTurn(db, orgId, consulted, text, {
@@ -1412,6 +1542,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
               answeringAs: agent,
               asTake: true,
               consultation: { id: consultationId, promptId: ownerMessageId },
+              contextCapsule,
             }).catch((err) => {
               console.error(`take from ${agent} failed for ${orgId}/${consulted.id}:`, err);
             });
@@ -1425,10 +1556,11 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             ? [mixedBuild.paired.freshness.state === 'stale' ? staleWarningFor(mixedBuild.paired.freshness) : null, briefAsText(mixedBuild.paired.brief)].filter(Boolean).join('\n\n')
             : null;
           void runTurn(db, orgId, mixedBuild.projectId, text, mixedBuild.cfg, {
-            mode: 'build',
+            mode: mixedBuild.mode,
             threadId: thread.id,
             recordOwnerMessage: false,
             consultation: { id: consultationId, promptId: ownerMessageId },
+            contextCapsule,
             ...(mixedBuild.handoff || decisionPreamble || referenced
               ? { handoff: [decisionPreamble, referenced, mixedBuild.handoff].filter(Boolean).join('\n\n---\n\n') }
               : {}),
@@ -1443,8 +1575,14 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             await failActiveRun(db, orgId, mixedBuild!.projectId).catch(() => undefined);
             await db.insert(agentMessages).values({
               id: ulid(), orgId, projectId: mixedBuild!.projectId, threadId: consulted.id, role: 'agent',
-              content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
-              meta: { answered_by: mixedBuild!.agent, consultation_id: consultationId, in_reply_to: ownerMessageId },
+              content: isSandboxCapacityError(err)
+                ? 'Codex could not start because the sandbox account is out of storage. Free an inactive workshop below, then retry Codex only. Nothing was changed.'
+                : `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
+              meta: { answered_by: mixedBuild!.agent, consultation_id: consultationId, in_reply_to: ownerMessageId,
+                context_capsule_id: contextCapsule.capsule_id, context_capsule_hash: contextCapsule.content_hash,
+                consultation_lane: isSandboxCapacityError(err)
+                  ? { status: 'failed', failure_code: 'sandbox_capacity', retryable: true, recovery: 'free_sandbox_storage' }
+                  : { status: 'failed', failure_code: 'builder_failed', retryable: true } },
             }).catch(() => undefined);
           });
           if (mixedBuild.handoffMessageId) await markHandoffSpent(db, orgId, mixedBuild.handoffMessageId).catch(() => undefined);
@@ -1554,11 +1692,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         return;
       }
 
-      const mode = body.mode === undefined || body.mode === 'build' ? 'build' : body.mode === 'plan' ? 'plan' : null;
-      if (mode === null) {
-        res.status(400).json({ error: "mode must be 'build' or 'plan'" });
-        return;
-      }
+      const mode = executionModeFor(text, body.mode);
       /**
        * Unreachable: the builder guard above returns for exactly this case.
        * Written as a narrowing rather than a `!` so that a future edit which
@@ -1685,6 +1819,21 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       }
 
       const projectId = buildIn;
+      // A builder always starts from a freshly compiled projection. This is
+      // what lets an owner consult GPT/Gemini, accept one answer in the next
+      // sentence, and hand Claude Code the referenced answer plus worktree as
+      // they stand NOW—without promoting that opinion into durable knowledge.
+      const executionState = await captureExecutionState(db, orgId, projectId).catch(() => null);
+      const contextCapsule = await compileContext(db, {
+        orgId,
+        projectId,
+        threadId: thread.id,
+        userRequest: text,
+        executionState,
+        referencedPriorAnswers: referenced
+          ? [{ value: referenced, source: 'thread', observed_at: new Date().toISOString(), freshness: 'current' }]
+          : [],
+      });
       // Staged uploads are checked out right before firing — nothing consumed
       // by a request that was going to fail an earlier check. Any missing id
       // fails the whole message; already-consumed temp files are cleaned up.
@@ -1710,6 +1859,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         {
           mode,
           threadId: thread.id,
+          contextCapsule,
           // One seam for "start this agent with this context", whether the
           // context is a handover from another agent, the decision this work
           // exists to carry out, or another project the owner pointed at.

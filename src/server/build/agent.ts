@@ -13,6 +13,8 @@ import { resolveBuilderAuth } from './builderAuth.js';
 import { agentById, type AgentId } from '../../shared/agents.js';
 import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/types/toolEvent.js';
 import { renderDocuments, type PastedDocument } from '../../shared/documents.js';
+import { renderTaskContextCapsule } from '../context/compiler.js';
+import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -95,6 +97,8 @@ export type TurnOptions = {
   recordOwnerMessage?: boolean;
   /** Correlates this builder's activity and final reply with its parallel lanes. */
   consultation?: { id: string; promptId: string };
+  /** Immutable point-in-time context compiled before this turn was dispatched. */
+  contextCapsule?: TaskContextCapsule;
 };
 
 export type AgentTurnConfig = SandboxConfig & {
@@ -327,7 +331,8 @@ export async function runAgentTurn(
   // it, so the thread reads back whole even once a project holds several.
   const threadId = options.threadId ?? (await ensureWorkshopThread(db, orgId, projectId, cfg.model)).id;
   const consultationMeta = options.consultation
-    ? { answered_by: cfg.agent ?? 'claude-code', consultation_id: options.consultation.id, in_reply_to: options.consultation.promptId }
+    ? { answered_by: cfg.agent ?? 'claude-code', consultation_id: options.consultation.id, in_reply_to: options.consultation.promptId,
+        ...(options.contextCapsule ? { context_capsule_id: options.contextCapsule.capsule_id, context_capsule_hash: options.contextCapsule.content_hash } : {}) }
     : undefined;
 
   // Which builder is running this turn, and can it run here at all? An agent
@@ -361,7 +366,8 @@ export async function runAgentTurn(
     const failedRunId = ulid();
     await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
     if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });
-    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId, ...(consultationMeta ? { meta: consultationMeta } : {}) });
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId,
+      ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: 'failed', failure_code: 'no_builder_fuel', retryable: false } } } : {}) });
     return { runId: failedRunId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
   }
 
@@ -448,7 +454,7 @@ export async function runAgentTurn(
   // The handover, when there is one, goes at the head: what the project is,
   // what has happened, where the work stands — then the ask itself.
   const attached = renderDocuments(options.documents ?? []);
-  const cliPrompt = [options.handoff, attached, withNotes].filter(Boolean).join('\n\n---\n\n');
+  const cliPrompt = [options.contextCapsule ? renderTaskContextCapsule(options.contextCapsule) : null, options.handoff, attached, withNotes].filter(Boolean).join('\n\n---\n\n');
 
   // The live activity row: inserted once, updated in place as the log grows.
   // `inserted` and the shown count are tracked separately, and a retried
@@ -619,7 +625,8 @@ export async function runAgentTurn(
     return { runId, agent, status: 'failed', costCents, reply, stagedChangesReady };
   }
 
-  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId, ...(consultationMeta ? { meta: consultationMeta } : {}) });
+  await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
+    ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: succeeded ? 'answered' : 'failed', ...(succeeded ? {} : { failure_code: 'builder_failed', retryable: true }) } } } : {}) });
   await setBuild(db, orgId, projectId, {
     ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
     stagedChangesReady,

@@ -92,6 +92,9 @@ export function AgentMenu({
                 said in the one place the choice is being made. */}
             <span className="block text-meta text-ink-dim">{offer.does}</span>
             <span className="block text-meta text-ink-quiet">{offer.cost_note}</span>
+            {offer.readiness?.state === 'available' && offer.readiness.checked_at && (
+              <span className="block text-meta text-healthy">Model access checked</span>
+            )}
             {/* Not hidden when it can't run — told, so it can be fixed. */}
             {!offer.available && offer.unavailable_note && (
               <span className="mt-0.5 block text-meta text-thread">{offer.unavailable_note}</span>

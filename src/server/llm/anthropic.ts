@@ -30,6 +30,16 @@ export class AnthropicLlmClient implements LlmClient {
     });
   }
 
+  async probeModel(model: string): Promise<{ available: boolean; reason?: string }> {
+    try {
+      await this.client.models.retrieve(model);
+      return { available: true };
+    } catch (error) {
+      if (error instanceof Anthropic.APIError) return { available: false, reason: `api_error_${error.status ?? 'unknown'}` };
+      return { available: false, reason: 'network_or_timeout' };
+    }
+  }
+
   async complete(req: LlmRequest): Promise<LlmResult> {
     try {
       const useFallbacks = req.model === 'claude-fable-5';

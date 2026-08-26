@@ -14,6 +14,7 @@ import { stubRepoLookup } from '../helpers/repoLookup.js';
 import { ulid } from 'ulid';
 import { groupPairedConsultations } from '../../src/client/lib/consultation.js';
 import type { ThreadMessage } from '../../src/client/lib/inbox.js';
+import type { TaskContextCapsule } from '../../src/shared/types/contextCapsule.js';
 
 /**
  * @-MENTIONS, THROUGH THE ROUTE.
@@ -35,9 +36,10 @@ describe('choosing who answers by naming them', () => {
     asTake: boolean;
     recorded: boolean;
     consultation: { id: string; promptId: string } | undefined;
+    capsule?: TaskContextCapsule;
   }>;
   /** Every build turn the route started. */
-  let builds: Array<{ agent: string; text: string; recorded: boolean; consultation?: { id: string; promptId: string } }>;
+  let builds: Array<{ agent: string; text: string; mode?: string; recorded: boolean; consultation?: { id: string; promptId: string }; capsule?: TaskContextCapsule }>;
 
   beforeEach(async () => {
     const t = await createTestDb();
@@ -66,11 +68,13 @@ describe('choosing who answers by naming them', () => {
             asTake: deps?.asTake === true,
             recorded: deps?.recordOwnerMessage !== false,
             consultation: deps?.consultation,
+            capsule: deps?.contextCapsule,
           });
           return { ok: true, reply: 'noted.', model: 'test', costed: true };
         },
         runTurn: (async (_db, _org, _projectId, text, cfg, options) => {
-          builds.push({ agent: cfg.agent, text, recorded: options?.recordOwnerMessage !== false, consultation: options?.consultation });
+          builds.push({ agent: cfg.agent, text, mode: options?.mode, recorded: options?.recordOwnerMessage !== false, consultation: options?.consultation,
+            ...(options?.contextCapsule ? { capsule: options.contextCapsule } : {}) });
           return { runId: 'r', agent: cfg.agent, status: 'succeeded', costCents: 1, reply: 'ok', stagedChangesReady: false };
         }) as ThreadsDeps['runTurn'],
       }),
@@ -97,7 +101,9 @@ describe('choosing who answers by naming them', () => {
 
     await send(thread.id, '@claudecode ok build it').expect(202);
 
-    expect(builds).toEqual([{ agent: 'claude-code', text: '@claudecode ok build it', recorded: true, consultation: undefined }]);
+    expect(builds).toHaveLength(1);
+    expect(builds[0]).toMatchObject({ agent: 'claude-code', text: '@claudecode ok build it', recorded: true });
+    expect(builds[0]!.capsule).toBeDefined();
     expect(takes).toEqual([]);
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude-code');
   });
@@ -129,15 +135,81 @@ describe('choosing who answers by naming them', () => {
     const res = await send(thread.id, '@claude @claudecode explain it and build it').expect(202);
     expect(res.body.consulted).toEqual(['claude', 'claude-code']);
 
-    expect(builds).toEqual([{
+    expect(builds).toHaveLength(1);
+    expect(builds[0]).toMatchObject({
       agent: 'claude-code', text: '@claude @claudecode explain it and build it', recorded: false,
       consultation: { id: res.body.consultation_id, promptId: takes[0]!.consultation!.promptId },
-    }]);
+    });
     expect(takes.map((t) => t.agent)).toEqual(['claude']);
     expect(takes.every((t) => t.asTake)).toBe(true);
     expect(takes[0]!.consultation?.id).toBe(res.body.consultation_id);
+    expect(takes[0]!.capsule?.capsule_id).toBe(builds[0]!.capsule?.capsule_id);
+    expect(takes[0]!.capsule?.content_hash).toBe(builds[0]!.capsule?.content_hash);
 
     expect((await getThread(db, orgId, thread.id))!.agent).toBe('claude');
+  });
+
+  it('uses a builder read-only when the request is to inspect and plan', async () => {
+    const thread = await talking();
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1' });
+    await send(thread.id, '@claude @gpt @codex look at the code, plan the migration, and walk me through it').expect(202);
+    expect(builds).toHaveLength(1);
+    expect(builds[0]).toMatchObject({ agent: 'codex', mode: 'plan' });
+    const line = (await messages(thread.id)).find((row) => row.role === 'switch');
+    expect(line?.content).toMatch(/planning without changing files/i);
+  });
+
+  it('freezes one capsule for every conversational lane and records its receipt on the prompt', async () => {
+    const thread = await talking();
+    const res = await send(thread.id, '@gpt @gemini review the current work').expect(202);
+    expect(takes).toHaveLength(2);
+    expect(takes[0]!.capsule).toBeDefined();
+    expect(takes[1]!.capsule).toEqual(takes[0]!.capsule);
+
+    const rows = await messages(thread.id);
+    const owner = rows.find((row) => row.role === 'owner')!;
+    expect(owner.meta).toMatchObject({
+      consultation_id: res.body.consultation_id,
+      context_capsule_id: takes[0]!.capsule!.capsule_id,
+      context_capsule_hash: takes[0]!.capsule!.content_hash,
+    });
+  });
+
+  it('refreshes the builder capsule and carries consulted answers as discussion, not durable truth', async () => {
+    const thread = await talking();
+    await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1' });
+    const consultation = await send(thread.id, '@gpt @gemini review idempotency').expect(202);
+    const firstCapsule = takes[0]!.capsule!;
+    const prompt = (await messages(thread.id)).find((row) => row.role === 'owner')!;
+    await db.insert(agentMessages).values([
+      { id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'Use an idempotency key.',
+        meta: { answered_by: 'gpt', consultation_id: consultation.body.consultation_id, in_reply_to: prompt.id } },
+      { id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'Use a short cache window.',
+        meta: { answered_by: 'gemini', consultation_id: consultation.body.consultation_id, in_reply_to: prompt.id } },
+    ]);
+
+    await send(thread.id, '@claudecode use GPT’s idempotency suggestion and continue').expect(202);
+    const builderCapsule = builds.at(-1)!.capsule!;
+    expect(builderCapsule.capsule_id).not.toBe(firstCapsule.capsule_id);
+    expect(builderCapsule.observed_now.referenced_prior_answers.map((answer) => answer.value).join('\n')).toContain('gpt opinion: Use an idempotency key.');
+    expect(builderCapsule.known_already.accepted_decisions).toEqual([]);
+    expect(builderCapsule.known_already.graduated_project_knowledge).toEqual([]);
+  });
+
+  it('retries only the failed conversational lane with the exact frozen capsule', async () => {
+    const thread = await talking();
+    const consultation = await send(thread.id, '@gpt @gemini review it').expect(202);
+    const frozen = takes[0]!.capsule!;
+    const prompt = (await messages(thread.id)).find((row) => row.role === 'owner')!;
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId: 'loom', threadId: thread.id, role: 'agent', content: 'GPT was unavailable.',
+      meta: { answered_by: 'gpt', consultation_id: consultation.body.consultation_id, in_reply_to: prompt.id,
+        consultation_lane: { status: 'failed', failure_code: 'model_unavailable', retryable: false } } });
+
+    const retried = await request(app()).post(`/api/threads/${thread.id}/consultations/${consultation.body.consultation_id}/retry`).send({ agent: 'gpt' }).expect(202);
+    expect(retried.body.context_capsule_id).toBe(frozen.capsule_id);
+    expect(takes).toHaveLength(3);
+    expect(takes[2]!.agent).toBe('gpt');
+    expect(takes[2]!.capsule).toEqual(frozen);
   });
 
   it('refuses two builders until the owner chooses an order', async () => {

@@ -25,6 +25,7 @@ export type AgentOffer = {
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
   models: Array<{ id: string; label: string; tier: 'fast' | 'balanced' | 'deep'; note: string }>;
   selected_model: string;
+  readiness?: { state: 'available' | 'unavailable' | 'unknown'; checked_at: string | null; code: string | null; note: string | null };
 };
 
 export type RosterResponse = { answering: string; agents: AgentOffer[] };

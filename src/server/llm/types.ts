@@ -61,4 +61,6 @@ export type LlmResult = LlmSuccess | LlmFailure;
 
 export interface LlmClient {
   complete(req: LlmRequest): Promise<LlmResult>;
+  /** Non-generating provider/model access check. Optional for test fakes. */
+  probeModel?(model: string): Promise<{ available: boolean; reason?: string }>;
 }

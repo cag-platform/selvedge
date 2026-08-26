@@ -41,6 +41,37 @@ function daytona(): Daytona {
   return client;
 }
 
+export type SandboxExecutionSnapshot = { observedAt: Date; changedFiles: string[]; diffSummary: string | null };
+
+/**
+ * Read the existing checkout without creating or mutating one. A stopped or
+ * unavailable sandbox returns null: compilation records the omission instead
+ * of waking paid compute or pretending durable run evidence is live state.
+ */
+export async function inspectSandboxWorktree(db: Db, orgId: string, projectId: string): Promise<SandboxExecutionSnapshot | null> {
+  const build = await getBuild(db, orgId, projectId);
+  if (!build?.sandboxId) return null;
+  try {
+    const sandbox = await daytona().get(build.sandboxId);
+    if (sandbox.state !== 'started') return null;
+    const result = await sandbox.process.executeCommand(
+      `cd ${WORKDIR} && { git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u; echo __SELVDG_DIFF__; git diff --stat; git diff --cached --stat`,
+      undefined,
+      undefined,
+      30,
+    );
+    if (result.exitCode !== 0) return null;
+    const [names = '', summary = ''] = (result.result ?? '').split('__SELVDG_DIFF__\n', 2);
+    return {
+      observedAt: new Date(),
+      changedFiles: names.split('\n').map((path) => path.trim()).filter(Boolean).slice(0, 40),
+      diffSummary: summary.trim().slice(0, 12_000) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
 }
@@ -247,4 +278,9 @@ export async function deleteSandbox(db: Db, orgId: string, projectId: string): P
     await closeSandboxRun(db, build.sandboxId, 'user_stop').catch(() => null);
   }
   await clearSandbox(db, orgId, projectId);
+}
+
+export function isSandboxCapacityError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /total disk limit exceeded|maximum allowed:\s*\d+\s*GiB|free up available storage/i.test(text);
 }

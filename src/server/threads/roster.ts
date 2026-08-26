@@ -6,6 +6,7 @@ import { resolveFuelFor } from '../connectors/fuel/resolve.js';
 import { quoteHandoff, quoteNote } from './switch.js';
 import type { Thread } from './store.js';
 import { chatModelsFor, defaultChatModelFor, type ChatModelOption } from '../llm/chatModels.js';
+import { modelReadiness, type ModelReadiness } from '../llm/readiness.js';
 
 /**
  * THE ROSTER — everyone who could answer this conversation, what each would
@@ -56,6 +57,7 @@ export type AgentOffer = {
   handoff: { tokens: number; cost_usd: number | null; note: string } | null;
   models: readonly ChatModelOption[];
   selected_model: string;
+  readiness: ModelReadiness;
 };
 
 function does(changesFiles: boolean): string {
@@ -145,6 +147,8 @@ export async function agentRoster(
   thread: Thread,
   env: () => EngineEnv | null = engineEnv,
   canBuild: (db: Db, orgId: string, agent: AgentId) => Promise<{ available: boolean; note: string | null }> = builderAvailability,
+  checkModel: (db: Db, orgId: string, provider: (typeof AGENTS)[number]['provider'], model: string) => Promise<ModelReadiness> =
+    process.env.NODE_ENV === 'test' ? async () => ({ state: 'unknown', checked_at: null, code: 'not_checked_in_test', note: null }) : modelReadiness,
 ): Promise<AgentOffer[]> {
   const engine = env();
   const from = thread.agent as AgentId;
@@ -164,7 +168,14 @@ export async function agentRoster(
   return Promise.all(
     AGENTS.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
-      const { available, note, blockedBy } = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
+      const base = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
+      const selectedModel = answeringNow && thread.model ? thread.model : defaultChatModelFor(agent.id);
+      const readiness = !agent.changesFiles && base.available
+        ? await checkModel(db, orgId, agent.provider, selectedModel).catch(() => ({ state: 'unknown' as const, checked_at: null, code: 'probe_failed', note: 'Model access could not be confirmed just now.' }))
+        : { state: base.available ? 'unknown' as const : 'unavailable' as const, checked_at: null, code: base.available ? 'builder_probe_not_applicable' : 'blocked', note: base.note };
+      const ready = readiness.state !== 'unavailable';
+      const available = base.available && ready;
+      const note = !ready ? readiness.note : base.note;
 
       // Nobody quotes you a price for staying where you are.
       const quote = answeringNow ? null : await quoteHandoff(db, orgId, thread, from, agent.id);
@@ -179,10 +190,11 @@ export async function agentRoster(
         answering_now: answeringNow,
         available,
         unavailable_note: note,
-        blocked_by: blockedBy,
+        blocked_by: available ? null : !base.available ? base.blockedBy : !ready ? 'org' : base.blockedBy,
         handoff: quote ? { tokens: quote.tokens, cost_usd: quote.costUsd, note: quoteNote(quote.tokens, quote.costUsd) } : null,
         models: chatModelsFor(agent.id),
-        selected_model: answeringNow && thread.model ? thread.model : defaultChatModelFor(agent.id),
+        selected_model: selectedModel,
+        readiness,
       };
     }),
   );

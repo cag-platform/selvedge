@@ -59,6 +59,7 @@ export type ThreadMessage = {
   consultation_id?: string | null;
   /** The one owner message every answer in that consultation responds to. */
   in_reply_to?: string | null;
+  consultation_lane?: { status: 'answered' | 'failed'; failure_code?: string; retryable?: boolean; recovery?: 'free_sandbox_storage' } | null;
   /** Pastes attached to this message — name and size only; the text is one request away. */
   documents?: Array<{ index: number; name: string; chars: number }>;
   meta?:
@@ -131,6 +132,13 @@ export type ThreadData = {
   technical_detail: TechnicalDetail | null;
   effective_technical_detail: TechnicalDetail;
   messages: ThreadMessage[];
+  consultations?: Array<{
+    id: string; prompt_id: string; state: 'complete' | 'partial' | 'running'; answered: string[];
+    failed: Array<{ agent: string; code: string | null; retryable: boolean }>; waiting: string[];
+    evidence: { capsule_id: string | null; changed_files: number; verification_available: boolean; repository_observed: boolean };
+    receipt: { generated_at: string | null; known_facts: number; observed_facts: number; omissions: string[] };
+    summary: string; outcome: string;
+  }>;
   visuals: GeneratedVisual[];
   runs: ThreadRun[];
 };
