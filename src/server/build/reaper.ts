@@ -1,5 +1,5 @@
 import { and, eq, gte } from 'drizzle-orm';
-import { Daytona } from '@daytonaio/sdk';
+import { Daytona, type Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { agentRuns, projectBuild } from '../db/schema/index.js';
 import { reapSandboxes, reconcileSandboxes, type OpenSegment, type ReapResult, type Reconciliation } from './metering.js';
@@ -71,6 +71,32 @@ export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapRes
   });
 }
 
+export type ArchiveMaintenance = { policyApplied: string[]; archived: string[] };
+
+/**
+ * Free container disk quota without deleting work. Only Selvedge-owned,
+ * already-stopped sandboxes are eligible; recent/unknown activity receives the
+ * policy but is not archived eagerly.
+ */
+export async function maintainSandboxArchives(
+  now = new Date(),
+  deps: { list?: () => AsyncIterable<Sandbox> } = {},
+): Promise<ArchiveMaintenance> {
+  const policyApplied: string[] = [];
+  const archived: string[] = [];
+  for await (const sandbox of (deps.list ? deps.list() : daytona().list())) {
+    if (!sandbox.labels?.['selvedge/org'] || !sandbox.labels?.['selvedge/project']) continue;
+    await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES);
+    policyApplied.push(sandbox.id);
+    const lastActivity = sandbox.lastActivityAt ? new Date(sandbox.lastActivityAt).getTime() : Number.NaN;
+    if (sandbox.state === 'stopped' && Number.isFinite(lastActivity) && now.getTime() - lastActivity >= SANDBOX_AUTO_ARCHIVE_MINUTES * 60_000) {
+      await sandbox.archive();
+      archived.push(sandbox.id);
+    }
+  }
+  return { policyApplied, archived };
+}
+
 /**
  * The daily no-silent-leak check. Asks Daytona what it is actually running and
  * compares it with what we think — in both directions, because each direction
@@ -83,11 +109,6 @@ export async function runSandboxReconciliation(db: Db): Promise<Reconciliation> 
       // this walks it rather than treating it as an array.
       const running: string[] = [];
       for await (const sandbox of daytona().list()) {
-        if (sandbox.labels?.['selvedge/org'] && sandbox.labels?.['selvedge/project']) {
-          await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES).catch((err) =>
-            console.error(`could not apply archive policy to ${sandbox.id}:`, err),
-          );
-        }
         if (sandbox.state === 'started') running.push(sandbox.id);
       }
       return running;

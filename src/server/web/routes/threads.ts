@@ -75,6 +75,8 @@ function surfaceOf(req: Request): ProductSurface {
   return value === 'desktop_web' || value === 'responsive_web' || value === 'ios_native' ? value : 'unknown';
 }
 
+const SANDBOX_CAPACITY_MESSAGE = 'Daytona credits and storage allowance are separate. This organization’s active sandbox storage allowance is full. Archive an inactive workshop or raise the storage allowance, then retry. Nothing was changed.';
+
 /**
  * THE INBOX'S SURFACE — the rail, a thread, and the two things you do to a
  * thread: talk in it, and change who is answering.
@@ -1138,7 +1140,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           console.error(`builder consultation retry failed for ${orgId}/${thread.id}/${body.agent}:`, error);
           await failActiveRun(db, orgId, thread.projectId!).catch(() => undefined);
           await db.insert(agentMessages).values({ id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'agent', content:
-            isSandboxCapacityError(error) ? 'The sandbox host is still out of storage. Free another inactive workshop, then retry Codex only.' : "That builder retry didn't start. Nothing was changed.",
+            isSandboxCapacityError(error) ? SANDBOX_CAPACITY_MESSAGE : "That builder retry didn't start. Nothing was changed.",
             meta: { answered_by: body.agent, consultation_id: consultationId, in_reply_to: prompt.id,
               context_capsule_id: capsule.capsule_id, context_capsule_hash: capsule.content_hash,
               consultation_lane: { status: 'failed', failure_code: isSandboxCapacityError(error) ? 'sandbox_capacity' : 'builder_failed', retryable: true,
@@ -1592,7 +1594,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             await db.insert(agentMessages).values({
               id: ulid(), orgId, projectId: mixedBuild!.projectId, threadId: consulted.id, role: 'agent',
               content: isSandboxCapacityError(err)
-                ? 'Codex could not start because the sandbox account is out of storage. Free an inactive workshop below, then retry Codex only. Nothing was changed.'
+                ? SANDBOX_CAPACITY_MESSAGE
                 : `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
               meta: { answered_by: mixedBuild!.agent, consultation_id: consultationId, in_reply_to: ownerMessageId,
                 context_capsule_id: contextCapsule.capsule_id, context_capsule_hash: contextCapsule.content_hash,
@@ -1902,7 +1904,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             projectId: buildIn,
             threadId: thread.id,
             role: 'agent',
-            content: `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
+            content: isSandboxCapacityError(err)
+              ? SANDBOX_CAPACITY_MESSAGE
+              : `I couldn't get started on that — ${err instanceof Error ? err.message : 'something went wrong'}. Nothing was changed.`,
           })
           .catch(() => undefined);
       });

@@ -13,7 +13,7 @@ import { pollDeployStates } from '../connectors/host/poller.js';
 import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
-import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
+import { maintainSandboxArchives, runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
 import { configuredBuskaClient, runBuskaPipeline } from '../distribution/ingestBuska.js';
 
 /**
@@ -80,9 +80,14 @@ export function startCronJobs(db: Db): void {
    * it there is nothing to sweep and the API calls would just log failures.
    */
   if (process.env.DAYTONA_API_KEY) {
+    const maintainArchives = () => maintainSandboxArchives()
+      .then(({ archived }) => { if (archived.length) console.info(`archived ${archived.length} inactive Selvedge sandbox${archived.length === 1 ? '' : 'es'}`); })
+      .catch((err) => console.error('sandbox archive maintenance failed:', err));
+    void maintainArchives();
     cron.schedule('* * * * *', () => {
       runSandboxSweep(db).catch((err) => console.error('sandbox sweep failed:', err));
     });
+    cron.schedule('7 * * * *', maintainArchives);
   }
 
   cron.schedule('0 3 * * *', () => {
