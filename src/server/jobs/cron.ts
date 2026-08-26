@@ -14,6 +14,7 @@ import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
 import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
+import { configuredBuskaClient, runBuskaPipeline } from '../distribution/ingestBuska.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -27,6 +28,13 @@ export function startCronJobs(db: Db): void {
   const pushSender = buildPushSender();
   cron.schedule('*/15 * * * *', () => {
     runDigestSchedule(db, new Date(), (orgId) => buildComposeDeps(db, orgId), pushSender).catch((err) => console.error('digest schedule failed:', err));
+  });
+
+  // Rotate through two search concepts at midnight/noon UTC. Six calls per
+  // run covers Reddit, X, and Hacker News without burning a monthly quota in days.
+  if (process.env.BUSKA_API_KEY) cron.schedule('0 */12 * * *', () => {
+    const client = configuredBuskaClient();
+    if (client) runBuskaPipeline(db, client).catch((err) => console.error('Buska distribution scan failed:', err));
   });
 
   // The health monitor. State is held across ticks (in-process, single-process

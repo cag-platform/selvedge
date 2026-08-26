@@ -292,8 +292,50 @@
     {
       "idx": 41,
       "version": "7",
+      "when": 1788051600000,
+      "tag": "0041_distribution_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788138000000,
+      "tag": "0042_distribution_ingestion_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788224400000,
+      "tag": "0043_distribution_classifier",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788310800000,
+      "tag": "0044_distribution_drafting",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
       "when": 1788397200000,
       "tag": "0045_generated_visuals",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1788483600000,
+      "tag": "0046_distribution_learning_loop",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788570000000,
+      "tag": "0047_distribution_policy",
       "breakpoints": true
     }
   ]

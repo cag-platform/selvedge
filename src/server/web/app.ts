@@ -49,6 +49,7 @@ import { createCompanionKeysRouter } from './routes/companionKeys.js';
 import { createContinuationsRouter } from './routes/continuations.js';
 import { buildBuildEngine } from '../runner/daytona/factory.js';
 import { driveCard } from '../cards/drive.js';
+import { createDistributionOpsRouter } from './routes/distributionOps.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -155,6 +156,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createStatusRouter(db));
   app.use(createFeedbackRouter(db));
   app.use(createAdminRouter(db));
+  app.use(createDistributionOpsRouter(db));
   app.use(createOrgRouter(db));
   app.use(createDevicesRouter(db));
   app.use(createFuelRouter(db));

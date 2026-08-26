@@ -119,6 +119,12 @@ function Walkthrough({ projects }: { projects: ProjectCardData[] }) {
   );
 }
 
+function ReferralQuestion({ hasProject }: { hasProject: boolean }) {
+  const [answer,setAnswer]=useState('');const [done,setDone]=useState(()=>typeof window!=='undefined'&&window.localStorage.getItem('selvedge.referral-asked')==='1');
+  if(!hasProject||done)return null;
+  return <Pane className="mb-6 p-4"><p className="text-body font-medium text-ink">How did you hear about Selvedge?</p><p className="mt-1 text-meta text-ink-quiet">Optional. Your project is already connected.</p><form className="mt-3 flex gap-2" onSubmit={(e)=>{e.preventDefault();const raw=answer.trim();if(!raw)return;api.post('/api/referral-source',{answer:raw}).then(()=>{window.localStorage.setItem('selvedge.referral-asked','1');setDone(true);});}}><input value={answer} onChange={e=>setAnswer(e.target.value)} placeholder="A post, a person, search…" className={`${inputCls} flex-1`}/><button className={btnPrimary}>Save</button><button type="button" onClick={()=>{window.localStorage.setItem('selvedge.referral-asked','1');setDone(true);}} className="text-body text-ink-quiet">Skip</button></form></Pane>;
+}
+
 function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => void }) {
   const [repos, setRepos] = useState<Array<{ full_name: string }>>([]);
   const [name, setName] = useState('');
@@ -307,6 +313,7 @@ export function Projects() {
           "here's what you've got, pick what to bring" is the whole next step. */}
       {projects.length === 0 && <GithubArrival />}
       <Walkthrough projects={projects} />
+      <ReferralQuestion hasProject={projects.length>0}/>
       {/* The memory summary, the context export, bringing a history in and
           filing what came in are all things you set up or do once. They lived
           here, above the projects, and pushed the actual work down the page.

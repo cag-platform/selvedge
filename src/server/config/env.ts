@@ -54,6 +54,7 @@ export const FEATURES: FeatureSpec[] = [
   // would report `partial` for a deploy that set the key and sensibly left the
   // model alone, which would be false.
   { key: 'evaluator', label: 'Independent grader (the verified verdict)', kind: 'feature', vars: ['OPENAI_API_KEY'], gives: 'judges "did it do what was asked" on a different provider than authored the change, so a verdict never grades its own work; without it, verdicts top out at `probably` — never a false verified' },
+  { key: 'buska_distribution', label: 'Buska distribution signals', kind: 'feature', vars: ['BUSKA_API_KEY'], gives: 'feeds public conversations into the private distribution signal store; Selvedge still decides relevance and action' },
   // The same key, a second job: the Inbox's second builder. Separate row
   // because they are separate promises — grading independence does not depend
   // on Codex existing, and Codex not running does not weaken a verdict.

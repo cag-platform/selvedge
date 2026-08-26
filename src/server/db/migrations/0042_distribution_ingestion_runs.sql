@@ -1,0 +1,4 @@
+CREATE TABLE "distribution_ingestion_runs" ("id" text PRIMARY KEY NOT NULL, "org_id" text NOT NULL, "provider" text NOT NULL, "status" text DEFAULT 'RUNNING' NOT NULL, "started_at" timestamp with time zone DEFAULT now() NOT NULL, "finished_at" timestamp with time zone, "searches" jsonb NOT NULL, "records_found" integer DEFAULT 0 NOT NULL, "records_inserted" integer DEFAULT 0 NOT NULL, "duplicates" integer DEFAULT 0 NOT NULL, "failures" integer DEFAULT 0 NOT NULL, "last_error" text);
+--> statement-breakpoint
+CREATE INDEX "distribution_ingestion_runs_provider_started_idx" ON "distribution_ingestion_runs" USING btree ("org_id","provider","started_at");
+CREATE UNIQUE INDEX "distribution_ingestion_runs_one_running_idx" ON "distribution_ingestion_runs" ("org_id","provider") WHERE "status" = 'RUNNING';

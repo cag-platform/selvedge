@@ -59,3 +59,9 @@ export function buildGraderClient(): OpenAiLlmClient | undefined {
   if (!key) return undefined;
   return new OpenAiLlmClient(key);
 }
+
+/** Platform-scoped classifier for Selvedge's own internal distribution program. */
+export function buildDistributionClassifierClient(): OpenAiLlmClient | undefined {
+  const key = process.env.OPENAI_API_KEY?.trim(); return key ? new OpenAiLlmClient(key) : undefined;
+}
+export const buildDistributionDraftClient = buildDistributionClassifierClient;

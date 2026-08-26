@@ -25,6 +25,7 @@ const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default
 const ProjectMemory = lazy(() => import('./pages/ProjectMemory.js').then((m) => ({ default: m.ProjectMemory })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
+const OpsDistribution = lazy(() => import('./pages/OpsDistribution.js').then((m) => ({ default: m.OpsDistribution })));
 const WorkshopRedirect = lazy(() => import('./pages/WorkshopRedirect.js').then((m) => ({ default: m.WorkshopRedirect })));
 const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ default: m.Styleguide })));
 // Public, and split for the same reason the app is: a stranger reading the
@@ -165,6 +166,7 @@ function AuthedApp() {
               <Route path="/billing" element={<Navigate to="/admin/billing" replace />} />
               <Route path="/tray" element={<Navigate to="/admin/apps" replace />} />
               <Route path="/admin/*" element={<Admin />} />
+              <Route path="/ops/distribution/*" element={<OpsDistribution />} />
             </Routes>
             </Suspense>
             </ErrorBoundary>
@@ -201,6 +203,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/admin/billing', 'Billing'],
   ['/admin/advanced', 'Under the hood'],
   ['/admin', 'Admin'],
+  ['/ops/distribution', 'Distribution Ops'],
   ['/styleguide', 'Styleguide'],
 ];
 
