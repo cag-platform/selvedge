@@ -36,7 +36,7 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
   onThemeChange: (theme: 'light' | 'night' | 'system') => void;
 }) {
   const pathname = useLocation().pathname;
-  const workActive = pathname.startsWith('/inbox') || pathname === '/work';
+  const workspaceActive = pathname.startsWith('/inbox') || pathname === '/work';
   const secondaryMenu = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
@@ -87,11 +87,10 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
             <NavLink to="/" end className={linkClass}>
               Home
             </NavLink>
-            <Link to="/inbox" className={linkClass({ isActive: workActive })} aria-current={workActive ? 'page' : undefined}>Work</Link>
-            <NavLink to="/projects" className={linkClass}>
-              Projects
+            <Link to="/inbox" className={linkClass({ isActive: workspaceActive })} aria-current={workspaceActive ? 'page' : undefined}>Workspace</Link>
+            <NavLink to="/health" className={linkClass}>
+              Health
             </NavLink>
-            <Link to="/inbox?search=1" className={linkClass({ isActive: false })}>Search</Link>
           </nav>
         </div>
         {/* The org name is the first thing to give up room, and the avatar the
@@ -102,6 +101,8 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
             <summary aria-label="Secondary navigation" className="cursor-pointer list-none rounded-inset px-2 py-1 text-body text-ink-dim hover:bg-panel-soft">•••</summary>
             <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-56 rounded-card border border-hairline bg-panel p-2 shadow-pane">
               <Link to="/admin/record" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
+              <Link to="/projects" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Manage projects</Link>
+              <Link to="/inbox?search=1" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Search</Link>
               <Link to="/admin/connections" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
               <Link to="/admin" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
               <div className="mt-2 border-t border-hairline px-2 pt-3">

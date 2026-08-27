@@ -5,65 +5,8 @@ import { ProjectCard, type ProjectCardData } from '../components/ProjectRail.js'
 import { ImportReplit } from '../components/ImportReplit.js';
 import { GithubArrival } from '../components/GithubArrival.js';
 import { Pane, btnPrimary, inputCls, labelCls, eyebrowCls } from '../components/ui.js';
-import { SituationCard, type SituationEvent } from '../components/SituationCard.js';
 import { walkthroughDone, walkthroughSteps } from '../lib/walkthrough.js';
 import { UpgradeNote, limitCodeOf } from '../components/UpgradeNote.js';
-
-type Correction = { id: string; project_id: string | null; line: string };
-type StatusResponse = { corrections: Correction[]; live: SituationEvent[] };
-
-/**
- * STATUS — what has happened, above the projects it happened to.
- *
- * This is what is left of the daily brief. The brief was a composed note you
- * had to go and read every morning, on a page of its own, ahead of the work;
- * status is a fact about your projects, so it sits with them and stays out of
- * the way when there is nothing to say.
- *
- * Corrections lead, and are never collapsed or styled down. When Selvedge said
- * something was fine and it wasn't, owning it out loud is the whole basis for
- * believing it the rest of the time.
- */
-function Status({ status }: { status: StatusResponse }) {
-  const live = status.live.filter((n) => n.projectId !== null || n.eventType === 'connector.auth_failed');
-  if (status.corrections.length === 0 && live.length === 0) return null;
-
-  return (
-    <section aria-label="Status" className="mb-6 space-y-3">
-      {status.corrections.length > 0 && (
-        <div className="rounded-card border border-hairline border-l-2 border-l-thread bg-panel-soft px-4 py-3">
-          <p className="text-label font-body uppercase tracking-widest text-thread">Correcting myself</p>
-          {status.corrections.map((c) => (
-            <p key={c.id} className="mt-1 text-body text-ink">
-              {c.line}
-            </p>
-          ))}
-        </div>
-      )}
-      {/* WHAT HAPPENED, FOLDED. This was an open list above the projects, and
-          on a real account it is the whole screen: eleven narration cards
-          between you and the thing you came for. That layout belonged to the
-          question "what needs me this morning?", which this product no longer
-          asks — so it is one line you can open, and the count is on it, because
-          a fold you cannot see the size of is a fold that hides.
-
-          CORRECTIONS ARE NOT IN HERE, and never will be. Reading one is how it
-          gets acknowledged; putting it behind a click is how it goes unread. */}
-      {live.length > 0 && (
-        <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
-          <summary className={`cursor-pointer ${eyebrowCls}`}>
-            Since yesterday · {live.length}
-          </summary>
-          <div className="mt-3 space-y-3">
-            {live.map((n) => (
-              <SituationCard key={n.id} event={n} />
-            ))}
-          </div>
-        </details>
-      )}
-    </section>
-  );
-}
 
 /**
  * The getting-started checklist, rehomed from the retired brief page. It
@@ -277,7 +220,6 @@ function NewProjectForm({ onCreated }: { onCreated: (newProjectId?: string) => v
 
 export function Projects() {
   const [projects, setProjects] = useState<ProjectCardData[] | null>(null);
-  const [status, setStatus] = useState<StatusResponse>({ corrections: [], live: [] });
   const [showForm, setShowForm] = useState(false);
   // The migration door, openable by link (?import=replit) so onboarding and
   // Home can point straight at it rather than at a page it might be on.
@@ -286,17 +228,7 @@ export function Projects() {
   const navigate = useNavigate();
 
   const load = useCallback(
-    () =>
-      api.get<ProjectCardData[]>('/api/projects').then((rows) => {
-        setProjects(rows);
-        // Status must not be able to blank the page: a project list that
-        // renders without its status is degraded, one that doesn't render at
-        // all is broken.
-        api
-          .get<StatusResponse>('/api/status')
-          .then(setStatus)
-          .catch(() => undefined);
-      }),
+    () => api.get<ProjectCardData[]>('/api/projects').then(setProjects),
     [],
   );
   useEffect(() => {
@@ -307,7 +239,6 @@ export function Projects() {
 
   return (
     <div className="animate-settle">
-      <Status status={status} />
       {/* The GitHub-arrival greeting: only for an empty org whose owner signed
           in with GitHub and has not installed the App yet — the moment where
           "here's what you've got, pick what to bring" is the whole next step. */}

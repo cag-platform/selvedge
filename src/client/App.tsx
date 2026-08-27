@@ -22,6 +22,7 @@ const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.In
 const Now = lazy(() => import('./pages/Now.js').then((m) => ({ default: m.Now })));
 const Continue = lazy(() => import('./pages/Continue.js').then((m) => ({ default: m.Continue })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
+const Health = lazy(() => import('./pages/Health.js').then((m) => ({ default: m.Health })));
 const ProjectMemory = lazy(() => import('./pages/ProjectMemory.js').then((m) => ({ default: m.ProjectMemory })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
 const Admin = lazy(() => import('./pages/Admin.js').then((m) => ({ default: m.Admin })));
@@ -69,6 +70,7 @@ function AuthedApp() {
   const pathname = useLocation().pathname;
   const workbench = pathname.startsWith('/inbox') || pathname === '/work';
   const dashboard = pathname === '/';
+  const health = pathname === '/health';
   const memory = /^\/projects\/[^/]+$/.test(pathname);
   const [theme, setTheme] = useState<'light' | 'night' | 'system'>(() => {
     if (typeof window === 'undefined') return 'system';
@@ -129,7 +131,7 @@ function AuthedApp() {
         <AutoTimezone />
         <div className="product-shell min-h-screen" data-theme={resolvedTheme} style={{ colorScheme: resolvedTheme === 'night' ? 'dark' : 'light' }}>
           <Nav theme={theme} resolvedTheme={resolvedTheme} onThemeChange={setTheme} />
-          <main className={workbench || dashboard || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
+          <main className={workbench || dashboard || health || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
             <Suspense fallback={null}>
             <Routes>
@@ -151,6 +153,7 @@ function AuthedApp() {
                   finished is on the Record and the project's own history. A
                   bookmark lands on the front door rather than on nothing. */}
               <Route path="/work" element={<Inbox />} />
+              <Route path="/health" element={<Health />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/projects/:projectId" element={<ProjectMemory />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
@@ -193,6 +196,7 @@ function AuthedApp() {
 const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/continue', 'Continue a project'],
   ['/inbox', 'Threads'],
+  ['/health', 'Health'],
   ['/projects', 'Projects'],
   // Longest prefix first: /admin/billing must not be matched by /admin.
   ['/admin/preferences', 'Preferences'],
