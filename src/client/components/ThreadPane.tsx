@@ -492,19 +492,19 @@ function TechnicalDetailControl({ data, onDone }: { data: ThreadData; onDone: ()
       label: 'Use account setting',
       note: 'Return this conversation to your saved default.',
     },
-    { value: 'simple', label: 'Simple', note: 'Outcome first; technical record folded below.' },
-    { value: 'full', label: 'Full', note: 'Technical summary first; exact record folded below.' },
+    { value: 'simple', label: 'Simple', note: 'A calm conversation. Context and evidence stay one click away.' },
+    { value: 'full', label: 'Full', note: 'The complete builder with project context open beside the conversation.' },
   ];
 
   return (
     <details ref={menu} className="relative z-20">
       <summary className="cursor-pointer list-none rounded-inset border border-hairline bg-panel px-3 py-1.5 text-meta font-medium text-ink-dim hover:bg-panel-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright [&::-webkit-details-marker]:hidden">
-        Detail: {data.effective_technical_detail === 'full' ? 'Full' : 'Simple'} <span aria-hidden>⌄</span>
+        View: {data.effective_technical_detail === 'full' ? 'Full' : 'Simple'} <span aria-hidden>⌄</span>
       </summary>
       <div className="absolute right-0 mt-2 w-72 overflow-hidden rounded-card border border-hairline bg-panel shadow-xl">
         <div className="border-b border-hairline px-3 py-2">
-          <p className="text-body font-semibold text-ink">Technical detail</p>
-          <p className="text-meta text-ink-quiet">Changes display only. The complete record always stays with the project.</p>
+          <p className="text-body font-semibold text-ink">Workbench view</p>
+          <p className="text-meta text-ink-quiet">This changes the workspace, never the project record.</p>
         </div>
         <div className="p-1.5" role="radiogroup" aria-label="Technical detail for this conversation">
           {options.map((option) => {

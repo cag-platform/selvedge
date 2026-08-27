@@ -35,6 +35,17 @@ const RAIL_MAX = 440;
 const CONTEXT_MIN = 280;
 const CONTEXT_MAX = 620;
 
+/**
+ * Simple is the ordinary conversation surface. Full is the same conversation
+ * with the project console already open beside it. Nothing is discarded in
+ * Simple: preview, context, and history can still open the third pane on
+ * demand. Keeping this rule pure makes the presentation boundary explicit and
+ * testable instead of scattering viewport checks through the workbench.
+ */
+export function contextStartsOpen(detail: 'simple' | 'full', width: number): boolean {
+  return detail === 'full' && width >= NARROW;
+}
+
 export type LiveReply = {
   turnId: string;
   agent: string;
@@ -109,13 +120,14 @@ export function Inbox() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [width, setWidth] = useState(() => (typeof window === 'undefined' ? 1440 : window.innerWidth));
-  const [contextOpen, setContextOpen] = useState(() => (typeof window === 'undefined' ? true : window.innerWidth >= NARROW));
+  const [contextOpen, setContextOpen] = useState(false);
   const [contextTab, setContextTab] = useState<ContextTab>('memory');
   const [railWidth, setRailWidth] = useState(() => savedWidth('selvedge.rail-width', 272));
   const [contextWidth, setContextWidth] = useState(() => savedWidth('selvedge.context-width', 336));
   // On a phone the three panes become a drill: rail → thread → context.
   const [view, setView] = useState<'rail' | 'thread' | 'context'>('thread');
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const presentedThread = useRef<{ id: string; detail: 'simple' | 'full' } | null>(null);
 
   useEffect(() => {
     if (searchParams.get('search') !== '1') return;
@@ -151,6 +163,18 @@ export function Inbox() {
   useEffect(() => {
     void loadThread();
   }, [loadThread]);
+
+  // A newly opened conversation adopts its saved presentation. Changing the
+  // selector also takes effect immediately. After that, a person's explicit
+  // open/close choice wins until they move to another conversation.
+  useEffect(() => {
+    if (!thread) return;
+    const next = { id: thread.thread.id, detail: thread.effective_technical_detail };
+    const previous = presentedThread.current;
+    if (previous?.id === next.id && previous.detail === next.detail) return;
+    presentedThread.current = next;
+    setContextOpen(contextStartsOpen(next.detail, width));
+  }, [thread?.thread.id, thread?.effective_technical_detail, width]);
 
   // Same-origin SSE needs no second auth mechanism: Clerk's session cookie
   // rides with EventSource. Each event is only a wake-up; the ordinary thread
