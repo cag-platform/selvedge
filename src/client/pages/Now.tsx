@@ -18,6 +18,7 @@ import { railPlaces, whenShort, type InboxData, type RailPlace } from '../lib/in
 export function Now() {
   const navigate = useNavigate();
   const composer = useRef<HTMLTextAreaElement>(null);
+  const firstName = (window as { Clerk?: { user?: { firstName?: string | null } } }).Clerk?.user?.firstName?.trim();
   const [data, setData] = useState<InboxData | null>(null);
   const [command, setCommand] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -82,10 +83,10 @@ export function Now() {
 
   return (
     <div className="home-surface animate-settle mx-auto max-w-6xl px-5 pb-24 pt-10 sm:px-8 sm:pt-14">
-      <header className="max-w-3xl">
-        <p className="text-meta font-semibold text-action-bright">Home base for everything you build with AI</p>
-        <h1 className="mt-3 font-display text-[clamp(2.6rem,6vw,4.75rem)] font-normal leading-[0.98] tracking-[-0.05em] text-ink">Every AI starts caught up.</h1>
-        <p className="mt-5 max-w-2xl text-[clamp(1rem,2vw,1.2rem)] leading-relaxed text-ink-dim">Bring in any project, improve it with any AI, preview and ship changes, and keep its context growing in one place.</p>
+      <header className="max-w-4xl">
+        <h1 className="font-display text-[clamp(2.25rem,5vw,4rem)] font-normal leading-[1.04] tracking-[-0.045em] text-ink">
+          Which project are you working on today{firstName ? `, ${firstName}` : ''}?
+        </h1>
       </header>
 
       {continuationAvailable && (

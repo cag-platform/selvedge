@@ -88,122 +88,75 @@ export function ProjectMemory() {
   ];
 
   return (
-    <div className="min-h-[calc(100vh-var(--nav-height))] bg-paper">
-      <header className="border-b border-hairline bg-panel-soft/70">
-        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
-          <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
-              <p className="section-label">Project memory · {memory.name}</p>
-              <h1 className="mt-3 max-w-3xl font-display text-[clamp(2.7rem,7vw,5.75rem)] leading-[0.94] tracking-[-0.045em] text-ink">
-                The work remembers.
-              </h1>
-              <p className="mt-5 max-w-2xl text-body-lg leading-relaxed text-ink-dim">
-                Decisions, evidence, language, and unfinished questions remain with {memory.name} as conversations, tools, and builders change.
-              </p>
-            </div>
-            <div className="rounded-card border border-hairline bg-panel px-4 py-3">
-              <p className="text-body font-medium text-ink">{health?.label}</p>
-              <p className="mt-0.5 text-meta capitalize text-ink-quiet">{health?.detail}</p>
-            </div>
+    <div className="min-h-[calc(100vh-var(--nav-height))] bg-paper-soft">
+      <div className="mx-auto max-w-6xl px-5 pb-20 pt-9 sm:px-8 sm:pt-12">
+        <header className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Link to="/" className="text-meta text-ink-quiet hover:text-action-bright">← Home</Link>
+            <h1 className="mt-3 font-display text-[clamp(2.7rem,6vw,5rem)] font-normal leading-none tracking-[-0.05em] text-ink">{memory.name}</h1>
+            <p className="mt-4 max-w-2xl text-body-lg leading-relaxed text-ink-dim">{memory.summary}</p>
           </div>
-        </div>
-      </header>
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
+            <span className="rounded-full bg-panel px-4 py-2 text-meta text-ink-dim shadow-sm"><strong className="font-medium text-ink">{health?.label}</strong> · {health?.detail}</span>
+            <Link to={builder ? `/inbox/${builder.id}` : `/inbox/project/${projectId}`} className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Open workbench →</Link>
+          </div>
+        </header>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(280px,.75fr)]">
-        <div className="space-y-6">
-          <section aria-labelledby="memory-map-title" className="overflow-hidden rounded-[1.75rem] bg-deep p-6 text-[var(--paper)] shadow-pane sm:p-9">
-            <p className="text-label uppercase tracking-[0.16em] text-[color:var(--action)]">Durable context</p>
-            <h2 id="memory-map-title" className="mt-2 font-display text-[clamp(2rem,4.5vw,3.8rem)] leading-tight">What this project knows</h2>
-            <p className="mt-3 max-w-2xl text-body leading-relaxed text-[color:var(--paper-dim)]">{memory.summary}</p>
-            <div className="mt-10 grid gap-px overflow-hidden rounded-card bg-white/15 sm:grid-cols-2">
-              {categories.map((category) => (
-                <div key={category.label} className="min-h-40 bg-[color:var(--action-deep)] p-5">
-                  <div className="flex items-baseline justify-between gap-4">
-                    <h3 className="font-display text-xl">{category.label}</h3>
-                    <span className="font-mono text-meta text-[color:var(--action)]">{category.count}</span>
-                  </div>
-                  <p className="mt-8 line-clamp-3 text-body leading-relaxed text-[color:var(--paper-dim)]">{category.hint}</p>
+        <div className="mt-10 grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,.65fr)]">
+          <main className="space-y-5">
+            <section className="rounded-pane bg-panel p-6 shadow-[0_14px_40px_rgba(26,58,40,0.06)] sm:p-8">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div>
+                  <p className="text-meta font-semibold text-action-bright">Current work</p>
+                  <h2 className="mt-2 font-display text-3xl font-normal text-ink">{builder?.title ?? 'Ready for its next conversation'}</h2>
+                  <p className="mt-3 max-w-2xl text-body leading-relaxed text-ink-dim">{builder ? `${builder.agent} is the most recent builder. Every agent entering this project receives its accepted decisions, current evidence, and open questions.` : 'The first builder starts with this project’s existing context already attached.'}</p>
                 </div>
-              ))}
-            </div>
-          </section>
+                {builder && <AgentChip agent={builder.agent} working={builder.working} />}
+              </div>
+            </section>
 
-          <section aria-labelledby="history-title" className="rounded-[1.5rem] border border-hairline bg-panel p-5 sm:p-7">
-            <div className="mb-6">
-              <p className="section-label">Relevant project history</p>
-              <h2 id="history-title" className="mt-1 font-display text-3xl text-ink">How the understanding formed</h2>
-            </div>
-            <TimelineTab projectId={projectId} onOpenThread={(threadId) => navigate(`/inbox/${threadId}`)} />
-          </section>
-        </div>
-
-        <aside aria-label="Project understanding" className="space-y-4">
-          <section className="rounded-card border border-hairline bg-panel p-5">
-            <p className="section-label">What governs the work</p>
-            <h2 className="mt-3 font-display text-2xl text-ink">Governing understanding</h2>
-            <p className="mt-3 text-body leading-relaxed text-ink">{governing || 'No governing decision has been recorded yet.'}</p>
-            <div className="mt-5 border-t border-hairline pt-4">
-              <p className="text-label uppercase tracking-widest text-ink-quiet">Strongest recent evidence</p>
-              <p className="mt-2 text-body leading-relaxed text-ink-dim">{evidence || 'The record does not contain supporting evidence yet.'}</p>
-            </div>
-          </section>
-
-          <section className="rounded-card border border-hairline bg-sage p-5">
-            <p className="section-label">Current builder</p>
-            {builder ? (
-              <>
-                <div className="mt-3 flex items-center gap-3">
-                  <AgentChip agent={builder.agent} working={builder.working} />
-                  <div className="min-w-0">
-                    <p className="truncate text-body font-medium text-ink">{builder.agent}</p>
-                    <p className="text-meta text-ink-dim">{builder.working ? 'Working now' : 'Most recent builder'}</p>
-                  </div>
-                </div>
-                <p className="mt-4 text-body leading-relaxed text-ink-dim">
-                  {context.sections.about.length + context.sections.recent.length + context.sections.open.length} grounded context lines transfer with the project.
-                </p>
-                <Link to={`/inbox/${builder.id}`} className="mt-4 inline-block text-body font-medium text-action-bright hover:underline">
-                  Open workbench →
-                </Link>
-              </>
-            ) : (
-              <p className="mt-3 text-body text-ink-dim">No builder is attached. The first conversation will inherit this project context.</p>
-            )}
-          </section>
-
-          <section className="rounded-card border border-hairline bg-panel p-5">
-            <p className="section-label">Accepted language</p>
-            {memory.glossary.length ? (
-              <dl className="mt-3 space-y-3">
-                {memory.glossary.map((item) => (
-                  <div key={item.term}>
-                    <dt className="text-body font-medium text-ink">{item.term}</dt>
-                    <dd className="text-body text-ink-dim">{item.means}</dd>
+            <section aria-labelledby="context-title" className="rounded-pane bg-sage p-6 sm:p-8">
+              <div className="mb-6"><p className="text-meta font-semibold text-action-bright">Known already</p><h2 id="context-title" className="mt-2 font-display text-3xl font-normal text-ink">What every AI starts with</h2></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {categories.map((category) => (
+                  <div key={category.label} className="rounded-card bg-panel p-5">
+                    <div className="flex items-baseline justify-between gap-4"><h3 className="text-body font-semibold text-ink">{category.label}</h3><span className="text-meta text-ink-quiet">{category.count}</span></div>
+                    <p className="mt-4 line-clamp-3 text-body leading-relaxed text-ink-dim">{category.hint}</p>
                   </div>
                 ))}
-              </dl>
-            ) : <p className="mt-3 text-body text-ink-dim">No preferred terms have been established yet.</p>}
-          </section>
+              </div>
+            </section>
 
-          <section className="rounded-card border border-hairline bg-panel p-5">
-            <p className="section-label">Open questions · {context.sections.open.length}</p>
-            {context.sections.open.length ? (
-              <ul className="mt-3 space-y-3">
-                {context.sections.open.map((item, index) => <li key={index} className="text-body leading-relaxed text-ink">{item}</li>)}
-              </ul>
-            ) : <p className="mt-3 text-body text-ink-dim">Nothing is waiting on the owner right now.</p>}
-          </section>
+            <section aria-labelledby="history-title" className="rounded-pane bg-panel p-6 shadow-[0_14px_40px_rgba(26,58,40,0.05)] sm:p-8">
+              <div className="mb-6"><p className="text-meta font-semibold text-action-bright">Project history</p><h2 id="history-title" className="mt-2 font-display text-3xl font-normal text-ink">What happened here</h2></div>
+              <TimelineTab projectId={projectId} onOpenThread={(threadId) => navigate(`/inbox/${threadId}`)} />
+            </section>
+          </main>
 
-          <section className="rounded-card border border-hairline bg-panel p-5">
-            <p className="section-label">Portability</p>
-            <p className="mt-3 text-body leading-relaxed text-ink-dim">The record belongs to you. Bring context in or take the complete memory with you.</p>
-            <div className="mt-4 flex flex-wrap gap-4 text-body">
-              <Link to="/admin/context" className="text-action-bright hover:underline">Import context</Link>
-              <a href="/api/export" download className="text-action-bright hover:underline">Export memory</a>
-              <Link to={`/projects/${projectId}/edit`} className="text-ink-dim hover:underline">Project settings</Link>
-            </div>
-          </section>
-        </aside>
+          <aside aria-label="Project details" className="space-y-4">
+            <section className="rounded-pane bg-panel p-5 shadow-[0_10px_30px_rgba(26,58,40,0.045)]">
+              <p className="text-meta font-semibold text-action-bright">What governs the work</p>
+              <p className="mt-3 text-body leading-relaxed text-ink">{governing || 'No governing decision has been recorded yet.'}</p>
+              <p className="mt-5 text-meta text-ink-quiet">Strongest recent evidence</p>
+              <p className="mt-2 text-body leading-relaxed text-ink-dim">{evidence || 'The record does not contain supporting evidence yet.'}</p>
+            </section>
+
+            <section className="rounded-pane bg-panel p-5 shadow-[0_10px_30px_rgba(26,58,40,0.045)]">
+              <p className="text-meta font-semibold text-action-bright">Open questions · {context.sections.open.length}</p>
+              {context.sections.open.length ? <ul className="mt-3 space-y-3">{context.sections.open.map((item, index) => <li key={index} className="text-body leading-relaxed text-ink">{item}</li>)}</ul> : <p className="mt-3 text-body text-ink-dim">Nothing is waiting on you right now.</p>}
+            </section>
+
+            <section className="rounded-pane bg-panel p-5 shadow-[0_10px_30px_rgba(26,58,40,0.045)]">
+              <p className="text-meta font-semibold text-action-bright">Project controls</p>
+              <div className="mt-4 grid gap-3 text-body">
+                {context.project.repo && <a href={context.project.repo} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">Open repository ↗</a>}
+                <Link to={`/projects/${projectId}/edit`} className="text-action-bright hover:underline">Project settings</Link>
+                <Link to="/admin/context" className="text-action-bright hover:underline">Import context</Link>
+                <a href="/api/export" download className="text-action-bright hover:underline">Export memory</a>
+              </div>
+            </section>
+          </aside>
+        </div>
       </div>
     </div>
   );
