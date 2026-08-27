@@ -72,7 +72,7 @@ function MemoryNow({ data, onChangeAgent }: { data: ThreadData & { project: { id
         <p className="section-label">Accepted language · {memory.glossary.length}</p>
         <p className="mt-2 text-body text-ink-dim">{memory.glossary[0] ? `${memory.glossary[0].term} means ${memory.glossary[0].means}` : 'No preferred terminology established yet.'}</p>
       </div>
-      <Link to={`/projects/${data.project.id}`} className="inline-block text-body font-medium text-action-bright hover:underline">Open project memory →</Link>
+      <Link to={`/projects/${data.project.id}`} className="inline-block text-body font-medium text-action-bright hover:underline">Open project home →</Link>
     </div>
   );
 }
@@ -358,7 +358,7 @@ export function ContextPanel({
   // app to preview and no pack — the panel simply isn't shown for one.
   const project = data.project;
   const tabs: Array<{ id: ContextTab; label: string }> = [
-    { id: 'memory', label: 'Memory' },
+    { id: 'memory', label: 'Context' },
     { id: 'preview', label: 'Preview' },
     { id: 'timeline', label: 'History' },
     { id: 'pack', label: 'About' },

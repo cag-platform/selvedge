@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
+import { DEFAULT_TECHNICAL_DETAIL, isTechnicalDetail } from '../../../shared/technicalDetail.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -34,7 +34,7 @@ export function createOrgRouter(db: Db) {
       res.json({
         timezone: row?.timezone ?? 'UTC',
         timezone_source: row?.timezoneSource ?? 'default',
-        technical_detail: isTechnicalDetail(row?.technicalDetail) ? row.technicalDetail : 'full',
+        technical_detail: isTechnicalDetail(row?.technicalDetail) ? row.technicalDetail : DEFAULT_TECHNICAL_DETAIL,
       });
     }),
   );

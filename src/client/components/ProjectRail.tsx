@@ -157,7 +157,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
                 to={`/projects/${project.project_id}`}
                 className="text-meta font-medium text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
               >
-                Project memory →
+                Project home →
               </Link>
               <Link
                 to={`/projects/${project.project_id}/edit`}

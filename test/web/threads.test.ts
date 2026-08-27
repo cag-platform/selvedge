@@ -177,7 +177,7 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect(res.body.cost_cents).toBe(18);
     expect(res.body.engine_on).toBe(true);
     expect(res.body.technical_detail).toBeNull();
-    expect(res.body.effective_technical_detail).toBe('full');
+    expect(res.body.effective_technical_detail).toBe('simple');
   });
 
   it('inherits technical detail from the account and allows a scoped conversation override', async () => {

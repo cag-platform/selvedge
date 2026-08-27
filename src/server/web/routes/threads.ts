@@ -50,7 +50,7 @@ import { canStartBuild } from '../../billing/entitlements.js';
 import { createProject } from '../../packs/create.js';
 import type { StakesTier } from '../../../shared/types/pack.js';
 import { refuse } from '../middleware/limit.js';
-import { isTechnicalDetail } from '../../../shared/technicalDetail.js';
+import { DEFAULT_TECHNICAL_DETAIL, isTechnicalDetail } from '../../../shared/technicalDetail.js';
 import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
 import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
 import { cardEvidenceSheet, runEvidenceSheet, summarizeRunEvidence } from '../../build/evidenceSheet.js';
@@ -482,7 +482,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         visualsForThread(db, orgId, thread.id),
       ]);
       const subjectName = thread.subjectId ? (await getSubject(db, orgId, thread.subjectId))?.name ?? null : null;
-      const accountDetail = isTechnicalDetail(orgRows[0]?.technicalDetail) ? orgRows[0].technicalDetail : 'full';
+      const accountDetail = isTechnicalDetail(orgRows[0]?.technicalDetail) ? orgRows[0].technicalDetail : DEFAULT_TECHNICAL_DETAIL;
       const threadDetail = isTechnicalDetail(thread.technicalDetail) ? thread.technicalDetail : null;
 
       // What this CONVERSATION has cost: sandbox turns in cents, model calls in
@@ -662,7 +662,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         .from(orgs)
         .where(eq(orgs.orgId, orgId))
         .limit(1);
-      const accountDetail = isTechnicalDetail(orgRow?.technicalDetail) ? orgRow.technicalDetail : 'full';
+      const accountDetail = isTechnicalDetail(orgRow?.technicalDetail) ? orgRow.technicalDetail : DEFAULT_TECHNICAL_DETAIL;
       res.json({
         technical_detail: requested,
         effective_technical_detail: requested ?? accountDetail,

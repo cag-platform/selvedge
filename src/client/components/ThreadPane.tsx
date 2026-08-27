@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api.js';
 import { formatCents } from '../lib/ledger.js';
 import {
@@ -43,7 +44,7 @@ import { SelvedgeEdge } from './SelvedgeEdge.js';
 
 type ContextReceipt = { sections: { about: string[]; recent: string[]; open: string[] } };
 
-function ReceivedContext({ projectId }: { projectId: string }) {
+function ReceivedContext({ projectId, showReceipt }: { projectId: string; showReceipt: boolean }) {
   const [received, setReceived] = useState<ContextReceipt | null>(null);
   useEffect(() => {
     api.get<ContextReceipt>(`/api/projects/${encodeURIComponent(projectId)}/context`).then(setReceived).catch(() => setReceived(null));
@@ -51,12 +52,14 @@ function ReceivedContext({ projectId }: { projectId: string }) {
   if (!received) return null;
   const count = received.sections.about.length + received.sections.recent.length + received.sections.open.length;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Durable project memory available">
-      <span className="font-medium text-action-bright">Project memory available</span>
-      <span aria-hidden>·</span><span>{count} grounded lines</span>
-      <span aria-hidden>·</span><span>{received.sections.recent.length} recent records</span>
-      <span aria-hidden>·</span><span>{received.sections.open.length} open questions</span>
-      <span aria-hidden>·</span><span>live repository access is reported per answer</span>
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-dim" aria-label="Caught up on this project">
+      <span className="font-medium text-action-bright">Caught up on this project</span>
+      {showReceipt && <>
+        <span aria-hidden>·</span><span>{count} grounded lines</span>
+        <span aria-hidden>·</span><span>{received.sections.recent.length} recent records</span>
+        <span aria-hidden>·</span><span>{received.sections.open.length} open questions</span>
+        <span aria-hidden>·</span><span>repository access reported per answer</span>
+      </>}
     </span>
   );
 }
@@ -489,8 +492,8 @@ function TechnicalDetailControl({ data, onDone }: { data: ThreadData; onDone: ()
       label: 'Use account setting',
       note: 'Return this conversation to your saved default.',
     },
-    { value: 'full', label: 'Full', note: 'Technical summary first; exact record folded below.' },
     { value: 'simple', label: 'Simple', note: 'Outcome first; technical record folded below.' },
+    { value: 'full', label: 'Full', note: 'Technical summary first; exact record folded below.' },
   ];
 
   return (
@@ -910,7 +913,7 @@ export function ThreadPane({
       <header className="flex flex-wrap items-start justify-between gap-work border-b border-hairline bg-panel-soft/40 px-work-loose py-work">
         <div className="min-w-0 flex-1">
           <p className="section-label mb-2">
-            {data.project?.name ?? data.subject?.name ?? 'Unfiled'} <span aria-hidden>／</span> {workshop ? 'Workshop' : 'Conversation'}
+            {data.project ? <Link to={`/projects/${data.project.id}`} className="hover:text-action-bright">{data.project.name}</Link> : data.subject?.name ?? 'Unfiled'} <span aria-hidden>／</span> {workshop ? 'Workshop' : 'Conversation'}
           </p>
           {renaming ? (
             <input
@@ -934,9 +937,9 @@ export function ThreadPane({
           )}
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-ink-quiet">
             <AgentChip agent={data.thread.agent} working={data.working} />
-            {data.project && <><span aria-hidden>·</span><ReceivedContext projectId={data.project.id} /></>}
-            <span aria-hidden>·</span><span>{formatCents(data.cost_cents)}</span>
-            {workshop && <><span aria-hidden>·</span><span>{data.sandbox === 'attached' ? 'workshop warm' : 'workshop cold'}</span></>}
+            {data.project && <><span aria-hidden>·</span><ReceivedContext projectId={data.project.id} showReceipt={data.effective_technical_detail === 'full'} /></>}
+            {data.effective_technical_detail === 'full' && <><span aria-hidden>·</span><span>{formatCents(data.cost_cents)}</span></>}
+            {workshop && data.effective_technical_detail === 'full' && <><span aria-hidden>·</span><span>{data.sandbox === 'attached' ? 'workshop warm' : 'workshop cold'}</span></>}
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-3">

@@ -16,18 +16,18 @@ const choices: Array<{
   detail: string;
 }> = [
   {
-    value: 'full',
-    title: 'Full',
-    description: 'Technical summaries stay visible. Exact commands, paths, and logs are one step deeper.',
-    example: '8 steps · 3 files changed · succeeded',
-    detail: 'Show technical record',
-  },
-  {
     value: 'simple',
     title: 'Simple',
     description: 'Lead with the outcome in plain English. Nothing technical is deleted or rewritten.',
     example: 'I updated 3 files and checked the work.',
     detail: 'Technical details',
+  },
+  {
+    value: 'full',
+    title: 'Full',
+    description: 'Technical summaries stay visible. Exact commands, paths, and logs are one step deeper.',
+    example: '8 steps · 3 files changed · succeeded',
+    detail: 'Show technical record',
   },
 ];
 
@@ -125,7 +125,7 @@ export function Preferences() {
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <div>
             <h2 id="technical-detail-heading" className="text-headline font-semibold text-ink">Technical detail</h2>
-            <p className="text-body text-ink-dim">Full is the default. You can temporarily override it inside any conversation.</p>
+            <p className="text-body text-ink-dim">Simple is the default. Switch to Full—or override one conversation—when you want the complete builder surface.</p>
           </div>
           {saving && <span className="font-mono text-tech text-ink-quiet">Saving…</span>}
         </div>

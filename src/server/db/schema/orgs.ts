@@ -26,6 +26,6 @@ export const orgs = pgTable('orgs', {
    * concise technical summary on the surface; `simple` leads with the outcome
    * in ordinary language. The underlying run record is retained either way.
    */
-  technicalDetail: text('technical_detail').notNull().default('full'),
+  technicalDetail: text('technical_detail').notNull().default('simple'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

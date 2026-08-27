@@ -28,7 +28,7 @@ describe('web/routes/org', () => {
     expect((await request(app).get('/api/org')).body).toEqual({
       timezone: 'UTC',
       timezone_source: 'default',
-      technical_detail: 'full',
+      technical_detail: 'simple',
     });
 
     const res = await request(app).patch('/api/org/timezone').send({ timezone: 'America/New_York', source: 'auto' });
@@ -54,12 +54,12 @@ describe('web/routes/org', () => {
     expect((await request(app).patch('/api/org/timezone').send({ timezone: 'UTC', source: 'wat' })).status).toBe(400);
   });
 
-  it('defaults to Full technical detail and persists Simple as an org presentation preference', async () => {
+  it('defaults to Simple technical detail and persists Full as an org presentation preference', async () => {
     const app = appWithOrg(orgId, createOrgRouter(db));
-    const changed = await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'simple' });
+    const changed = await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'full' });
     expect(changed.status).toBe(200);
-    expect(changed.body).toMatchObject({ timezone: 'UTC', timezone_source: 'default', technical_detail: 'simple' });
-    expect((await request(app).get('/api/org')).body.technical_detail).toBe('simple');
+    expect(changed.body).toMatchObject({ timezone: 'UTC', timezone_source: 'default', technical_detail: 'full' });
+    expect((await request(app).get('/api/org')).body.technical_detail).toBe('full');
 
     expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'plain' })).status).toBe(400);
     expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: null })).status).toBe(400);
