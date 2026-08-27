@@ -24,6 +24,10 @@ export type ProjectRow = {
   /** Null when nothing has ever reported — see the server's hasHealthSignal. */
   status: 'healthy' | 'working' | 'needs' | 'unknown' | null;
   health: string | null;
+  /** Observable worktree state, not inferred from conversation language. */
+  review_ready?: boolean;
+  /** A live destination is configured. Health is still represented separately. */
+  online?: boolean;
   threads: ThreadRow[];
   /** Folded out of the rail by the owner — see shared/putAway.ts. */
   put_away?: boolean;
@@ -214,6 +218,8 @@ export type RailPlace = {
    */
   status: ProjectRow['status'] | null;
   health: string | null;
+  reviewReady: boolean;
+  online: boolean;
   threads: ThreadRow[];
   /** Which "new conversation here" this place takes. */
   hasCode: boolean;
@@ -245,6 +251,8 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
     name: p.name,
     status: p.status,
     health: p.health,
+    reviewReady: p.review_ready === true,
+    online: p.online === true,
     threads: p.threads,
     hasCode: true,
     chat: p.threads[0] ?? null,
@@ -255,6 +263,8 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
     name: s.name,
     status: null,
     health: null,
+    reviewReady: false,
+    online: false,
     threads: s.threads,
     hasCode: false,
     chat: s.threads[0] ?? null,
@@ -262,6 +272,39 @@ export function railPlaces(projects: ProjectRow[], subjects: SubjectRow[]): Rail
   }));
   return byRecency([...withCode, ...withoutCode]);
 }
+
+export type ProjectState = 'needs_you' | 'changing' | 'ready_to_review' | 'live' | 'not_online' | 'quiet';
+
+/**
+ * One truthful state from facts already observed. Order matters: a live app
+ * may also have a change waiting, and the next action is the useful headline.
+ */
+export function projectState(place: Pick<RailPlace, 'status' | 'chat' | 'reviewReady' | 'online'>): ProjectState {
+  if (place.status === 'needs') return 'needs_you';
+  if (place.status === 'working' || place.chat?.working) return 'changing';
+  if (place.reviewReady) return 'ready_to_review';
+  if (place.online && place.status === 'healthy') return 'live';
+  if (!place.online) return 'not_online';
+  return 'quiet';
+}
+
+export const PROJECT_STATE_LABEL: Record<ProjectState, string> = {
+  needs_you: 'Needs you',
+  changing: 'Changing',
+  ready_to_review: 'Ready to review',
+  live: 'Live',
+  not_online: 'Not online',
+  quiet: 'Quiet',
+};
+
+export const PROJECT_STATE_ACTION: Record<ProjectState, string> = {
+  needs_you: 'Resolve',
+  changing: 'View work',
+  ready_to_review: 'Review changes',
+  live: 'Continue',
+  not_online: 'Continue',
+  quiet: 'Continue',
+};
 
 /**
  * The rail, split in two: what is at hand, and what has been folded away.

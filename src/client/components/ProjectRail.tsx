@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { SelvedgeEdge, type EdgeStatus } from './SelvedgeEdge.js';
 import { TimelineTab } from './TimelineTab.js';
+import { PROJECT_STATE_ACTION, PROJECT_STATE_LABEL, projectState } from '../lib/inbox.js';
 
 /**
  * The project rail ("The Look", Prompt 4): frosted chips, one selvedge
@@ -17,6 +18,8 @@ export type ProjectCardData = {
   /** Both null when nothing has ever reported — see the server's hasHealthSignal. */
   health_line: string | null;
   edge: EdgeStatus | null;
+  review_ready?: boolean;
+  online?: boolean;
   /** The accounts behind it, as server-built doors — see connectors/consoles.ts. */
   console_links?: Array<{ provider: string; label: string; url: string }>;
   muted?: boolean;
@@ -99,6 +102,7 @@ function ClaimDatabase({ projectId }: { projectId: string }) {
 export function ProjectCard({ project }: { project: ProjectCardData }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const state = projectState({ status: project.edge, chat: null, reviewReady: project.review_ready === true, online: project.online === true });
 
   return (
     <div
@@ -124,9 +128,10 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
         {/* A health line where there is one. Where there isn't, the card says
             what it can honestly offer instead — the record — rather than
             leaving a blank second line that reads as a missing value. */}
-        <p className="mt-1 truncate text-meta text-ink-dim">
-          {project.health_line ?? (open ? 'What happened here' : 'Open for what happened here')}
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="truncate text-meta text-ink-dim">{project.health_line ?? PROJECT_STATE_LABEL[state]}</p>
+          <span className="shrink-0 text-meta font-medium text-action-bright">{open ? 'Close' : PROJECT_STATE_ACTION[state]}</span>
+        </div>
       </button>
 
       {open && (

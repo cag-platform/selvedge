@@ -40,6 +40,8 @@ describe('web/routes/projects', () => {
     expect(res.status).toBe(200);
     expect(res.body[0].name).toBe('YOKE');
     expect(res.body[0].health_line).toContain('day 12');
+    expect(res.body[0].review_ready).toBe(false);
+    expect(res.body[0].online).toBe(false);
   });
 
   /**

@@ -74,12 +74,15 @@ describe('web/routes/threads — the Inbox surface', () => {
       { id: ulid(), orgId, projectId: 'loom', threadId: first.id, role: 'owner', content: 'old', createdAt: new Date('2026-01-01T00:00:00Z') },
       { id: ulid(), orgId, projectId: 'loom', threadId: second.id, role: 'owner', content: 'new', createdAt: new Date('2026-08-01T00:00:00Z') },
     ]);
+    await setBuild(db, orgId, 'loom', { stagedChangesReady: true });
 
     const res = await request(app()).get('/api/inbox');
     expect(res.status).toBe(200);
     expect(res.body.projects).toHaveLength(1);
     const project = res.body.projects[0];
     expect(project.name).toBe('Loom');
+    expect(project.review_ready).toBe(true);
+    expect(project.online).toBe(false);
     expect(project.threads.map((t: { title: string }) => t.title)).toEqual(['Pricing', 'Workshop']);
     // Each row carries its agent's mono mark — identity as text, never colour.
     expect(project.threads[0].chip).toBe('CL');

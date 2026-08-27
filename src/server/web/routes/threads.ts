@@ -233,12 +233,14 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // intact. Fetching them only on demand would cost a second round trip to
       // show a list the owner already has in their hand — and would make the
       // count a separate query that could disagree with the list it counts.
-      const [packs, subjectRows, threadRows, awayProjects] = await Promise.all([
+      const [packs, subjectRows, threadRows, awayProjects, buildRows] = await Promise.all([
         listPacks(db, orgId),
         listSubjects(db, orgId, { includeArchived: true }),
         db.select().from(threads).where(eq(threads.orgId, orgId)),
         mutedProjectIds(db, orgId),
+        db.select({ projectId: projectBuild.projectId, stagedChangesReady: projectBuild.stagedChangesReady }).from(projectBuild).where(eq(projectBuild.orgId, orgId)),
       ]);
+      const buildByProject = new Map(buildRows.map((row) => [row.projectId, row]));
 
       // Last activity per thread, for "most-recent-first" — one grouped query
       // rather than one per thread.
@@ -286,6 +288,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           // every row in the rail apologise at once.
           status: hasHealthSignal(pack) ? edgeStatus(pack) : null,
           health: hasHealthSignal(pack) ? healthLine(pack) : null,
+          // Two facts Home cannot derive from a conversation: whether a
+          // worktree is waiting for review, and whether this project has a
+          // live destination at all. Neither claims that an unobserved URL is
+          // healthy; health remains the separate signal above.
+          review_ready: buildByProject.get(id)?.stagedChangesReady ?? false,
+          online: Boolean(pack.identity.links?.live_url),
           threads,
           put_away: awayProjects.has(id),
         };

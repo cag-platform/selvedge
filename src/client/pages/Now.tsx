@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { AgentChip } from '../components/AgentChip.js';
 import { StatusDot } from '../components/SelvedgeEdge.js';
-import { railPlaces, whenShort, type InboxData, type RailPlace } from '../lib/inbox.js';
+import { PROJECT_STATE_ACTION, PROJECT_STATE_LABEL, projectState, railPlaces, whenShort, type InboxData, type RailPlace } from '../lib/inbox.js';
 
 /**
  * HOME is the project shelf, not a second workbench and not a generic prompt
@@ -34,9 +34,10 @@ export function Now() {
   const places = useMemo(() => railPlaces(data?.projects ?? [], data?.subjects ?? []).filter((place) => !place.putAway), [data]);
   const projects = places.filter((place) => place.hasCode);
   const subjects = places.filter((place) => !place.hasCode);
-  const needs = projects.filter((place) => place.status === 'needs');
-  const moving = projects.filter((place) => place.status !== 'needs' && (place.status === 'working' || place.chat?.working));
-  const rest = projects.filter((place) => !needs.includes(place) && !moving.includes(place));
+  const needs = projects.filter((place) => projectState(place) === 'needs_you');
+  const moving = projects.filter((place) => projectState(place) === 'changing');
+  const review = projects.filter((place) => projectState(place) === 'ready_to_review');
+  const rest = projects.filter((place) => !needs.includes(place) && !moving.includes(place) && !review.includes(place));
   const selected = places.find((place) => place.id === selectedId) ?? null;
 
   useEffect(() => {
@@ -100,7 +101,8 @@ export function Now() {
         <main className="mt-12 space-y-12">
           {needs.length > 0 && <ProjectGroup title="Needs you" places={needs} onOpen={startHere} />}
           {moving.length > 0 && <ProjectGroup title="In progress" places={moving} onOpen={startHere} />}
-          {rest.length > 0 && <ProjectGroup title={needs.length || moving.length ? 'Your projects' : 'Pick up where you left off'} places={rest} onOpen={startHere} />}
+          {review.length > 0 && <ProjectGroup title="Ready to review" places={review} onOpen={startHere} />}
+          {rest.length > 0 && <ProjectGroup title={needs.length || moving.length || review.length ? 'Your projects' : 'Pick up where you left off'} places={rest} onOpen={startHere} />}
         </main>
       ) : data ? (
         <section className="mt-12 max-w-3xl rounded-pane bg-panel p-7 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-9">
@@ -151,13 +153,13 @@ function ProjectGroup({ title, places, onOpen }: { title: string; places: RailPl
 }
 
 function HomeProject({ place, onOpen }: { place: RailPlace; onOpen: () => void }) {
-  const state = place.status === 'needs' ? 'Needs you' : place.status === 'working' || place.chat?.working ? 'In progress' : place.status === 'healthy' ? 'Working well' : 'Ready';
+  const state = projectState(place);
   return (
     <button onClick={onOpen} className="group min-h-44 rounded-pane bg-panel p-5 text-left shadow-[0_12px_36px_rgba(26,58,40,0.055)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_46px_rgba(26,58,40,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright">
-      <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2 rounded-full bg-panel-soft px-3 py-1 text-meta text-ink-dim">{place.status && <StatusDot status={place.status} />}{state}</span>{place.chat && <span className="text-meta text-ink-quiet">{whenShort(place.chat.last_at)}</span>}</div>
+      <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2 rounded-full bg-panel-soft px-3 py-1 text-meta text-ink-dim">{place.status && <StatusDot status={place.status} />}{PROJECT_STATE_LABEL[state]}</span>{place.chat && <span className="text-meta text-ink-quiet">{whenShort(place.chat.last_at)}</span>}</div>
       <h3 className="mt-5 truncate font-display text-[1.45rem] font-normal text-ink">{place.name}</h3>
       <p className="mt-2 line-clamp-2 text-body text-ink-dim">{place.chat?.title ?? 'Open this project and start with its context already attached.'}</p>
-      <div className="mt-5 flex items-center justify-between gap-3"><span className="text-meta font-medium text-action-bright">{place.chat ? 'Open project →' : 'Start here →'}</span>{place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}</div>
+      <div className="mt-5 flex items-center justify-between gap-3"><span className="text-meta font-medium text-action-bright">{place.chat ? `${PROJECT_STATE_ACTION[state]} →` : 'Start here →'}</span>{place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}</div>
     </button>
   );
 }

@@ -3,6 +3,7 @@ import {
   allThreads,
   matches,
   placeLines,
+  projectState,
   railPlaces,
   splitPutAway,
   whenShort,
@@ -60,6 +61,29 @@ describe('the rail', () => {
     expect(matches('loom', 'Checkout rework', 'Loom')).toBe(true);
     expect(matches('  ', 'anything')).toBe(true);
     expect(matches('nope', 'Checkout rework', 'Loom')).toBe(false);
+  });
+});
+
+describe('project state — one honest next-action label', () => {
+  const fact = (over: Partial<Parameters<typeof projectState>[0]> = {}) => ({
+    status: null,
+    chat: null,
+    reviewReady: false,
+    online: false,
+    ...over,
+  });
+
+  it('prioritizes attention and motion over lower-priority facts', () => {
+    expect(projectState(fact({ status: 'needs', reviewReady: true, online: true }))).toBe('needs_you');
+    expect(projectState(fact({ status: 'working', reviewReady: true }))).toBe('changing');
+    expect(projectState(fact({ chat: { working: true } as never, reviewReady: true }))).toBe('changing');
+  });
+
+  it('names review, verified live, absent hosting, and honest uncertainty', () => {
+    expect(projectState(fact({ reviewReady: true }))).toBe('ready_to_review');
+    expect(projectState(fact({ status: 'healthy', online: true }))).toBe('live');
+    expect(projectState(fact({ status: 'healthy', online: false }))).toBe('not_online');
+    expect(projectState(fact({ status: 'unknown', online: true }))).toBe('quiet');
   });
 });
 

@@ -1,5 +1,7 @@
 import { Router, type Request } from 'express';
+import { eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
+import { projectBuild } from '../../db/schema/index.js';
 import { listPacks, mutedProjectIds } from '../../packs/store.js';
 import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.js';
 import { consoleLinks } from '../../connectors/consoles.js';
@@ -27,7 +29,12 @@ export function createProjectsRouter(db: Db, deps: ProjectsDeps = {}) {
       const orgId = orgIdOf(req);
       // Archived (permanently deleted) projects are excluded by default; muted
       // ones are included but flagged so the client can collapse them.
-      const [packs, muted] = await Promise.all([listPacks(db, orgId), mutedProjectIds(db, orgId)]);
+      const [packs, muted, buildRows] = await Promise.all([
+        listPacks(db, orgId),
+        mutedProjectIds(db, orgId),
+        db.select({ projectId: projectBuild.projectId, stagedChangesReady: projectBuild.stagedChangesReady }).from(projectBuild).where(eq(projectBuild.orgId, orgId)),
+      ]);
+      const buildByProject = new Map(buildRows.map((row) => [row.projectId, row]));
       res.json(
         packs.map((pack) => ({
           project_id: pack.identity.project_id,
@@ -36,6 +43,8 @@ export function createProjectsRouter(db: Db, deps: ProjectsDeps = {}) {
           // Null where nothing has reported — see hasHealthSignal.
           health_line: hasHealthSignal(pack) ? healthLine(pack) : null,
           edge: hasHealthSignal(pack) ? edgeStatus(pack) : null,
+          review_ready: buildByProject.get(pack.identity.project_id)?.stagedChangesReady ?? false,
+          online: Boolean(pack.identity.links?.live_url),
           links: pack.identity.links ?? {},
           // The doors to the accounts behind it — see connectors/consoles.ts.
           console_links: consoleLinks(pack),

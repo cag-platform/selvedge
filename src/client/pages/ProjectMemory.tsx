@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ContextPack } from '../../shared/types/pack.js';
-import type { InboxData } from '../lib/inbox.js';
+import { PROJECT_STATE_ACTION, PROJECT_STATE_LABEL, projectState, railPlaces, type InboxData } from '../lib/inbox.js';
 import { api } from '../lib/api.js';
 import { AgentChip } from '../components/AgentChip.js';
 import { TimelineTab } from '../components/TimelineTab.js';
@@ -62,6 +62,8 @@ export function ProjectMemory() {
   }, [projectId]);
 
   const project = inbox?.projects.find((item) => item.id === projectId);
+  const place = inbox ? railPlaces(inbox.projects, inbox.subjects).find((item) => item.id === projectId) ?? null : null;
+  const state = place ? projectState(place) : null;
   const builder = project?.threads[0] ?? null;
   const health = useMemo(() => (memory && pack ? freshness(memory, pack) : null), [memory, pack]);
   const governing = context?.sections.about[0] ?? pack?.identity.owner_description ?? null;
@@ -97,8 +99,8 @@ export function ProjectMemory() {
             <p className="mt-4 max-w-2xl text-body-lg leading-relaxed text-ink-dim">{memory.summary}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-3">
-            <span className="rounded-full bg-panel px-4 py-2 text-meta text-ink-dim shadow-sm"><strong className="font-medium text-ink">{health?.label}</strong> · {health?.detail}</span>
-            <Link to={builder ? `/inbox/${builder.id}` : `/inbox/project/${projectId}`} className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Open workbench →</Link>
+            <span className="rounded-full bg-panel px-4 py-2 text-meta text-ink-dim shadow-sm"><strong className="font-medium text-ink">{state ? PROJECT_STATE_LABEL[state] : health?.label}</strong>{health?.detail ? ` · ${health.detail}` : ''}</span>
+            <Link to={builder ? `/inbox/${builder.id}` : `/inbox/project/${projectId}`} className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">{state ? PROJECT_STATE_ACTION[state] : 'Open workbench'} →</Link>
           </div>
         </header>
 
