@@ -6,7 +6,7 @@ import { agentMessages, llmUsage, orgs } from '../../src/server/db/schema/index.
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThread } from '../../src/server/threads/store.js';
-import { runChatTurn, chatProviderFor, streamedReply } from '../../src/server/chat/turn.js';
+import { runChatTurn, chatProviderFor, classifyModelFailure, streamedReply } from '../../src/server/chat/turn.js';
 import { subscribeLiveChat, type LiveChatEvent } from '../../src/server/chat/live.js';
 import { DownLlmClient, FakeLlmClient } from '../../src/server/llm/fake.js';
 
@@ -136,6 +136,44 @@ describe('a general thread turn', () => {
     expect(client.requests[0]!.model).toBe('gpt-5.6-luna');
   });
 
+  it('uses each consulted agent\'s model instead of leaking the thread model across providers', async () => {
+    const thread = await createThread(db, orgId, 'loom', {
+      kind: 'general', title: 'Mixed consultation', agent: 'claude', model: 'claude-haiku-4-5',
+    });
+    const claude = replying('Claude answer');
+    const gpt = replying('GPT answer');
+
+    await runChatTurn(db, orgId, thread, 'compare these', {
+      client: claude, recordOwnerMessage: false, answeringAs: 'claude', asTake: true,
+      consultation: { id: 'consultation-1', promptId: 'owner-message-1' },
+    });
+    await runChatTurn(db, orgId, thread, 'compare these', {
+      client: gpt, recordOwnerMessage: false, answeringAs: 'gpt', asTake: true,
+      consultation: { id: 'consultation-1', promptId: 'owner-message-1' },
+    });
+
+    expect(claude.requests[0]!.model).toBe('claude-haiku-4-5');
+    expect(gpt.requests[0]!.model).toBe('gpt-5.6-terra');
+  });
+
+  it('does not leak a builder model alias into a chat consultation', async () => {
+    const thread = await createThread(db, orgId, 'loom', {
+      kind: 'general', title: 'Builder consultation', agent: 'claude-code', model: 'sonnet',
+    });
+    const claude = replying('Claude answer');
+    const gpt = replying('GPT answer');
+
+    await runChatTurn(db, orgId, thread, 'compare these', {
+      client: claude, recordOwnerMessage: false, answeringAs: 'claude', asTake: true,
+    });
+    await runChatTurn(db, orgId, thread, 'compare these', {
+      client: gpt, recordOwnerMessage: false, answeringAs: 'gpt', asTake: true,
+    });
+
+    expect(claude.requests[0]!.model).toBe('claude-sonnet-5');
+    expect(gpt.requests[0]!.model).toBe('gpt-5.6-terra');
+  });
+
   it('says plainly when the thread runs on a model nobody connected', async () => {
     const thread = await chatThread('gpt');
     const out = await runChatTurn(db, orgId, thread, 'hello', { client: null });
@@ -218,5 +256,12 @@ describe('streamedReply', () => {
     expect(streamedReply('{"reply":"hello\\nworld')).toBe('hello\nworld');
     expect(streamedReply('{"reply":"quote: \\"yes\\""}')).toBe('quote: "yes"');
     expect(streamedReply('{"reply":"wait\\u2')).toBe('wait');
+  });
+});
+
+describe('model failure copy', () => {
+  it('names the provider that actually rejected the model', () => {
+    expect(classifyModelFailure('api_error_404', 'claude-sonnet-5', 'anthropic').message).toContain('Anthropic account');
+    expect(classifyModelFailure('api_error_404', 'gpt-5.6-terra', 'openai').message).toContain('OpenAI account');
   });
 });

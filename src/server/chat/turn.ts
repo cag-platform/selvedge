@@ -15,6 +15,8 @@ import type { Thread } from '../threads/store.js';
 import { publishLiveChat } from './live.js';
 import { renderTaskContextCapsule } from '../context/compiler.js';
 import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
+import { defaultChatModelFor, modelBelongsToAgent } from '../llm/chatModels.js';
+import { wiringFor } from '../llm/providers.js';
 
 /**
  * A general thread's turn: plain conversation, no sandbox, nothing to ship.
@@ -41,8 +43,15 @@ export type ChatOutcome =
 export type ModelFailure = { code: string; retryable: boolean; message: string };
 
 /** Provider errors become stable product states rather than raw status codes. */
-export function classifyModelFailure(reason: string, model?: string): ModelFailure {
-  if (reason === 'api_error_404') return { code: 'model_unavailable', retryable: false, message: `${model ?? 'That model'} is not available to this OpenAI account. Choose another GPT model under the agent menu, or check the account's model access.` };
+export function classifyModelFailure(reason: string, model?: string, provider?: AgentProvider): ModelFailure {
+  if (reason === 'api_error_404') {
+    const providerName = provider ? wiringFor(provider).label : 'model provider';
+    return {
+      code: 'model_unavailable',
+      retryable: false,
+      message: `${model ?? 'That model'} is not available to the connected ${providerName} account. Choose another model for this agent, or check that account's model access.`,
+    };
+  }
   if (reason === 'api_error_401' || reason === 'api_error_403') return { code: 'credential_rejected', retryable: false, message: 'The model provider rejected the connected credential. Reconnect it under Connections, then retry this agent.' };
   if (reason === 'api_error_429') return { code: 'rate_limited', retryable: true, message: 'The model provider is rate-limiting this agent right now. Wait a moment, then retry this agent only.' };
   if (reason.startsWith('api_error_5')) return { code: 'provider_unavailable', retryable: true, message: 'The model provider is temporarily unavailable. Retry this agent only in a moment.' };
@@ -366,7 +375,14 @@ export async function runChatTurn(
   // and carrying the mark on anything that was said somewhere else.
   const referenced = renderReferences(await resolveReferences(db, orgId, ownerText).catch(() => ({ resolved: [], missed: [] })));
   const attached = renderDocuments(deps.documents ?? []);
-  const model = thread.model ?? chatModel(provider);
+  // A consultation borrows the conversation, not its model selection. The
+  // thread may be running Claude (or even a builder alias such as `sonnet`),
+  // while this lane is GPT. Reusing that value sends a Claude model name to
+  // OpenAI. Preserve the thread's selection only when it genuinely belongs to
+  // the answering agent; otherwise use that agent's own default.
+  const model = thread.model && modelBelongsToAgent(speaking, thread.model)
+    ? thread.model
+    : (defaultChatModelFor(speaking) || chatModel(provider));
   const modelStartedAt = Date.now();
   let firstDeltaAt: number | null = null;
   let rawStream = '';
@@ -413,7 +429,7 @@ export async function runChatTurn(
     // In the log with the model that produced it, so a run of these is
     // diagnosable rather than a mystery reported three times by three agents.
     console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
-    const failure = classifyModelFailure(result.reason, model);
+    const failure = classifyModelFailure(result.reason, model, provider);
     const message = failure.message;
     await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: failure.code, retryable: failure.retryable });
     return { ok: false, reason: 'model_failed', message, failure_code: failure.code, retryable: failure.retryable };
