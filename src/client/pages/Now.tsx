@@ -1,59 +1,62 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { AgentChip } from '../components/AgentChip.js';
 import { StatusDot } from '../components/SelvedgeEdge.js';
-import { railPlaces, whenShort, type InboxData } from '../lib/inbox.js';
+import { railPlaces, whenShort, type InboxData, type RailPlace } from '../lib/inbox.js';
 
-type ProjectMemory = {
-  project_id: string; name: string;
-  learned_signatures: Array<{ plain: string; possibly_stale: boolean }>;
-  known_flaky: Array<{ pattern: string }>;
-  glossary: Array<{ term: string; means: string }>;
-  summary: string;
-};
-
-/** HOME — begin with intent, then make the project boundary visible. */
+/**
+ * HOME is the project shelf, not a second workbench and not a generic prompt
+ * launcher. It answers three questions with state Selvedge already has:
+ * what needs me, what is moving, and where was I last.
+ *
+ * Deliberately absent: generated thumbnails, an invented context score, agent
+ * recommendations, and another project-memory model. Those all require truth
+ * the current payload cannot supply. The existing compiler remains the thing
+ * that catches an agent up when the owner enters the workbench.
+ */
 export function Now() {
   const navigate = useNavigate();
+  const composer = useRef<HTMLTextAreaElement>(null);
   const [data, setData] = useState<InboxData | null>(null);
   const [command, setCommand] = useState('');
   const [selectedId, setSelectedId] = useState('');
-  const [selectionLocked, setSelectionLocked] = useState(false);
-  const [memory, setMemory] = useState<ProjectMemory | null>(null);
   const [starting, setStarting] = useState(false);
   const [continuationAvailable, setContinuationAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.get<InboxData>('/api/inbox').then(setData).catch((e: Error) => setError(e.message)); }, []);
-  useEffect(() => { api.get<{ available: boolean }>('/api/continuations/availability').then((v) => setContinuationAvailable(v.available)).catch(() => setContinuationAvailable(false)); }, []);
-  const places = useMemo(() => railPlaces(data?.projects ?? [], data?.subjects ?? []).filter((p) => !p.putAway), [data]);
-  const selected = places.find((p) => p.id === selectedId) ?? null;
-
-  useEffect(() => { if (places.length && !selectedId) setSelectedId(places[0]!.id); }, [places, selectedId]);
   useEffect(() => {
-    if (selectionLocked) return;
-    const words = command.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
-    if (!words.length) return;
-    const match = places.find((place) => words.some((word) => `${place.name} ${place.chat?.title ?? ''}`.toLowerCase().includes(word)));
-    if (match) setSelectedId(match.id);
-  }, [command, places, selectionLocked]);
-  useEffect(() => {
-    if (!selected?.hasCode) { setMemory(null); return; }
-    let live = true;
-    api.get<ProjectMemory>(`/api/projects/${encodeURIComponent(selected.id)}/memory`).then((v) => live && setMemory(v)).catch(() => live && setMemory(null));
-    return () => { live = false; };
-  }, [selected?.id, selected?.hasCode]);
+    api.get<InboxData>('/api/inbox').then(setData).catch((e: Error) => setError(e.message));
+    api.get<{ available: boolean }>('/api/continuations/availability').then((v) => setContinuationAvailable(v.available)).catch(() => setContinuationAvailable(false));
+  }, []);
 
-  const needs = places.filter((p) => p.status === 'needs');
-  const running = places.filter((p) => p.status !== 'needs' && (p.status === 'working' || p.chat?.working));
-  const recent = places.filter((p) => !needs.includes(p) && !running.includes(p)).slice(0, 3);
+  const places = useMemo(() => railPlaces(data?.projects ?? [], data?.subjects ?? []).filter((place) => !place.putAway), [data]);
+  const projects = places.filter((place) => place.hasCode);
+  const subjects = places.filter((place) => !place.hasCode);
+  const needs = projects.filter((place) => place.status === 'needs');
+  const moving = projects.filter((place) => place.status !== 'needs' && (place.status === 'working' || place.chat?.working));
+  const rest = projects.filter((place) => !needs.includes(place) && !moving.includes(place));
+  const selected = places.find((place) => place.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selectedId && places[0]) setSelectedId(places[0].id);
+  }, [places, selectedId]);
+
+  function startHere(place: RailPlace) {
+    if (place.chat) {
+      navigate(`/inbox/${place.chat.id}`);
+      return;
+    }
+    setSelectedId(place.id);
+    composer.current?.focus();
+  }
 
   async function start(e: React.FormEvent) {
     e.preventDefault();
     const text = command.trim();
     if (!text || starting) return;
-    setStarting(true); setError(null);
+    setStarting(true);
+    setError(null);
     try {
       let threadId: string;
       if (selected) {
@@ -71,73 +74,89 @@ export function Now() {
       }
       await api.post(`/api/threads/${threadId}/message`, { text });
       navigate(`/inbox/${threadId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "That didn't go through."); setStarting(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "That didn't go through.");
+      setStarting(false);
     }
   }
 
-  const contextCount = memory ? memory.learned_signatures.length + memory.known_flaky.length + memory.glossary.length : selected?.chat ? 1 : 0;
-
   return (
-    <div className="animate-settle mx-auto max-w-5xl px-5 pb-20 pt-[clamp(4rem,10vh,7.5rem)] sm:px-8">
-      <header className="text-center">
-        <p className="font-mono text-label font-semibold uppercase tracking-[0.16em] text-action">Your work, ready when you are</p>
-        <h1 className="mt-5 font-display text-[clamp(2.9rem,6.6vw,4.8rem)] font-normal leading-[0.98] tracking-[-0.055em] text-ink">What should we move forward?</h1>
-        <p className="mx-auto mt-4 max-w-xl text-lede text-ink-dim">Start with the outcome. Selvedge will bring the right project memory and builder.</p>
+    <div className="home-surface animate-settle mx-auto max-w-6xl px-5 pb-24 pt-10 sm:px-8 sm:pt-14">
+      <header className="max-w-3xl">
+        <p className="text-meta font-semibold text-action-bright">Home base for everything you build with AI</p>
+        <h1 className="mt-3 font-display text-[clamp(2.6rem,6vw,4.75rem)] font-normal leading-[0.98] tracking-[-0.05em] text-ink">Every AI starts caught up.</h1>
+        <p className="mt-5 max-w-2xl text-[clamp(1rem,2vw,1.2rem)] leading-relaxed text-ink-dim">Bring in any project, improve it with any AI, preview and ship changes, and keep its context growing in one place.</p>
       </header>
 
-      {continuationAvailable && <div className="mx-auto mt-8 max-w-3xl rounded-card border border-action/30 bg-sage p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
-        <div><strong className="block text-body-lg text-ink">Already building somewhere else?</strong><p className="mt-1 text-body text-ink-dim">Bring an existing project and AI conversation. Continue without explaining it all again.</p></div>
-        <button type="button" onClick={() => navigate('/continue')} className="mt-4 shrink-0 rounded-inset bg-action px-4 py-2 text-body font-medium text-ink sm:mt-0">Continue a project →</button>
-      </div>}
+      {continuationAvailable && (
+        <div className="mt-8 flex max-w-4xl flex-col gap-4 rounded-pane bg-sage p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div><strong className="block text-body-lg text-ink">Already building somewhere else?</strong><p className="mt-1 text-body text-ink-dim">Bring the project and its AI conversation. Continue without explaining it all again.</p></div>
+          <button type="button" onClick={() => navigate('/continue')} className="shrink-0 rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Continue a project →</button>
+        </div>
+      )}
 
-      <form onSubmit={(e) => void start(e)} className="mx-auto mt-10 max-w-3xl rounded-pane border border-hairline bg-panel p-5 shadow-[0_22px_60px_rgba(26,58,40,0.08)] focus-within:border-action">
-        <textarea value={command} onChange={(e) => setCommand(e.target.value)} rows={3} aria-label="Describe what you want to move forward" placeholder="Describe an outcome, ask a question, or drop in a rough idea…" className="w-full resize-none bg-transparent text-[17px] leading-relaxed text-ink outline-none placeholder:text-ink-quiet" />
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
-          <label className="context-chip context-chip-selected"><span aria-hidden>◆</span><span className="sr-only">Store this work in</span>
-            <select aria-label="Store this work in" value={selectedId} onChange={(e) => { setSelectedId(e.target.value); setSelectionLocked(true); }} className="max-w-44 bg-transparent text-inherit outline-none">
+      {projects.length > 0 ? (
+        <main className="mt-12 space-y-12">
+          {needs.length > 0 && <ProjectGroup title="Needs you" places={needs} onOpen={startHere} />}
+          {moving.length > 0 && <ProjectGroup title="In progress" places={moving} onOpen={startHere} />}
+          {rest.length > 0 && <ProjectGroup title={needs.length || moving.length ? 'Your projects' : 'Pick up where you left off'} places={rest} onOpen={startHere} />}
+        </main>
+      ) : data ? (
+        <section className="mt-12 max-w-3xl rounded-pane bg-panel p-7 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-9">
+          <h2 className="font-display text-3xl font-normal text-ink">Give your work a home.</h2>
+          <p className="mt-3 max-w-xl text-body-lg text-ink-dim">Connect an existing repository or bring over a project from Replit. Its conversations, decisions, changes, and releases stay together from then on.</p>
+          <div className="mt-6 flex flex-wrap gap-3"><Link to="/projects" className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Bring in a project</Link><Link to="/projects?import=replit" className="rounded-full bg-panel-soft px-5 py-2.5 text-body font-medium text-ink">Import from Replit</Link></div>
+        </section>
+      ) : null}
+
+      <section className="mt-14 grid gap-5 lg:grid-cols-[1.45fr_.55fr]">
+        <form onSubmit={(e) => void start(e)} className="rounded-pane bg-panel p-5 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="font-display text-2xl font-normal text-ink">Start something</h2><p className="mt-1 text-meta text-ink-dim">Choose its home. Selvedge brings the project context and current builder.</p></div>
+            <select aria-label="Choose a project" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="rounded-full bg-panel-soft px-4 py-2 text-body text-ink outline-none focus:ring-2 focus:ring-action-bright">
               {places.map((place) => <option key={place.id} value={place.id}>{place.name}</option>)}
-              {places.length ? <option value="__new__">New subject</option> : <option value="">New subject</option>}
+              <option value="">New idea</option>
             </select>
-          </label>
-          <span className="context-chip">{contextCount ? `${contextCount} memory items attached` : 'Project context attached'}</span>
-          <span className="context-chip">Agent routing · Auto</span>
-          <button disabled={!command.trim() || starting} aria-label="Start work" className="ml-auto grid h-10 w-10 place-items-center rounded-[11px] bg-deep text-lg text-white transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-35">{starting ? '·' : '↑'}</button>
-        </div>
-      </form>
+          </div>
+          <textarea ref={composer} value={command} onChange={(e) => setCommand(e.target.value)} rows={3} aria-label="What should we work on?" placeholder="What should we work on?" className="mt-5 w-full resize-none rounded-card bg-paper-soft px-4 py-3 text-[16px] leading-relaxed text-ink outline-none placeholder:text-ink-quiet focus:ring-2 focus:ring-action-bright" />
+          <div className="mt-3 flex items-center justify-between gap-4"><span className="text-meta text-ink-quiet">One project · every builder · shared context</span><button disabled={!command.trim() || starting} className="rounded-full bg-deep px-5 py-2.5 text-body font-medium text-white disabled:opacity-35">{starting ? 'Starting…' : 'Start →'}</button></div>
+          {error && <p role="alert" className="mt-3 text-body text-thread">{error}</p>}
+        </form>
 
-      <p className={`mx-auto mt-3 max-w-[46rem] px-2 text-meta text-ink-dim transition-opacity ${command.trim() ? 'opacity-100' : 'opacity-0'}`} aria-live="polite">
-        {selected ? <>Selvedge will continue in <strong className="text-ink">{selected.name}</strong> with the project’s current decisions, evidence, and language.</> : selectedId === '__new__' ? 'This will begin in a new subject and keep what the work learns there.' : 'This will begin in a new subject because no existing project is available.'}
-      </p>
-      {error && <p role="alert" className="mx-auto mt-3 max-w-3xl border-l-2 border-thread pl-3 text-body text-thread">{error}</p>}
-
-      <div className="mx-auto mt-4 grid max-w-3xl gap-2 sm:grid-cols-3">
-        <Suggestion title="Synthesize the signal" detail="Recent work → decisions, with evidence" onPick={() => setCommand(`Turn the latest work in ${selected?.name ?? 'this project'} into three decisions, with evidence.`)} />
-        <Suggestion title="Continue the work" detail={selected?.chat?.title ?? 'Resume from current project memory'} onPick={() => setCommand(`Continue ${selected?.chat?.title ?? 'the most important unfinished work'}.`)} />
-        <Suggestion title="Find the gap" detail="Ask what the project still needs" onPick={() => setCommand(`What is the biggest unanswered question in ${selected?.name ?? 'this work'}?`)} />
-      </div>
-
-      <section className="mx-auto mt-16 grid max-w-3xl gap-10 md:grid-cols-[1.25fr_.75fr]">
-        <div><p className="section-label">Continue the work</p>
-          {[...needs, ...running, ...recent].slice(0, 3).map((place) => (
-            <button key={place.id} onClick={() => place.chat && navigate(`/inbox/${place.chat.id}`)} disabled={!place.chat} className="flex w-full items-center justify-between gap-4 border-t border-hairline py-4 text-left disabled:cursor-default">
-              <span className="min-w-0"><strong className="block truncate text-body font-semibold text-ink">{place.chat?.title ?? place.name}</strong><small className="mt-1 block truncate text-meta text-ink-quiet">{place.name}{place.chat ? ` · ${whenShort(place.chat.last_at)}` : ''}</small></span>
-              <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-panel-soft px-3 py-1.5 text-meta text-ink-dim">{place.status && <StatusDot status={place.status} />}{place.chat?.working ? <><AgentChip agent={place.chat.agent} working /> working</> : place.status === 'needs' ? 'Needs you' : 'Ready'}</span>
-            </button>
-          ))}
-          {!places.length && <p className="border-t border-hairline py-4 text-body text-ink-dim">Your first outcome will create a subject and keep everything learned there.</p>}
-        </div>
-        <aside><p className="section-label">Project memory</p><div className="rounded-card border border-hairline bg-sage p-5">
-          <small className="font-mono text-label uppercase tracking-widest text-ink-dim">{selected?.name ?? 'No project yet'}</small>
-          <strong className="mt-3 block font-display text-2xl font-normal text-ink">{memory ? `${contextCount} useful memories` : selected ? 'Context ready' : 'Memory starts here'}</strong>
-          <p className="mt-2 text-body leading-relaxed text-ink-dim">{memory?.summary ?? (selected ? 'The current thread and project identity will travel with the work.' : 'Start with an outcome; Selvedge will keep what the work learns.')}</p>
-          {selected?.hasCode && <button onClick={() => navigate(`/projects/${selected.id}`)} className="mt-4 text-meta font-medium text-action hover:underline">Open project memory →</button>}
-        </div></aside>
+        <aside className="rounded-pane bg-sage p-6">
+          <p className="text-meta font-semibold text-action-bright">The Selvedge promise</p>
+          <p className="mt-3 font-display text-2xl leading-snug text-ink">Your project gets better as AI gets better.</p>
+          <p className="mt-3 text-body leading-relaxed text-ink-dim">Switch builders or return months later. The project stays whole and its context is ready.</p>
+        </aside>
       </section>
+
+      {subjects.length > 0 && (
+        <section className="mt-12">
+          <div className="mb-4"><h2 className="font-display text-2xl font-normal text-ink">Ideas and conversations</h2><p className="mt-1 text-meta text-ink-dim">Work that does not belong to a codebase yet.</p></div>
+          <div className="flex flex-wrap gap-2">{subjects.map((subject) => <button key={subject.id} onClick={() => startHere(subject)} className="rounded-full bg-panel px-4 py-2 text-body text-ink shadow-[0_8px_24px_rgba(26,58,40,0.05)] hover:bg-panel-soft">{subject.name}</button>)}</div>
+        </section>
+      )}
     </div>
   );
 }
 
-function Suggestion({ title, detail, onPick }: { title: string; detail: string; onPick: () => void }) {
-  return <button type="button" onClick={onPick} className="rounded-card border border-hairline bg-paper-soft p-4 text-left transition-colors hover:border-action hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action"><strong className="block text-body font-semibold text-ink">{title}</strong><span className="mt-1 block text-meta leading-relaxed text-ink-dim">{detail}</span></button>;
+function ProjectGroup({ title, places, onOpen }: { title: string; places: RailPlace[]; onOpen: (place: RailPlace) => void }) {
+  return (
+    <section aria-label={title}>
+      <div className="mb-4 flex items-baseline justify-between gap-4"><h2 className="font-display text-2xl font-normal text-ink">{title}</h2><span className="text-meta text-ink-quiet">{places.length} {places.length === 1 ? 'project' : 'projects'}</span></div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{places.map((place) => <HomeProject key={place.id} place={place} onOpen={() => onOpen(place)} />)}</div>
+    </section>
+  );
+}
+
+function HomeProject({ place, onOpen }: { place: RailPlace; onOpen: () => void }) {
+  const state = place.status === 'needs' ? 'Needs you' : place.status === 'working' || place.chat?.working ? 'In progress' : place.status === 'healthy' ? 'Working well' : 'Ready';
+  return (
+    <button onClick={onOpen} className="group min-h-44 rounded-pane bg-panel p-5 text-left shadow-[0_12px_36px_rgba(26,58,40,0.055)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_46px_rgba(26,58,40,0.09)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright">
+      <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2 rounded-full bg-panel-soft px-3 py-1 text-meta text-ink-dim">{place.status && <StatusDot status={place.status} />}{state}</span>{place.chat && <span className="text-meta text-ink-quiet">{whenShort(place.chat.last_at)}</span>}</div>
+      <h3 className="mt-5 truncate font-display text-[1.45rem] font-normal text-ink">{place.name}</h3>
+      <p className="mt-2 line-clamp-2 text-body text-ink-dim">{place.chat?.title ?? 'Open this project and start with its context already attached.'}</p>
+      <div className="mt-5 flex items-center justify-between gap-3"><span className="text-meta font-medium text-action-bright">{place.chat ? 'Open project →' : 'Start here →'}</span>{place.chat && <AgentChip agent={place.chat.agent} working={place.chat.working} />}</div>
+    </button>
+  );
 }

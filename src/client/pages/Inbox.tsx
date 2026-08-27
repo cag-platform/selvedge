@@ -394,7 +394,7 @@ export function Inbox() {
   const showContext = (!phone && contextOpen) || (phone && view === 'context');
 
   return (
-    <div className="animate-settle flex h-[calc(100vh-var(--nav-height))] flex-col overflow-hidden">
+    <div className={`workbench-shell animate-settle flex h-[calc(100vh-var(--nav-height))] flex-col overflow-hidden ${phone ? '' : 'bg-paper-soft p-2.5 pt-2'}`}>
       {error && (
         <div className="flex items-center gap-work border-b-2 border-thread bg-panel-soft px-work-loose py-work-tight">
           <p className="flex-1 text-body font-medium text-thread">{error}</p>
@@ -403,9 +403,9 @@ export function Inbox() {
           </button>
         </div>
       )}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className={`flex min-h-0 flex-1 ${phone ? 'overflow-hidden' : 'gap-2 overflow-visible'}`}>
       {showRail && (
-        <div className={`${phone ? 'w-full' : 'shrink-0'} workbench-rail bg-panel`} style={phone ? undefined : { width: railWidth }}>
+        <div className={`${phone ? 'w-full' : 'shrink-0 overflow-hidden rounded-pane shadow-[0_10px_34px_rgba(26,58,40,0.06)]'} workbench-rail bg-panel`} style={phone ? undefined : { width: railWidth }}>
           {inbox === null ? (
             <>
               {railPhase !== 'idle' && <RailSkeleton />}
@@ -433,7 +433,7 @@ export function Inbox() {
       )}
 
       {showThread && (
-        <main className="workbench-thread flex min-w-0 flex-1 flex-col bg-paper">
+        <main className={`workbench-thread flex min-w-0 flex-1 flex-col bg-paper ${phone ? '' : 'overflow-hidden rounded-pane shadow-[0_10px_34px_rgba(26,58,40,0.06)]'}`}>
           {phone && (
             <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight text-meta text-ink-quiet">
               <button onClick={() => setView('rail')} className="hover:text-ink-dim">
@@ -494,7 +494,7 @@ export function Inbox() {
       )}
 
       {showContext && thread && !projectId && (
-        <div className={`${phone ? 'w-full' : 'shrink-0'} workbench-context bg-panel`} style={phone ? undefined : { width: contextWidth }}>
+        <div className={`${phone ? 'w-full' : 'shrink-0'} workbench-context bg-panel ${phone ? '' : 'overflow-hidden rounded-pane shadow-[0_10px_34px_rgba(26,58,40,0.06)]'}`} style={phone ? undefined : { width: contextWidth }}>
           <ContextPanel
             data={thread}
             onReload={() => void loadThread()}
@@ -513,7 +513,7 @@ export function Inbox() {
       {!phone && !contextOpen && thread && !projectId && (
         <button
           onClick={() => setContextOpen(true)}
-          className="border-l border-hairline px-work-tight text-meta text-ink-quiet hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+          className="rounded-full bg-panel px-work-tight text-meta text-ink-quiet shadow-sm hover:text-ink-dim focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           title="Show context"
         >
           <span className="[writing-mode:vertical-rl]">Context</span>
