@@ -4,14 +4,14 @@ import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from
 
 /**
  * The pure parts of the agent step — everything that can be decided without a
- * sandbox: the prompt handed to the Claude Code CLI, the shell command that runs
+ * a workspace: the prompt handed to the Claude Code CLI, the shell command that runs
  * it, parsing the CLI's stream-json output for the final result, and mapping that
  * result to the runner's AgentStepResult (cost in cents, done, note). Ported from
  * Toile's proven runner; the network parts live in provider.ts.
  */
 
-/** The sandbox working directory (matches the Toile clone target). */
-export const WORKDIR = '/workspace/app';
+/** The Selvedge workspace checkout directory. */
+export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
 
 /** Shell-single-quote a value safely (Toile's shellQuote). */
@@ -140,12 +140,10 @@ export function claudeCommand(
   // Iteration: --resume continues the same conversation, so "now make it
   // darker" builds on the last change instead of starting from scratch.
   if (resumeSessionId) args.push('--resume', shellQuote(resumeSessionId));
-  // Prefixed on the command rather than set on the sandbox, exactly as Codex's
-  // key is. One turn, one credential, gone when the process exits — so a
-  // sandbox that outlives a rotated key doesn't keep using the old one, and a
-  // sandbox belonging to one org never holds another's secret.
-  const credential = auth?.secret ? `${auth.envVar}=${shellQuote(auth.secret)} ` : '';
-  return `${PATH_PREFIX} cd ${WORKDIR} && ${credential}${args.join(' ')}`;
+  // The credential is injected command-scoped by the Workspace Runtime. It is
+  // never rendered into the shell command, logs, or hosted-shell prompt.
+  void auth;
+  return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
 }
 
 export type ResultEvent = {

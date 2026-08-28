@@ -1,7 +1,7 @@
 import type { Db } from '../db/client.js';
 import { getCard, applyAction } from '../cards/store.js';
 import { runCard } from './run.js';
-import type { RunResult, SandboxProvider, AgentContext, AgentStepResult } from './types.js';
+import type { RunResult, CardWorkspaceRuntime, AgentContext, AgentStepResult } from './types.js';
 
 /**
  * The persistence bridge for the runner: it binds the pure orchestration to a
@@ -9,14 +9,14 @@ import type { RunResult, SandboxProvider, AgentContext, AgentStepResult } from '
  * state move the runner makes goes through the same machine-and-persist path the
  * owner's API uses, and the cap-and-gate guarantees hold identically.
  *
- * The sandbox and the agent step stay INJECTED. They are the live pieces —
- * Daytona's per-org sandboxes and Toile's agent loop — which are network code
+ * The workspace and agent step stay injected. They are the live pieces —
+ * temporary Development Workspaces and the worker loop — which are network code
  * that can't be verified here, so they're supplied by the caller (a future
  * approve→run wiring) rather than hardcoded. Everything the runner does WITH
  * them is already proven.
  */
 export type RunCardDeps = {
-  sandbox: SandboxProvider;
+  workspaceRuntime: CardWorkspaceRuntime;
   agentStep: (ctx: AgentContext) => Promise<AgentStepResult>;
   now?: () => Date;
   maxSteps?: number;
@@ -32,7 +32,7 @@ export async function runCardForOrg(db: Db, orgId: string, cardId: string, deps:
   return runCard(
     {
       apply: (action) => applyAction(db, orgId, cardId, action),
-      sandbox: deps.sandbox,
+      workspaceRuntime: deps.workspaceRuntime,
       agentStep: deps.agentStep,
       now: deps.now ?? (() => new Date()),
       maxSteps: deps.maxSteps,

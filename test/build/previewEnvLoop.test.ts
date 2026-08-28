@@ -48,7 +48,7 @@ describe('the preview environment, end to end', () => {
     await close();
   });
 
-  const app = (org = orgId) => appWithOrg(org, createWorkshopRouter(db, { lookup: stubRepoLookup, env: () => ({ daytonaApiKey: 'd' }) }));
+  const app = (org = orgId) => appWithOrg(org, createWorkshopRouter(db, { lookup: stubRepoLookup, env: () => ({ workspaceRuntime: true as const }) }));
 
   /**
    * THE HINT NOW POINTS SOMEWHERE. A diagnosis that names a variable has to be

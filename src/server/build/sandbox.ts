@@ -1,68 +1,50 @@
-import { Daytona, DaytonaNotFoundError, type Sandbox } from '@daytonaio/sdk';
-import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
-import { SANDBOX_AUTOSTOP_MINUTES, closeSandboxRun, openSandboxRun, type EndReason } from './metering.js';
+import type { CreateWorkspaceInput, Workspace, WorkspaceExecResult } from '../workspace/types.js';
+import { OpenAiWorkspaceApiError, OpenAiWorkspaceClient } from '../workspace/openai/client.js';
+import { OpenAiWorkspaceRuntime } from '../workspace/openai/runtime.js';
+import { getPreviewRelay } from '../workspace/relay/factory.js';
+import { closeSandboxRun, openSandboxRun } from './metering.js';
 
-/**
- * The persistent per-project sandbox — the workshop's engine. Ported from
- * Toile's sandbox lifecycle, org-scoped to Selvedge and built around one hard
- * rule the founder set: watch the cost.
- *
- * COST CONTROL. A running sandbox bills compute; a stopped one bills only cheap
- * storage. So every sandbox is created with Daytona's native idle auto-stop —
- * after SANDBOX_IDLE_MINUTES with no activity it stops itself, and the next use
- * transparently resumes it (a few seconds). Nothing is left running by accident,
- * and the owner never pays for an idle workshop. One sandbox per project, reused
- * across every edit — never one-per-change.
- *
- * The workdir setup uses sudo (verified working on the Daytona base image, which
- * already ships Node 25 and the Claude Code CLI, so no Node install is needed).
- */
-
-export const WORKDIR = '/workspace/app';
+export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
-/**
- * Idle minutes before a sandbox stops itself.
- *
- * Down from fifteen, and no longer the main guard: `build/metering.ts` runs a
- * sweep every minute that knows whether a turn or preview is actually in flight,
- * and stops a sandbox after its idle grace. Daytona's own timer is the
- * backstop for when this server isn't running to sweep, which is why it is not
- * set as tight as the sweep — a native auto-stop firing between two commands of
- * one turn would destroy work to save pennies.
- */
-export const SANDBOX_IDLE_MINUTES = SANDBOX_AUTOSTOP_MINUTES;
-/** Preserve the filesystem but move it off quota after one stopped hour. */
-export const SANDBOX_AUTO_ARCHIVE_MINUTES = 60;
+export const SANDBOX_IDLE_MINUTES = 15;
 
-const DEAD_STATES = new Set(['destroyed', 'destroying', 'error', 'build_failed']);
+export type SandboxConfig = { githubToken: string; repoFullName: string; branch: string; emptyRepo?: boolean; reuseOnly?: boolean };
+export type WorkspaceCommandResult = { exitCode: number; result?: string };
+export type DevelopmentWorkspace = {
+  id: string;
+  workspace: Workspace;
+  process: { executeCommand(command: string, cwd?: string, env?: Record<string, string>, timeoutSec?: number): Promise<WorkspaceCommandResult> };
+  fs: { uploadFile(dataOrLocalPath: Buffer | string, absPath: string): Promise<void> };
+};
 
-export function sandboxNameFor(orgId: string, projectId: string): string {
-  const project = projectId.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30) || 'project';
-  const owner = createHash('sha256').update(orgId).digest('hex').slice(0, 6);
-  return `selvedge-${project}-${owner}`;
+const active = new Map<string, DevelopmentWorkspace>();
+const secretValues = new Map<string, string>();
+let runtime: OpenAiWorkspaceRuntime | null = null;
+
+export function setDevelopmentSecret(grantId: string, value: string | null): void {
+  if (value === null) secretValues.delete(grantId);
+  else secretValues.set(grantId, value);
 }
 
-let client: Daytona | null = null;
-function daytona(): Daytona {
-  if (!client) client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
-  return client;
+export function activeDevelopmentWorkspaceIds(): string[] { return [...active.keys()]; }
+
+export async function stopDevelopmentWorkspaceById(id: string): Promise<void> {
+  const sandbox = active.get(id);
+  if (!sandbox) return;
+  await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
 }
 
 export type SandboxExecutionSnapshot = { observedAt: Date; changedFiles: string[]; diffSummary: string | null };
 
-/**
- * Read the existing checkout without creating or mutating one. A stopped or
- * unavailable sandbox returns null: compilation records the omission instead
- * of waking paid compute or pretending durable run evidence is live state.
- */
 export async function inspectSandboxWorktree(db: Db, orgId: string, projectId: string): Promise<SandboxExecutionSnapshot | null> {
   const build = await getBuild(db, orgId, projectId);
-  if (!build?.sandboxId) return null;
+  const sandbox = build?.sandboxId ? active.get(build.sandboxId) : null;
+  if (!sandbox) return null;
   try {
-    const sandbox = await daytona().get(build.sandboxId);
-    if (sandbox.state !== 'started') return null;
     const result = await sandbox.process.executeCommand(
       `cd ${WORKDIR} && { git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u; echo __SELVDG_DIFF__; git diff --stat; git diff --cached --stat`,
       undefined,
@@ -81,219 +63,126 @@ export async function inspectSandboxWorktree(db: Db, orgId: string, projectId: s
   }
 }
 
-function shellQuote(v: string): string {
-  return `'${v.replace(/'/g, `'\\''`)}'`;
+export function isSandboxCapacityError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /total disk limit exceeded|maximum allowed:\s*\d+\s*GiB|free up available storage|capacity|quota/i.test(text);
 }
 
-/**
- * What it takes to have a working copy of a repo on a machine. Note what is
- * absent: any model credential. Which agent runs, and on whose account, is
- * decided per turn (build/builderAuth.ts) and never travels with the sandbox.
- */
-export type SandboxConfig = {
-  githubToken: string;
-  repoFullName: string;
-  /** The repo's OWN default branch, looked up per build — never assumed. */
-  branch: string;
-  /** True when the repo has no commits yet, so `branch` doesn't exist to clone. */
-  emptyRepo?: boolean;
-  /** Resume this checkout, but never try to recreate it without repo access. */
-  reuseOnly?: boolean;
-};
+function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
 
-/**
- * The clone, as a string a test can hold. Two shapes: a repo with history is
- * cloned at its default branch by name; a repo with NO commits has no branch
- * to ask for — `--branch` fails against it whatever the name — so it is
- * cloned bare and its default branch is created in the sandbox, making a
- * brand-new repo a place a builder can start rather than a cryptic failure.
- */
-export function cloneCommand(cfg: SandboxConfig): string {
-  const url = `https://github.com/${cfg.repoFullName}.git`;
-  if (cfg.emptyRepo) {
-    return `git clone ${url} ${WORKDIR} && cd ${WORKDIR} && git checkout -b ${shellQuote(cfg.branch)}`;
-  }
-  return `git clone --branch ${shellQuote(cfg.branch)} ${url} ${WORKDIR}`;
-}
-
-/**
- * `env` is how the GitHub token reaches a command, and the only way it should.
- * Daytona passes it to the process directly, so it never appears in the command
- * string — which matters because a failed step's output is quoted back to the
- * owner verbatim, and a token in an error message is a token in a log.
- */
-async function run(
-  sandbox: Sandbox,
-  label: string,
-  command: string,
-  timeoutSec: number,
-  env?: Record<string, string>,
-): Promise<string> {
-  const res = await sandbox.process.executeCommand(command, undefined, env, timeoutSec);
-  if (res.exitCode !== 0) throw new Error(`Sandbox step "${label}" failed (exit ${res.exitCode}): ${res.result}`);
-  return res.result ?? '';
-}
-
-/** Create the workdir (sudo where /workspace isn't user-writable) and clone the repo. */
-async function prepare(sandbox: Sandbox, cfg: SandboxConfig): Promise<void> {
-  await run(
-    sandbox,
-    'workdir',
-    `mkdir -p ${WORKDIR} 2>/dev/null || (sudo -n mkdir -p ${WORKDIR} && sudo -n chown -R "$(id -un)" ${WORKDIR})`,
-    60,
-  );
-  // The base image ships Node 25 + Claude Code; only install Node if it's absent
-  // or older than 20 (never downgrade a newer one).
-  const node = await sandbox.process.executeCommand('node --version || echo MISSING', undefined, undefined, 30);
-  const major = /v(\d+)\./.exec(node.result ?? '')?.[1];
-  if (!major || Number(major) < 20) {
-    await run(sandbox, 'node20', 'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs', 600);
-  }
-  // Ensure the Claude Code CLI is present (no-op if the image already has it).
-  await sandbox.process
-    .executeCommand(`${PATH_PREFIX} claude --version || npm install -g --prefix "$HOME/.npm-global" @anthropic-ai/claude-code`, undefined, undefined, 300)
-    .catch(() => undefined);
-
-  const helper = '!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f';
-  await run(
-    sandbox,
-    'git config',
-    `git config --global user.name "Selvedge" && git config --global user.email "selvedge@users.noreply.github.com" && git config --global credential.helper ${shellQuote(helper)}`,
-    30,
-  );
-  await run(sandbox, 'clone', cloneCommand(cfg), 600, { GITHUB_TOKEN: cfg.githubToken });
-}
-
-async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {
-  const sandbox = await daytona().create(
-    {
-      name: sandboxNameFor(orgId, projectId),
-      labels: { 'selvedge/org': orgId, 'selvedge/project': projectId },
-      public: false,
-      autoStopInterval: SANDBOX_IDLE_MINUTES, // the sandbox-cost guard
-      autoArchiveInterval: SANDBOX_AUTO_ARCHIVE_MINUTES,
-      // NO CREDENTIALS ARE BAKED IN HERE. A sandbox outlives any secret by
-      // days: a token pinned at creation is an hour's worth of working and then
-      // a puzzling failure. Every secret travels with the command that needs
-      // it, fresh per request — the GitHub installation token, and now the
-      // builder's own model credential too.
-      //
-      // The Claude Code token used to sit on this line, directly beneath a
-      // comment explaining why the GitHub token must not. It was also the
-      // DEPLOYMENT's token rather than the org's, which meant a sandbox
-      // belonging to one customer was started holding the credentials everyone
-      // else's builds ran on. See build/builderAuth.ts.
+export function developmentWorkspaceRuntime(): OpenAiWorkspaceRuntime {
+  if (runtime) return runtime;
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  const relay = getPreviewRelay();
+  if (!apiKey) throw new Error('OPENAI_API_KEY is required for Development Workspaces');
+  if (!relay) throw new Error('PREVIEW_RELAY_SIGNING_SECRET and PREVIEW_RELAY_PUBLIC_ORIGIN are required for Development Workspaces');
+  runtime = new OpenAiWorkspaceRuntime({
+    client: new OpenAiWorkspaceClient({ apiKey }), model: process.env.WORKSPACE_MODEL?.trim() || 'gpt-5.4', relay: relay.sessions,
+    resolveSecretGrant: async (grant) => {
+      const value = secretValues.get(grant.id);
+      if (!value) throw new Error(`secret grant ${grant.id} is no longer available`);
+      return value;
     },
-    { timeout: 300 },
-  );
-  // Metered from the moment it exists, not from the moment it is useful. A
-  // clone that takes four minutes and then fails cost four minutes of a running
-  // machine, and a meter that only counted successful sandboxes would report
-  // the cheapest possible version of a bad afternoon.
-  await openSandboxRun(db, orgId, projectId, sandbox.id).catch((err) =>
-    console.error(`could not open a metering segment for ${orgId}/${projectId} (${sandbox.id}):`, err),
-  );
-  try {
-    await prepare(sandbox, cfg);
-  } catch (err) {
-    await sandbox.delete(60).catch(() => undefined);
-    await closeSandboxRun(db, sandbox.id, 'failed').catch(() => null);
-    throw err;
-  }
-  await setBuild(db, orgId, projectId, { sandboxId: sandbox.id, repoFullName: cfg.repoFullName, branch: cfg.branch });
-  return sandbox;
+    captureBrowserEvidence: async () => ({ screenshotArtifactIds: [], consoleErrors: [], failedRequests: [] }),
+  });
+  return runtime;
 }
 
-/**
- * Return a started, ready sandbox for the project:
- *   - none yet        → create + prepare + persist
- *   - stopped/archived → resume (start)
- *   - deleted upstream → clear and recreate transparently
- * The idle auto-stop means "resume" is the common path, and it's cheap.
- *
- * THE ONE PLACE A SANDBOX CAN START, WHICH IS WHY METERING BEGINS HERE.
- *
- * Every path that could bring one up — a build turn, a plan turn, a preview, a
- * ship — comes through this function. Opening the metering segment here rather
- * than in each of those callers is what makes "never let a sandbox exist that
- * we aren't metering" a property of the code rather than a rule someone has to
- * remember on the day they add the fifth caller.
- *
- * `openSandboxRun` is idempotent per sandbox: this runs on every turn and
- * usually finds one already started, so it refreshes the segment's proof of
- * life rather than opening a second one.
- */
-export async function ensureSandbox(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<Sandbox> {
-  const build = await getBuild(db, orgId, projectId);
-  if (!build?.sandboxId) return create(db, orgId, projectId, cfg);
+async function executeWithEnvironment(workspace: Workspace, command: string, timeoutSec: number, cwd?: string, env?: Record<string, string>): Promise<WorkspaceExecResult> {
+  if (!env || Object.keys(env).length === 0) return workspace.exec({ command, cwd, timeoutSeconds: timeoutSec });
+  for (const name of Object.keys(env)) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`invalid command environment name: ${name}`);
+  const configPath = `/mnt/data/selvedge-command-env-${randomBytes(8).toString('hex')}.json`;
+  await workspace.upload(configPath, Buffer.from(JSON.stringify(env)));
+  const loader = "const f=require('fs');const p=process.argv[1];const x=JSON.parse(f.readFileSync(p));f.unlinkSync(p);for(const [k,v] of Object.entries(x))process.stdout.write(k+'='+JSON.stringify(v)+'\\n')";
+  return workspace.exec({ command: `set -a; eval "$(node -e ${shellQuote(loader)} ${shellQuote(configPath)})"; set +a; ${command}`, cwd, timeoutSeconds: timeoutSec });
+}
 
-  let sandbox: Sandbox;
+export function adaptDevelopmentWorkspace(workspace: Workspace): DevelopmentWorkspace {
+  return {
+    id: workspace.id,
+    workspace,
+    process: { async executeCommand(command, cwd, env, timeoutSec = 60) {
+      const result = await executeWithEnvironment(workspace, command, timeoutSec, cwd, env);
+      return { exitCode: result.exitCode, result: [result.stdout, result.stderr].filter(Boolean).join('\n') };
+    } },
+    fs: { async uploadFile(dataOrLocalPath, absPath) {
+      await workspace.upload(absPath, typeof dataOrLocalPath === 'string' ? await readFile(dataOrLocalPath) : dataOrLocalPath);
+    } },
+  };
+}
+
+function workspaceInput(orgId: string, projectId: string, cfg: SandboxConfig): CreateWorkspaceInput {
+  const gitGrantId = `github:${orgId}:${projectId}`;
+  return {
+    orgId, projectId, purpose: 'development',
+    source: { kind: 'git', repository: `https://github.com/${cfg.repoFullName}.git`, ref: cfg.branch, credentialGrant: gitGrantId, empty: cfg.emptyRepo },
+    ttlMinutes: 24 * 60, idleStopMinutes: SANDBOX_IDLE_MINUTES,
+    network: { default: 'deny', allowedHosts: ['github.com', 'api.github.com', 'registry.npmjs.org', 'api.anthropic.com', 'api.openai.com'] },
+    secrets: [{ id: gitGrantId, name: 'GITHUB_TOKEN', exposure: 'command' }],
+    labels: { orgId, projectId },
+  };
+}
+
+async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
+  const gitGrantId = `github:${orgId}:${projectId}`;
+  secretValues.set(gitGrantId, cfg.githubToken);
   try {
-    sandbox = await daytona().get(build.sandboxId);
-  } catch (err) {
-    if (err instanceof DaytonaNotFoundError) {
-      // Deleted upstream while we thought it was running. Whatever we had open
-      // is closed at the last moment we knew it was alive rather than left to
-      // the sweep, so the replacement below cannot be the second open segment
-      // for this project.
-      await closeSandboxRun(db, build.sandboxId, 'reaper').catch(() => null);
+    const workspace = await developmentWorkspaceRuntime().createWorkspace(workspaceInput(orgId, projectId, cfg));
+    const sandbox = adaptDevelopmentWorkspace(workspace);
+    active.set(workspace.id, sandbox);
+    await workspace.exec({ command: 'git config user.name "Selvedge" && git config user.email "selvedge@users.noreply.github.com"', cwd: WORKDIR, timeoutSeconds: 30 });
+    await setBuild(db, orgId, projectId, { sandboxId: workspace.id, repoFullName: cfg.repoFullName, branch: cfg.branch });
+    await openSandboxRun(db, orgId, projectId, workspace.id).catch((error) => console.error('could not open workspace metering segment:', error));
+    return sandbox;
+  } catch (error) {
+    secretValues.delete(gitGrantId);
+    throw error;
+  }
+}
+
+export async function ensureSandbox(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
+  const build = await getBuild(db, orgId, projectId);
+  if (build?.sandboxId) {
+    const existing = active.get(build.sandboxId);
+    if (existing) {
+      secretValues.set(`github:${orgId}:${projectId}`, cfg.githubToken);
+      await openSandboxRun(db, orgId, projectId, existing.id).catch(() => undefined);
+      return existing;
+    }
+    setDevelopmentSecret(`github:${orgId}:${projectId}`, cfg.githubToken);
+    try {
+      const workspace = await developmentWorkspaceRuntime().reconnectWorkspaceWithContext(
+        build.sandboxId,
+        workspaceInput(orgId, projectId, cfg),
+      );
+      const reconnected = adaptDevelopmentWorkspace(workspace);
+      active.set(build.sandboxId, reconnected);
+      await openSandboxRun(db, orgId, projectId, reconnected.id).catch(() => undefined);
+      return reconnected;
+    } catch (error) {
+      if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
       await clearSandbox(db, orgId, projectId);
       if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
-      return create(db, orgId, projectId, cfg);
     }
-    throw err;
   }
-
-  if (sandbox.state && DEAD_STATES.has(sandbox.state)) {
-    // Gone at Daytona, so whatever segment we still had open ended when we last
-    // knew it was alive. Closed before the replacement opens its own, because
-    // two open segments for one project is how the same seconds get counted
-    // twice.
-    await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
-    await clearSandbox(db, orgId, projectId);
-    if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
-    return create(db, orgId, projectId, cfg);
-  }
-  // Also upgrades sandboxes created before the archive policy existed.
-  await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES).catch(() => undefined);
-  if (sandbox.state !== 'started') await sandbox.start(300);
-  await openSandboxRun(db, orgId, projectId, sandbox.id).catch((err) => {
-    // A meter that fails must not take the turn down with it. It is loud
-    // instead, and the daily reconciliation catches the sandbox either way.
-    console.error(`could not open a metering segment for ${orgId}/${projectId} (${sandbox.id}):`, err);
-  });
-  return sandbox;
+  return create(db, orgId, projectId, cfg);
 }
 
-/** Stop a project's sandbox now (owner left / done). Idle auto-stop is the backstop; this is the explicit one. */
-export async function stopSandbox(db: Db, orgId: string, projectId: string, reason: EndReason = 'user_stop'): Promise<void> {
+export async function stopSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
   const build = await getBuild(db, orgId, projectId);
-  if (!build?.sandboxId) return;
-  await daytona()
-    .get(build.sandboxId)
-    .then((s) => (s.state === 'started' ? s.stop() : undefined))
-    .catch(() => undefined);
-  // Metered on the way out, and metered even if the stop above failed: the
-  // seconds were spent whether or not Daytona took our word for it.
-  await closeSandboxRun(db, build.sandboxId, reason).catch((err) =>
-    console.error(`could not close the metering segment for ${orgId}/${projectId}:`, err),
-  );
+  const sandbox = build?.sandboxId ? active.get(build.sandboxId) : null;
+  if (sandbox) await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
+  if (build?.sandboxId) await closeSandboxRun(db, build.sandboxId, 'user_stop').catch(() => null);
 }
 
-/** Permanently delete a project's sandbox and clear its build state. */
 export async function deleteSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
   const build = await getBuild(db, orgId, projectId);
   if (build?.sandboxId) {
-    await daytona()
-      .get(build.sandboxId)
-      .then((s) => s.delete(60))
-      .catch(() => undefined);
-    await closeSandboxRun(db, build.sandboxId, 'user_stop').catch(() => null);
+    const sandbox = active.get(build.sandboxId);
+    if (sandbox) await sandbox.workspace.destroy().catch(() => undefined);
+    active.delete(build.sandboxId);
+    await closeSandboxRun(db, build.sandboxId, 'completed').catch(() => null);
   }
+  secretValues.delete(`github:${orgId}:${projectId}`);
   await clearSandbox(db, orgId, projectId);
-}
-
-export function isSandboxCapacityError(error: unknown): boolean {
-  const text = error instanceof Error ? error.message : String(error);
-  return /total disk limit exceeded|maximum allowed:\s*\d+\s*GiB|free up available storage/i.test(text);
 }

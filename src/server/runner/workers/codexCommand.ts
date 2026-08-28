@@ -1,8 +1,8 @@
 import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from '../../../shared/types/toolEvent.js';
-import { WORKDIR, PATH_PREFIX, shellQuote, agentRules } from './agentCommand.js';
+import { WORKDIR, PATH_PREFIX, shellQuote, agentRules } from './claudeCommand.js';
 
 /**
- * The second builder: OpenAI's Codex CLI, running in the SAME sandbox as Claude
+ * The second builder: OpenAI's Codex CLI, running in the SAME workspace as Claude
  * Code, on the same checkout, under the same rules.
  *
  * Why the same sandbox rather than a second one: the whole point of switching
@@ -46,21 +46,7 @@ export function codexInstallCommand(): string {
 
 export function codexCommand(
   prompt: string,
-  opts: {
-    /**
-     * Whose account this turn runs on, and which variable the CLI reads it
-     * from. The variable NAME comes from the one table that maps a credential's
-     * kind to its variable (build/builderAuth.ts) rather than being written
-     * here — a second place that decides which variable a secret goes in is a
-     * second place for the two to disagree, and the disagreement doesn't
-     * announce itself: the CLI just reports no credentials, inside a sandbox
-     * the owner is already paying for.
-     */
-    auth: { envVar: string; secret: string };
-    model?: string;
-    resumeSessionId?: string | null;
-    mode?: 'build' | 'plan';
-  },
+  opts: { apiKey?: string; model?: string; resumeSessionId?: string | null; mode?: 'build' | 'plan' },
 ): string {
   const mode = opts.mode ?? 'build';
   const args = [
@@ -75,10 +61,9 @@ export function codexCommand(
     ...(mode === 'plan' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox']),
     shellQuote(`${agentRules(mode)}\n\n---\n\n${prompt}`),
   ];
-  // The credential rides as an env prefix rather than a flag: it never lands in
-  // the repo, it dies with the process, and a sandbox that outlives a rotated
-  // key does not keep using the old one.
-  return `${PATH_PREFIX} cd ${WORKDIR} && ${opts.auth.envVar}=${shellQuote(opts.auth.secret)} ${args.join(' ')}`;
+  // OPENAI_API_KEY is injected command-scoped by the Workspace Runtime. Putting
+  // it here would expose it to the hosted-shell model prompt and flight record.
+  return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
 }
 
 export type CodexResult = {

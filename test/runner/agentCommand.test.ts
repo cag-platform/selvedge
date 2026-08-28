@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents, resultToStep } from '../../src/server/runner/daytona/agentCommand.js';
+import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents, resultToStep } from '../../src/server/runner/workers/claudeCommand.js';
 import type { Card } from '../../src/server/cards/types.js';
 
 function card(overrides: Partial<Card> = {}): Card {
@@ -73,7 +73,7 @@ describe('agentRules — the agent knows who it is building for', () => {
   });
 
   it('tells it the platform contract, so it does not duplicate or fight it', () => {
-    expect(rules).toContain('/workspace/app');
+    expect(rules).toContain('/workspace/project');
     expect(rules).toMatch(/port 3000/i);
     expect(rules).toMatch(/0\.0\.0\.0/);
     expect(rules).toMatch(/do not commit or push/i);

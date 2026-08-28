@@ -69,7 +69,7 @@ export async function stopActiveRun(
   const run = await liveRun(db, orgId, projectId);
   if (!run) return { stopped: false, reason: 'nothing_running' };
 
-  // Best-effort, and deliberately not fatal: if Daytona can't be reached, the
+  // Best-effort, and deliberately not fatal: if the workspace can't be reached, the
   // owner still gets their conversation back rather than staying locked out of
   // it by a second failure.
   await (deps.halt ?? stopSandbox)(db, orgId, projectId).catch(() => undefined);

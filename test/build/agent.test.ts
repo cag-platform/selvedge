@@ -277,7 +277,7 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     // The screenshot landed outside the project (never lands in the app or a ship).
     expect(uploads.some((u) => u.path.startsWith('/workspace/.selvedge/uploads/') && u.path.endsWith('.png'))).toBe(true);
     // The plain file landed at the project root under its own name.
-    expect(uploads.some((u) => u.path === '/workspace/app/sample.csv')).toBe(true);
+    expect(uploads.some((u) => u.path === '/workspace/project/sample.csv')).toBe(true);
 
     // The CLI prompt (what the nohup command actually ran) points the agent at both.
     const startCmd = commands.find((c) => c.includes('nohup'))!;

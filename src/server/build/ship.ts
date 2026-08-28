@@ -38,7 +38,7 @@ import type { ContextPack } from '../../shared/types/pack.js';
  *      evidence, never a gate: a ship whose thread can't be resolved still
  *      ships, unstamped.
  *
- * Execution is injectable so the whole flow is tested without Daytona.
+ * Execution is injectable so the whole flow is tested without a live workspace.
  */
 
 export type ShipOutcome =

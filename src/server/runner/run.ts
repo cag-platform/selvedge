@@ -1,9 +1,10 @@
 import type { Card } from '../cards/types.js';
-import type { RunnerDeps, RunResult, SandboxHandle } from './types.js';
+import type { RunnerDeps, RunResult } from './types.js';
+import type { WorkspaceHandle } from '../workspace/types.js';
 
 /**
  * The agent runner's pure orchestration core — the `work` phase of the loop.
- * It provisions a sandbox, iterates the injected agent, and drives the card
+ * It provisions a workspace, iterates the injected agent, and drives the card
  * through the machine, and it exists to hold three safety properties while real
  * code is being changed:
  *
@@ -11,7 +12,7 @@ import type { RunnerDeps, RunResult, SandboxHandle } from './types.js';
  *      instant the machine says `stopped` (cap reached) or `blocked` (a staged
  *      checkpoint), it stops — no further agent step runs. The cap can never be
  *      overspent by "one more iteration".
- *   2. It never leaks a sandbox. The workspace is torn down in a finally, so a
+ *   2. It never leaks a workspace. The workspace is torn down in a finally, so a
  *      cap stop, a checkpoint pause, an agent crash, and a clean finish all
  *      release it. (The agent is expected to persist progress to a WIP branch
  *      each step, so a resume after a checkpoint is cheap even though the
@@ -39,14 +40,14 @@ export async function runCard(deps: RunnerDeps, card: Card): Promise<RunResult> 
     return { outcome: 'not_runnable', card: current };
   }
 
-  let sandbox: SandboxHandle | null = null;
+  let workspace: WorkspaceHandle | null = null;
   try {
-    sandbox = await deps.sandbox.create(current);
+    workspace = await deps.workspaceRuntime.createWorkspace(current);
 
     for (let step = 1; step <= maxSteps; step++) {
       let result;
       try {
-        result = await deps.agentStep({ card: current, sandbox, step });
+        result = await deps.agentStep({ card: current, workspace, step });
       } catch (err) {
         const failed = await deps.apply({
           type: 'fail',
@@ -93,8 +94,8 @@ export async function runCard(deps: RunnerDeps, card: Card): Promise<RunResult> 
     });
     return { outcome: 'failed', card: stalled.ok ? stalled.card : current };
   } finally {
-    if (sandbox) {
-      await deps.sandbox.destroy(sandbox).catch(() => {
+    if (workspace) {
+      await deps.workspaceRuntime.destroyWorkspace(workspace).catch(() => {
         /* teardown is best-effort; a leaked-sandbox alarm is the provider's job, not a reason to crash the run */
       });
     }

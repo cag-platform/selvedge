@@ -4,7 +4,7 @@ import { orgs } from '../../src/server/db/schema/index.js';
 import { createCard, getCard, applyAction } from '../../src/server/cards/store.js';
 import { runCardForOrg } from '../../src/server/runner/factory.js';
 import type { ProposeInput } from '../../src/server/cards/propose.js';
-import type { SandboxProvider } from '../../src/server/runner/types.js';
+import type { CardWorkspaceRuntime } from '../../src/server/runner/types.js';
 
 const T = '2026-07-31T12:00:00Z';
 
@@ -16,7 +16,10 @@ function input(overrides: Partial<ProposeInput> = {}): ProposeInput {
   };
 }
 
-const sandbox: SandboxProvider = { create: async () => ({ id: 'sbx' }), destroy: async () => {} };
+const workspaceRuntime: CardWorkspaceRuntime = {
+  createWorkspace: async () => ({ id: 'ws', state: 'ready' }),
+  destroyWorkspace: async () => {},
+};
 
 describe('runCardForOrg — the runner bound to a real persisted card', () => {
   let db: TestDb;
@@ -36,7 +39,7 @@ describe('runCardForOrg — the runner bound to a real persisted card', () => {
 
     let calls = 0;
     const res = await runCardForOrg(db, 'org_1', 'card_1', {
-      sandbox,
+      workspaceRuntime,
       now: () => new Date(T),
       agentStep: async () => {
         calls++;
@@ -58,7 +61,7 @@ describe('runCardForOrg — the runner bound to a real persisted card', () => {
     await createCard(db, input({ capCents: 1000 }));
     await applyAction(db, 'org_1', 'card_1', { type: 'approve', at: T });
     const res = await runCardForOrg(db, 'org_1', 'card_1', {
-      sandbox,
+      workspaceRuntime,
       now: () => new Date(T),
       agentStep: async () => ({ spentCents: 1500, done: false }),
     });
@@ -71,7 +74,7 @@ describe('runCardForOrg — the runner bound to a real persisted card', () => {
     await applyAction(db, 'org_1', 'card_1', { type: 'approve', at: T });
     let called = false;
     const res = await runCardForOrg(db, 'org_2', 'card_1', {
-      sandbox,
+      workspaceRuntime,
       agentStep: async () => { called = true; return { spentCents: 1, done: true }; },
     });
     expect(res.outcome).toBe('not_found');

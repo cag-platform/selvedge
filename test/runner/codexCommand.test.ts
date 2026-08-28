@@ -6,7 +6,7 @@ import {
   parseCodexEvents,
   parseCodexResult,
   parseCodexText,
-} from '../../src/server/runner/daytona/codexCommand.js';
+} from '../../src/server/runner/workers/codexCommand.js';
 
 /**
  * The second builder's CLI has an undocumented event stream that has changed
@@ -19,17 +19,17 @@ const line = (o: unknown) => JSON.stringify(o);
 
 describe('the Codex command', () => {
   it('runs one turn in the project, with the key in the environment rather than the repo', () => {
-    const cmd = codexCommand('make the header dark', { auth: { envVar: 'OPENAI_API_KEY', secret: 'sk-test' }, model: 'gpt-5.6-terra' });
-    expect(cmd).toContain('cd /workspace/app');
-    expect(cmd).toContain('OPENAI_API_KEY=');
-    expect(cmd).toContain("'sk-test'");
+    const cmd = codexCommand('make the header dark', { apiKey: 'sk-test', model: 'gpt-5.6-terra' });
+    expect(cmd).toContain('cd /workspace/project');
+    expect(cmd).not.toContain('OPENAI_API_KEY=');
+    expect(cmd).not.toContain('sk-test');
     expect(cmd).toContain('codex exec');
     expect(cmd).toContain('--json');
     expect(cmd).toContain("--model 'gpt-5.6-terra'");
   });
 
   it('carries the standing rules in the prompt, because this CLI has no system-prompt flag', () => {
-    const cmd = codexCommand('make the header dark', { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } });
+    const cmd = codexCommand('make the header dark', { apiKey: 'k' });
     // The rules must reach the agent somehow, and the one way they must NOT is
     // a file in the customer's repository.
     expect(cmd).toContain('no terminal');

@@ -48,13 +48,12 @@ export const FEATURES: FeatureSpec[] = [
   // (build/builderAuth.ts), so a deployment-wide credential is neither required
   // nor sufficient. It survives as an optional fallback below, for orgs that
   // haven't connected their own — never as the thing the engine needs to exist.
-  { key: 'agent', label: 'Build engine (the sandbox)', kind: 'feature', vars: ['DAYTONA_API_KEY'], gives: 'somewhere for an approved change to actually be made. The agent runs on the org’s own Anthropic key or Claude subscription, and cloning and pushing use the org’s own GitHub App installation' },
+  { key: 'agent', label: 'Development Workspace Runtime', kind: 'feature', vars: ['OPENAI_API_KEY', 'PREVIEW_RELAY_SIGNING_SECRET', 'PREVIEW_RELAY_PUBLIC_ORIGIN'], gives: 'temporary Selvedge-native workspaces for migration, iteration, preview and verification. Workers use the org’s connected credential or the managed fallback' },
   // Gated on the KEY, not the model name: EVAL_MODEL has a safe default
   // (gpt-5.6-luna) and lives in OPTIONAL_VARS as a tuning knob. Listing it here
   // would report `partial` for a deploy that set the key and sensibly left the
   // model alone, which would be false.
   { key: 'evaluator', label: 'Independent grader (the verified verdict)', kind: 'feature', vars: ['OPENAI_API_KEY'], gives: 'judges "did it do what was asked" on a different provider than authored the change, so a verdict never grades its own work; without it, verdicts top out at `probably` — never a false verified' },
-  { key: 'buska_distribution', label: 'Buska distribution signals', kind: 'feature', vars: ['BUSKA_API_KEY'], gives: 'feeds public conversations into the private distribution signal store; Selvedge still decides relevance and action' },
   // The same key, a second job: the Inbox's second builder. Separate row
   // because they are separate promises — grading independence does not depend
   // on Codex existing, and Codex not running does not weaken a verdict.
@@ -63,7 +62,7 @@ export const FEATURES: FeatureSpec[] = [
   // connected its own OpenAI key builds on that, exactly as it chats on it. So
   // this row going `off` means "no key for orgs that haven't brought one",
   // which is what a deployment-level report can honestly say.
-  { key: 'codex', label: 'Codex, the second builder', kind: 'feature', vars: ['OPENAI_API_KEY', 'DAYTONA_API_KEY'], gives: 'lets a workshop thread switch builders mid-task — Codex runs in the same sandbox and starts from the handoff. An org that has connected its own OpenAI key builds on that instead; this key covers the ones that haven’t' },
+  { key: 'codex', label: 'Codex, the second builder', kind: 'feature', vars: ['OPENAI_API_KEY', 'PREVIEW_RELAY_SIGNING_SECRET', 'PREVIEW_RELAY_PUBLIC_ORIGIN'], gives: 'lets a workshop thread switch builders mid-task — Codex runs in the same temporary workspace and starts from the handoff. An org that has connected its own OpenAI key builds on that instead' },
 ];
 
 /** Tuning knobs that have safe defaults — never required, listed for completeness. */
@@ -71,7 +70,7 @@ export const FEATURES: FeatureSpec[] = [
 // switch. The token covers orgs that haven't connected their own account;
 // MANAGED_FUEL=off stops it covering anybody, which is the setting for a
 // deployment where bring-your-own is the promise rather than the default.
-export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'SEED_ORG_ID', 'PREVIEW_DOMAIN', 'GITHUB_ORG', 'CLAUDE_CODE_OAUTH_TOKEN', 'MANAGED_FUEL', 'CONTINUATION_WEDGE_ENABLED'];
+export const OPTIONAL_VARS = ['PORT', 'NODE_ENV', 'DAILY_LLM_BUDGET_USD', 'GRADE_DAILY_BUDGET_USD', 'THINKING_DAILY_BUDGET_USD', 'NARRATE_MODEL', 'COMPOSE_MODEL', 'AGENT_MODEL', 'EVAL_MODEL', 'CHAT_MODEL', 'CHAT_MODEL_OPENAI', 'CODEX_MODEL', 'WORKSPACE_MODEL', 'SEED_ORG_ID', 'GITHUB_ORG', 'CLAUDE_CODE_OAUTH_TOKEN', 'MANAGED_FUEL', 'CONTINUATION_WEDGE_ENABLED'];
 
 export type FeatureStatus = { key: string; label: string; kind: FeatureKind; status: 'on' | 'off' | 'partial'; missing: string[]; gives: string };
 

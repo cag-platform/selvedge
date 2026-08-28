@@ -28,7 +28,7 @@ describe('an idea, and what becomes of it', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
-  const engineOn = () => ({ daytonaApiKey: 'd' });
+  const engineOn = () => ({ workspaceRuntime: true as const });
 
   beforeEach(async () => {
     const t = await createTestDb();

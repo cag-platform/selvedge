@@ -44,9 +44,9 @@ describe('describeConfig — booleans only, no secrets', () => {
   it('reports each feature on/off without any value', () => {
     const cfg = describeConfig({
       ...bootOnly,
-      DAYTONA_API_KEY: 'secret-value',
-      CLAUDE_CODE_OAUTH_TOKEN: 'tok',
-      GITHUB_TOKEN: 'ght',
+      OPENAI_API_KEY: 'secret-value',
+      PREVIEW_RELAY_SIGNING_SECRET: 'relay-secret',
+      PREVIEW_RELAY_PUBLIC_ORIGIN: 'https://tryselvedge.com',
     } as NodeJS.ProcessEnv);
     expect(cfg.database).toBe(true);
     expect(cfg.agent).toBe(true); // the sandbox host is present, which is all the engine needs
@@ -67,7 +67,7 @@ describe('describeConfig — booleans only, no secrets', () => {
    * The engine is the machines. Nothing else.
    */
   it('is "on" with somewhere to run, and does not claim to need an account too', () => {
-    const machinesOnly = describeConfig({ ...bootOnly, DAYTONA_API_KEY: 'k' } as NodeJS.ProcessEnv);
+    const machinesOnly = describeConfig({ ...bootOnly, OPENAI_API_KEY: 'k', PREVIEW_RELAY_SIGNING_SECRET: 's', PREVIEW_RELAY_PUBLIC_ORIGIN: 'https://tryselvedge.com' } as NodeJS.ProcessEnv);
     expect(machinesOnly.agent).toBe(true);
 
     const nothing = describeConfig({ ...bootOnly } as NodeJS.ProcessEnv);
@@ -78,7 +78,7 @@ describe('describeConfig — booleans only, no secrets', () => {
 describe('envReportLines — plain boot log, only the gaps', () => {
   it('lists only what is missing or partial', () => {
     const lines = envReportLines(validateEnv(bootOnly));
-    expect(lines.join('\n')).toMatch(/Build engine/);
+    expect(lines.join('\n')).toMatch(/Development Workspace Runtime/);
     // Fully configured → not listed. Anchored on the label's own line rather
     // than a bare substring, so an unrelated feature that happens to mention a
     // database doesn't make this pass or fail by accident.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentModelFromEnv } from '../../src/server/runner/daytona/factory.js';
+import { agentModelFromEnv } from '../../src/server/runner/native/factory.js';
 
 /**
  * The regression guard for a bug that shipped precisely because nothing asserted

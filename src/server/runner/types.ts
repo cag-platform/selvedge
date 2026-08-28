@@ -2,33 +2,33 @@ import type { Card } from '../cards/types.js';
 import type { CardAction } from '../cards/machine.js';
 import type { ApplyResult } from '../cards/store.js';
 import type { ToolEvent } from '../../shared/types/toolEvent.js';
+import type { WorkspaceHandle } from '../workspace/types.js';
 
 /**
  * The agent runner's contract (BUILD-BRIEF Phase 3). The runner does the `work`
- * between approve and verify — provision an isolated sandbox, let the agent make
+ * between approve and verify — provision an isolated workspace, let the agent make
  * the change, and drive the card through the machine so every safety guarantee
  * still holds while real work happens.
  *
  * Everything that touches the outside world is injected, so the ORCHESTRATION —
  * the part that must obey the cap and the checkpoints — is pure and testable
- * without a sandbox, a model, or a repo. Toile's Daytona lifecycle and agent
- * loop are the injected implementations; they are network code, marked
- * unverified-until-live like the host connectors.
+ * without a workspace, a model, or a repo. Temporary legacy wiring supplies
+ * the current implementation while Selvedge's native runtime replaces it.
  */
 
-/** A provisioned isolated workspace (Daytona, platform-owned with per-org quotas). */
-export type SandboxHandle = { id: string };
-
-export type SandboxProvider = {
-  /** Provision a sandbox for a card's project and clone the customer's repo into it. */
-  create: (card: Card) => Promise<SandboxHandle>;
-  /** Tear the sandbox down. Called in a finally — must tolerate being called after a failure. */
-  destroy: (handle: SandboxHandle) => Promise<void>;
+/**
+ * The small part of the Selvedge Workspace Runtime needed by the governed card
+ * loop. The full runtime contract lives in workspace/types.ts; this adapter
+ * keeps card policy independent of repository and provider setup details.
+ */
+export type CardWorkspaceRuntime = {
+  createWorkspace: (card: Card) => Promise<WorkspaceHandle>;
+  destroyWorkspace: (handle: WorkspaceHandle) => Promise<void>;
 };
 
 export type AgentContext = {
   card: Card;
-  sandbox: SandboxHandle;
+  workspace: WorkspaceHandle;
   /** 1-based iteration number, for the agent and for the loop-stall backstop. */
   step: number;
 };
@@ -48,7 +48,7 @@ export type AgentStepResult = {
 export type RunnerDeps = {
   /** Drive the card through the machine + persistence (the store's applyAction, bound to org+card). */
   apply: (action: CardAction) => Promise<ApplyResult>;
-  sandbox: SandboxProvider;
+  workspaceRuntime: CardWorkspaceRuntime;
   /** One agent iteration. Injected — Toile's agent loop in production. */
   agentStep: (ctx: AgentContext) => Promise<AgentStepResult>;
   now: () => Date;

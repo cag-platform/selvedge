@@ -3,7 +3,7 @@ import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs } from '../../src/server/db/schema/index.js';
 import { connectCredential } from '../../src/server/connectors/credentials/store.js';
 import { resolveBuilderAuth, builderAvailability, managedFuelAllowed } from '../../src/server/build/builderAuth.js';
-import { claudeCommand } from '../../src/server/runner/daytona/agentCommand.js';
+import { claudeCommand } from '../../src/server/runner/workers/claudeCommand.js';
 import { driverFor } from '../../src/server/runner/agents/driver.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { scaffoldPack } from '../../src/server/packs/scaffold.js';
@@ -170,7 +170,7 @@ describe('every builder runs on the org’s own account', () => {
 
       const driver = driverFor('claude-code', got.auth)!;
       const command = driver.command('make it darker', { mode: 'build' });
-      expect(command).toContain("CLAUDE_CODE_OAUTH_TOKEN='sk-ant-oat'");
+      expect(command).not.toContain('sk-ant-oat');
       expect(command).not.toContain('ANTHROPIC_API_KEY=');
     });
 
@@ -179,7 +179,7 @@ describe('every builder runs on the org’s own account', () => {
         envVar: 'ANTHROPIC_API_KEY',
         secret: "x'; rm -rf /; echo '",
       });
-      expect(command).toContain(`ANTHROPIC_API_KEY='x'\\''; rm -rf /; echo '\\'''`);
+      expect(command).not.toContain('rm -rf');
     });
 
     it('builds no driver at all without a credential, for either builder', () => {
@@ -195,7 +195,7 @@ describe('every builder runs on the org’s own account', () => {
    * owner looking at their connected OpenAI key on the next screen.
    */
   describe('the roster agrees with the resolver', () => {
-    const engineOn = () => ({ daytonaApiKey: 'd' });
+    const engineOn = () => ({ workspaceRuntime: true as const });
     const withoutPlatform = (d: TestDb, org: string, agent: Parameters<typeof builderAvailability>[2]) =>
       builderAvailability(d, org, agent, { env: {} });
 

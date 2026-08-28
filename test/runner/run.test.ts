@@ -35,7 +35,7 @@ function makeCard(o: { signals?: ChangeSignals; capCents?: number; checkpointAtF
  */
 function harness(card: Card, steps: AgentStepResult[] | ((step: number) => AgentStepResult), opts: { maxSteps?: number } = {}) {
   let current = card;
-  const sandboxes: string[] = [];
+  const workspaces: string[] = [];
   const destroyed: string[] = [];
   let agentCalls = 0;
 
@@ -47,13 +47,13 @@ function harness(card: Card, steps: AgentStepResult[] | ((step: number) => Agent
       if (r.ok) current = r.card;
       return r.ok ? { ok: true, card: r.card } : { ok: false, error: r.error };
     },
-    sandbox: {
-      create: async () => {
-        const h = { id: `sbx_${sandboxes.length + 1}` };
-        sandboxes.push(h.id);
+    workspaceRuntime: {
+      createWorkspace: async () => {
+        const h = { id: `ws_${workspaces.length + 1}`, state: 'ready' as const };
+        workspaces.push(h.id);
         return h;
       },
-      destroy: async (h) => void destroyed.push(h.id),
+      destroyWorkspace: async (h) => void destroyed.push(h.id),
     },
     agentStep: async ({ step }) => {
       agentCalls++;
@@ -61,7 +61,7 @@ function harness(card: Card, steps: AgentStepResult[] | ((step: number) => Agent
     },
   };
 
-  return { deps, sandboxes, destroyed, get agentCalls() { return agentCalls; }, getCard: () => current };
+  return { deps, workspaces, destroyed, get agentCalls() { return agentCalls; }, getCard: () => current };
 }
 
 describe('runCard — the work phase, obeying the machine', () => {
@@ -74,7 +74,7 @@ describe('runCard — the work phase, obeying the machine', () => {
     expect(res.outcome).toBe('ready_to_verify');
     expect(res.card.state).toBe('verifying');
     expect(res.card.spentCents).toBe(250);
-    expect(h.destroyed).toEqual(h.sandboxes); // sandbox released
+    expect(h.destroyed).toEqual(h.workspaces); // workspace released
   });
 
   it('obeys the cap: a spend that hits the cap halts, and NO further step runs', async () => {
@@ -143,7 +143,7 @@ describe('runCard — the work phase, obeying the machine', () => {
     expect(res.card.spentCents).toBe(0);
   });
 
-  it('refuses to run a card that is not approved — no sandbox, no agent', async () => {
+  it('refuses to run a card that is not approved — no workspace, no agent', async () => {
     const proposed = proposeCard({
       id: 'card_1', orgId: 'org_1', projectId: 'loom', trigger: 'request', title: 'x', proposal: 'x',
       signals: {}, estimate: { lowCents: 100, highCents: 500 }, capCents: 1000, now: T,
@@ -151,7 +151,7 @@ describe('runCard — the work phase, obeying the machine', () => {
     const h = harness(proposed, () => ({ spentCents: 1, done: true }));
     const res = await runCard(h.deps, proposed);
     expect(res.outcome).toBe('not_runnable');
-    expect(h.sandboxes.length).toBe(0);
+    expect(h.workspaces.length).toBe(0);
     expect(h.agentCalls).toBe(0);
   });
 });

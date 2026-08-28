@@ -3,12 +3,12 @@
  *
  * The obvious place to get this is the sandbox, and it isn't there: the runner
  * deletes the sandbox in a `finally` that fires before verification runs
- * (runner/run.ts), so `VerifyContext.sandbox` has never been populated by
+ * (runner/run.ts), so `VerifyContext.workspace` has never been populated by
  * anyone and there is nothing left to populate it with. Nor does the run leave
  * a trace behind — the agent's own note is dropped by the card machine, and the
  * card's acts after a clean run are two constant strings.
  *
- * But the agent pushes a real branch. `runner/daytona/provider.ts` commits the
+ * But the agent pushes a real branch. `runner/native/provider.ts` commits the
  * work to `selvedge/<card id>` and pushes it to the customer's own repo, so the
  * diff is durable and reachable over HTTP long after the sandbox is gone. That
  * is what this reads.

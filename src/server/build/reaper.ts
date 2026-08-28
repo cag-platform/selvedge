@@ -1,9 +1,8 @@
 import { and, eq, gte } from 'drizzle-orm';
-import { Daytona, type Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { agentRuns, projectBuild } from '../db/schema/index.js';
 import { reapSandboxes, reconcileSandboxes, type OpenSegment, type ReapResult, type Reconciliation } from './metering.js';
-import { SANDBOX_AUTO_ARCHIVE_MINUTES } from './sandbox.js';
+import { activeDevelopmentWorkspaceIds, stopDevelopmentWorkspaceById } from './sandbox.js';
 
 /**
  * THE SWEEP, WIRED TO THE REAL WORLD.
@@ -16,12 +15,6 @@ import { SANDBOX_AUTO_ARCHIVE_MINUTES } from './sandbox.js';
 
 /** The same staleness cutoff the routes use: a run this old still marked running is a crashed process. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
-
-let client: Daytona | null = null;
-function daytona(): Daytona {
-  if (!client) client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
-  return client;
-}
 
 /**
  * Is a turn genuinely in flight for this project?
@@ -65,36 +58,9 @@ export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapRes
     isWorking: (segment) => projectIsWorking(db, segment, now),
     hasActivePreview: (segment) => previewIsActive(db, segment, now),
     stop: async (segment) => {
-      const sandbox = await daytona().get(segment.sandboxId);
-      if (sandbox.state === 'started') await sandbox.stop();
+      await stopDevelopmentWorkspaceById(segment.sandboxId);
     },
   });
-}
-
-export type ArchiveMaintenance = { policyApplied: string[]; archived: string[] };
-
-/**
- * Free container disk quota without deleting work. Only Selvedge-owned,
- * already-stopped sandboxes are eligible; recent/unknown activity receives the
- * policy but is not archived eagerly.
- */
-export async function maintainSandboxArchives(
-  now = new Date(),
-  deps: { list?: () => AsyncIterable<Sandbox> } = {},
-): Promise<ArchiveMaintenance> {
-  const policyApplied: string[] = [];
-  const archived: string[] = [];
-  for await (const sandbox of (deps.list ? deps.list() : daytona().list())) {
-    if (!sandbox.labels?.['selvedge/org'] || !sandbox.labels?.['selvedge/project']) continue;
-    await sandbox.setAutoArchiveInterval(SANDBOX_AUTO_ARCHIVE_MINUTES);
-    policyApplied.push(sandbox.id);
-    const lastActivity = sandbox.lastActivityAt ? new Date(sandbox.lastActivityAt).getTime() : Number.NaN;
-    if (sandbox.state === 'stopped' && Number.isFinite(lastActivity) && now.getTime() - lastActivity >= SANDBOX_AUTO_ARCHIVE_MINUTES * 60_000) {
-      await sandbox.archive();
-      archived.push(sandbox.id);
-    }
-  }
-  return { policyApplied, archived };
 }
 
 /**
@@ -105,17 +71,10 @@ export async function maintainSandboxArchives(
 export async function runSandboxReconciliation(db: Db): Promise<Reconciliation> {
   return reconcileSandboxes(db, {
     listRunning: async () => {
-      // The SDK hands back an async iterator (it pages behind the scenes), so
-      // this walks it rather than treating it as an array.
-      const running: string[] = [];
-      for await (const sandbox of daytona().list()) {
-        if (sandbox.state === 'started') running.push(sandbox.id);
-      }
-      return running;
+      return activeDevelopmentWorkspaceIds();
     },
     stop: async (sandboxId) => {
-      const sandbox = await daytona().get(sandboxId);
-      if (sandbox.state === 'started') await sandbox.stop();
+      await stopDevelopmentWorkspaceById(sandboxId);
     },
   });
 }

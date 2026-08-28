@@ -1,10 +1,7 @@
-import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
-import { getBuild, setBuild } from './store.js';
+import { setBuild } from './store.js';
 import { PREVIEW_TTL_MS } from './metering.js';
-import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
-import { isAllowedPreviewUrl } from '../../shared/preview.js';
-import { previewSlugFor } from '../web/previewProxy.js';
+import { ensureSandbox, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
 import { previewEnvFile, getPreviewEnvSummary } from './previewEnv.js';
 
@@ -38,12 +35,8 @@ const PID_FILE = '/tmp/selvedge-app.pid';
 const ENV_FILE = '/tmp/selvedge-preview.env';
 const PG_DATA = '/tmp/selvedge-pg';
 const PG_PORT = 5432;
-const SESSION = 'selvedge-app';
 const READY_TIMEOUT_SEC = 90;
 const TOKEN_TTL_SECONDS = 3600;
-/** Re-mint before actual expiry so a just-served URL never lapses mid-load. */
-const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
-const PREVIEW_TOKEN_PARAM = 'x-daytona-preview-token';
 
 export type PreviewStatus = {
   state: 'ready' | 'none' | 'error';
@@ -67,24 +60,12 @@ function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 
-/** Append the signed token so the iframe can reach the preview port directly. */
-export function withPreviewToken(baseUrl: string, token: string): string {
-  const url = new URL(baseUrl);
-  url.searchParams.set(PREVIEW_TOKEN_PARAM, token);
-  return url.toString();
-}
-
-/** Reuse a stored token while it has comfortable life left; else it needs a re-mint. */
-export function tokenStillGood(token: string | null, expiresAt: Date | null, now: Date = new Date()): boolean {
-  return Boolean(token && expiresAt && expiresAt.getTime() - now.getTime() > TOKEN_REFRESH_MARGIN_MS);
-}
-
-async function exec(sandbox: Sandbox, command: string, timeoutSec: number): Promise<{ exitCode: number; result?: string }> {
+async function exec(sandbox: DevelopmentWorkspace, command: string, timeoutSec: number): Promise<{ exitCode: number; result?: string }> {
   return sandbox.process.executeCommand(command, undefined, undefined, timeoutSec);
 }
 
 /** True when something is currently answering on :3000. */
-export async function isAppServerUp(sandbox: Sandbox): Promise<boolean> {
+export async function isAppServerUp(sandbox: DevelopmentWorkspace): Promise<boolean> {
   const probe = await exec(sandbox, `curl -s -o /dev/null -m 3 http://localhost:${APP_PORT} && echo UP || echo DOWN`, 15);
   return (probe.result ?? '').includes('UP');
 }
@@ -131,7 +112,7 @@ const NOT_WEB: ReadonlyArray<readonly [glob: string, what: string]> = [
   ['Gemfile', 'a Ruby project'],
 ];
 
-async function previewShape(sandbox: Sandbox): Promise<PreviewShape> {
+async function previewShape(sandbox: DevelopmentWorkspace): Promise<PreviewShape> {
   const devCheck = shellQuote('const s = require("./package.json").scripts || {}; process.exit(s.dev ? 0 : 1)');
   const staticChecks = STATIC_DIRS.map((d) => `[ -f ${d}/index.html ] && echo "STATIC:${d}" && exit 0`).join('; ');
   const whatChecks = NOT_WEB.map(([glob, what]) => `ls -d ${glob} >/dev/null 2>&1 && echo "WHAT:${what}" && exit 0`).join('; ');
@@ -165,7 +146,7 @@ export class NothingToPreviewError extends Error {
   }
 }
 
-async function killAppServer(sandbox: Sandbox): Promise<void> {
+async function killAppServer(sandbox: DevelopmentWorkspace): Promise<void> {
   await exec(
     sandbox,
     [`kill -TERM $(cat ${PID_FILE} 2>/dev/null) 2>/dev/null`, `fuser -k -TERM ${APP_PORT}/tcp 2>/dev/null`, 'sleep 1', `fuser -k -KILL ${APP_PORT}/tcp 2>/dev/null`, 'true'].join('; '),
@@ -186,7 +167,7 @@ async function killAppServer(sandbox: Sandbox): Promise<void> {
  * owner verbatim. The start command sources it; the secrets never appear in
  * anything that gets printed.
  */
-async function writeEnvFile(sandbox: Sandbox, contents: string | null): Promise<void> {
+async function writeEnvFile(sandbox: DevelopmentWorkspace, contents: string | null): Promise<void> {
   if (!contents) {
     await exec(sandbox, `rm -f ${ENV_FILE}`, 15).catch(() => undefined);
     return;
@@ -208,7 +189,7 @@ async function writeEnvFile(sandbox: Sandbox, contents: string | null): Promise<
  * be installed returns false rather than throwing, because a preview without a
  * database is still worth trying.
  */
-async function ensurePreviewDatabase(sandbox: Sandbox): Promise<boolean> {
+async function ensurePreviewDatabase(sandbox: DevelopmentWorkspace): Promise<boolean> {
   const up = await exec(sandbox, `pg_isready -h 127.0.0.1 -p ${PG_PORT} >/dev/null 2>&1 && echo UP || echo DOWN`, 20).catch(() => null);
   if ((up?.result ?? '').includes('UP')) return true;
 
@@ -230,7 +211,7 @@ async function ensurePreviewDatabase(sandbox: Sandbox): Promise<boolean> {
 
 export type StartOptions = { envFile: string | null; wantsDatabase: boolean };
 
-async function startAppServer(sandbox: Sandbox, options: StartOptions): Promise<void> {
+async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptions): Promise<void> {
   await writeEnvFile(sandbox, options.envFile);
 
   // DATABASE_URL is set only when we actually brought one up, so an app that
@@ -263,8 +244,7 @@ async function startAppServer(sandbox: Sandbox, options: StartOptions): Promise<
       : `cd ${WORKDIR} || exit 1; DIR=${shellQuote(shape.dir)}; (npx -y serve -l tcp://0.0.0.0:${APP_PORT} "$DIR" || python3 -m http.server ${APP_PORT} --bind 0.0.0.0 --directory "$DIR")`;
   const start = `${PATH_PREFIX} nohup bash -c ${shellQuote(inner)} >> ${LOG_FILE} 2>&1 < /dev/null & echo $! > ${PID_FILE}`;
 
-  await sandbox.process.createSession(SESSION).catch(() => undefined); // idempotent
-  await sandbox.process.executeSessionCommand(SESSION, { command: start, runAsync: true });
+  await exec(sandbox, start, 30);
 
   const check = await exec(
     sandbox,
@@ -287,13 +267,6 @@ export class StartFailedError extends Error {
     super('the app did not start');
     this.name = 'StartFailedError';
   }
-}
-
-/** Flip a private sandbox public so its preview URL works in a plain iframe (SDK 0.187 has no public wrapper). */
-async function makePublic(sandbox: Sandbox): Promise<void> {
-  if (sandbox.public) return;
-  const api = (sandbox as unknown as { sandboxApi?: { updatePublicStatus(id: string, isPublic: boolean): Promise<unknown> } }).sandboxApi;
-  if (api) await api.updatePublicStatus(sandbox.id, true);
 }
 
 /** One in-flight ensure per (org, project): concurrent wakes must not race two app-server restarts. */
@@ -326,15 +299,12 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
    *
    * Safe to do now in a way it was not before: previews are checked against
    * the plan's build minutes at the route, metered per second from the moment
-   * the sandbox exists, and stopped by the sweep after its preview lease goes
+   * the sandbox exists, and stopped by the sweep within a minute of going
    * quiet. A preview that starts a sandbox is a bounded, visible cost rather
    * than an open tap.
    */
-  const build = await getBuild(db, orgId, projectId);
-
   try {
     const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
-    await makePublic(sandbox);
 
     if (!(await isAppServerUp(sandbox))) {
       const wanted = await getPreviewEnvSummary(db, orgId, projectId).catch(() => ({ keys: [], wantsDatabase: false, updatedAt: null }));
@@ -344,37 +314,14 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
       });
     }
 
-    const link = await sandbox.getPreviewLink(APP_PORT);
-    // The SSRF guard's enforcement point: a URL outside the Daytona allowlist
-    // is never stored, so the proxy can never be steered at an arbitrary host.
-    if (!isAllowedPreviewUrl(link.url)) {
-      return { state: 'error', url: null, message: 'The preview URL did not look like a Daytona preview, so I refused it.' };
-    }
-    // Re-read: the sandbox may have been created a moment ago, and the row
-    // read before that has no slug or token on it.
-    const current = (await getBuild(db, orgId, projectId)) ?? build;
-    const slug = current?.previewSlug ?? previewSlugFor(orgId, projectId);
-    let token = current?.previewToken ?? null;
-    if (!tokenStillGood(token, current?.previewTokenExpiresAt ?? null)) {
-      const signed = await sandbox.getSignedPreviewUrl(APP_PORT, TOKEN_TTL_SECONDS);
-      token = signed.token;
-      await setBuild(db, orgId, projectId, {
-        previewUrl: link.url,
-        previewSlug: slug,
-        previewToken: token,
-        previewTokenExpiresAt: new Date(Date.now() + TOKEN_TTL_SECONDS * 1000),
-      });
-    } else {
-      await setBuild(db, orgId, projectId, { previewUrl: link.url, previewSlug: slug });
-    }
-
-    // With PREVIEW_DOMAIN configured, the iframe gets the proxied subdomain URL
-    // (the proxy injects the skip-warning header — no Daytona interstitial).
-    // Without it, the signed direct Daytona URL, warning included.
-    const domain = process.env.PREVIEW_DOMAIN?.trim();
-    const url = domain ? `https://${slug}.${domain}/` : withPreviewToken(link.url, token!);
-    await setBuild(db, orgId, projectId, { previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS) });
-    return { state: 'ready', url, message: null };
+    const preview = await sandbox.workspace.exposePreview({ port: APP_PORT, ttlMinutes: TOKEN_TTL_SECONDS / 60 });
+    await setBuild(db, orgId, projectId, {
+      previewUrl: preview.url,
+      previewToken: null,
+      previewTokenExpiresAt: preview.expiresAt,
+      previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
+    });
+    return { state: 'ready', url: preview.url, message: null };
   } catch (err) {
     /**
      * THE STACK TRACE STOPS HERE.

@@ -8,7 +8,7 @@
  * written to a thread afterwards names the thread it belongs to.
  *
  * The two kinds are a real difference in machinery, not a label:
- *   workshop — runs a coding agent inside the project's Daytona sandbox; can
+ *   workshop — runs a coding agent inside the project's Development Workspace; can
  *              stage changes, ship them, and be undone.
  *   general  — direct model calls, no sandbox, nothing to ship. Where the
  *              thinking happens before there is anything to build.

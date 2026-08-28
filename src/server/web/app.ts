@@ -2,7 +2,6 @@ import path from 'node:path';
 import express, { type ErrorRequestHandler } from 'express';
 import { clerkMiddleware } from '@clerk/express';
 import type { Db } from '../db/client.js';
-import { getPreviewProxy } from './previewProxy.js';
 import { createGithubWebhookRouter } from '../connectors/github/webhook.js';
 import { createGithubInstallRouter } from '../connectors/github/install.js';
 import { createErrorBeaconRouter } from '../connectors/errors/beacon.js';
@@ -47,19 +46,22 @@ import { createDecisionsRouter } from './routes/decisions.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createCompanionKeysRouter } from './routes/companionKeys.js';
 import { createContinuationsRouter } from './routes/continuations.js';
-import { buildBuildEngine } from '../runner/daytona/factory.js';
-import { driveCard } from '../cards/drive.js';
 import { createDistributionOpsRouter } from './routes/distributionOps.js';
+import { buildBuildEngine } from '../runner/native/factory.js';
+import { driveCard } from '../cards/drive.js';
+import { getPreviewRelay } from '../workspace/relay/factory.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
 
-  // The preview proxy: host-scoped (only *.PREVIEW_DOMAIN requests), mounted
-  // before everything so preview traffic never touches auth or body parsing.
-  // Inert when PREVIEW_DOMAIN is unset.
-  app.use(getPreviewProxy(db).middleware);
+  // Selvedge-native workspace previews. The customer app connects OUT to this
+  // relay; browsers never receive a provider URL or workspace credential.
+  // Mounted before Clerk/body parsing because the signed viewer capability and
+  // connector capability are the authentication for these two narrow paths.
+  const workspaceRelay = getPreviewRelay();
+  if (workspaceRelay) app.use(workspaceRelay.web.router);
 
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
@@ -171,7 +173,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createMemoryRouter(db));
   app.use(createPortabilityRouter(db));
   app.use(createBeaconRouter(db));
-  // The build engine — present only when Daytona + the Claude token + a GitHub
+  // The build engine — present only when the native workspace and worker
   // token are all configured. When present, approving a card hands it off to run
   // (in the background; the run takes minutes and the cap guards the spend). When
   // absent, an approved card simply waits — no inert half-run.
@@ -199,9 +201,6 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createImportReplitRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
   app.use(createGithubArrivalRouter());
   app.use(createCompanionKeysRouter(db));
-  // The continuation wedge is additive and can be rolled back without
-  // changing any project/thread data it created. Keep the HTTP surface absent
-  // until the first clients are ready for it.
   if (continuationWedgeEnabled) app.use(createContinuationsRouter(db, { ...(pushSender ? { pushSender } : {}) }));
 
   app.use(express.static(clientDir));

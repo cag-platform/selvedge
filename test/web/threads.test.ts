@@ -489,7 +489,7 @@ describe('attachments on the Inbox message route', () => {
       let seen: Record<string, unknown> = {};
       const app = appWithOrg('org_1', createThreadsRouter(t.db, {
         lookup: stubRepoLookup,
-        env: () => ({ daytonaApiKey: 'd' }),
+        env: () => ({ workspaceRuntime: true as const }),
         runTurn: (async (_db, _org, _p, _t2, _cfg, options) => {
           seen = { images: options?.images, files: options?.files };
           return { runId: 'r', agent: 'claude-code', status: 'succeeded', costCents: 0, reply: '', stagedChangesReady: false };

@@ -22,7 +22,7 @@ export function llmEnabled(): boolean {
 /**
  * The model that GRADES a change — never the one that writes it. Reads
  * EVAL_MODEL and only EVAL_MODEL, the mirror of agentModelFromEnv's guarantee
- * (runner/daytona/factory.ts) that the author never reads the grader's knob.
+ * (runner/native/factory.ts) that the author never reads the grader's knob.
  * These two variables crossing is how a grader ends up grading its own work,
  * which is the one failure the whole verifier exists to prevent.
  *

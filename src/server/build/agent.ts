@@ -1,11 +1,10 @@
 import { ulid } from 'ulid';
 import fs from 'node:fs/promises';
-import type { Sandbox } from '@daytonaio/sdk';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/index.js';
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
-import { ensureSandbox, WORKDIR, PATH_PREFIX, type SandboxConfig } from './sandbox.js';
+import { ensureSandbox, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
 import { touchProjectSandbox } from './metering.js';
 import { ensureWorkshopThread } from '../threads/store.js';
 import { driverFor } from '../runner/agents/driver.js';
@@ -30,7 +29,7 @@ import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
  * The page's existing polling picks it up with no extra infrastructure.
  *
  * The command execution is injectable so the whole orchestration is testable
- * without Daytona. A stale --resume (the session file died with a recreated
+ * without a live Development Workspace. A stale --resume (the session file died with a recreated
  * sandbox) is retried once fresh rather than failing the turn.
  */
 
@@ -45,7 +44,7 @@ export type ExecuteInSandbox = (
   env?: Record<string, string>,
 ) => Promise<{ exitCode: number; result?: string }>;
 
-/** Write a file's bytes into the sandbox at an absolute path (Daytona's fs.uploadFile). */
+/** Write a file's bytes into the Development Workspace at an absolute path. */
 export type UploadToSandbox = (absPath: string, data: Buffer) => Promise<void>;
 /** Stream a LOCAL file straight into the sandbox — no whole-file buffering, for large attachments. */
 export type UploadLocalFileToSandbox = (absPath: string, localPath: string) => Promise<void>;
@@ -417,8 +416,8 @@ export async function runAgentTurn(
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
-  let sandboxPromise: Promise<Sandbox> | null = null;
-  const getSandbox = (): Promise<Sandbox> => (sandboxPromise ??= ensureSandbox(db, orgId, projectId, cfg));
+  let sandboxPromise: Promise<DevelopmentWorkspace> | null = null;
+  const getSandbox = (): Promise<DevelopmentWorkspace> => (sandboxPromise ??= ensureSandbox(db, orgId, projectId, cfg));
 
   const execute: ExecuteInSandbox =
     deps.execute ??
@@ -427,7 +426,11 @@ export async function runAgentTurn(
       // Every command in a turn carries this request's GitHub token, so an
       // agent that reaches for git mid-turn finds a live credential rather
       // than whatever was true when the sandbox was first built.
-      const merged = { GITHUB_TOKEN: cfg.githubToken, ...(env ?? {}) };
+      const merged = {
+        GITHUB_TOKEN: cfg.githubToken,
+        ...(resolved.ok ? { [resolved.auth.envVar]: resolved.auth.secret } : {}),
+        ...(env ?? {}),
+      };
       return sandbox.process.executeCommand(command, undefined, merged, timeoutSec);
     });
   const uploadFile: UploadToSandbox =

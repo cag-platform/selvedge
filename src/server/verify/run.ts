@@ -1,7 +1,7 @@
 import type { Card } from '../cards/types.js';
 import type { CardAction } from '../cards/machine.js';
 import type { ApplyResult } from '../cards/store.js';
-import type { SandboxHandle } from '../runner/types.js';
+import type { WorkspaceHandle } from '../workspace/types.js';
 import { verdictReport, type CheckResult, type VerdictReport } from './verdict.js';
 import { verdictAfterObservation, type ObserveResult } from './observe.js';
 
@@ -27,7 +27,7 @@ import { verdictAfterObservation, type ObserveResult } from './observe.js';
 export type VerifyContext = {
   card: Card;
   /** A workspace for running checks, when the injected runner needs one. */
-  sandbox?: SandboxHandle;
+  workspace?: WorkspaceHandle;
 };
 
 export type VerifyDeps = {

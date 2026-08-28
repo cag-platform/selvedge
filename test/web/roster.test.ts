@@ -29,7 +29,7 @@ describe('who could answer this, and what handing it over would cost', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
-  const engineOn = () => ({ daytonaApiKey: 'd' });
+  const engineOn = () => ({ workspaceRuntime: true as const });
 
   // EVERY builder's fuel resolves the same way now — the org's own account
   // first, the deployment's second — so the deployment's has to be absent for

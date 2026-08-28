@@ -16,7 +16,7 @@ import { lookupRepoInfo, type RepoInfo } from './repoInfo.js';
  * run. The machines are ours — we rent them, meter them and reap them, and
  * `buildMinutes` in the plan table is what they cost.
  */
-export type EngineEnv = { daytonaApiKey: string };
+export type EngineEnv = { workspaceRuntime: true };
 
 /**
  * Is there a build engine here at all, or is this a deployment that only
@@ -43,9 +43,11 @@ export type EngineEnv = { daytonaApiKey: string };
  * What's left is what genuinely belongs to the deployment: the sandbox host.
  */
 export function engineEnv(): EngineEnv | null {
-  const daytona = process.env.DAYTONA_API_KEY?.trim();
-  if (!daytona) return null;
-  return { daytonaApiKey: daytona };
+  const openai = process.env.OPENAI_API_KEY?.trim();
+  const relaySecret = process.env.PREVIEW_RELAY_SIGNING_SECRET?.trim();
+  const relayOrigin = process.env.PREVIEW_RELAY_PUBLIC_ORIGIN?.trim();
+  if (!openai || !relaySecret || !relayOrigin) return null;
+  return { workspaceRuntime: true };
 }
 
 export type EngineConfig = { cfg: AgentTurnConfig; liveUrl: string | null };

@@ -33,7 +33,6 @@
     "@aws-sdk/s3-request-presigner": "^3.1118.0",
     "@clerk/clerk-react": "^5.61.9",
     "@clerk/express": "^2.1.43",
-    "@daytonaio/sdk": "^0.187.0",
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/inter-tight": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -55,6 +54,7 @@
     "react-router-dom": "^6.28.0",
     "stripe": "^22.5.0",
     "ulid": "^2.3.0",
+    "ws": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -67,6 +67,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/supertest": "^7.2.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.5",
     "autoprefixer": "^10.4.20",

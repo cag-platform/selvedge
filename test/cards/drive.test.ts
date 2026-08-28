@@ -4,11 +4,14 @@ import { orgs } from '../../src/server/db/schema/index.js';
 import { createCard, getCard, applyAction } from '../../src/server/cards/store.js';
 import { driveCard } from '../../src/server/cards/drive.js';
 import type { ProposeInput } from '../../src/server/cards/propose.js';
-import type { SandboxProvider } from '../../src/server/runner/types.js';
+import type { CardWorkspaceRuntime } from '../../src/server/runner/types.js';
 import type { CheckResult } from '../../src/server/verify/verdict.js';
 
 const T = '2026-08-01T12:00:00Z';
-const sandbox: SandboxProvider = { create: async () => ({ id: 'sbx' }), destroy: async () => {} };
+const workspaceRuntime: CardWorkspaceRuntime = {
+  createWorkspace: async () => ({ id: 'ws', state: 'ready' }),
+  destroyWorkspace: async () => {},
+};
 const pass: CheckResult[] = [
   { kind: 'smoke', name: 'responds', outcome: 'pass' },
   { kind: 'acceptance', name: 'does what was asked', outcome: 'pass' },
@@ -38,7 +41,7 @@ describe('driveCard — run then verify, in one call', () => {
     await applyAction(db, 'org_1', 'card_1', { type: 'approve', at: T });
 
     const res = await driveCard(db, 'org_1', 'card_1', {
-      runner: { sandbox, now: () => new Date(T), agentStep: async () => ({ spentCents: 200, done: true, note: 'did it' }) },
+      runner: { workspaceRuntime, now: () => new Date(T), agentStep: async () => ({ spentCents: 200, done: true, note: 'did it' }) },
       verify: { now: () => new Date(T), runChecks: async () => pass },
     });
 
@@ -54,7 +57,7 @@ describe('driveCard — run then verify, in one call', () => {
 
     let verified = false;
     const res = await driveCard(db, 'org_1', 'card_1', {
-      runner: { sandbox, now: () => new Date(T), agentStep: async () => ({ spentCents: 1500, done: false }) },
+      runner: { workspaceRuntime, now: () => new Date(T), agentStep: async () => ({ spentCents: 1500, done: false }) },
       verify: { now: () => new Date(T), runChecks: async () => { verified = true; return pass; } },
     });
 

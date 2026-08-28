@@ -87,7 +87,7 @@ describe('stopping a turn, and never leaving a lock behind', () => {
     const id = await startRun();
     const outcome = await stopActiveRun(db, orgId, 'loom', {
       halt: async () => {
-        throw new Error('daytona is down');
+        throw new Error('workspace is down');
       },
     });
     // Being locked out of your own conversation by a SECOND failure is the

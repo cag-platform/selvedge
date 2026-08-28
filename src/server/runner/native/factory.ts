@@ -5,7 +5,7 @@ import { gradeAcceptance } from '../../verify/grader.js';
 import { buildGraderClient } from '../../llm/factory.js';
 import { evalModel } from '../../llm/config.js';
 import { providerForModel } from '../../llm/pricing.js';
-import { daytonaEngine } from './provider.js';
+import { nativeWorkspaceEngine } from './provider.js';
 
 /**
  * Assemble the build engine from the environment, or return null when it isn't
@@ -13,7 +13,7 @@ import { daytonaEngine } from './provider.js';
  * everything below is injected. When null, an approved card simply waits — no
  * inert half-run, no surprise spend.
  *
- * Requires the Daytona key (the sandbox), the Claude Code auth token (the agent),
+ * Requires OpenAI container access, the Preview Relay, and Claude Code auth,
  * and a GitHub token (to clone the customer's repo and push the review branch).
  * The verify half runs the template checks, plus — when OPENAI_API_KEY is set —
  * the independent grader on the acceptance check. No grader key means judged
@@ -40,20 +40,16 @@ export function agentModelFromEnv(env: NodeJS.ProcessEnv = process.env): string 
 }
 
 export function buildBuildEngine(db: Db): DriveDeps | null {
-  const daytonaKey = process.env.DAYTONA_API_KEY?.trim();
-  // NEITHER GITHUB NOR THE MODEL IS CHECKED HERE, for the same reason: both are
-  // answered per org at use time, so a deployment-wide credential is neither
-  // required nor sufficient. A card whose repo can't be reached, or whose org
-  // has connected no account for the agent, fails with the reason rather than
-  // making the whole engine report itself absent.
-  //
-  // Only the machines are the deployment's.
-  if (!daytonaKey) return null;
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  const relaySecret = process.env.PREVIEW_RELAY_SIGNING_SECRET?.trim();
+  const relayOrigin = process.env.PREVIEW_RELAY_PUBLIC_ORIGIN?.trim();
+  // GitHub isn't checked here any more: reaching a repo is answered per org and
+  // per repo at use time, so a deployment-wide token is neither required nor
+  // sufficient. A card whose repo can't be reached fails with the reason.
+  if (!openaiKey || !relaySecret || !relayOrigin) return null;
 
   const agentModel = agentModelFromEnv();
-  const engine = daytonaEngine(db, {
-    ...(agentModel ? { model: agentModel } : {}),
-  });
+  const engine = nativeWorkspaceEngine(db, { ...(agentModel ? { model: agentModel } : {}) });
 
   // The independent grader — a client on a DIFFERENT provider than the agent
   // that authored the change. Absent key → no makeJudge → judged acceptance
@@ -69,7 +65,7 @@ export function buildBuildEngine(db: Db): DriveDeps | null {
   const provenance = providerForModel(model) === 'anthropic' ? 'same_model' : 'independent';
 
   return {
-    runner: { sandbox: engine.sandbox, agentStep: engine.agentStep },
+    runner: { workspaceRuntime: engine.workspaceRuntime, agentStep: engine.agentStep },
     verify: {
       runChecks: buildTemplateRunChecks(db, {
         ...(grader

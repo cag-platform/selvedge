@@ -1,7 +1,7 @@
 import type { AgentId } from '../../../shared/agents.js';
 import type { ToolEvent } from '../../../shared/types/toolEvent.js';
-import { claudeCommand, parseAssistantText, parseResult, parseToolEvents } from '../daytona/agentCommand.js';
-import { codexCommand, codexInstallCommand, codexModel, parseCodexEvents, parseCodexResult, parseCodexText } from '../daytona/codexCommand.js';
+import { claudeCommand, parseAssistantText, parseResult, parseToolEvents } from '../workers/claudeCommand.js';
+import { codexCommand, codexInstallCommand, codexModel, parseCodexEvents, parseCodexResult, parseCodexText } from '../workers/codexCommand.js';
 import { costUsd } from '../../llm/pricing.js';
 import type { BuilderAuth } from '../../build/builderAuth.js';
 
@@ -53,7 +53,7 @@ function claudeDriver(auth: BuilderAuth): AgentDriver {
     // The Daytona base image ships the Claude Code CLI, and sandbox.ts installs
     // it if a future image doesn't.
     setupCommand: null,
-    command: (prompt, opts) => claudeCommand(prompt, opts.model ?? 'sonnet', opts.resumeSessionId, opts.mode, auth),
+    command: (prompt, opts) => claudeCommand(prompt, opts.model ?? 'sonnet', opts.resumeSessionId, opts.mode),
     result: (log) => {
       const parsed = parseResult(log);
       return {
@@ -74,7 +74,6 @@ function codexDriver(auth: BuilderAuth): AgentDriver {
     setupCommand: codexInstallCommand(),
     command: (prompt, opts) =>
       codexCommand(prompt, {
-        auth,
         model: opts.model ?? codexModel(),
         resumeSessionId: opts.resumeSessionId ?? null,
         mode: opts.mode,

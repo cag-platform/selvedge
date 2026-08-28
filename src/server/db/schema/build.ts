@@ -18,7 +18,7 @@ export const projectBuild = pgTable(
   {
     orgId: text('org_id').notNull(),
     projectId: text('project_id').notNull(),
-    /** The live Daytona sandbox id, or null when none is running. */
+    /** The temporary Development Workspace id, or null when none exists. */
     sandboxId: text('sandbox_id'),
     /** The Claude Code session id, for --resume so iteration continues the conversation. */
     claudeSessionId: text('claude_session_id'),

@@ -7,7 +7,7 @@ import { stageUpload, getStagedUpload, consumeStagedUpload, discardStagedUpload,
 /**
  * The staged-upload registry: the disk-backed half of "attach way more than
  * a JSON body can hold" (see routes/workshop.ts's /uploads endpoint and
- * build/agent.ts's localPath file-writing path). No HTTP or Daytona here —
+ * build/agent.ts's localPath file-writing path). No HTTP or live workspace here —
  * just the registry's own scoping, consume-once, and cleanup behavior.
  */
 

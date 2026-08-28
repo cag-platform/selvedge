@@ -13,8 +13,7 @@ import { pollDeployStates } from '../connectors/host/poller.js';
 import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
-import { maintainSandboxArchives, runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
-import { configuredBuskaClient, runBuskaPipeline } from '../distribution/ingestBuska.js';
+import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -28,13 +27,6 @@ export function startCronJobs(db: Db): void {
   const pushSender = buildPushSender();
   cron.schedule('*/15 * * * *', () => {
     runDigestSchedule(db, new Date(), (orgId) => buildComposeDeps(db, orgId), pushSender).catch((err) => console.error('digest schedule failed:', err));
-  });
-
-  // Rotate through two search concepts at midnight/noon UTC. Six calls per
-  // run covers Reddit, X, and Hacker News without burning a monthly quota in days.
-  if (process.env.BUSKA_API_KEY) cron.schedule('0 */12 * * *', () => {
-    const client = configuredBuskaClient();
-    if (client) runBuskaPipeline(db, client).catch((err) => console.error('Buska distribution scan failed:', err));
   });
 
   // The health monitor. State is held across ticks (in-process, single-process
@@ -79,15 +71,10 @@ export function startCronJobs(db: Db): void {
    * Only fired where Daytona is actually configured — on a deployment without
    * it there is nothing to sweep and the API calls would just log failures.
    */
-  if (process.env.DAYTONA_API_KEY) {
-    const maintainArchives = () => maintainSandboxArchives()
-      .then(({ archived }) => { if (archived.length) console.info(`archived ${archived.length} inactive Selvedge sandbox${archived.length === 1 ? '' : 'es'}`); })
-      .catch((err) => console.error('sandbox archive maintenance failed:', err));
-    void maintainArchives();
+  if (process.env.OPENAI_API_KEY && process.env.PREVIEW_RELAY_SIGNING_SECRET) {
     cron.schedule('* * * * *', () => {
       runSandboxSweep(db).catch((err) => console.error('sandbox sweep failed:', err));
     });
-    cron.schedule('7 * * * *', maintainArchives);
   }
 
   cron.schedule('0 3 * * *', () => {
@@ -95,7 +82,7 @@ export function startCronJobs(db: Db): void {
     // The no-silent-leak check: what Daytona says it is running, against what
     // we think. Anything it is running that we have no row for is money leaving
     // with nothing to attribute it to.
-    if (process.env.DAYTONA_API_KEY) {
+    if (process.env.OPENAI_API_KEY && process.env.PREVIEW_RELAY_SIGNING_SECRET) {
       runSandboxReconciliation(db)
         .then(({ strays, ghosts }) => {
           if (strays.length || ghosts.length) {
