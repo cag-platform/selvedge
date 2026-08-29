@@ -150,6 +150,7 @@ function demoPack(input: {
   knownFlaky?: { pattern: string; note: string };
   gap?: { gap: string; summary: string; blocking: string };
   inProgress?: { ref: string; summary: string; openedAt: Date; lastActivityAt: Date };
+  liveUrl?: string;
 }): ContextPack {
   const pack: ContextPack = {
     pack_version: '1.0',
@@ -158,6 +159,7 @@ function demoPack(input: {
       name: input.name,
       owner_description: input.description,
       audience: input.audience,
+      ...(input.liveUrl ? { links: { live_url: input.liveUrl } } : {}),
     },
     stakes: {
       tier: input.tier,
@@ -254,6 +256,7 @@ function packsFor(now: Date): ContextPack[] {
       cadence: 'daily',
       deployedAt: ago(now, 1, 'day'),
       glossary: { term: 'handoff', preferred: 'shift handoff' },
+      liveUrl: 'https://tryselvedge.com/demo-apps/relay',
       gap: {
         gap: 'health-check-route',
         summary: 'Monitoring still points at the old /health route.',

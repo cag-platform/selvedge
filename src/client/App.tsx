@@ -38,6 +38,7 @@ const Changelog = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m
 const DemoLoginTransfer = lazy(() =>
   import('./pages/DemoLoginTransfer.js').then((m) => ({ default: m.DemoLoginTransfer })),
 );
+const DemoAppPreview = lazy(() => import('./pages/DemoAppPreview.js').then((m) => ({ default: m.DemoAppPreview })));
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -249,6 +250,9 @@ export default function App() {
           </ClerkLoaded>
         }
       />
+      {/* The isolated marketing seed's live app. Public because it contains no
+          customer data and must render inside the signed preview relay. */}
+      <Route path="/demo-apps/relay" element={<Suspense fallback={null}><DemoAppPreview /></Suspense>} />
       <Route path="*" element={<AuthedApp />} />
     </Routes>
   );

@@ -95,6 +95,15 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   // Opened by the failure that needs it, and stays open afterwards so a second
   // variable can go in without hunting for the link again.
   const [envOpen, setEnvOpen] = useState(false);
+  const sameOriginLiveUrl = (() => {
+    if (!data.live_url || typeof window === 'undefined') return null;
+    try {
+      const url = new URL(data.live_url);
+      return url.origin === window.location.origin ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  })();
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -110,8 +119,16 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   // Opening the workspace should show the work, not another button. Only
   // staged work auto-starts a preview; browsing old context remains passive.
   useEffect(() => {
-    if (data.staged_changes_ready && preview === null && !busy) void load();
-  }, [data.staged_changes_ready, preview, busy, load]);
+    if (preview !== null || busy) return;
+    // A same-origin live app is safe to embed as the stable baseline when no
+    // staged workspace copy exists. External deployments may block framing,
+    // so those remain one-click links instead of rendering as a blank iframe.
+    if (!data.staged_changes_ready && sameOriginLiveUrl) {
+      setPreview({ state: 'ready', url: sameOriginLiveUrl, message: null });
+      return;
+    }
+    if (data.staged_changes_ready) void load();
+  }, [data.staged_changes_ready, preview, busy, load, sameOriginLiveUrl]);
 
   // When a turn finishes, what you are looking at is out of date — refresh it
   // so the preview shows what the agent just did.
