@@ -90,29 +90,8 @@ export function Now() {
         </h1>
       </header>
 
-      {continuationAvailable && (
-        <div className="mt-8 flex max-w-4xl flex-col gap-4 rounded-pane bg-sage p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-          <div><strong className="block text-body-lg text-ink">Already building somewhere else?</strong><p className="mt-1 text-body text-ink-dim">Bring the project and its AI conversation. Continue without explaining it all again.</p></div>
-          <button type="button" onClick={() => navigate('/continue')} className="shrink-0 rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Continue a project →</button>
-        </div>
-      )}
-
-      {projects.length > 0 ? (
-        <main className="mt-12 space-y-12">
-          {needs.length > 0 && <ProjectGroup title="Needs you" places={needs} onOpen={startHere} />}
-          {moving.length > 0 && <ProjectGroup title="In progress" places={moving} onOpen={startHere} />}
-          {review.length > 0 && <ProjectGroup title="Ready to review" places={review} onOpen={startHere} />}
-          {rest.length > 0 && <ProjectGroup title={needs.length || moving.length || review.length ? 'Your projects' : 'Pick up where you left off'} places={rest} onOpen={startHere} />}
-        </main>
-      ) : data ? (
-        <section className="mt-12 max-w-3xl rounded-pane bg-panel p-7 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-9">
-          <h2 className="font-display text-3xl font-normal text-ink">Give your work a home.</h2>
-          <p className="mt-3 max-w-xl text-body-lg text-ink-dim">Connect an existing repository or bring over a project from Replit. Its conversations, decisions, changes, and releases stay together from then on.</p>
-          <div className="mt-6 flex flex-wrap gap-3"><Link to="/migrate" className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Bring in a project</Link><Link to="/projects" className="rounded-full bg-panel-soft px-5 py-2.5 text-body font-medium text-ink">Connect GitHub</Link></div>
-        </section>
-      ) : null}
-
-      <section className="mt-14 grid gap-5 lg:grid-cols-[1.45fr_.55fr]">
+      <main className="mt-9 grid items-start gap-8 lg:grid-cols-[minmax(0,.82fr)_minmax(0,1.18fr)] xl:gap-10">
+        <div className="space-y-5 lg:sticky lg:top-8">
         <form onSubmit={(e) => void start(e)} className="rounded-pane bg-panel p-5 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-display text-2xl font-normal text-ink">Start something</h2><p className="mt-1 text-meta text-ink-dim">Choose its home. Selvedge brings the project context and current builder.</p></div>
@@ -126,19 +105,45 @@ export function Now() {
           {error && <p role="alert" className="mt-3 text-body text-thread">{error}</p>}
         </form>
 
+        {continuationAvailable && (
+          <div className="rounded-pane bg-sage p-5 sm:p-6">
+            <strong className="block text-body-lg text-ink">Already building somewhere else?</strong><p className="mt-1 text-body text-ink-dim">Bring the project and its AI conversation. Continue without explaining it all again.</p>
+            <button type="button" onClick={() => navigate('/continue')} className="mt-4 rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Continue a project →</button>
+          </div>
+        )}
+
         <aside className="rounded-pane bg-sage p-6">
           <p className="text-meta font-semibold text-action-bright">The Selvedge promise</p>
           <p className="mt-3 font-display text-2xl leading-snug text-ink">Your project gets better as AI gets better.</p>
           <p className="mt-3 text-body leading-relaxed text-ink-dim">Switch builders or return months later. The project stays whole and its context is ready.</p>
         </aside>
-      </section>
+        </div>
 
-      {subjects.length > 0 && (
-        <section className="mt-12">
-          <div className="mb-4"><h2 className="font-display text-2xl font-normal text-ink">Ideas and conversations</h2><p className="mt-1 text-meta text-ink-dim">Work that does not belong to a codebase yet.</p></div>
-          <div className="flex flex-wrap gap-2">{subjects.map((subject) => <button key={subject.id} onClick={() => startHere(subject)} className="rounded-full bg-panel px-4 py-2 text-body text-ink shadow-[0_8px_24px_rgba(26,58,40,0.05)] hover:bg-panel-soft">{subject.name}</button>)}</div>
-        </section>
-      )}
+        <div className="min-w-0">
+          {projects.length > 0 ? (
+            <div className="space-y-10">
+              {needs.length > 0 && <ProjectGroup title="Needs you" places={needs} onOpen={startHere} />}
+              {moving.length > 0 && <ProjectGroup title="In progress" places={moving} onOpen={startHere} />}
+              {review.length > 0 && <ProjectGroup title="Ready to review" places={review} onOpen={startHere} />}
+              {rest.length > 0 && <ProjectGroup title={needs.length || moving.length || review.length ? 'Other active projects' : 'Active projects'} places={rest} onOpen={startHere} />}
+            </div>
+          ) : data ? (
+            <section className="rounded-pane bg-panel p-7 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-9">
+              <h2 className="font-display text-3xl font-normal text-ink">Give your work a home.</h2>
+              <p className="mt-3 max-w-xl text-body-lg text-ink-dim">Connect an existing repository or bring over a project from Replit. Its conversations, decisions, changes, and releases stay together from then on.</p>
+              <div className="mt-6 flex flex-wrap gap-3"><Link to="/migrate" className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Bring in a project</Link><Link to="/projects" className="rounded-full bg-panel-soft px-5 py-2.5 text-body font-medium text-ink">Connect GitHub</Link></div>
+            </section>
+          ) : null}
+
+          {subjects.length > 0 && (
+            <section className="mt-10">
+              <div className="mb-4"><h2 className="font-display text-2xl font-normal text-ink">Ideas and conversations</h2><p className="mt-1 text-meta text-ink-dim">Work that does not belong to a codebase yet.</p></div>
+              <div className="flex flex-wrap gap-2">{subjects.map((subject) => <button key={subject.id} onClick={() => startHere(subject)} className="rounded-full bg-panel px-4 py-2 text-body text-ink shadow-[0_8px_24px_rgba(26,58,40,0.05)] hover:bg-panel-soft">{subject.name}</button>)}</div>
+            </section>
+          )}
+        </div>
+      </main>
+
     </div>
   );
 }
@@ -147,7 +152,7 @@ function ProjectGroup({ title, places, onOpen }: { title: string; places: RailPl
   return (
     <section aria-label={title}>
       <div className="mb-4 flex items-baseline justify-between gap-4"><h2 className="font-display text-2xl font-normal text-ink">{title}</h2><span className="text-meta text-ink-quiet">{places.length} {places.length === 1 ? 'project' : 'projects'}</span></div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{places.map((place) => <HomeProject key={place.id} place={place} onOpen={() => onOpen(place)} />)}</div>
+      <div className="grid gap-4 sm:grid-cols-2">{places.map((place) => <HomeProject key={place.id} place={place} onOpen={() => onOpen(place)} />)}</div>
     </section>
   );
 }
