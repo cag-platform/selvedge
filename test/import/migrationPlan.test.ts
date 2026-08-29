@@ -28,7 +28,7 @@ describe('migration planner', () => {
   it('keeps ship blocked after destinations are chosen until verification passes', () => {
     const plan = buildMigrationPlan(map, { repository: 'acme/app', hosting: 'railway', database: 'neon' });
     expect(plan.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
-    const verified = recordMigrationVerification(plan, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: new Date().toISOString() });
+    const verified = recordMigrationVerification(plan, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], guided_journey: { status: 'passed', name: 'Test', steps: [] }, limitations: [], verified_at: new Date().toISOString() });
     expect(verified.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
     expect(verified.steps.find((step) => step.id === 'ship')?.blockers).not.toContain('Independent verification must pass before shipping.');
     expect(plan.steps.find((step) => step.id === 'verify')?.owner).toBe('verification_agent');

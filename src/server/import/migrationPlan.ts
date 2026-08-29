@@ -78,7 +78,7 @@ export function rebuildMigrationPlan(map: MigrationProjectMap, destinations: Des
     }),
   };
   return current.steps.find((step) => step.id === 'verify')?.state === 'complete'
-    ? recordMigrationVerification(merged, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: now.toISOString() }, now)
+    ? recordMigrationVerification(merged, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], guided_journey: { status: 'passed', name: 'Legacy verified migration', steps: [] }, limitations: [], verified_at: now.toISOString() }, now)
     : merged;
 }
 

@@ -36,6 +36,7 @@ describe('migration preview verifier', () => {
       consoleErrors: [],
       failedRequests: [],
       routesChecked: ['/'],
+      guidedJourney: { status: 'passed', name: 'No safe interaction needed', steps: [] },
       error: null,
     }, ['desktop-id', 'mobile-id'], new Date('2026-08-29T00:01:00Z'));
     expect(result.status).toBe('passed');
@@ -56,6 +57,7 @@ describe('migration preview verifier', () => {
       consoleErrors: ['Uncaught Error: startup failed'],
       failedRequests: [],
       routesChecked: ['/'],
+      guidedJourney: { status: 'passed', name: 'No safe interaction needed', steps: [] },
       error: null,
     }, ['desktop-id', 'mobile-id']);
     expect(result.status).toBe('failed');

@@ -35,6 +35,7 @@ export async function verifyMigrationPreview(url: string, now = new Date(), fetc
     console_errors: [],
     failed_requests: [],
     routes_checked: [],
+    guided_journey: { status: 'unavailable', name: 'Guided smoke journey', steps: [] },
     limitations: ['This verifier checks the delivered root document. Screenshot, console, network, authenticated-flow, and multi-route evidence are not connected yet.'],
     verified_at: now.toISOString(),
   };
@@ -44,6 +45,7 @@ export function attachBrowserEvidence(base: MigrationVerification, evidence: Mig
   const checks = [...base.checks];
   checks.push({ name: 'Browser rendered the app', status: evidence.error ? 'failed' : 'passed', detail: evidence.error ?? `Rendered ${evidence.routesChecked.length || 1} safe route(s), including the home screen at desktop and mobile sizes.` });
   checks.push({ name: 'Safe internal routes explored', status: evidence.error ? 'unavailable' : 'passed', detail: evidence.routesChecked.length > 1 ? `Checked ${evidence.routesChecked.length} read-only routes discovered from the app's own navigation.` : 'No additional safe internal navigation routes were exposed by the app.' });
+  checks.push({ name: 'Guided UI journey', status: evidence.guidedJourney.status === 'passed' ? 'passed' : evidence.guidedJourney.status === 'failed' ? 'failed' : 'unavailable', detail: evidence.guidedJourney.status === 'passed' ? (evidence.guidedJourney.steps.length ? `Completed ${evidence.guidedJourney.steps.length} safe interaction(s): ${evidence.guidedJourney.name}.` : 'The app exposed no additional safe interaction that needed exercising.') : evidence.guidedJourney.status === 'failed' ? 'A planned read-only UI interaction did not complete cleanly.' : 'The independent journey planner was unavailable.' });
   checks.push({ name: 'Responsive screenshots captured', status: screenshotIds.length >= 2 ? 'passed' : 'unavailable', detail: screenshotIds.length >= 2 ? 'Desktop and mobile evidence was stored.' : 'Both desktop and mobile screenshots could not be stored.' });
   checks.push({ name: 'No browser console errors', status: evidence.consoleErrors.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.consoleErrors.length ? `${evidence.consoleErrors.length} console error(s) were observed.` : 'No console errors were observed during capture.' });
   checks.push({ name: 'No failed critical requests', status: evidence.failedRequests.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.failedRequests.length ? `${evidence.failedRequests.length} failed or 5xx request(s) were observed.` : 'No failed or 5xx requests were observed during capture.' });
@@ -58,7 +60,8 @@ export function attachBrowserEvidence(base: MigrationVerification, evidence: Mig
     console_errors: evidence.consoleErrors,
     failed_requests: evidence.failedRequests,
     routes_checked: evidence.routesChecked,
-    limitations: ['Authenticated user journeys, form submissions, and destructive actions are not exercised automatically.'],
+    guided_journey: evidence.guidedJourney,
+    limitations: ['Authenticated sessions, form submissions, and destructive or externally consequential actions require explicit owner-approved verification.'],
     verified_at: now.toISOString(),
   };
 }

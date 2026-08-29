@@ -42,7 +42,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], guided_journey: { status: 'passed', name: 'Test', steps: [] }, limitations: [], verified_at: new Date().toISOString() }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -122,7 +122,7 @@ describe('web/routes/import/replit', () => {
       captureBrowserEvidence: async () => ({ screenshots: [
         { id: 'desktop-home', route: '/', bytes: new Uint8Array([1]), mime: 'image/png', width: 1440, height: 1000 },
         { id: 'mobile-home', route: '/', bytes: new Uint8Array([2]), mime: 'image/png', width: 390, height: 844 },
-      ], consoleErrors: [], failedRequests: [], routesChecked: ['/'], error: null }),
+      ], consoleErrors: [], failedRequests: [], routesChecked: ['/'], guidedJourney: { status: 'passed', name: 'Open navigation', steps: [{ label: 'Menu', intent: 'Reveal navigation', outcome: 'passed', detail: 'The control responded.' }] }, error: null }),
       visualStore: {
         put: async (key: string) => { stored.push(key); },
         signedGet: async (key: string) => `https://evidence.example/${encodeURIComponent(key)}`,

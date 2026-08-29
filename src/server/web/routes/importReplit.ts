@@ -13,6 +13,7 @@ import { inspectProjectFiles } from '../../import/projectMap.js';
 import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
 import { attachBrowserEvidence, verifyMigrationPreview } from '../../import/previewVerifier.js';
 import { captureMigrationBrowserEvidence, type MigrationBrowserEvidence } from '../../import/browserEvidence.js';
+import { planMigrationGuidedJourney } from '../../import/guidedJourney.js';
 import type { MigrationVerification } from '../../../shared/types/migration.js';
 import { configFor } from '../../build/engineConfig.js';
 import { ensureSandbox } from '../../build/sandbox.js';
@@ -81,7 +82,6 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     return ensurePreview(db, orgId, projectId, config.cfg);
   });
   const verifyPreview = deps.verifyPreview ?? verifyMigrationPreview;
-  const captureBrowserEvidence = deps.captureBrowserEvidence ?? captureMigrationBrowserEvidence;
   const visualStore = deps.visualStore === undefined ? visualObjectStore() : deps.visualStore;
   const migrationResponse = async (row: typeof migrationJourneys.$inferSelect) => {
     const destinations = row.destinations as Record<string, string>;
@@ -167,7 +167,9 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if (!build?.previewUrl) { res.status(409).json({ error: 'The migrated app needs a running preview before it can be verified.' }); return; }
     let verification = await verifyPreview(build.previewUrl);
     if (!deps.verifyPreview || deps.captureBrowserEvidence) {
-      const evidence = await captureBrowserEvidence(build.previewUrl);
+      const evidence = deps.captureBrowserEvidence
+        ? await deps.captureBrowserEvidence(build.previewUrl)
+        : await captureMigrationBrowserEvidence(build.previewUrl, (candidates) => planMigrationGuidedJourney(db, orgId, candidates));
       const screenshotIds: string[] = [];
       if (visualStore) {
         try {

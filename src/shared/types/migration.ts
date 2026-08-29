@@ -46,6 +46,7 @@ export type MigrationVerification = {
   console_errors: string[];
   failed_requests: Array<{ url: string; status: number | null; detail: string }>;
   routes_checked: string[];
+  guided_journey: { status: 'passed' | 'failed' | 'unavailable'; name: string; steps: Array<{ label: string; intent: string; outcome: 'passed' | 'failed'; detail: string }> };
   limitations: string[];
   verified_at: string;
 };
