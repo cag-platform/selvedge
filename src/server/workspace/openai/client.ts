@@ -8,6 +8,10 @@
  */
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+// OpenAI containers currently accept at most 20 minutes here. The anchor is
+// last_active_at, so active work refreshes the idle window; Selvedge keeps its
+// longer workspace/session TTL separately.
+export const OPENAI_MAX_CONTAINER_IDLE_MINUTES = 20;
 
 export type OpenAiMemoryLimit = '1g' | '4g' | '16g' | '64g';
 
@@ -121,11 +125,15 @@ export class OpenAiWorkspaceClient {
     memoryLimit: OpenAiMemoryLimit;
     networkPolicy: OpenAiNetworkPolicy;
   }): Promise<OpenAiContainer> {
+    const expiresAfterMinutes = Math.min(
+      OPENAI_MAX_CONTAINER_IDLE_MINUTES,
+      Math.max(1, Math.floor(input.expiresAfterMinutes)),
+    );
     return this.request('/containers', {
       method: 'POST',
       body: JSON.stringify({
         name: input.name,
-        expires_after: { anchor: 'last_active_at', minutes: input.expiresAfterMinutes },
+        expires_after: { anchor: 'last_active_at', minutes: expiresAfterMinutes },
         memory_limit: input.memoryLimit,
         network_policy: input.networkPolicy,
       }),

@@ -39,6 +39,28 @@ describe('OpenAiWorkspaceClient', () => {
     expect(new Headers(captured.init.headers).get('Authorization')).toBe('Bearer secret-test-key');
   });
 
+  it('caps Selvedge workspace TTLs at the provider container idle-expiry limit', async () => {
+    let body: Record<string, unknown> | null = null;
+    const client = new OpenAiWorkspaceClient({
+      apiKey: 'secret-test-key',
+      fetch: (async (_url, init) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return response({ id: 'cntr_1', object: 'container', status: 'running', name: 'selvedge', created_at: 1 });
+      }) as typeof fetch,
+    });
+
+    await client.createContainer({
+      name: 'selvedge',
+      expiresAfterMinutes: 24 * 60,
+      memoryLimit: '4g',
+      networkPolicy: { type: 'disabled' },
+    });
+
+    expect(body).toMatchObject({
+      expires_after: { anchor: 'last_active_at', minutes: 20 },
+    });
+  });
+
   it('attaches hosted shell to the chosen container and returns structured evidence', async () => {
     const client = new OpenAiWorkspaceClient({
       apiKey: 'key',
