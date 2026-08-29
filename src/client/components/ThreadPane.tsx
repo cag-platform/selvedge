@@ -47,8 +47,15 @@ type ContextReceipt = { sections: { about: string[]; recent: string[]; open: str
 
 function MigrationJourneyPanel({ projectId, working }: { projectId: string; working: boolean }) {
   const [journey, setJourney] = useState<MigrationJourney | null>(null);
+  const [hosting, setHosting] = useState('owner');
+  const [database, setDatabase] = useState('owner');
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
-    api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`).then(setJourney).catch(() => setJourney(null));
+    api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`).then((loaded) => {
+      setJourney(loaded);
+      if (loaded.destinations.hosting) setHosting(loaded.destinations.hosting);
+      if (loaded.destinations.database) setDatabase(loaded.destinations.database);
+    }).catch(() => setJourney(null));
   }, [projectId, working]);
   if (!journey) return null;
   const found = journey.project_map.items.filter((item) => item.status === 'found');
@@ -56,6 +63,7 @@ function MigrationJourneyPanel({ projectId, working }: { projectId: string; work
   return <section className="border-b border-hairline bg-sage px-work-loose py-work" aria-label="Migration project map">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="section-label">Migration · {working ? 'agents working' : journey.state.replaceAll('_', ' ')}</p><h2 className="mt-1 font-display text-xl text-ink">Selvedge inspected {journey.project_map.files_inspected} files.</h2><p className="mt-1 text-meta text-ink-dim">{journey.project_map.stack.length ? journey.project_map.stack.join(' · ') : 'Stack not identified yet'} · original environment untouched</p></div><span className="rounded-full bg-panel px-3 py-1.5 font-mono text-tech text-ink-dim">{found.length} observed · {access.length} need access</span></div>
     <div className="mt-3 flex flex-wrap gap-2">{journey.project_map.items.map((item) => <span key={item.kind} title={item.note} className={`rounded-full border px-2.5 py-1 text-meta ${item.status === 'found' ? 'border-healthy/40 text-ink' : item.status === 'needs_access' ? 'border-brass/50 text-ink-dim' : 'border-hairline text-ink-quiet'}`}>{item.status === 'found' ? '✓' : item.status === 'needs_access' ? '○' : '–'} {item.label}</span>)}</div>
+    <details className="mt-3"><summary className="cursor-pointer text-meta text-action-bright">Choose where the migrated app should live</summary><div className="mt-3 flex flex-wrap items-end gap-3"><label className="text-meta text-ink-dim">Hosting<select value={hosting} onChange={(event) => setHosting(event.target.value)} className="mt-1 block rounded-inset border border-hairline bg-panel px-3 py-2 text-body text-ink"><option value="owner">My connected account</option><option value="railway">Railway</option><option value="vercel">Vercel</option><option value="cloudflare">Cloudflare</option></select></label><label className="text-meta text-ink-dim">Database<select value={database} onChange={(event) => setDatabase(event.target.value)} className="mt-1 block rounded-inset border border-hairline bg-panel px-3 py-2 text-body text-ink"><option value="owner">My connected database</option><option value="neon">Neon</option><option value="supabase">Supabase</option></select></label><button type="button" disabled={saving} onClick={async () => { setSaving(true); try { setJourney(await api.patch<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration/destinations`, { hosting, database })); } finally { setSaving(false); } }} className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink disabled:opacity-50">{saving ? 'Saving…' : 'Use these destinations'}</button></div><p className="mt-2 text-meta text-ink-quiet">This records intent only. Selvedge will request the relevant account connection before provisioning or moving data.</p></details>
   </section>;
 }
 

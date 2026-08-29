@@ -59,6 +59,24 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     res.json({ id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, destinations: row.destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() });
   }));
 
+  router.patch('/api/projects/:projectId/migration/destinations', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const hosting = typeof body.hosting === 'string' ? body.hosting : '';
+    const database = typeof body.database === 'string' ? body.database : '';
+    const allowedHosting = new Set(['owner', 'railway', 'vercel', 'cloudflare']);
+    const allowedDatabase = new Set(['owner', 'neon', 'supabase']);
+    if (!allowedHosting.has(hosting) || !allowedDatabase.has(database)) {
+      res.status(400).json({ error: 'Choose a supported hosting and database destination.' }); return;
+    }
+    const destinations = { ...(current.destinations as Record<string, unknown>), hosting, database };
+    const [updated] = await db.update(migrationJourneys).set({ destinations, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json({ id: updated!.id, project_id: updated!.projectId, source: updated!.source, state: updated!.state, original_untouched: updated!.originalUntouched, project_map: updated!.projectMap, destinations: updated!.destinations, created_at: updated!.createdAt.toISOString(), updated_at: updated!.updatedAt.toISOString() });
+  }));
+
   router.post(
     '/api/import/replit',
     (req, res, next) => {

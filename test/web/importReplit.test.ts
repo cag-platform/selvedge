@@ -66,6 +66,16 @@ describe('web/routes/import/replit', () => {
     expect(pack?.topology.sources.some((s) => s.connector === 'github' && s.resource_id === 'acme/loom-shop')).toBe(true);
   });
 
+  it('records neutral destination intent without provisioning anything', async () => {
+    await send();
+    const selected = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'railway', database: 'neon' });
+    expect(selected.status).toBe(200);
+    expect(selected.body.destinations).toMatchObject({ repository: 'acme/loom-shop', hosting: 'railway', database: 'neon' });
+    expect(selected.body.original_untouched).toBe(true);
+    const rejected = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'mystery', database: 'neon' });
+    expect(rejected.status).toBe(400);
+  });
+
   /**
    * The half-state, said exactly. A repo was minted, files did not land —
    * "it failed" here costs an hour of confusion; the response names the
