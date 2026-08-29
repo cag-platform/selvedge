@@ -38,6 +38,17 @@ describe('OpenAI Workspace Runtime', () => {
     await expect(workspace.inspect()).rejects.toMatchObject({ status: 409, code: 'container_expired' });
   });
 
+  it('rejects an expired container while reconnecting after a Selvedge process restart', async () => {
+    const { client, runtime } = fixture();
+    vi.mocked(client.retrieveContainer).mockResolvedValueOnce({ id: 'cntr_old', status: 'expired' } as never);
+
+    await expect(runtime.reconnectWorkspaceWithContext('cntr_old', {
+      orgId: 'org_1', projectId: 'project_1', purpose: 'development',
+      source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
+      ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] }, secrets: [],
+    })).rejects.toMatchObject({ status: 409, code: 'container_expired' });
+  });
+
   it('creates a restricted temporary container and checks out the customer source', async () => {
     const { client, runtime } = fixture();
     const workspace = await runtime.createWorkspace({

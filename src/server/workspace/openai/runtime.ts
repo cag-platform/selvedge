@@ -47,6 +47,12 @@ function parseExit(stdout: string): { exitCode: number; stdout: string } {
   return { exitCode: Number(match[1]), stdout: stdout.replace(match[0], match[0].startsWith('\n') ? '\n' : '') };
 }
 
+function assertContainerUsable(container: { status: string }): void {
+  if (container.status === 'expired') {
+    throw new OpenAiWorkspaceApiError(409, 'container_expired', 'Container has expired.');
+  }
+}
+
 class OpenAiWorkspace implements Workspace {
   readonly capabilities: WorkspaceCapabilities = {
     longRunningProcesses: true,
@@ -68,9 +74,7 @@ class OpenAiWorkspace implements Workspace {
   async inspect(): Promise<WorkspaceHandle> {
     if (this.state === 'destroyed') return { id: this.id, state: this.state };
     const container = await this.options.client.retrieveContainer(this.id);
-    if (container.status === 'expired') {
-      throw new OpenAiWorkspaceApiError(409, 'container_expired', 'Container has expired.');
-    }
+    assertContainerUsable(container);
     return { id: this.id, state: container.status === 'running' ? 'ready' : 'stopped' };
   }
 
@@ -254,13 +258,13 @@ export class OpenAiWorkspaceRuntime implements WorkspaceRuntime {
   async reconnectWorkspace(workspaceId: string): Promise<Workspace> {
     const metadata = this.metadata.get(workspaceId);
     if (!metadata) throw new Error('workspace metadata is unavailable; persist it before enabling reconnect across restarts');
-    await this.options.client.retrieveContainer(workspaceId);
+    assertContainerUsable(await this.options.client.retrieveContainer(workspaceId));
     return new OpenAiWorkspace(workspaceId, metadata, this.options);
   }
 
   /** Rehydrate provider-neutral metadata held by Selvedge after an API restart. */
   async reconnectWorkspaceWithContext(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace> {
-    await this.options.client.retrieveContainer(workspaceId);
+    assertContainerUsable(await this.options.client.retrieveContainer(workspaceId));
     const metadata = {
       orgId: input.orgId,
       projectId: input.projectId,
