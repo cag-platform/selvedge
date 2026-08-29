@@ -9,6 +9,7 @@ import type { ConsoleLink, ThreadData } from '../lib/inbox.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { PreviewEnv } from './PreviewEnv.js';
 import { AgentChip } from './AgentChip.js';
+import { WorkspacePreview } from './MigrationPreview.js';
 
 /**
  * THE CONTEXT PANEL — what is true about the project this thread belongs to,
@@ -189,12 +190,12 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
           )}
         </div>
         {preview?.state === 'ready' && preview.url ? (
-          <iframe
-            key={preview.url}
-            src={preview.url}
-            title="App preview"
-            className="h-96 w-full bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+          <WorkspacePreview
+            url={preview.url}
+            title={data.staged_changes_ready ? 'Latest agent work · live preview' : 'Current app · live preview'}
+            safetyLine={data.staged_changes_ready ? 'development copy · nothing ships without your approval' : 'current project baseline'}
+            onReload={() => void load()}
+            reloading={busy}
           />
         ) : (
           <div className="p-work">
