@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { zipSync } from 'fflate';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs } from '../../src/server/db/schema/index.js';
+import { migrationTestInputs, orgs } from '../../src/server/db/schema/index.js';
 import { createImportReplitRouter } from '../../src/server/web/routes/importReplit.js';
 import { createPack, getPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
@@ -22,6 +22,7 @@ describe('web/routes/import/replit', () => {
   let db: TestDb;
   let close: () => Promise<void>;
   const orgId = 'org_1';
+  const originalCredentialKey = process.env.CREDENTIALS_KEY;
 
   const enc = (s: string) => new TextEncoder().encode(s);
   const goodZip = () => Buffer.from(zipSync({ 'my-repl/index.js': enc('console.log(1)'), 'my-repl/node_modules/x.js': enc('junk') }));
@@ -30,9 +31,10 @@ describe('web/routes/import/replit', () => {
     const t = await createTestDb();
     db = t.db;
     close = t.close;
+    process.env.CREDENTIALS_KEY = 'route-test-credentials-key-that-is-at-least-32-characters';
     await db.insert(orgs).values([{ orgId, plan: 'studio' }]);
   });
-  afterEach(async () => close());
+  afterEach(async () => { if (originalCredentialKey === undefined) delete process.env.CREDENTIALS_KEY; else process.env.CREDENTIALS_KEY = originalCredentialKey; await close(); });
 
   const pushes: Array<{ repo: string; files: string[]; message: string }> = [];
   const okPush = async (repo: string, files: Array<{ path: string }>, message: string) => {
@@ -145,11 +147,18 @@ describe('web/routes/import/replit', () => {
     const createdAt = new Date('2026-08-29T00:00:00Z').toISOString();
     const planned = await request(app({ planOwnerTestFlow: async (_db: unknown, _orgId: string, goal: string) => ({ schema_version: 1, goal, status: 'approval_required', steps: [
       { id: 'step_view', label: 'Open dashboard', detail: 'View the dashboard.', boundary: 'automatic', state: 'ready', result_detail: null, evidence_artifact_ids: [] },
-      { id: 'step_create', label: 'Create draft', detail: 'Submit the draft form in the development copy.', boundary: 'approval_required', state: 'pending', result_detail: null, evidence_artifact_ids: [] },
+      { id: 'step_create', label: 'Create draft', detail: 'Submit the draft form in the development copy.', boundary: 'approval_required', state: 'pending', result_detail: null, evidence_artifact_ids: [], input_requirements: [{ id: 'project_name', label: 'Test project name', input_type: 'text', kind: 'synthetic' }] },
     ], created_at: createdAt, updated_at: createdAt }) })).post('/api/projects/loom-shop/migration/test-flow').send({ goal: 'Create a draft project' });
     expect(planned.status).toBe(200);
     expect(planned.body.test_flow).toMatchObject({ status: 'approval_required', goal: 'Create a draft project' });
     expect(planned.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').blockers).toContain('The owner-defined test flow must pass before shipping.');
+    const refused = await request(app()).put('/api/projects/loom-shop/migration/test-flow/step_create/inputs').send({ values: { project_name: 'Test draft' } });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toContain('Production credentials are refused');
+    const storedInput = await request(app()).put('/api/projects/loom-shop/migration/test-flow/step_create/inputs').send({ values: { project_name: 'Test draft' }, declared_non_production: true, production: false });
+    expect(storedInput.status).toBe(200);
+    expect(JSON.stringify(storedInput.body)).not.toContain('Test draft');
+    expect(storedInput.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_create').input_requirements[0].configured).toBe(true);
     const approved = await request(app()).post('/api/projects/loom-shop/migration/test-flow/step_create/approve').send({});
     expect(approved.status).toBe(200);
     expect(approved.body.test_flow).toMatchObject({ status: 'ready' });
@@ -165,6 +174,7 @@ describe('web/routes/import/replit', () => {
     const ran = await request(evidenceApp).post('/api/projects/loom-shop/migration/test-flow/run').send({});
     expect(ran.status).toBe(200);
     expect(ran.body.test_flow.status).toBe('passed');
+    expect(await db.select().from(migrationTestInputs)).toEqual([]);
     expect(ran.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_view').evidence_artifact_ids).toHaveLength(1);
     expect(ran.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').blockers).not.toContain('The owner-defined test flow must pass before shipping.');
     const artifactId = ran.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_view').evidence_artifact_ids[0];

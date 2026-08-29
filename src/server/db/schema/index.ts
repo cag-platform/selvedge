@@ -44,3 +44,4 @@ export * from './continuations.js';
 export * from './distribution.js';
 export * from './generatedVisuals.js';
 export * from './migrations.js';
+export * from './migrationTestInputs.js';

@@ -63,6 +63,13 @@ export type MigrationOwnerTestFlow = {
     state: 'pending' | 'approved' | 'ready' | 'running' | 'passed' | 'failed';
     result_detail: string | null;
     evidence_artifact_ids: string[];
+    input_requirements?: Array<{
+      id: string;
+      label: string;
+      input_type: 'text' | 'email' | 'password';
+      kind: 'synthetic' | 'temporary_credential';
+      configured?: boolean;
+    }>;
   }>;
   created_at: string;
   updated_at: string;

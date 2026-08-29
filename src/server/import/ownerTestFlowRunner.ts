@@ -6,6 +6,7 @@ import { evalModel } from '../llm/config.js';
 import { checkGradeBudget } from '../llm/budget.js';
 import { recordUsage } from '../llm/metering.js';
 import type { MigrationOwnerTestFlow } from '../../shared/types/migration.js';
+import type { OwnerTestInputValues } from './migrationTestInputs.js';
 
 export type OwnerFlowScreenshot = { stepId: string; route: string; bytes: Uint8Array; mime: 'image/png' };
 export type OwnerFlowRun = { flow: MigrationOwnerTestFlow; screenshots: OwnerFlowScreenshot[] };
@@ -16,7 +17,7 @@ const SAFE_AUTOMATIC = /\b(menu|navigation|nav|tab|view|details|information|info
 const PRIVATE_HOST = /^(?:localhost|0\.0\.0\.0|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|\[?::1\]?)$/i;
 const ACTION_SCHEMA = { type: 'object', properties: { candidate_id: { type: 'string' }, reason: { type: 'string' } }, required: ['candidate_id', 'reason'], additionalProperties: false } as const;
 
-export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string, flow: MigrationOwnerTestFlow, llm: LlmClient | undefined = buildGraderClient()): Promise<OwnerFlowRun> {
+export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string, flow: MigrationOwnerTestFlow, llm: LlmClient | undefined = buildGraderClient(), inputValues: OwnerTestInputValues = {}): Promise<OwnerFlowRun> {
   const screenshots: OwnerFlowScreenshot[] = [];
   if (!llm) return { flow: failRemaining(flow, 'The independent action planner is unavailable.'), screenshots };
   const budget = await checkGradeBudget(db, orgId);
@@ -27,12 +28,14 @@ export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string
     browser = await chromium.launch({ headless: true, chromiumSandbox: true, env: {}, args: ['--disable-extensions', '--disable-file-system'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block', acceptDownloads: false });
     const page = await context.newPage();
-    const allowedHost = new URL(previewUrl).hostname;
+    const allowedPreview = new URL(previewUrl);
+    const allowedHost = allowedPreview.hostname;
     const runtimeFailures: string[] = [];
     await page.route('**/*', async (route) => {
       try {
         const target = new URL(route.request().url());
         if (target.protocol === 'file:' || (PRIVATE_HOST.test(target.hostname) && target.hostname !== allowedHost)) { await route.abort('blockedbyclient'); return; }
+        if (!['GET', 'HEAD'].includes(route.request().method()) && target.origin !== allowedPreview.origin) { await route.abort('blockedbyclient'); return; }
       } catch { await route.abort('blockedbyclient'); return; }
       await route.continue();
     });
@@ -43,6 +46,20 @@ export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string
     await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined);
     for (const step of working.steps) {
       if (step.state !== 'ready') continue;
+      const requirements = step.input_requirements ?? [];
+      if (requirements.length) {
+        const values = inputValues[step.id] ?? {};
+        const missing = requirements.filter((requirement) => !values[requirement.id]);
+        if (missing.length) {
+          working = updateStep(working, step.id, 'failed', `Temporary test values are missing for: ${missing.map((item) => item.label).join(', ')}.`, []);
+          break;
+        }
+        const filled = await fillOwnerStepInputs(page, requirements, values);
+        if (!filled.ok) {
+          working = updateStep(working, step.id, 'failed', filled.detail, []);
+          break;
+        }
+      }
       const candidates = await candidatesFor(page, previewUrl, step.boundary);
       const candidate = await chooseOwnerStepAction(db, orgId, step, candidates, llm);
       if (!candidate) {
@@ -85,6 +102,28 @@ export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string
   const passed = working.steps.every((step) => step.state === 'passed');
   return { flow: { ...working, status: passed ? 'passed' : failed ? 'failed' : 'ready', updated_at: new Date().toISOString() }, screenshots };
 }
+
+async function fillOwnerStepInputs(page: Page, requirements: NonNullable<MigrationOwnerTestFlow['steps'][number]['input_requirements']>, values: Record<string, string>): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const fields = await page.locator('input:not([type="hidden"]):not([disabled]), textarea:not([disabled])').evaluateAll((elements) => elements.slice(0, 100).map((element, index) => {
+    const id = `owner-input-${index + 1}`;
+    element.setAttribute('data-selvedge-owner-input-id', id);
+    const wrappingLabel = element.closest('label')?.textContent ?? '';
+    return { id, text: [wrappingLabel, element.getAttribute('aria-label') ?? '', element.getAttribute('placeholder') ?? '', element.getAttribute('name') ?? '', element.getAttribute('id') ?? ''].join(' '), type: element.getAttribute('type') ?? (element.tagName.toLowerCase() === 'textarea' ? 'textarea' : 'text') };
+  }));
+  const used = new Set<string>();
+  for (const requirement of requirements) {
+    const wanted = normalizeFieldWords(`${requirement.id} ${requirement.label}`);
+    const ranked = fields.filter((field) => !used.has(field.id)).map((field) => { const wordScore = overlap(wanted, normalizeFieldWords(field.text)); return { field, wordScore, score: wordScore + (field.type === requirement.input_type ? 2 : 0) }; }).sort((a, b) => b.score - a.score);
+    const match = ranked[0];
+    if (!match || match.wordScore < 1) return { ok: false, detail: `Selvedge could not safely match “${requirement.label}” to a form field in the current preview.` };
+    await page.locator(`[data-selvedge-owner-input-id="${match.field.id}"]`).fill(values[requirement.id]!, { timeout: 5_000 });
+    used.add(match.field.id);
+  }
+  return { ok: true };
+}
+
+function normalizeFieldWords(value: string): Set<string> { return new Set(value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((word) => word.length > 1)); }
+function overlap(a: Set<string>, b: Set<string>): number { let score = 0; for (const word of a) if (b.has(word)) score += 1; return score; }
 
 export async function chooseOwnerStepAction(db: Db, orgId: string, step: MigrationOwnerTestFlow['steps'][number], candidates: Candidate[], llm: LlmClient): Promise<Candidate | null> {
   if (!candidates.length) return null;

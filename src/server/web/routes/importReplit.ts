@@ -26,6 +26,7 @@ import { ulid } from 'ulid';
 import { migrationEvidenceStorageKey, visualObjectStore, type VisualObjectStore } from '../../visuals/storage.js';
 import { approveOwnerTestFlowStep, createOwnerTestFlow } from '../../import/ownerTestFlow.js';
 import { runOwnerTestFlow, type OwnerFlowRun } from '../../import/ownerTestFlowRunner.js';
+import { configuredMigrationTestInputIds, consumeMigrationTestInputs, deleteMigrationTestInputs, storeMigrationTestInputs, type OwnerTestInputValues } from '../../import/migrationTestInputs.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -64,7 +65,7 @@ export type ImportReplitDeps = CreateDeps & {
   captureBrowserEvidence?: (url: string) => Promise<MigrationBrowserEvidence>;
   visualStore?: VisualObjectStore | null;
   planOwnerTestFlow?: typeof createOwnerTestFlow;
-  executeOwnerTestFlow?: (orgId: string, previewUrl: string, flow: NonNullable<(typeof migrationJourneys.$inferSelect)['ownerTestFlow']>) => Promise<OwnerFlowRun>;
+  executeOwnerTestFlow?: (orgId: string, previewUrl: string, flow: NonNullable<(typeof migrationJourneys.$inferSelect)['ownerTestFlow']>, inputs?: OwnerTestInputValues) => Promise<OwnerFlowRun>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -99,7 +100,9 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         : previewStep?.state === 'complete'
           ? { state: 'none', url: null, message: previewStep.detail }
           : { state: 'pending', url: null, message: null };
-    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: row.ownerTestFlow, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+    const configured = row.ownerTestFlow ? await configuredMigrationTestInputIds(db, row.orgId, row.id) : new Set<string>();
+    const testFlow = row.ownerTestFlow ? { ...row.ownerTestFlow, steps: row.ownerTestFlow.steps.map((step) => ({ ...step, input_requirements: (step.input_requirements ?? []).map((input) => ({ ...input, configured: configured.has(`${step.id}:${input.id}`) })) })) } : null;
+    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: testFlow, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
   };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
@@ -152,6 +155,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
     const flow = await (deps.planOwnerTestFlow ?? createOwnerTestFlow)(db, orgId, goal);
     if (!flow) { res.status(503).json({ error: 'Selvedge could not safely turn that journey into a test plan right now. Nothing was approved or run.' }); return; }
+    await deleteMigrationTestInputs(db, orgId, current.id);
     const migrationPlan = recordOwnerTestFlow(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), flow);
     const [updated] = await db.update(migrationJourneys).set({ ownerTestFlow: flow, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     res.json(await migrationResponse(updated!));
@@ -169,6 +173,21 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     res.json(await migrationResponse(updated!));
   }));
 
+  router.put('/api/projects/:projectId/migration/test-flow/:stepId/inputs', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current?.ownerTestFlow) { res.status(404).json({ error: 'No owner-defined test flow exists for this project.' }); return; }
+    const step = current.ownerTestFlow.steps.find((item) => item.id === (req.params.stepId ?? ''));
+    if (!step || !(step.input_requirements ?? []).length) { res.status(404).json({ error: 'That step does not request temporary test values.' }); return; }
+    if (req.body?.declared_non_production !== true) { res.status(400).json({ error: 'Confirm these are development-only test values. Production credentials are refused.' }); return; }
+    if (req.body?.production === true) { res.status(400).json({ error: 'Production credentials cannot be used in a migration preview test.' }); return; }
+    const values = req.body?.values && typeof req.body.values === 'object' && !Array.isArray(req.body.values) ? req.body.values as Record<string, string> : {};
+    try { await storeMigrationTestInputs(db, orgId, projectId, current.id, step, values); }
+    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Temporary test values could not be stored safely.' }); return; }
+    res.json(await migrationResponse(current));
+  }));
+
   router.post('/api/projects/:projectId/migration/test-flow/run', asyncHandler(async (req, res) => {
     const orgId = orgIdOf(req);
     const projectId = req.params.projectId ?? '';
@@ -178,9 +197,16 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const build = await getBuild(db, orgId, projectId);
     if (!build?.previewUrl) { res.status(409).json({ error: 'The isolated preview must be running before this flow can run.' }); return; }
     if (!visualStore) { res.status(503).json({ error: 'Evidence storage is unavailable, so Selvedge will not run a flow it cannot prove.' }); return; }
+    let inputValues: OwnerTestInputValues;
+    try { inputValues = await consumeMigrationTestInputs(db, orgId, current.id, current.ownerTestFlow); }
+    catch { await deleteMigrationTestInputs(db, orgId, current.id); res.status(409).json({ error: 'The temporary test values could not be opened safely. Enter fresh development-only values and try again.' }); return; }
+    const missingInputs = current.ownerTestFlow.steps.flatMap((step) => (step.input_requirements ?? []).filter((input) => !inputValues[step.id]?.[input.id]).map((input) => input.label));
+    if (missingInputs.length) { res.status(409).json({ error: `Add development-only test values for: ${missingInputs.join(', ')}.` }); return; }
     const runningFlow = { ...current.ownerTestFlow, status: 'running' as const, steps: current.ownerTestFlow.steps.map((step) => step.state === 'ready' || step.state === 'approved' ? { ...step, state: 'running' as const } : step), updated_at: new Date().toISOString() };
     await db.update(migrationJourneys).set({ ownerTestFlow: runningFlow, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
-    const result = deps.executeOwnerTestFlow ? await deps.executeOwnerTestFlow(orgId, build.previewUrl, current.ownerTestFlow) : await runOwnerTestFlow(db, orgId, build.previewUrl, current.ownerTestFlow);
+    let result: OwnerFlowRun;
+    try { result = deps.executeOwnerTestFlow ? await deps.executeOwnerTestFlow(orgId, build.previewUrl, current.ownerTestFlow, inputValues) : await runOwnerTestFlow(db, orgId, build.previewUrl, current.ownerTestFlow, undefined, inputValues); }
+    finally { await deleteMigrationTestInputs(db, orgId, current.id); }
     let flow = result.flow;
     try {
       for (const screenshot of result.screenshots) {

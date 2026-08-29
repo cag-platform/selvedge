@@ -379,6 +379,13 @@
       "when": 1788742800004,
       "tag": "0053_owner_test_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788742800005,
+      "tag": "0054_migration_test_inputs",
+      "breakpoints": true
     }
   ]
 }
