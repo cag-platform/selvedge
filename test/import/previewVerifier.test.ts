@@ -29,7 +29,10 @@ describe('migration preview verifier', () => {
     const fetcher = async () => new Response('<html><body>A meaningful application page with enough visible content for deterministic verification.</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
     const base = await verifyMigrationPreview('https://preview.example', new Date('2026-08-29T00:00:00Z'), fetcher as typeof fetch);
     const result = attachBrowserEvidence(base, {
-      screenshots: [],
+      screenshots: [
+        { id: 'desktop-home', route: '/', bytes: new Uint8Array([1]), mime: 'image/png', width: 1440, height: 1000 },
+        { id: 'mobile-home', route: '/', bytes: new Uint8Array([2]), mime: 'image/png', width: 390, height: 844 },
+      ],
       consoleErrors: [],
       failedRequests: [],
       routesChecked: ['/'],
@@ -37,6 +40,10 @@ describe('migration preview verifier', () => {
     }, ['desktop-id', 'mobile-id'], new Date('2026-08-29T00:01:00Z'));
     expect(result.status).toBe('passed');
     expect(result.screenshot_artifact_ids).toEqual(['desktop-id', 'mobile-id']);
+    expect(result.screenshot_artifacts).toEqual([
+      { id: 'desktop-id', route: '/', viewport: 'desktop' },
+      { id: 'mobile-id', route: '/', viewport: 'mobile' },
+    ]);
     expect(result.routes_checked).toEqual(['/']);
     expect(result.limitations.join(' ')).toContain('form submissions');
   });

@@ -31,6 +31,7 @@ export async function verifyMigrationPreview(url: string, now = new Date(), fetc
     independent_from_migration_agent: true,
     checks,
     screenshot_artifact_ids: [],
+    screenshot_artifacts: [],
     console_errors: [],
     failed_requests: [],
     routes_checked: [],
@@ -41,7 +42,8 @@ export async function verifyMigrationPreview(url: string, now = new Date(), fetc
 
 export function attachBrowserEvidence(base: MigrationVerification, evidence: MigrationBrowserEvidence, screenshotIds: string[], now = new Date()): MigrationVerification {
   const checks = [...base.checks];
-  checks.push({ name: 'Browser rendered the app', status: evidence.error ? 'failed' : 'passed', detail: evidence.error ?? `Rendered ${evidence.routesChecked.length || 1} route at desktop and mobile sizes.` });
+  checks.push({ name: 'Browser rendered the app', status: evidence.error ? 'failed' : 'passed', detail: evidence.error ?? `Rendered ${evidence.routesChecked.length || 1} safe route(s), including the home screen at desktop and mobile sizes.` });
+  checks.push({ name: 'Safe internal routes explored', status: evidence.error ? 'unavailable' : 'passed', detail: evidence.routesChecked.length > 1 ? `Checked ${evidence.routesChecked.length} read-only routes discovered from the app's own navigation.` : 'No additional safe internal navigation routes were exposed by the app.' });
   checks.push({ name: 'Responsive screenshots captured', status: screenshotIds.length >= 2 ? 'passed' : 'unavailable', detail: screenshotIds.length >= 2 ? 'Desktop and mobile evidence was stored.' : 'Both desktop and mobile screenshots could not be stored.' });
   checks.push({ name: 'No browser console errors', status: evidence.consoleErrors.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.consoleErrors.length ? `${evidence.consoleErrors.length} console error(s) were observed.` : 'No console errors were observed during capture.' });
   checks.push({ name: 'No failed critical requests', status: evidence.failedRequests.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.failedRequests.length ? `${evidence.failedRequests.length} failed or 5xx request(s) were observed.` : 'No failed or 5xx requests were observed during capture.' });
@@ -52,6 +54,7 @@ export function attachBrowserEvidence(base: MigrationVerification, evidence: Mig
     status: passed ? 'passed' : failed ? 'failed' : 'inconclusive',
     checks,
     screenshot_artifact_ids: screenshotIds,
+    screenshot_artifacts: screenshotIds.map((id, index) => ({ id, route: evidence.screenshots[index]?.route ?? '/', viewport: evidence.screenshots[index]?.id.startsWith('mobile') ? 'mobile' : 'desktop' })),
     console_errors: evidence.consoleErrors,
     failed_requests: evidence.failedRequests,
     routes_checked: evidence.routesChecked,

@@ -42,7 +42,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -120,8 +120,8 @@ describe('web/routes/import/replit', () => {
     const stored: string[] = [];
     const evidenceApp = app({
       captureBrowserEvidence: async () => ({ screenshots: [
-        { id: 'desktop', bytes: new Uint8Array([1]), mime: 'image/png', width: 1440, height: 1000 },
-        { id: 'mobile', bytes: new Uint8Array([2]), mime: 'image/png', width: 390, height: 844 },
+        { id: 'desktop-home', route: '/', bytes: new Uint8Array([1]), mime: 'image/png', width: 1440, height: 1000 },
+        { id: 'mobile-home', route: '/', bytes: new Uint8Array([2]), mime: 'image/png', width: 390, height: 844 },
       ], consoleErrors: [], failedRequests: [], routesChecked: ['/'], error: null }),
       visualStore: {
         put: async (key: string) => { stored.push(key); },
