@@ -37,7 +37,7 @@ export async function createOwnerTestFlow(db: Db, orgId: string, goal: string, n
     if (typeof step.label !== 'string' || !step.label.trim() || typeof step.detail !== 'string' || !step.detail.trim()) return [];
     const modelBoundary = step.boundary === 'automatic' ? 'automatic' : 'approval_required';
     const boundary = CONSEQUENTIAL.test(`${step.label} ${step.detail}`) ? 'approval_required' : modelBoundary;
-    return [{ id: ulid(), label: step.label.trim().slice(0, 120), detail: step.detail.trim().slice(0, 500), boundary, state: boundary === 'automatic' ? 'ready' : 'pending' } satisfies MigrationOwnerTestFlow['steps'][number]];
+    return [{ id: ulid(), label: step.label.trim().slice(0, 120), detail: step.detail.trim().slice(0, 500), boundary, state: boundary === 'automatic' ? 'ready' : 'pending', result_detail: null, evidence_artifact_ids: [] } satisfies MigrationOwnerTestFlow['steps'][number]];
   });
   if (!steps.length) return null;
   const timestamp = now.toISOString();

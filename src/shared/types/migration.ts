@@ -61,6 +61,8 @@ export type MigrationOwnerTestFlow = {
     detail: string;
     boundary: 'automatic' | 'approval_required';
     state: 'pending' | 'approved' | 'ready' | 'running' | 'passed' | 'failed';
+    result_detail: string | null;
+    evidence_artifact_ids: string[];
   }>;
   created_at: string;
   updated_at: string;

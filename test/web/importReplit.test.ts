@@ -144,8 +144,8 @@ describe('web/routes/import/replit', () => {
     await send();
     const createdAt = new Date('2026-08-29T00:00:00Z').toISOString();
     const planned = await request(app({ planOwnerTestFlow: async (_db: unknown, _orgId: string, goal: string) => ({ schema_version: 1, goal, status: 'approval_required', steps: [
-      { id: 'step_view', label: 'Open dashboard', detail: 'View the dashboard.', boundary: 'automatic', state: 'ready' },
-      { id: 'step_create', label: 'Create draft', detail: 'Submit the draft form in the development copy.', boundary: 'approval_required', state: 'pending' },
+      { id: 'step_view', label: 'Open dashboard', detail: 'View the dashboard.', boundary: 'automatic', state: 'ready', result_detail: null, evidence_artifact_ids: [] },
+      { id: 'step_create', label: 'Create draft', detail: 'Submit the draft form in the development copy.', boundary: 'approval_required', state: 'pending', result_detail: null, evidence_artifact_ids: [] },
     ], created_at: createdAt, updated_at: createdAt }) })).post('/api/projects/loom-shop/migration/test-flow').send({ goal: 'Create a draft project' });
     expect(planned.status).toBe(200);
     expect(planned.body.test_flow).toMatchObject({ status: 'approval_required', goal: 'Create a draft project' });
@@ -156,6 +156,19 @@ describe('web/routes/import/replit', () => {
     expect(approved.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_create').state).toBe('approved');
     const duplicate = await request(app()).post('/api/projects/loom-shop/migration/test-flow/step_create/approve').send({});
     expect(duplicate.status).toBe(409);
+
+    await setBuild(db, orgId, 'loom-shop', { previewUrl: 'https://preview.example' });
+    const evidenceApp = app({
+      executeOwnerTestFlow: async (_orgId: string, _url: string, flow: { steps: Array<Record<string, unknown>> }) => ({ flow: { ...flow, status: 'passed', steps: flow.steps.map((step) => ({ ...step, state: 'passed', result_detail: 'An observable preview change was recorded.' })), updated_at: new Date().toISOString() }, screenshots: [{ stepId: 'step_view', route: '/dashboard', bytes: new Uint8Array([1]), mime: 'image/png' }] }),
+      visualStore: { put: async () => undefined, signedGet: async (key: string) => `https://evidence.example/${encodeURIComponent(key)}`, delete: async () => undefined },
+    });
+    const ran = await request(evidenceApp).post('/api/projects/loom-shop/migration/test-flow/run').send({});
+    expect(ran.status).toBe(200);
+    expect(ran.body.test_flow.status).toBe('passed');
+    expect(ran.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_view').evidence_artifact_ids).toHaveLength(1);
+    expect(ran.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').blockers).not.toContain('The owner-defined test flow must pass before shipping.');
+    const artifactId = ran.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_view').evidence_artifact_ids[0];
+    expect((await request(evidenceApp).get(`/api/projects/loom-shop/migration/screenshots/${artifactId}`)).status).toBe(302);
   });
 
   it('persists an actionable blocker when workspace preparation cannot start', async () => {

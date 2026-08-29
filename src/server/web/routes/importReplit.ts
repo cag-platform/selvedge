@@ -25,6 +25,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import { migrationEvidenceStorageKey, visualObjectStore, type VisualObjectStore } from '../../visuals/storage.js';
 import { approveOwnerTestFlowStep, createOwnerTestFlow } from '../../import/ownerTestFlow.js';
+import { runOwnerTestFlow, type OwnerFlowRun } from '../../import/ownerTestFlowRunner.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -63,6 +64,7 @@ export type ImportReplitDeps = CreateDeps & {
   captureBrowserEvidence?: (url: string) => Promise<MigrationBrowserEvidence>;
   visualStore?: VisualObjectStore | null;
   planOwnerTestFlow?: typeof createOwnerTestFlow;
+  executeOwnerTestFlow?: (orgId: string, previewUrl: string, flow: NonNullable<(typeof migrationJourneys.$inferSelect)['ownerTestFlow']>) => Promise<OwnerFlowRun>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -113,7 +115,9 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const projectId = req.params.projectId ?? '';
     const artifactId = req.params.artifactId ?? '';
     const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
-    if (!row?.migrationVerification?.screenshot_artifact_ids.includes(artifactId)) { res.status(404).json({ error: 'No such migration screenshot.' }); return; }
+    const verificationOwns = row?.migrationVerification?.screenshot_artifact_ids.includes(artifactId) ?? false;
+    const ownerFlowOwns = row?.ownerTestFlow?.steps.some((step) => step.evidence_artifact_ids.includes(artifactId)) ?? false;
+    if (!verificationOwns && !ownerFlowOwns) { res.status(404).json({ error: 'No such migration screenshot.' }); return; }
     if (!visualStore) { res.status(503).json({ error: 'Migration evidence storage is not configured.' }); return; }
     res.redirect(302, await visualStore.signedGet(migrationEvidenceStorageKey(orgId, artifactId)));
   }));
@@ -160,6 +164,33 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if (!current?.ownerTestFlow) { res.status(404).json({ error: 'No owner-defined test flow exists for this project.' }); return; }
     const flow = approveOwnerTestFlowStep(current.ownerTestFlow, req.params.stepId ?? '');
     if (!flow) { res.status(409).json({ error: 'That approval boundary is no longer waiting for approval.' }); return; }
+    const migrationPlan = recordOwnerTestFlow(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), flow);
+    const [updated] = await db.update(migrationJourneys).set({ ownerTestFlow: flow, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json(await migrationResponse(updated!));
+  }));
+
+  router.post('/api/projects/:projectId/migration/test-flow/run', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current?.ownerTestFlow) { res.status(404).json({ error: 'No owner-defined test flow exists for this project.' }); return; }
+    if (current.ownerTestFlow.status !== 'ready') { res.status(409).json({ error: 'Every approval boundary must be approved before this flow can run.' }); return; }
+    const build = await getBuild(db, orgId, projectId);
+    if (!build?.previewUrl) { res.status(409).json({ error: 'The isolated preview must be running before this flow can run.' }); return; }
+    if (!visualStore) { res.status(503).json({ error: 'Evidence storage is unavailable, so Selvedge will not run a flow it cannot prove.' }); return; }
+    const runningFlow = { ...current.ownerTestFlow, status: 'running' as const, steps: current.ownerTestFlow.steps.map((step) => step.state === 'ready' || step.state === 'approved' ? { ...step, state: 'running' as const } : step), updated_at: new Date().toISOString() };
+    await db.update(migrationJourneys).set({ ownerTestFlow: runningFlow, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
+    const result = deps.executeOwnerTestFlow ? await deps.executeOwnerTestFlow(orgId, build.previewUrl, current.ownerTestFlow) : await runOwnerTestFlow(db, orgId, build.previewUrl, current.ownerTestFlow);
+    let flow = result.flow;
+    try {
+      for (const screenshot of result.screenshots) {
+        const artifactId = `${ulid()}-owner-${screenshot.stepId}`;
+        await visualStore.put(migrationEvidenceStorageKey(orgId, artifactId), screenshot.bytes, screenshot.mime);
+        flow = { ...flow, steps: flow.steps.map((step) => step.id === screenshot.stepId ? { ...step, evidence_artifact_ids: [...step.evidence_artifact_ids, artifactId] } : step) };
+      }
+    } catch (error) {
+      flow = { ...flow, status: 'failed', steps: flow.steps.map((step) => step.state === 'passed' ? { ...step, state: 'failed', result_detail: `The interaction ran, but its evidence could not be stored: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500) } : step), updated_at: new Date().toISOString() };
+    }
     const migrationPlan = recordOwnerTestFlow(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), flow);
     const [updated] = await db.update(migrationJourneys).set({ ownerTestFlow: flow, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     res.json(await migrationResponse(updated!));
