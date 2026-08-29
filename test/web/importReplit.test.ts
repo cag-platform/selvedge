@@ -140,6 +140,24 @@ describe('web/routes/import/replit', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('persists an owner-defined test plan and explicit approval boundary', async () => {
+    await send();
+    const createdAt = new Date('2026-08-29T00:00:00Z').toISOString();
+    const planned = await request(app({ planOwnerTestFlow: async (_db: unknown, _orgId: string, goal: string) => ({ schema_version: 1, goal, status: 'approval_required', steps: [
+      { id: 'step_view', label: 'Open dashboard', detail: 'View the dashboard.', boundary: 'automatic', state: 'ready' },
+      { id: 'step_create', label: 'Create draft', detail: 'Submit the draft form in the development copy.', boundary: 'approval_required', state: 'pending' },
+    ], created_at: createdAt, updated_at: createdAt }) })).post('/api/projects/loom-shop/migration/test-flow').send({ goal: 'Create a draft project' });
+    expect(planned.status).toBe(200);
+    expect(planned.body.test_flow).toMatchObject({ status: 'approval_required', goal: 'Create a draft project' });
+    expect(planned.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').blockers).toContain('The owner-defined test flow must pass before shipping.');
+    const approved = await request(app()).post('/api/projects/loom-shop/migration/test-flow/step_create/approve').send({});
+    expect(approved.status).toBe(200);
+    expect(approved.body.test_flow).toMatchObject({ status: 'ready' });
+    expect(approved.body.test_flow.steps.find((step: { id: string }) => step.id === 'step_create').state).toBe('approved');
+    const duplicate = await request(app()).post('/api/projects/loom-shop/migration/test-flow/step_create/approve').send({});
+    expect(duplicate.status).toBe(409);
+  });
+
   it('persists an actionable blocker when workspace preparation cannot start', async () => {
     await send();
     const failed = await request(app({ prepareWorkspace: async () => ({ ok: false, status: 409, error: 'Connect GitHub again.' }) })).post('/api/projects/loom-shop/migration/workspace');

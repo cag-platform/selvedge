@@ -10,7 +10,7 @@ import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
-import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
+import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordOwnerTestFlow, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
 import { attachBrowserEvidence, verifyMigrationPreview } from '../../import/previewVerifier.js';
 import { captureMigrationBrowserEvidence, type MigrationBrowserEvidence } from '../../import/browserEvidence.js';
 import { planMigrationGuidedJourney } from '../../import/guidedJourney.js';
@@ -24,6 +24,7 @@ import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import { migrationEvidenceStorageKey, visualObjectStore, type VisualObjectStore } from '../../visuals/storage.js';
+import { approveOwnerTestFlowStep, createOwnerTestFlow } from '../../import/ownerTestFlow.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -61,6 +62,7 @@ export type ImportReplitDeps = CreateDeps & {
   verifyPreview?: (url: string) => Promise<MigrationVerification>;
   captureBrowserEvidence?: (url: string) => Promise<MigrationBrowserEvidence>;
   visualStore?: VisualObjectStore | null;
+  planOwnerTestFlow?: typeof createOwnerTestFlow;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -95,7 +97,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         : previewStep?.state === 'complete'
           ? { state: 'none', url: null, message: previewStep.detail }
           : { state: 'pending', url: null, message: null };
-    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: row.ownerTestFlow, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
   };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
@@ -134,6 +136,32 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       ? rebuildMigrationPlan(current.projectMap, destinations as Record<string, string>, current.migrationPlan)
       : buildMigrationPlan(current.projectMap, destinations as Record<string, string>);
     const [updated] = await db.update(migrationJourneys).set({ destinations, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json(await migrationResponse(updated!));
+  }));
+
+  router.post('/api/projects/:projectId/migration/test-flow', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const goal = typeof req.body?.goal === 'string' ? req.body.goal.trim() : '';
+    if (goal.length < 8 || goal.length > 1_000) { res.status(400).json({ error: 'Describe the journey in one clear sentence, between 8 and 1,000 characters.' }); return; }
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    const flow = await (deps.planOwnerTestFlow ?? createOwnerTestFlow)(db, orgId, goal);
+    if (!flow) { res.status(503).json({ error: 'Selvedge could not safely turn that journey into a test plan right now. Nothing was approved or run.' }); return; }
+    const migrationPlan = recordOwnerTestFlow(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), flow);
+    const [updated] = await db.update(migrationJourneys).set({ ownerTestFlow: flow, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json(await migrationResponse(updated!));
+  }));
+
+  router.post('/api/projects/:projectId/migration/test-flow/:stepId/approve', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current?.ownerTestFlow) { res.status(404).json({ error: 'No owner-defined test flow exists for this project.' }); return; }
+    const flow = approveOwnerTestFlowStep(current.ownerTestFlow, req.params.stepId ?? '');
+    if (!flow) { res.status(409).json({ error: 'That approval boundary is no longer waiting for approval.' }); return; }
+    const migrationPlan = recordOwnerTestFlow(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), flow);
+    const [updated] = await db.update(migrationJourneys).set({ ownerTestFlow: flow, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     res.json(await migrationResponse(updated!));
   }));
 

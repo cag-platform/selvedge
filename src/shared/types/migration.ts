@@ -51,6 +51,21 @@ export type MigrationVerification = {
   verified_at: string;
 };
 
+export type MigrationOwnerTestFlow = {
+  schema_version: 1;
+  goal: string;
+  status: 'approval_required' | 'ready' | 'running' | 'passed' | 'failed';
+  steps: Array<{
+    id: string;
+    label: string;
+    detail: string;
+    boundary: 'automatic' | 'approval_required';
+    state: 'pending' | 'approved' | 'ready' | 'running' | 'passed' | 'failed';
+  }>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MigrationJourney = {
   id: string;
   project_id: string;
@@ -60,6 +75,7 @@ export type MigrationJourney = {
   project_map: MigrationProjectMap;
   migration_plan: MigrationPlan;
   verification: MigrationVerification | null;
+  test_flow: MigrationOwnerTestFlow | null;
   preview: { state: 'ready' | 'pending' | 'error' | 'none'; url: string | null; message: string | null };
   destinations: { repository?: string; hosting?: string; database?: string };
   created_at: string;

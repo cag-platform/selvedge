@@ -1,4 +1,4 @@
-import type { MigrationPlan, MigrationPlanStep, MigrationProjectMap, MigrationVerification } from '../../shared/types/migration.js';
+import type { MigrationOwnerTestFlow, MigrationPlan, MigrationPlanStep, MigrationProjectMap, MigrationVerification } from '../../shared/types/migration.js';
 
 type Destinations = { repository?: string; hosting?: string; database?: string };
 
@@ -97,4 +97,16 @@ export function recordMigrationVerification(plan: MigrationPlan, verification: M
   });
   const blocked = steps.find((step) => step.state === 'blocked');
   return { ...plan, generated_at: now.toISOString(), steps, next_action: blocked?.blockers[0] ?? 'Review the verified copy and approve shipping when ready.' };
+}
+
+export function recordOwnerTestFlow(plan: MigrationPlan, flow: MigrationOwnerTestFlow, now = new Date()): MigrationPlan {
+  const blocker = 'The owner-defined test flow must pass before shipping.';
+  const steps = plan.steps.map((step): MigrationPlanStep => {
+    if (step.id !== 'ship') return step;
+    const blockers = step.blockers.filter((item) => item !== blocker);
+    if (flow.status !== 'passed') blockers.push(blocker);
+    return { ...step, state: blockers.length ? 'blocked' : 'approval_required', blockers };
+  });
+  const pendingApproval = flow.steps.find((step) => step.boundary === 'approval_required' && step.state === 'pending');
+  return { ...plan, generated_at: now.toISOString(), steps, next_action: pendingApproval ? `Approve the “${pendingApproval.label}” test boundary before Selvedge runs it.` : 'Run the owner-defined test flow in the isolated preview.' };
 }

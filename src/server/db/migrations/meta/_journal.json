@@ -351,6 +351,34 @@
       "when": 1788742800000,
       "tag": "0049_simple_detail_default",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788742800001,
+      "tag": "0050_migration_journeys",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1788742800002,
+      "tag": "0051_migration_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1788742800003,
+      "tag": "0052_migration_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1788742800004,
+      "tag": "0053_owner_test_flow",
+      "breakpoints": true
     }
   ]
 }
