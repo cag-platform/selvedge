@@ -68,6 +68,16 @@ export function isSandboxCapacityError(error: unknown): boolean {
   return /total disk limit exceeded|maximum allowed:\s*\d+\s*GiB|free up available storage|capacity|quota/i.test(text);
 }
 
+/** OpenAI uses both 404 and a provider-specific "expired" API error for a gone container. */
+export function isExpiredWorkspaceError(error: unknown): boolean {
+  if (!(error instanceof OpenAiWorkspaceApiError)) return false;
+  if (error.status === 404) return true;
+  if (error.status !== 400 && error.status !== 409) return false;
+  return /(?:container|workspace).*(?:expired|not found)|(?:expired|not found).*(?:container|workspace)/i.test(
+    `${error.code ?? ''} ${error.message}`,
+  );
+}
+
 function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
 
 export function developmentWorkspaceRuntime(): OpenAiWorkspaceRuntime {
@@ -172,7 +182,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
         await openSandboxRun(db, orgId, projectId, existing.id).catch(() => undefined);
         return existing;
       } catch (error) {
-        if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
+        if (!isExpiredWorkspaceError(error)) throw error;
         active.delete(build.sandboxId);
         await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
         await clearSandbox(db, orgId, projectId);
@@ -194,7 +204,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
         await openSandboxRun(db, orgId, projectId, reconnected.id).catch(() => undefined);
         return reconnected;
       } catch (error) {
-        if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
+        if (!isExpiredWorkspaceError(error)) throw error;
         await clearSandbox(db, orgId, projectId);
         if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
       }
