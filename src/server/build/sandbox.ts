@@ -162,24 +162,42 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
   if (build?.sandboxId) {
     const existing = active.get(build.sandboxId);
     if (existing) {
-      secretValues.set(`github:${orgId}:${projectId}`, cfg.githubToken);
-      await openSandboxRun(db, orgId, projectId, existing.id).catch(() => undefined);
-      return existing;
+      try {
+        // OpenAI containers expire independently of this process. An object in
+        // the local map is therefore only a handle, not proof that the remote
+        // workspace still exists. Validate it before returning; otherwise a
+        // preview or follow-up turn keeps calling a deleted container forever.
+        await existing.workspace.inspect();
+        secretValues.set(`github:${orgId}:${projectId}`, cfg.githubToken);
+        await openSandboxRun(db, orgId, projectId, existing.id).catch(() => undefined);
+        return existing;
+      } catch (error) {
+        if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
+        active.delete(build.sandboxId);
+        await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
+        await clearSandbox(db, orgId, projectId);
+        if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
+      }
     }
-    setDevelopmentSecret(`github:${orgId}:${projectId}`, cfg.githubToken);
-    try {
-      const workspace = await developmentWorkspaceRuntime().reconnectWorkspaceWithContext(
-        build.sandboxId,
-        workspaceInput(orgId, projectId, cfg),
-      );
-      const reconnected = adaptDevelopmentWorkspace(workspace);
-      active.set(build.sandboxId, reconnected);
-      await openSandboxRun(db, orgId, projectId, reconnected.id).catch(() => undefined);
-      return reconnected;
-    } catch (error) {
-      if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
-      await clearSandbox(db, orgId, projectId);
-      if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
+    // The active-map branch may have just proved this id expired and cleared
+    // the record. Only attempt a reconnect while the original id is still the
+    // persisted workspace for this project.
+    if ((await getBuild(db, orgId, projectId))?.sandboxId === build.sandboxId) {
+      setDevelopmentSecret(`github:${orgId}:${projectId}`, cfg.githubToken);
+      try {
+        const workspace = await developmentWorkspaceRuntime().reconnectWorkspaceWithContext(
+          build.sandboxId,
+          workspaceInput(orgId, projectId, cfg),
+        );
+        const reconnected = adaptDevelopmentWorkspace(workspace);
+        active.set(build.sandboxId, reconnected);
+        await openSandboxRun(db, orgId, projectId, reconnected.id).catch(() => undefined);
+        return reconnected;
+      } catch (error) {
+        if (!(error instanceof OpenAiWorkspaceApiError) || error.status !== 404) throw error;
+        await clearSandbox(db, orgId, projectId);
+        if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
+      }
     }
   }
   return create(db, orgId, projectId, cfg);
