@@ -29,3 +29,21 @@ export function buildMigrationPlan(map: MigrationProjectMap, destinations: Desti
     next_action: firstBlocked?.blockers[0] ?? 'Create the isolated workspace and begin the safe copy.',
   };
 }
+
+export function recordWorkspacePreparation(plan: MigrationPlan, result: { ok: true } | { ok: false; reason: string }, now = new Date()): MigrationPlan {
+  const steps = plan.steps.map((step): MigrationPlanStep => {
+    if (step.id !== 'workspace') return step;
+    return result.ok
+      ? { ...step, state: 'complete', detail: 'The isolated workspace is ready from the owner-controlled repository.', blockers: [] }
+      : { ...step, state: 'blocked', detail: 'Selvedge could not prepare the isolated workspace yet.', blockers: [result.reason] };
+  });
+  const next = steps.find((step) => step.id === 'connect' && step.state === 'blocked')
+    ?? steps.find((step) => step.state === 'blocked')
+    ?? steps.find((step) => step.state === 'pending');
+  return {
+    ...plan,
+    generated_at: now.toISOString(),
+    steps,
+    next_action: next?.blockers[0] ?? (result.ok ? 'Configure the development copy and start its preview.' : plan.next_action),
+  };
+}

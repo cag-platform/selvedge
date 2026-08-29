@@ -11,6 +11,10 @@ import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
 import { buildMigrationPlan } from '../../import/migrationPlan.js';
+import { recordWorkspacePreparation } from '../../import/migrationPlan.js';
+import { configFor } from '../../build/engineConfig.js';
+import { ensureSandbox } from '../../build/sandbox.js';
+import { canStartBuild } from '../../billing/entitlements.js';
 import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
@@ -46,11 +50,22 @@ function orgIdOf(req: Request): string {
 
 export type ImportReplitDeps = CreateDeps & {
   push?: typeof pushFilesToRepo;
+  prepareWorkspace?: (orgId: string, projectId: string) => Promise<{ ok: true; workspaceId: string } | { ok: false; status: number; error: string }>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
   const router = Router();
   const push = deps.push ?? pushFilesToRepo;
+  const prepareWorkspace = deps.prepareWorkspace ?? (async (orgId: string, projectId: string) => {
+    const config = await configFor(db, orgId, projectId);
+    if ('error' in config) return { ok: false as const, status: config.status, error: config.error };
+    try {
+      const workspace = await ensureSandbox(db, orgId, projectId, config.cfg);
+      return { ok: true as const, workspaceId: workspace.id };
+    } catch (error) {
+      return { ok: false as const, status: 503, error: error instanceof Error ? error.message : 'The workspace could not be prepared.' };
+    }
+  });
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
   router.get('/api/projects/:projectId/migration', asyncHandler(async (req, res) => {
@@ -78,6 +93,23 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const migrationPlan = buildMigrationPlan(current.projectMap, destinations as Record<string, string>);
     const [updated] = await db.update(migrationJourneys).set({ destinations, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     res.json({ id: updated!.id, project_id: updated!.projectId, source: updated!.source, state: updated!.state, original_untouched: updated!.originalUntouched, project_map: updated!.projectMap, migration_plan: updated!.migrationPlan, destinations: updated!.destinations, created_at: updated!.createdAt.toISOString(), updated_at: updated!.updatedAt.toISOString() });
+  }));
+
+  router.post('/api/projects/:projectId/migration/workspace', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    const allowance = await canStartBuild(db, orgId);
+    if (!allowance.allowed) { refuse(res, allowance); return; }
+    const prepared = await prepareWorkspace(orgId, projectId);
+    const migrationPlan = recordWorkspacePreparation(
+      current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>),
+      prepared.ok ? { ok: true } : { ok: false, reason: prepared.error },
+    );
+    const [updated] = await db.update(migrationJourneys).set({ migrationPlan, state: prepared.ok ? 'copying' : 'mapped', updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    if (!prepared.ok) { res.status(prepared.status).json({ error: prepared.error, migration_plan: migrationPlan }); return; }
+    res.json({ workspace_id: prepared.workspaceId, state: updated!.state, migration_plan: updated!.migrationPlan, original_untouched: updated!.originalUntouched });
   }));
 
   router.post(

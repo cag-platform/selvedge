@@ -41,7 +41,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -76,6 +76,25 @@ describe('web/routes/import/replit', () => {
     expect(selected.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('approval_required');
     const rejected = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'mystery', database: 'neon' });
     expect(rejected.status).toBe(400);
+  });
+
+  it('prepares one native workspace and persists the migration transition', async () => {
+    await send();
+    let preparations = 0;
+    const prepared = await request(app({ prepareWorkspace: async () => { preparations += 1; return { ok: true, workspaceId: 'ws_1' }; } })).post('/api/projects/loom-shop/migration/workspace');
+    expect(prepared.status).toBe(200);
+    expect(prepared.body).toMatchObject({ workspace_id: 'ws_1', state: 'copying', original_untouched: true });
+    expect(prepared.body.migration_plan.steps.find((step: { id: string }) => step.id === 'workspace').state).toBe('complete');
+    expect(preparations).toBe(1);
+  });
+
+  it('persists an actionable blocker when workspace preparation cannot start', async () => {
+    await send();
+    const failed = await request(app({ prepareWorkspace: async () => ({ ok: false, status: 409, error: 'Connect GitHub again.' }) })).post('/api/projects/loom-shop/migration/workspace');
+    expect(failed.status).toBe(409);
+    expect(failed.body.migration_plan.steps.find((step: { id: string }) => step.id === 'workspace').blockers).toEqual(['Connect GitHub again.']);
+    const journey = await request(app()).get('/api/projects/loom-shop/migration');
+    expect(journey.body.migration_plan.steps.find((step: { id: string }) => step.id === 'workspace').state).toBe('blocked');
   });
 
   /**

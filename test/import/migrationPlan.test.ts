@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMigrationPlan } from '../../src/server/import/migrationPlan.js';
+import { buildMigrationPlan, recordWorkspacePreparation } from '../../src/server/import/migrationPlan.js';
 import type { MigrationProjectMap } from '../../src/shared/types/migration.js';
 
 const map: MigrationProjectMap = {
@@ -29,5 +29,14 @@ describe('migration planner', () => {
     const plan = buildMigrationPlan(map, { repository: 'acme/app', hosting: 'railway', database: 'neon' });
     expect(plan.steps.find((step) => step.id === 'ship')?.state).toBe('approval_required');
     expect(plan.steps.find((step) => step.id === 'verify')?.owner).toBe('verification_agent');
+  });
+
+  it('records workspace success and retryable failure without advancing production', () => {
+    const plan = buildMigrationPlan(map, { repository: 'acme/app' });
+    const ready = recordWorkspacePreparation(plan, { ok: true });
+    expect(ready.steps.find((step) => step.id === 'workspace')?.state).toBe('complete');
+    expect(ready.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
+    const failed = recordWorkspacePreparation(plan, { ok: false, reason: 'GitHub access expired.' });
+    expect(failed.steps.find((step) => step.id === 'workspace')?.blockers).toEqual(['GitHub access expired.']);
   });
 });

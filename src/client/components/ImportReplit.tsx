@@ -56,8 +56,11 @@ export function ImportReplit() {
       if (retryProjectId) form.append('project_id', retryProjectId);
       else form.append('name', name.trim());
       const made = await apiUpload<ImportResult & { project_id?: string }>('/api/import/replit', form);
+      const prepared = await api.post<{ workspace_id: string }>(`/api/projects/${encodeURIComponent(made.project_id)}/migration/workspace`, {}).then(() => true).catch(() => false);
       await api.post(`/api/threads/${made.thread_id}/message`, {
-        text: 'Continue this migration automatically. Inspect the imported app and its project map, identify anything still requiring account access, prepare the isolated workspace copy, start the preview, and verify what can be observed. Do not change production or ship anything.',
+        text: prepared
+          ? 'Continue this migration automatically in the isolated workspace Selvedge prepared. Configure the development-safe copy, start the preview, and verify what can be observed. Identify anything still requiring account access. Do not change production or ship anything.'
+          : 'Continue this migration automatically. The initial workspace preparation needs attention; inspect the migration plan, resolve the stated blocker if possible, then prepare the isolated copy, start the preview, and verify what can be observed. Do not change production or ship anything.',
         mode: 'build',
       }).catch(() => undefined);
       navigate(`/inbox/${made.thread_id}`);
