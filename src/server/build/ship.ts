@@ -2,7 +2,7 @@ import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentRuns } from '../db/schema/index.js';
 import { getBuild, setBuild } from './store.js';
-import { ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
+import { deleteSandbox, ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
 import type { ExecuteInSandbox } from './agent.js';
 import { pathSignals } from '../cards/triggers.js';
 import { HOST_TOPOLOGY_CONNECTORS } from '../connectors/registry.js';
@@ -101,7 +101,7 @@ export async function shipChanges(
   projectId: string,
   cfg: SandboxConfig,
   opts: { backupConfirmed?: boolean; summary?: string; threadId?: string } = {},
-  deps: { execute?: ExecuteInSandbox } = {},
+  deps: { execute?: ExecuteInSandbox; destroyWorkspace?: () => Promise<void> } = {},
 ): Promise<ShipOutcome> {
   const build = await getBuild(db, orgId, projectId);
   if (!build?.stagedChangesReady || !build.sandboxId) {
@@ -190,7 +190,13 @@ export async function shipChanges(
     content: line,
     meta: { ship: { commit, reach } },
   });
-  await setBuild(db, orgId, projectId, { stagedChangesReady: false, dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null });
+  // The development workspace is disposable. Once GitHub has accepted the
+  // commit and the audit record exists, destroy the container and clear every
+  // session/preview handle that pointed into it. A failed push returns above,
+  // deliberately preserving the workspace so the owner can retry.
+  await (deps.destroyWorkspace ?? (() => deleteSandbox(db, orgId, projectId)))().catch((error) => {
+    console.error(`shipped ${projectId}, but could not destroy its development workspace:`, error);
+  });
 
   return { outcome: 'shipped', commit, message: line };
 }

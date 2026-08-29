@@ -100,12 +100,20 @@ describe('shipChanges — build freely, gate at ship', () => {
 
   it('ships an ordinary change: commit + push, run recorded with the sha, staged flag cleared, thread told', async () => {
     const commands: string[] = [];
-    const out = await shipChanges(db, orgId, 'loom', cfg, { summary: 'dark header' }, { execute: executor({ paths: ['src/app.tsx'], onCommand: (c) => commands.push(c) }) });
+    let destroyed = false;
+    const out = await shipChanges(db, orgId, 'loom', cfg, { summary: 'dark header' }, {
+      execute: executor({ paths: ['src/app.tsx'], onCommand: (c) => commands.push(c) }),
+      destroyWorkspace: async () => {
+        destroyed = true;
+        await setBuild(db, orgId, 'loom', { sandboxId: null, stagedChangesReady: false });
+      },
+    });
     expect(out.outcome).toBe('shipped');
     if (out.outcome !== 'shipped') return;
     expect(out.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(commands.some((c) => c.includes('push origin'))).toBe(true);
     expect(commands.some((c) => c.includes('credential.helper='))).toBe(true);
+    expect(destroyed).toBe(true);
 
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.prompt).toBe('ship: dark header');
@@ -163,8 +171,13 @@ describe('shipChanges — build freely, gate at ship', () => {
   });
 
   it('a failed push is honest and leaves the staged flag alone', async () => {
-    const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'], pushExit: 1 }) });
+    let destroyed = false;
+    const out = await shipChanges(db, orgId, 'loom', cfg, {}, {
+      execute: executor({ paths: ['src/app.tsx'], pushExit: 1 }),
+      destroyWorkspace: async () => { destroyed = true; },
+    });
     expect(out.outcome).toBe('failed');
+    expect(destroyed).toBe(false);
     expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(true);
   });
 
