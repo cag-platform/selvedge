@@ -149,7 +149,26 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
   const [needsBackup, setNeedsBackup] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<EvidenceSheet | null>(null);
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const lastShip = data.runs.find((r) => r.kind === 'ship' && r.commit)?.commit ?? null;
+  const latestEvidence = [...data.runs]
+    .filter((run) => run.evidence)
+    .sort((a, b) => b.at.localeCompare(a.at))[0]?.evidence ?? null;
+  const repository = data.console_links?.find((link) => /github|repository|repo/i.test(`${link.provider} ${link.label}`)) ?? null;
+
+  useEffect(() => {
+    if (!latestEvidence) { setEvidence(null); setEvidenceError(null); return; }
+    let active = true;
+    setEvidenceBusy(true);
+    setEvidenceError(null);
+    api.get<EvidenceSheet>(latestEvidence.path)
+      .then((sheet) => { if (active) setEvidence(sheet); })
+      .catch((error) => { if (active) setEvidenceError(error instanceof Error ? error.message : 'Evidence is unavailable.'); })
+      .finally(() => { if (active) setEvidenceBusy(false); });
+    return () => { active = false; };
+  }, [latestEvidence?.path]);
 
   async function ship() {
     setBusy(true);
@@ -184,10 +203,11 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
 
   return (
     <div className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
-      <div className="flex flex-wrap items-center justify-between gap-work">
-        <div>
-          <p className="text-body font-medium text-ink">{prompted ? 'Ready to ship these changes?' : 'There’s finished work here that isn’t live yet.'}</p>
-          {prompted && <p className="mt-1 text-meta text-ink-dim">This will commit the current workshop changes and push them to {branch ?? 'the project branch'}. If hosting follows that branch, a deployment will begin.</p>}
+      <div className="flex flex-wrap items-start justify-between gap-work border-b border-hairline pb-work-tight">
+        <div className="max-w-2xl">
+          <p className="section-label">Review and ship</p>
+          <p className="mt-1 text-body font-medium text-ink">{prompted ? 'Selvedge has prepared the requested change.' : 'There’s finished work here that isn’t live yet.'}</p>
+          <p className="mt-1 text-meta text-ink-dim">Review what was observed below. Shipping commits the workspace and pushes it to {branch ?? 'the project branch'}{repository ? ` in ${repository.label}` : ''}. If hosting follows that branch, deployment begins.</p>
         </div>
         <div className="flex items-center gap-work">
           {lastShip && (
@@ -202,8 +222,33 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
           >
             {busy ? 'Shipping…' : 'Ship it'}
           </button>
-          {prompted && onReview && <button type="button" disabled={busy} onClick={onReview} className="text-meta text-ink-quiet underline hover:text-ink-dim disabled:opacity-50">Review changes</button>}
           {prompted && onCancel && <button type="button" disabled={busy} onClick={onCancel} className="text-meta text-ink-quiet hover:text-ink-dim disabled:opacity-50">Not yet</button>}
+        </div>
+      </div>
+      <div className="grid gap-work md:grid-cols-2">
+        <div className="relative rounded-inset border border-hairline bg-panel px-3 py-3 pl-work">
+          <p className="text-label uppercase tracking-widest text-ink-quiet">Observed result</p>
+          {evidenceBusy && <p className="mt-2 text-meta text-ink-dim">Reading the recorded evidence…</p>}
+          {evidenceError && <p className="mt-2 text-meta text-thread">{evidenceError}</p>}
+          {!latestEvidence && <p className="mt-2 text-meta text-ink-dim">No verification record is attached. Selvedge cannot claim this change passed.</p>}
+          {evidence && <>
+            <div className="mt-2 flex items-start gap-2"><SelvedgeEdge status={evidence.status} /><div><p className="text-body font-medium text-ink">{evidence.summary}</p><p className="text-meta text-ink-dim">{evidence.explanation}</p></div></div>
+            <p className="mt-3 text-meta font-medium text-ink">Changed files · {evidence.changed_files.total}</p>
+            {evidence.changed_files.paths.length > 0 ? <ul className="mt-1 max-h-24 overflow-auto font-mono text-tech text-ink-dim">{evidence.changed_files.paths.map((path) => <li key={path}>{path}</li>)}</ul> : <p className="mt-1 text-meta text-ink-dim">No changed-file list was recorded.</p>}
+          </>}
+        </div>
+        <div className="rounded-inset border border-hairline bg-panel px-3 py-3">
+          <p className="text-label uppercase tracking-widest text-ink-quiet">Checks and limitations</p>
+          {evidence && <>
+            {evidence.checks_run.length > 0 ? <ul className="mt-2 space-y-1 text-meta text-ink-dim">{evidence.checks_run.map((check, index) => <li key={`${check.name}-${index}`}><span className={check.outcome === 'passed' ? 'text-healthy' : 'text-thread'}>{check.outcome === 'passed' ? '✓' : '×'}</span> {check.name}{check.detail ? ` — ${check.detail}` : ''}</li>)}</ul> : <p className="mt-2 text-meta text-ink-dim">No completed check was recorded.</p>}
+            {evidence.acceptance_observation && <p className="mt-2 text-meta text-ink-dim">Acceptance: {evidence.acceptance_observation.outcome} · {evidence.acceptance_observation.name}</p>}
+            {(evidence.unavailable_checks.length > 0 || evidence.warnings.length > 0) && <div className="mt-3 border-t border-hairline pt-2 text-meta text-thread">{evidence.unavailable_checks.map((check, index) => <p key={`${check.name}-${index}`}>Not run: {check.name}{check.detail ? ` — ${check.detail}` : ''}</p>)}{evidence.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+          </>}
+          <div className="mt-3 flex flex-wrap gap-3 border-t border-hairline pt-2 text-meta">
+            {onReview && <button type="button" onClick={onReview} className="text-action-bright hover:underline">Open preview</button>}
+            {repository && <a href={repository.url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">Open {repository.label} ↗</a>}
+            {evidence && <Link to={evidence.destinations.project_history.web_path} className="text-action-bright hover:underline">Project history</Link>}
+          </div>
         </div>
       </div>
       {needsBackup && (
@@ -1071,7 +1116,7 @@ export function ThreadPane({
           data={{ ...data, project: data.project }}
           prompted={Boolean(shipRequested)}
           branch={shipRequested?.branch}
-          onReview={shipRequested ? onShowPreview : undefined}
+          onReview={onShowPreview}
           onCancel={shipRequested ? () => setShipRequested(null) : undefined}
           onDone={() => { setShipRequested(null); onReload(); }}
         />
