@@ -25,9 +25,20 @@ describe('the landing page', () => {
 
   it('makes existing project context visible before explaining it', () => {
     const html = render();
-    expect(html).toContain('Context received');
-    expect(html).toContain('12 conversations');
-    expect(html).toContain('3 decisions');
+    expect(html).toContain('PROJECT MAP');
+    expect(html).toContain('Postgres');
+    expect(html).toContain('Auth + storage');
+    expect(html).toContain('Lovable production stays live');
+  });
+
+  it('walks a visitor through the safe migration cycle', () => {
+    const html = render();
+    for (const stage of ['Connect', 'Map', 'Copy', 'Preview', 'Verify', 'Approve']) {
+      expect(html).toContain(`>${stage}<`);
+    }
+    expect(html).toContain('Guided Selvedge migration demonstration');
+    expect(html).toContain('production, users, data, and domain remain untouched');
+    expect(html).toContain('you approve cutover');
   });
 
   it('says the one sentence the whole product is, and shows it being true', () => {

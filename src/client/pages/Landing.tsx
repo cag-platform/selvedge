@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SelvedgeLockup } from '../components/Logo.js';
 import { AgentChip } from '../components/AgentChip.js';
@@ -112,100 +112,92 @@ function PricingFaq() {
   );
 }
 
-type DemoStep = 'route' | 'think' | 'switch' | 'preview' | 'remember';
+type DemoStep = 'connect' | 'map' | 'workspace' | 'preview' | 'verify' | 'cutover';
 
-const DEMO_STEPS: Array<{ id: DemoStep; label: string }> = [
-  { id: 'route', label: 'Route' },
-  { id: 'think', label: 'Think' },
-  { id: 'switch', label: 'Switch builder' },
-  { id: 'preview', label: 'Preview' },
-  { id: 'remember', label: 'Remember' },
+const DEMO_STEPS: Array<{ id: DemoStep; label: string; short: string }> = [
+  { id: 'connect', label: 'Connect', short: 'Read-only access' },
+  { id: 'map', label: 'Map', short: 'See every dependency' },
+  { id: 'workspace', label: 'Copy', short: 'Keep production untouched' },
+  { id: 'preview', label: 'Preview', short: 'Use the migrated app' },
+  { id: 'verify', label: 'Verify', short: 'Compare real behavior' },
+  { id: 'cutover', label: 'Approve', short: 'You decide when to ship' },
 ];
 
-const DEMO_PROMPTS = [
-  'Improve the onboarding without adding another step',
-  'Challenge our decision to remove the setup wizard',
-  'Ship the new onboarding landing page',
-] as const;
-
 function ProductDemo() {
-  const [step, setStep] = useState<DemoStep>('route');
-  const [prompt, setPrompt] = useState<string>(DEMO_PROMPTS[0]);
-  const [startedPrompt, setStartedPrompt] = useState<string>(DEMO_PROMPTS[0]);
-  const [theme, setTheme] = useState<'night' | 'light'>('night');
-  const promptId = useId();
+  const [step, setStep] = useState<DemoStep>('connect');
+  const [playing, setPlaying] = useState(true);
   const activeIndex = DEMO_STEPS.findIndex((item) => item.id === step);
   const reached = (candidate: DemoStep) => activeIndex >= DEMO_STEPS.findIndex((item) => item.id === candidate);
 
-  function beginDemo() {
-    const next = prompt.trim();
-    if (!next) return;
-    setStartedPrompt(next);
-    setStep('route');
-  }
+  useEffect(() => {
+    if (!playing || typeof window === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = window.setTimeout(() => {
+      setStep(DEMO_STEPS[(activeIndex + 1) % DEMO_STEPS.length]!.id);
+    }, 3600);
+    return () => window.clearTimeout(timer);
+  }, [activeIndex, playing]);
+
+  const choose = (next: DemoStep) => {
+    setStep(next);
+    setPlaying(false);
+  };
 
   return (
-    <div className={`landing-demo landing-demo-${theme}`} aria-label="Interactive Selvedge product demonstration">
+    <div className="landing-demo landing-demo-light" aria-label="Guided Selvedge migration demonstration">
       <div className="landing-demo-bar">
         <div className="landing-window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <p>Selvedge · Loom</p>
-        <button type="button" onClick={() => setTheme(theme === 'night' ? 'light' : 'night')} aria-label={`Use ${theme === 'night' ? 'light' : 'Night Weave'} demo theme`}>
-          {theme === 'night' ? 'Light' : 'Night Weave'}
+        <p>Selvedge migration · Customer portal</p>
+        <button type="button" onClick={() => setPlaying((current) => !current)} aria-label={playing ? 'Pause migration walkthrough' : 'Play migration walkthrough'}>
+          {playing ? 'Pause' : 'Play'}
         </button>
       </div>
 
       <div className="landing-demo-guide" aria-label="Demo stages">
-        {DEMO_STEPS.map((item, index) => <button key={item.id} type="button" onClick={() => setStep(item.id)} aria-current={step === item.id ? 'step' : undefined}>
+        {DEMO_STEPS.map((item, index) => <button key={item.id} type="button" onClick={() => choose(item.id)} aria-current={step === item.id ? 'step' : undefined} title={item.short}>
           <span>{String(index + 1).padStart(2, '0')}</span>{item.label}
         </button>)}
       </div>
 
       <div className="landing-demo-shell">
-        <aside className="landing-demo-threads" aria-label="Project conversations">
-          <p className="landing-demo-label">PROJECT / LOOM</p>
-          <strong>Onboarding</strong>
-          <div className="landing-demo-thread active"><span>Now</span><b>{startedPrompt}</b><small>just now · CX</small></div>
-          <div className="landing-demo-thread"><span>Decision</span><b>Where should project setup happen?</b><small>yesterday · CL</small></div>
-          <div className="landing-demo-thread"><span>Research</span><b>Customer import interviews</b><small>Feb 12 · GP</small></div>
+        <aside className="landing-demo-threads" aria-label="Migration source">
+          <p className="landing-demo-label">LEAVING</p>
+          <strong>Lovable</strong>
+          <div className="landing-demo-thread active"><span>Production</span><b>Customer portal</b><small>stays live throughout</small></div>
+          <div className="landing-migration-source"><span className={reached('connect') ? 'done' : ''}>Code export</span><span className={reached('map') ? 'done' : ''}>Postgres</span><span className={reached('map') ? 'done' : ''}>Auth + storage</span><span className={reached('map') ? 'done' : ''}>Secrets + domains</span></div>
         </aside>
 
         <section className="landing-demo-work" aria-live="polite">
           <div className="landing-demo-heading">
-            <p className="landing-demo-label">CURRENT WORK</p>
-            <h3>{startedPrompt}</h3>
-            <p><span>Context received</span> · 12 conversations · 3 decisions · builder {reached('switch') ? 'Codex' : 'Claude'}</p>
+            <p className="landing-demo-label">MIGRATION / {DEMO_STEPS[activeIndex]!.label.toUpperCase()}</p>
+            <h3>Bring the portal home without risking production</h3>
+            <p><span>{DEMO_STEPS[activeIndex]!.short}</span> · Selvedge coordinates the work</p>
           </div>
           <div className="landing-demo-conversation">
-            <div className="landing-demo-note"><span>YOU</span><p>{startedPrompt}</p></div>
-            {reached('think') && <div className="landing-demo-note"><span>CLAUDE</span><p>Keep one boundary question, but ask it after import. People understand the project once Selvedge has something real to organize.</p></div>}
-            {reached('switch') && <div className="landing-demo-transfer"><b>Context preserved</b><span>Claude → Codex · decision, evidence, and 12 conversations transferred</span></div>}
-            {reached('switch') && <div className="landing-demo-note"><span>CODEX</span><p>I have the onboarding decision and customer evidence. Updating the import-first path now.</p><small>✓ 4 files changed · 14 tests passed</small></div>}
-            {reached('preview') && <button type="button" className="landing-demo-ready" onClick={() => setStep('preview')}><span>✓ Preview ready</span><strong>Open in the Preview panel →</strong></button>}
+            <div className="landing-demo-note"><span>YOU</span><p>Move our Lovable portal into Selvedge. Do not change the live app until the copy is verified.</p></div>
+            <div className="landing-demo-note"><span>SELVEDGE</span><p>{step === 'connect' && 'Connecting read-only. Lovable production, users, data, and domain remain untouched.'}{step === 'map' && 'I found the application, Postgres schema, authentication, file storage, environment secrets, integrations, and domain configuration.'}{step === 'workspace' && 'Approval 1 received. Claude and Codex are working in an isolated copy with test-safe credentials and data.'}{step === 'preview' && 'The migrated portal is running beside this conversation. Use it like a customer would; nothing here can alter production.'}{step === 'verify' && 'Independent checks are comparing screens, permissions, records, uploads, and critical flows against the current live app.'}{step === 'cutover' && 'The replacement is ready in accounts you control. Nothing moves to the live domain until you approve cutover.'}</p></div>
+            {reached('workspace') && <div className="landing-demo-transfer"><b>Agent-neutral workspace</b><span>Claude mapped the dependencies · Codex prepared the copy · project context stayed in Selvedge</span></div>}
+            {step === 'cutover' && <div className="landing-approval-card"><span>APPROVAL 2</span><strong>Move the live domain?</strong><p>Verified copy ready · rollback plan prepared</p><div><button type="button">Keep Lovable live</button><button type="button">Approve cutover</button></div></div>}
           </div>
         </section>
 
-        <aside className="landing-demo-context" aria-label="Project context">
+        <aside className="landing-demo-context" aria-label="Migration evidence">
           <div className="landing-demo-tabs" role="tablist" aria-label="Context view">
-            <button type="button" role="tab" aria-selected={step !== 'preview'} onClick={() => setStep('remember')}>Memory</button>
-            <button type="button" role="tab" aria-selected={step === 'preview'} onClick={() => setStep('preview')}>Preview</button>
+            <button type="button" role="tab" aria-selected={!reached('preview')} onClick={() => choose('map')}>Project map</button>
+            <button type="button" role="tab" aria-selected={reached('preview')} onClick={() => choose('preview')}>Preview</button>
           </div>
-          {step === 'preview' ? <div className="landing-app-preview">
-            <div className="landing-preview-browser"><span>loom.app/onboarding</span><b>↗</b></div>
-            <div className="landing-preview-page"><small>LOOM</small><h4>Bring the work you already started.</h4><p>Import a conversation. Selvedge will find the project boundary with you.</p><button type="button">Import a conversation</button></div>
+          {reached('preview') ? <div className="landing-app-preview">
+            <div className="landing-preview-browser"><span>preview.selvedge.app</span><b className={reached('verify') ? 'text-healthy' : ''}>{reached('verify') ? 'verified' : 'private'}</b></div>
+            <div className="landing-preview-page"><small>NORTHSTAR</small><h4>Welcome back, Avery.</h4><p>Your projects, invoices, and account details moved with you.</p><button type="button">Open customer portal</button>{reached('verify') && <div className="landing-verification"><span>✓ Pages match</span><span>✓ Auth verified</span><span>✓ Data isolated</span><span>✓ Rollback ready</span></div>}</div>
           </div> : <div className="landing-demo-memory">
-            <p className="landing-demo-label">WHAT GOVERNS THIS WORK</p>
-            <strong>Establish the project boundary after import, not before it.</strong>
-            <dl><div><dt>Strongest evidence</dt><dd>7 of 9 interviews understood the project after seeing imported context.</dd></div><div><dt>Current builder</dt><dd>{reached('switch') ? 'Codex · context transferred' : 'Claude'}</dd></div><div><dt>Open question</dt><dd>Should empty projects keep the old path?</dd></div></dl>
-            {reached('remember') && <p className="landing-memory-saved">✓ This decision now belongs to Loom</p>}
+            <p className="landing-demo-label">PROJECT MAP</p>
+            <strong>{step === 'connect' ? 'Connecting without touching production…' : 'Everything the portal depends on, in one place.'}</strong>
+            <dl><div><dt>Application</dt><dd>{reached('map') ? 'Next.js · 184 files' : 'Reading…'}</dd></div><div><dt>Data</dt><dd>{reached('map') ? 'Postgres · 24 tables' : 'Waiting'}</dd></div><div><dt>Services</dt><dd>{reached('map') ? 'Auth · storage · email · Stripe' : 'Waiting'}</dd></div></dl>
+            {step === 'map' && <div className="landing-approval-card"><span>APPROVAL 1</span><strong>Create the isolated copy?</strong><p>Production remains untouched</p></div>}
           </div>}
         </aside>
       </div>
 
-      <form className="landing-demo-composer" onSubmit={(event) => { event.preventDefault(); beginDemo(); }}>
-        <label htmlFor={promptId}>Try Selvedge with an outcome</label>
-        <div><input id={promptId} value={prompt} onChange={(event) => setPrompt(event.target.value)} /><button type="submit">Route this work →</button></div>
-        <div className="landing-demo-suggestions" aria-label="Example outcomes">{DEMO_PROMPTS.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)}>{example}</button>)}</div>
-      </form>
+      <div className="landing-migration-promise"><span>Lovable production stays live</span><span aria-hidden>→</span><span>you approve the map</span><span aria-hidden>→</span><span>you approve cutover</span></div>
     </div>
   );
 }
