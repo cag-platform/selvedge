@@ -38,6 +38,7 @@ export function ImportReplit() {
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<'idle' | 'importing' | 'preparing' | 'opening'>('idle');
   const [note, setNote] = useState<string | null>(null);
+  const [githubAction, setGithubAction] = useState(false);
   /** Set when a repo exists but the files never landed — the retry target. */
   const [retryProjectId, setRetryProjectId] = useState<string | null>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -52,6 +53,7 @@ export function ImportReplit() {
     setBusy(true);
     setPhase('importing');
     setNote(null);
+    setGithubAction(false);
     try {
       const form = new FormData();
       form.append('file', file);
@@ -75,6 +77,7 @@ export function ImportReplit() {
       // in, and the next press retries into it instead of minting a second.
       const half = typeof failed.body?.project_id === 'string' ? failed.body.project_id : null;
       if (half) setRetryProjectId(half);
+      setGithubAction(failed.body?.code === 'github_authorization_required');
       setNote(failed.message || "that didn't go through");
       setBusy(false);
       setPhase('idle');
@@ -104,6 +107,7 @@ export function ImportReplit() {
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);
             setNote(null);
+            setGithubAction(false);
           }}
         />
         {!retryProjectId && (
@@ -130,7 +134,7 @@ export function ImportReplit() {
         Replit&rsquo;s agent chats have no export, so they stay behind; the code and the record start fresh here.
       </p>
 
-      {note && <p className="text-meta text-thread">{note}</p>}
+      {note && <div className="space-y-2"><p className="text-meta text-thread">{note}</p>{githubAction && <a href="/api/connectors/github/install" className="inline-block rounded-full bg-action px-4 py-2 text-meta font-medium text-white hover:opacity-90">Connect or update GitHub →</a>}<p className="text-meta text-ink-quiet">Your export is still selected in this browser. Return here after GitHub and press the same button—Selvedge will inspect it again and continue.</p></div>}
     </div>
   );
 }

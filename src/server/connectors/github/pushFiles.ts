@@ -20,20 +20,20 @@ import { GithubError } from './newRepo.js';
  */
 
 const API = 'https://api.github.com';
-const HEADERS = () => ({
+const HEADERS = (token: string) => ({
   Accept: 'application/vnd.github+json',
   'X-GitHub-Api-Version': '2022-11-28',
   'Content-Type': 'application/json',
-  Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+  Authorization: `Bearer ${token}`,
 });
 
 /** Blob creation runs a few at a time — hundreds in series is minutes, hundreds at once is a secondary rate limit. */
 const BLOB_CONCURRENCY = 8;
 
-async function gh<T>(path: string, init?: RequestInit): Promise<T> {
+async function gh<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API}${path}`, { ...init, headers: HEADERS() });
+    res = await fetch(`${API}${path}`, { ...init, headers: HEADERS(token) });
   } catch (err) {
     throw new GithubError(`could not reach GitHub (${err instanceof Error ? err.message : String(err)})`);
   }
@@ -46,14 +46,17 @@ async function gh<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type PushResult = { commitSha: string; branch: string; files: number };
 
-export async function pushFilesToRepo(fullName: string, files: Array<{ path: string; bytes: Uint8Array }>, message: string): Promise<PushResult> {
-  if (!process.env.GITHUB_TOKEN) throw new GithubError('pushing files needs the build engine’s GITHUB_TOKEN');
+/** Push using a credential supplied by the caller. Installation credentials are
+ * short-lived and tenant-scoped; keeping the token out of module state prevents
+ * one deployment identity from quietly becoming every customer's GitHub key. */
+export async function pushFilesToRepoWithToken(token: string, fullName: string, files: Array<{ path: string; bytes: Uint8Array }>, message: string): Promise<PushResult> {
+  if (!token.trim()) throw new GithubError('GitHub did not provide a repository credential');
   if (files.length === 0) throw new GithubError('nothing to push');
 
-  const repo = await gh<{ default_branch: string }>(`/repos/${fullName}`);
+  const repo = await gh<{ default_branch: string }>(token, `/repos/${fullName}`);
   const branch = repo.default_branch;
-  const head = await gh<{ object: { sha: string } }>(`/repos/${fullName}/git/ref/${encodeURIComponent(`heads/${branch}`)}`);
-  const headCommit = await gh<{ tree: { sha: string } }>(`/repos/${fullName}/git/commits/${head.object.sha}`);
+  const head = await gh<{ object: { sha: string } }>(token, `/repos/${fullName}/git/ref/${encodeURIComponent(`heads/${branch}`)}`);
+  const headCommit = await gh<{ tree: { sha: string } }>(token, `/repos/${fullName}/git/commits/${head.object.sha}`);
 
   // Blobs, a few at a time. Base64 for every file: it is byte-exact for
   // binaries and merely wasteful for text, and an importer that guesses wrong
@@ -64,7 +67,7 @@ export async function pushFilesToRepo(fullName: string, files: Array<{ path: str
     while (next < files.length) {
       const i = next++;
       const f = files[i]!;
-      const blob = await gh<{ sha: string }>(`/repos/${fullName}/git/blobs`, {
+      const blob = await gh<{ sha: string }>(token, `/repos/${fullName}/git/blobs`, {
         method: 'POST',
         body: JSON.stringify({ content: Buffer.from(f.bytes).toString('base64'), encoding: 'base64' }),
       });
@@ -73,7 +76,7 @@ export async function pushFilesToRepo(fullName: string, files: Array<{ path: str
   };
   await Promise.all(Array.from({ length: Math.min(BLOB_CONCURRENCY, files.length) }, worker));
 
-  const tree = await gh<{ sha: string }>(`/repos/${fullName}/git/trees`, {
+  const tree = await gh<{ sha: string }>(token, `/repos/${fullName}/git/trees`, {
     method: 'POST',
     body: JSON.stringify({
       base_tree: headCommit.tree.sha,
@@ -81,15 +84,23 @@ export async function pushFilesToRepo(fullName: string, files: Array<{ path: str
     }),
   });
 
-  const commit = await gh<{ sha: string }>(`/repos/${fullName}/git/commits`, {
+  const commit = await gh<{ sha: string }>(token, `/repos/${fullName}/git/commits`, {
     method: 'POST',
     body: JSON.stringify({ message, tree: tree.sha, parents: [head.object.sha] }),
   });
 
-  await gh(`/repos/${fullName}/git/refs/${encodeURIComponent(`heads/${branch}`)}`, {
+  await gh(token, `/repos/${fullName}/git/refs/${encodeURIComponent(`heads/${branch}`)}`, {
     method: 'PATCH',
     body: JSON.stringify({ sha: commit.sha, force: false }),
   });
 
   return { commitSha: commit.sha, branch, files: files.length };
+}
+
+/** Legacy/self-hosted adapter. Product migration code must use the explicit,
+ * customer-scoped credential entry point above. */
+export async function pushFilesToRepo(fullName: string, files: Array<{ path: string; bytes: Uint8Array }>, message: string): Promise<PushResult> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new GithubError('pushing files needs the build engine’s GITHUB_TOKEN');
+  return pushFilesToRepoWithToken(token, fullName, files, message);
 }

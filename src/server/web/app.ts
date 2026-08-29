@@ -198,7 +198,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createSubjectsRouter(db));
   app.use(createDecisionsRouter(db));
   app.use(createImportHistoryRouter(db));
-  app.use(createImportReplitRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}) }));
+  // Migration repositories use each customer's GitHub App installation and a
+  // short-lived credential inside the route. Never inject the deployment PAT.
+  app.use(createImportReplitRouter(db));
   app.use(createGithubArrivalRouter());
   app.use(createCompanionKeysRouter(db));
   if (continuationWedgeEnabled) app.use(createContinuationsRouter(db, { ...(pushSender ? { pushSender } : {}) }));

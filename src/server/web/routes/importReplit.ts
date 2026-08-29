@@ -9,6 +9,9 @@ import { ensureWorkshopThread } from '../../threads/store.js';
 import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
+import { pushFilesToRepoWithToken } from '../../connectors/github/pushFiles.js';
+import { provisionMigrationRepo, type ProvisionedMigrationRepo } from '../../connectors/github/migrationRepo.js';
+import { resolveRepoToken } from '../../build/repoToken.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
 import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordOwnerTestFlow, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
 import { attachBrowserEvidence, verifyMigrationPreview } from '../../import/previewVerifier.js';
@@ -29,6 +32,8 @@ import { runOwnerTestFlow, type OwnerFlowRun } from '../../import/ownerTestFlowR
 import { configuredMigrationTestInputIds, consumeMigrationTestInputs, deleteMigrationTestInputs, storeMigrationTestInputs, type OwnerTestInputValues } from '../../import/migrationTestInputs.js';
 import { readGithubProjectFiles, type GithubProjectFiles } from '../../import/githubProjectFiles.js';
 import { resolveProjectId } from '../../resolution/resolveProject.js';
+import { canCreateProject } from '../../billing/entitlements.js';
+import { slugifyProjectId } from '../../packs/scaffold.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -61,6 +66,7 @@ function orgIdOf(req: Request): string {
 
 export type ImportReplitDeps = CreateDeps & {
   push?: typeof pushFilesToRepo;
+  provisionRepo?: (orgId: string, name: string, description: string, files: Array<{ path: string; bytes: Uint8Array }>) => Promise<ProvisionedMigrationRepo>;
   prepareWorkspace?: (orgId: string, projectId: string) => Promise<{ ok: true; workspaceId: string } | { ok: false; status: number; error: string }>;
   startPreview?: (orgId: string, projectId: string) => Promise<PreviewStatus>;
   verifyPreview?: (url: string) => Promise<MigrationVerification>;
@@ -73,7 +79,12 @@ export type ImportReplitDeps = CreateDeps & {
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
   const router = Router();
-  const push = deps.push ?? pushFilesToRepo;
+  const pushExisting = async (orgId: string, repo: string, files: Array<{ path: string; bytes: Uint8Array }>): Promise<PushResult> => {
+    if (deps.push) return deps.push(repo, files, 'Imported from Replit');
+    const credential = await resolveRepoToken(db, orgId, repo);
+    if (!credential.ok) throw new GithubError(credential.reason);
+    return pushFilesToRepoWithToken(credential.token, repo, files, 'Imported from Replit');
+  };
   const prepareWorkspace = deps.prepareWorkspace ?? (async (orgId: string, projectId: string) => {
     const config = await configFor(db, orgId, projectId);
     if ('error' in config) return { ok: false as const, status: config.status, error: config.error };
@@ -347,6 +358,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
 
       let projectId: string;
       let repo: string;
+      let pushed: PushResult;
       if (existingId) {
         const pack = await getPack(db, orgId, existingId);
         if (!pack) {
@@ -360,35 +372,63 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         }
         projectId = existingId;
         repo = source.resource_id;
-      } else {
-        const made = await createProject(db, orgId, { name, repo: null, tier: 'personal' }, deps);
-        if (!made.ok) {
-          if (made.kind === 'limit') {
-            refuse(res, made.allowance);
+        try {
+          pushed = await pushExisting(orgId, repo, read.files);
+        } catch (err) {
+          if (err instanceof GithubError) {
+            res.status(502).json({ error: `The files did not land in ${repo}: ${err.message}. Check the GitHub App's access to this repository and try again.`, project_id: projectId });
             return;
           }
-          res.status(made.status).json({ error: made.error, ...(made.details ? { details: made.details } : {}) });
-          return;
+          throw err;
         }
-        projectId = made.pack.identity.project_id;
-        repo = made.pack.topology.sources.find((s) => s.connector === 'github')?.resource_id ?? '';
-      }
+      } else {
+        // Validate the local project id and subscription gate before GitHub is
+        // changed. The provisioner then creates AND fills the repo with one
+        // short-lived installation credential; only a complete repo becomes a
+        // Selvedge project, eliminating the old half-created project state.
+        const projectSlug = slugifyProjectId(name);
+        if (!projectSlug) { res.status(400).json({ error: 'name must contain at least one letter or number' }); return; }
+        if (await getPack(db, orgId, projectSlug)) { res.status(409).json({ error: `a project with id "${projectSlug}" already exists` }); return; }
+        const room = await canCreateProject(db, orgId);
+        if (!room.allowed) { refuse(res, room); return; }
 
-      let pushed: PushResult;
-      try {
-        pushed = await push(repo, read.files, 'Imported from Replit');
-      } catch (err) {
-        if (err instanceof GithubError) {
-          // The project exists and the files did not land — said exactly, with
-          // the way through, because "it failed" after a repo was minted is
-          // the kind of half-state that otherwise costs an hour of confusion.
-          res.status(502).json({
-            error: `The project was created but the files did not land: ${err.message}. Upload the same zip again into "${projectId}" — pushing layers, it never duplicates the project.`,
-            project_id: projectId,
-          });
-          return;
+        if (deps.createRepo || deps.push) {
+          // Injectable compatibility seam for local/self-hosted deployments and
+          // deterministic route tests. Production does not pass either dep.
+          const made = await createProject(db, orgId, { name, repo: null, tier: 'personal' }, deps);
+          if (!made.ok) {
+            if (made.kind === 'limit') { refuse(res, made.allowance); return; }
+            res.status(made.status).json({ error: made.error, ...(made.details ? { details: made.details } : {}) });
+            return;
+          }
+          projectId = made.pack.identity.project_id;
+          repo = made.pack.topology.sources.find((s) => s.connector === 'github')?.resource_id ?? '';
+          try { pushed = await pushExisting(orgId, repo, read.files); }
+          catch (err) {
+            if (err instanceof GithubError) { res.status(502).json({ error: `The project was created but the files did not land: ${err.message}. Upload the same zip again into "${projectId}" — pushing layers, it never duplicates the project.`, project_id: projectId }); return; }
+            throw err;
+          }
+        } else {
+          let provisioned: ProvisionedMigrationRepo;
+          try {
+            provisioned = await (deps.provisionRepo ?? ((tenant, repoName, description, files) => provisionMigrationRepo(db, tenant, repoName, description, files)))(orgId, projectSlug, `${name} — migrated by Selvedge`, read.files);
+          } catch (err) {
+            if (err instanceof GithubError) {
+              res.status(err.alreadyExists ? 409 : 409).json({ error: err.message, code: 'github_authorization_required', connect_url: '/api/connectors/github/install' });
+              return;
+            }
+            throw err;
+          }
+          repo = provisioned.fullName;
+          pushed = provisioned.pushed;
+          const made = await createProject(db, orgId, { name, repo, tier: 'personal' });
+          if (!made.ok) {
+            if (made.kind === 'limit') { refuse(res, made.allowance); return; }
+            res.status(made.status).json({ error: `${made.error}. The complete source repo is safe at ${repo}; connect it as an existing repository to finish.`, repo });
+            return;
+          }
+          projectId = made.pack.identity.project_id;
         }
-        throw err;
       }
 
       const thread = await ensureWorkshopThread(db, orgId, projectId);
