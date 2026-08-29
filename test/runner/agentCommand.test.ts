@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentRules, buildAgentPrompt, claudeCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents, resultToStep } from '../../src/server/runner/workers/claudeCommand.js';
+import { agentRules, buildAgentPrompt, claudeCommand, claudeInstallCommand, parseResult, parseAssistantText, parseToolActivity, parseToolEvents, resultToStep } from '../../src/server/runner/workers/claudeCommand.js';
 import type { Card } from '../../src/server/cards/types.js';
 
 function card(overrides: Partial<Card> = {}): Card {
@@ -20,6 +20,12 @@ describe('buildAgentPrompt — the owner ask, framed to edit in place', () => {
 });
 
 describe('claudeCommand — one stream-json turn', () => {
+  it('installs Claude Code only when the workspace image does not already provide it', () => {
+    expect(claudeInstallCommand()).toContain('claude --version');
+    expect(claudeInstallCommand()).toContain('@anthropic-ai/claude-code');
+    expect(claudeInstallCommand()).toContain('$HOME/.npm-global');
+  });
+
   it('builds the CLI command with the model and quoted prompt', () => {
     const cmd = claudeCommand('do a thing', 'sonnet');
     expect(cmd).toContain('claude -p');

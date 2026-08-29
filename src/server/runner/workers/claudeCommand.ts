@@ -14,6 +14,11 @@ import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from
 export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
 
+/** Install Claude Code into the disposable workspace when the provider image omits it. */
+export function claudeInstallCommand(): string {
+  return `${PATH_PREFIX} claude --version >/dev/null 2>&1 || npm install -g --prefix "$HOME/.npm-global" @anthropic-ai/claude-code`;
+}
+
 /** Shell-single-quote a value safely (Toile's shellQuote). */
 export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;

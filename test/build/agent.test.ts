@@ -130,8 +130,9 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       sleep: noSleep,
     });
     // The inner command rides through the outer nohup quoting, so assert parts.
-    expect(commands[0]).toContain('--resume');
-    expect(commands[0]).toContain('sess_1');
+    const resumed = commands.find((command) => command.includes('--resume'));
+    expect(resumed).toContain('--resume');
+    expect(resumed).toContain('sess_1');
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_2');
   });
 
