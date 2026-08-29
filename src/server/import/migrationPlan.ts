@@ -47,3 +47,32 @@ export function recordWorkspacePreparation(plan: MigrationPlan, result: { ok: tr
     next_action: next?.blockers[0] ?? (result.ok ? 'Configure the development copy and start its preview.' : plan.next_action),
   };
 }
+
+export function recordPreviewPreparation(plan: MigrationPlan, result: { state: 'ready' | 'none' | 'error'; message: string | null }, now = new Date()): MigrationPlan {
+  const steps = plan.steps.map((step): MigrationPlanStep => {
+    if (step.id === 'configure' && result.state === 'ready') return { ...step, state: 'complete', detail: 'The development-safe copy is configured well enough to run.', blockers: [] };
+    if (step.id !== 'preview') return step;
+    if (result.state === 'ready') return { ...step, state: 'complete', detail: 'The app is running behind Selvedge’s signed preview relay.', blockers: [] };
+    if (result.state === 'none') return { ...step, state: 'complete', detail: result.message ?? 'This project does not expose a browser preview.', blockers: [] };
+    return { ...step, state: 'blocked', detail: 'The first automatic startup attempt needs configuration.', blockers: [result.message ?? 'The app did not start.'] };
+  });
+  const blocked = steps.find((step) => step.state === 'blocked');
+  return {
+    ...plan,
+    generated_at: now.toISOString(),
+    steps,
+    next_action: blocked?.blockers[0] ?? (result.state === 'ready' ? 'Verify the running copy independently.' : 'Continue migration without a browser preview.'),
+  };
+}
+
+export function rebuildMigrationPlan(map: MigrationProjectMap, destinations: Destinations, current: MigrationPlan, now = new Date()): MigrationPlan {
+  const rebuilt = buildMigrationPlan(map, destinations, now);
+  const keepProgress = new Set(['workspace', 'configure', 'preview', 'verify']);
+  return {
+    ...rebuilt,
+    steps: rebuilt.steps.map((step) => {
+      const previous = current.steps.find((candidate) => candidate.id === step.id);
+      return previous && keepProgress.has(step.id) && (previous.state === 'complete' || previous.state === 'blocked') ? previous : step;
+    }),
+  };
+}

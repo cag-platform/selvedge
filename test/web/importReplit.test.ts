@@ -41,7 +41,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -83,9 +83,19 @@ describe('web/routes/import/replit', () => {
     let preparations = 0;
     const prepared = await request(app({ prepareWorkspace: async () => { preparations += 1; return { ok: true, workspaceId: 'ws_1' }; } })).post('/api/projects/loom-shop/migration/workspace');
     expect(prepared.status).toBe(200);
-    expect(prepared.body).toMatchObject({ workspace_id: 'ws_1', state: 'copying', original_untouched: true });
+    expect(prepared.body).toMatchObject({ workspace_id: 'ws_1', state: 'preview_ready', preview: { state: 'ready', url: 'https://preview.example' }, original_untouched: true });
     expect(prepared.body.migration_plan.steps.find((step: { id: string }) => step.id === 'workspace').state).toBe('complete');
     expect(preparations).toBe(1);
+  });
+
+  it('persists preview diagnosis for the migration agent and owner', async () => {
+    await send();
+    const attempted = await request(app({ startPreview: async () => ({ state: 'error', url: null, message: 'The app needs STRIPE_SECRET_KEY.', offer: 'env' }) })).post('/api/projects/loom-shop/migration/workspace');
+    expect(attempted.status).toBe(200);
+    expect(attempted.body.state).toBe('copying');
+    expect(attempted.body.migration_plan.steps.find((step: { id: string }) => step.id === 'preview').blockers).toEqual(['The app needs STRIPE_SECRET_KEY.']);
+    const journey = await request(app()).get('/api/projects/loom-shop/migration');
+    expect(journey.body.preview).toMatchObject({ state: 'error', message: 'The app needs STRIPE_SECRET_KEY.' });
   });
 
   it('persists an actionable blocker when workspace preparation cannot start', async () => {

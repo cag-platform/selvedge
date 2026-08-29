@@ -43,6 +43,7 @@ export type MigrationJourney = {
   original_untouched: boolean;
   project_map: MigrationProjectMap;
   migration_plan: MigrationPlan;
+  preview: { state: 'ready' | 'pending' | 'error' | 'none'; url: string | null; message: string | null };
   destinations: { repository?: string; hosting?: string; database?: string };
   created_at: string;
   updated_at: string;

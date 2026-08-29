@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMigrationPlan, recordWorkspacePreparation } from '../../src/server/import/migrationPlan.js';
+import { buildMigrationPlan, rebuildMigrationPlan, recordPreviewPreparation, recordWorkspacePreparation } from '../../src/server/import/migrationPlan.js';
 import type { MigrationProjectMap } from '../../src/shared/types/migration.js';
 
 const map: MigrationProjectMap = {
@@ -38,5 +38,23 @@ describe('migration planner', () => {
     expect(ready.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
     const failed = recordWorkspacePreparation(plan, { ok: false, reason: 'GitHub access expired.' });
     expect(failed.steps.find((step) => step.id === 'workspace')?.blockers).toEqual(['GitHub access expired.']);
+  });
+
+  it('records a live preview or a precise startup blocker', () => {
+    const workspace = recordWorkspacePreparation(buildMigrationPlan(map, { repository: 'acme/app' }), { ok: true });
+    const ready = recordPreviewPreparation(workspace, { state: 'ready', message: null });
+    expect(ready.steps.find((step) => step.id === 'configure')?.state).toBe('complete');
+    expect(ready.steps.find((step) => step.id === 'preview')?.state).toBe('complete');
+    expect(ready.steps.find((step) => step.id === 'verify')?.state).toBe('pending');
+    const failed = recordPreviewPreparation(workspace, { state: 'error', message: 'The app needs DATABASE_URL.' });
+    expect(failed.steps.find((step) => step.id === 'preview')?.blockers).toEqual(['The app needs DATABASE_URL.']);
+  });
+
+  it('keeps runtime progress when the owner changes destinations', () => {
+    const ready = recordPreviewPreparation(recordWorkspacePreparation(buildMigrationPlan(map, { repository: 'acme/app' }), { ok: true }), { state: 'ready', message: null });
+    const rebuilt = rebuildMigrationPlan(map, { repository: 'acme/app', hosting: 'vercel', database: 'neon' }, ready);
+    expect(rebuilt.steps.find((step) => step.id === 'workspace')?.state).toBe('complete');
+    expect(rebuilt.steps.find((step) => step.id === 'preview')?.state).toBe('complete');
+    expect(rebuilt.steps.find((step) => step.id === 'ship')?.state).toBe('approval_required');
   });
 });

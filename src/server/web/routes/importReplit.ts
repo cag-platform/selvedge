@@ -10,11 +10,12 @@ import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
-import { buildMigrationPlan } from '../../import/migrationPlan.js';
-import { recordWorkspacePreparation } from '../../import/migrationPlan.js';
+import { buildMigrationPlan, rebuildMigrationPlan, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
 import { configFor } from '../../build/engineConfig.js';
 import { ensureSandbox } from '../../build/sandbox.js';
 import { canStartBuild } from '../../billing/entitlements.js';
+import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
+import { getBuild } from '../../build/store.js';
 import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
@@ -51,6 +52,7 @@ function orgIdOf(req: Request): string {
 export type ImportReplitDeps = CreateDeps & {
   push?: typeof pushFilesToRepo;
   prepareWorkspace?: (orgId: string, projectId: string) => Promise<{ ok: true; workspaceId: string } | { ok: false; status: number; error: string }>;
+  startPreview?: (orgId: string, projectId: string) => Promise<PreviewStatus>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -66,14 +68,32 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       return { ok: false as const, status: 503, error: error instanceof Error ? error.message : 'The workspace could not be prepared.' };
     }
   });
+  const startPreview = deps.startPreview ?? (async (orgId: string, projectId: string) => {
+    const config = await configFor(db, orgId, projectId);
+    if ('error' in config) return { state: 'error' as const, url: null, message: config.error };
+    return ensurePreview(db, orgId, projectId, config.cfg);
+  });
+  const migrationResponse = async (row: typeof migrationJourneys.$inferSelect) => {
+    const destinations = row.destinations as Record<string, string>;
+    const plan = row.migrationPlan ?? buildMigrationPlan(row.projectMap, destinations, row.updatedAt);
+    const build = await getBuild(db, row.orgId, row.projectId);
+    const previewStep = plan.steps.find((step) => step.id === 'preview');
+    const preview = build?.previewUrl
+      ? { state: 'ready', url: build.previewUrl, message: null }
+      : previewStep?.state === 'blocked'
+        ? { state: 'error', url: null, message: previewStep.blockers[0] ?? previewStep.detail }
+        : previewStep?.state === 'complete'
+          ? { state: 'none', url: null, message: previewStep.detail }
+          : { state: 'pending', url: null, message: null };
+    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+  };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
   router.get('/api/projects/:projectId/migration', asyncHandler(async (req, res) => {
     const orgId = orgIdOf(req);
     const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, req.params.projectId ?? ''))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
     if (!row) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
-    const destinations = row.destinations as Record<string, string>;
-    res.json({ id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: row.migrationPlan ?? buildMigrationPlan(row.projectMap, destinations, row.updatedAt), destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() });
+    res.json(await migrationResponse(row));
   }));
 
   router.patch('/api/projects/:projectId/migration/destinations', asyncHandler(async (req, res) => {
@@ -90,9 +110,11 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       res.status(400).json({ error: 'Choose a supported hosting and database destination.' }); return;
     }
     const destinations = { ...(current.destinations as Record<string, unknown>), hosting, database };
-    const migrationPlan = buildMigrationPlan(current.projectMap, destinations as Record<string, string>);
+    const migrationPlan = current.migrationPlan
+      ? rebuildMigrationPlan(current.projectMap, destinations as Record<string, string>, current.migrationPlan)
+      : buildMigrationPlan(current.projectMap, destinations as Record<string, string>);
     const [updated] = await db.update(migrationJourneys).set({ destinations, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
-    res.json({ id: updated!.id, project_id: updated!.projectId, source: updated!.source, state: updated!.state, original_untouched: updated!.originalUntouched, project_map: updated!.projectMap, migration_plan: updated!.migrationPlan, destinations: updated!.destinations, created_at: updated!.createdAt.toISOString(), updated_at: updated!.updatedAt.toISOString() });
+    res.json(await migrationResponse(updated!));
   }));
 
   router.post('/api/projects/:projectId/migration/workspace', asyncHandler(async (req, res) => {
@@ -109,7 +131,11 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     );
     const [updated] = await db.update(migrationJourneys).set({ migrationPlan, state: prepared.ok ? 'copying' : 'mapped', updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     if (!prepared.ok) { res.status(prepared.status).json({ error: prepared.error, migration_plan: migrationPlan }); return; }
-    res.json({ workspace_id: prepared.workspaceId, state: updated!.state, migration_plan: updated!.migrationPlan, original_untouched: updated!.originalUntouched });
+    const preview = await startPreview(orgId, projectId);
+    const previewPlan = recordPreviewPreparation(migrationPlan, preview);
+    const nextState = preview.state === 'ready' ? 'preview_ready' : 'copying';
+    const [withPreview] = await db.update(migrationJourneys).set({ migrationPlan: previewPlan, state: nextState, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json({ workspace_id: prepared.workspaceId, state: withPreview!.state, migration_plan: withPreview!.migrationPlan, preview, original_untouched: withPreview!.originalUntouched });
   }));
 
   router.post(
