@@ -42,6 +42,9 @@ export type MigrationVerification = {
   independent_from_migration_agent: true;
   checks: Array<{ name: string; status: 'passed' | 'failed' | 'unavailable'; detail: string }>;
   screenshot_artifact_ids: string[];
+  console_errors: string[];
+  failed_requests: Array<{ url: string; status: number | null; detail: string }>;
+  routes_checked: string[];
   limitations: string[];
   verified_at: string;
 };

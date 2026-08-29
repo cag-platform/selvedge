@@ -42,7 +42,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], console_errors: [], failed_requests: [], routes_checked: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -111,6 +111,33 @@ describe('web/routes/import/replit', () => {
     expect(verified.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('blocked');
     const destination = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'railway', database: 'neon' });
     expect(destination.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('approval_required');
+  });
+
+  it('stores tenant-scoped desktop and mobile browser evidence', async () => {
+    await send();
+    await request(app()).post('/api/projects/loom-shop/migration/workspace');
+    await setBuild(db, orgId, 'loom-shop', { previewUrl: 'https://preview.example' });
+    const stored: string[] = [];
+    const evidenceApp = app({
+      captureBrowserEvidence: async () => ({ screenshots: [
+        { id: 'desktop', bytes: new Uint8Array([1]), mime: 'image/png', width: 1440, height: 1000 },
+        { id: 'mobile', bytes: new Uint8Array([2]), mime: 'image/png', width: 390, height: 844 },
+      ], consoleErrors: [], failedRequests: [], routesChecked: ['/'], error: null }),
+      visualStore: {
+        put: async (key: string) => { stored.push(key); },
+        signedGet: async (key: string) => `https://evidence.example/${encodeURIComponent(key)}`,
+        delete: async () => undefined,
+      },
+    });
+    const verified = await request(evidenceApp).post('/api/projects/loom-shop/migration/verify');
+    expect(verified.body.verification.status).toBe('passed');
+    expect(verified.body.verification.screenshot_artifact_ids).toHaveLength(2);
+    expect(stored).toHaveLength(2);
+    const screenshot = await request(evidenceApp).get(`/api/projects/loom-shop/migration/screenshots/${verified.body.verification.screenshot_artifact_ids[0]}`);
+    expect(screenshot.status).toBe(302);
+    expect(screenshot.headers.location).toContain('evidence.example');
+    const missing = await request(evidenceApp).get('/api/projects/loom-shop/migration/screenshots/not-owned');
+    expect(missing.status).toBe(404);
   });
 
   it('persists an actionable blocker when workspace preparation cannot start', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { verifyMigrationPreview } from '../../src/server/import/previewVerifier.js';
+import { attachBrowserEvidence, verifyMigrationPreview } from '../../src/server/import/previewVerifier.js';
 
 describe('migration preview verifier', () => {
   it('follows the signed-preview cookie handoff and verifies a meaningful document', async () => {
@@ -23,5 +23,35 @@ describe('migration preview verifier', () => {
     expect(result.status).toBe('failed');
     expect(result.screenshot_artifact_ids).toEqual([]);
     expect(result.limitations.join(' ')).toContain('Screenshot');
+  });
+
+  it('requires stored responsive browser evidence before verification passes', async () => {
+    const fetcher = async () => new Response('<html><body>A meaningful application page with enough visible content for deterministic verification.</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    const base = await verifyMigrationPreview('https://preview.example', new Date('2026-08-29T00:00:00Z'), fetcher as typeof fetch);
+    const result = attachBrowserEvidence(base, {
+      screenshots: [],
+      consoleErrors: [],
+      failedRequests: [],
+      routesChecked: ['/'],
+      error: null,
+    }, ['desktop-id', 'mobile-id'], new Date('2026-08-29T00:01:00Z'));
+    expect(result.status).toBe('passed');
+    expect(result.screenshot_artifact_ids).toEqual(['desktop-id', 'mobile-id']);
+    expect(result.routes_checked).toEqual(['/']);
+    expect(result.limitations.join(' ')).toContain('form submissions');
+  });
+
+  it('fails when the real browser reports a runtime error', async () => {
+    const fetcher = async () => new Response('<html><body>A meaningful application page with enough visible content for deterministic verification.</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    const base = await verifyMigrationPreview('https://preview.example', new Date(), fetcher as typeof fetch);
+    const result = attachBrowserEvidence(base, {
+      screenshots: [],
+      consoleErrors: ['Uncaught Error: startup failed'],
+      failedRequests: [],
+      routesChecked: ['/'],
+      error: null,
+    }, ['desktop-id', 'mobile-id']);
+    expect(result.status).toBe('failed');
+    expect(result.console_errors).toEqual(['Uncaught Error: startup failed']);
   });
 });

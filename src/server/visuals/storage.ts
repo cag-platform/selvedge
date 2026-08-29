@@ -34,3 +34,7 @@ export function visualStorageKey(orgId: string, visualId: string, mime: string):
   const extension = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
   return `generated/${encodeURIComponent(orgId)}/${visualId}.${extension}`;
 }
+
+export function migrationEvidenceStorageKey(orgId: string, artifactId: string): string {
+  return `migration-evidence/${encodeURIComponent(orgId)}/${encodeURIComponent(artifactId)}.png`;
+}

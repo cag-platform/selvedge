@@ -1,4 +1,5 @@
 import type { MigrationVerification } from '../../shared/types/migration.js';
+import type { MigrationBrowserEvidence } from './browserEvidence.js';
 
 type Fetcher = typeof fetch;
 
@@ -30,7 +31,31 @@ export async function verifyMigrationPreview(url: string, now = new Date(), fetc
     independent_from_migration_agent: true,
     checks,
     screenshot_artifact_ids: [],
+    console_errors: [],
+    failed_requests: [],
+    routes_checked: [],
     limitations: ['This verifier checks the delivered root document. Screenshot, console, network, authenticated-flow, and multi-route evidence are not connected yet.'],
+    verified_at: now.toISOString(),
+  };
+}
+
+export function attachBrowserEvidence(base: MigrationVerification, evidence: MigrationBrowserEvidence, screenshotIds: string[], now = new Date()): MigrationVerification {
+  const checks = [...base.checks];
+  checks.push({ name: 'Browser rendered the app', status: evidence.error ? 'failed' : 'passed', detail: evidence.error ?? `Rendered ${evidence.routesChecked.length || 1} route at desktop and mobile sizes.` });
+  checks.push({ name: 'Responsive screenshots captured', status: screenshotIds.length >= 2 ? 'passed' : 'unavailable', detail: screenshotIds.length >= 2 ? 'Desktop and mobile evidence was stored.' : 'Both desktop and mobile screenshots could not be stored.' });
+  checks.push({ name: 'No browser console errors', status: evidence.consoleErrors.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.consoleErrors.length ? `${evidence.consoleErrors.length} console error(s) were observed.` : 'No console errors were observed during capture.' });
+  checks.push({ name: 'No failed critical requests', status: evidence.failedRequests.length ? 'failed' : evidence.error ? 'unavailable' : 'passed', detail: evidence.failedRequests.length ? `${evidence.failedRequests.length} failed or 5xx request(s) were observed.` : 'No failed or 5xx requests were observed during capture.' });
+  const failed = checks.some((check) => check.status === 'failed');
+  const passed = checks.every((check) => check.status === 'passed');
+  return {
+    ...base,
+    status: passed ? 'passed' : failed ? 'failed' : 'inconclusive',
+    checks,
+    screenshot_artifact_ids: screenshotIds,
+    console_errors: evidence.consoleErrors,
+    failed_requests: evidence.failedRequests,
+    routes_checked: evidence.routesChecked,
+    limitations: ['Authenticated user journeys, form submissions, and destructive actions are not exercised automatically.'],
     verified_at: now.toISOString(),
   };
 }

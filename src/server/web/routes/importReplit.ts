@@ -11,7 +11,8 @@ import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
 import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
-import { verifyMigrationPreview } from '../../import/previewVerifier.js';
+import { attachBrowserEvidence, verifyMigrationPreview } from '../../import/previewVerifier.js';
+import { captureMigrationBrowserEvidence, type MigrationBrowserEvidence } from '../../import/browserEvidence.js';
 import type { MigrationVerification } from '../../../shared/types/migration.js';
 import { configFor } from '../../build/engineConfig.js';
 import { ensureSandbox } from '../../build/sandbox.js';
@@ -21,6 +22,7 @@ import { getBuild } from '../../build/store.js';
 import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
+import { migrationEvidenceStorageKey, visualObjectStore, type VisualObjectStore } from '../../visuals/storage.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -56,6 +58,8 @@ export type ImportReplitDeps = CreateDeps & {
   prepareWorkspace?: (orgId: string, projectId: string) => Promise<{ ok: true; workspaceId: string } | { ok: false; status: number; error: string }>;
   startPreview?: (orgId: string, projectId: string) => Promise<PreviewStatus>;
   verifyPreview?: (url: string) => Promise<MigrationVerification>;
+  captureBrowserEvidence?: (url: string) => Promise<MigrationBrowserEvidence>;
+  visualStore?: VisualObjectStore | null;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -77,6 +81,8 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     return ensurePreview(db, orgId, projectId, config.cfg);
   });
   const verifyPreview = deps.verifyPreview ?? verifyMigrationPreview;
+  const captureBrowserEvidence = deps.captureBrowserEvidence ?? captureMigrationBrowserEvidence;
+  const visualStore = deps.visualStore === undefined ? visualObjectStore() : deps.visualStore;
   const migrationResponse = async (row: typeof migrationJourneys.$inferSelect) => {
     const destinations = row.destinations as Record<string, string>;
     const plan = row.migrationPlan ?? buildMigrationPlan(row.projectMap, destinations, row.updatedAt);
@@ -98,6 +104,16 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, req.params.projectId ?? ''))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
     if (!row) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
     res.json(await migrationResponse(row));
+  }));
+
+  router.get('/api/projects/:projectId/migration/screenshots/:artifactId', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const artifactId = req.params.artifactId ?? '';
+    const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!row?.migrationVerification?.screenshot_artifact_ids.includes(artifactId)) { res.status(404).json({ error: 'No such migration screenshot.' }); return; }
+    if (!visualStore) { res.status(503).json({ error: 'Migration evidence storage is not configured.' }); return; }
+    res.redirect(302, await visualStore.signedGet(migrationEvidenceStorageKey(orgId, artifactId)));
   }));
 
   router.patch('/api/projects/:projectId/migration/destinations', asyncHandler(async (req, res) => {
@@ -149,7 +165,25 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
     const build = await getBuild(db, orgId, projectId);
     if (!build?.previewUrl) { res.status(409).json({ error: 'The migrated app needs a running preview before it can be verified.' }); return; }
-    const verification = await verifyPreview(build.previewUrl);
+    let verification = await verifyPreview(build.previewUrl);
+    if (!deps.verifyPreview || deps.captureBrowserEvidence) {
+      const evidence = await captureBrowserEvidence(build.previewUrl);
+      const screenshotIds: string[] = [];
+      if (visualStore) {
+        try {
+          for (const screenshot of evidence.screenshots) {
+            const artifactId = `${ulid()}-${screenshot.id}`;
+            await visualStore.put(migrationEvidenceStorageKey(orgId, artifactId), screenshot.bytes, screenshot.mime);
+            screenshotIds.push(artifactId);
+          }
+        } catch (error) {
+          evidence.error ??= `Browser evidence could not be stored: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500);
+        }
+      } else {
+        evidence.error ??= 'Migration evidence storage is not configured.';
+      }
+      verification = attachBrowserEvidence(verification, evidence, screenshotIds);
+    }
     const migrationPlan = recordMigrationVerification(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), verification);
     const state = verification.status === 'passed' ? 'verified' : 'preview_ready';
     await db.update(migrationJourneys).set({ migrationPlan, migrationVerification: verification, state, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
