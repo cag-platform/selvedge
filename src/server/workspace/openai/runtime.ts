@@ -86,11 +86,11 @@ class OpenAiWorkspace implements Workspace {
     if (Object.keys(env).length) {
       const uploaded = await this.options.client.uploadFile(
         this.id,
-        `selvedge-env-${randomBytes(8).toString('hex')}.json`,
-        encoder.encode(JSON.stringify(env)),
+        `selvedge-env-${randomBytes(8).toString('hex')}.sh`,
+        encoder.encode(Object.entries(env).map(([name, value]) => `${name}=${shellQuote(value)}`).join('\n')),
       );
       secretPath = uploaded.path;
-      prefix = `set -a; eval "$(node -e ${shellQuote("const f=require('fs');const p=process.argv[1];const x=JSON.parse(f.readFileSync(p));f.unlinkSync(p);for(const [k,v] of Object.entries(x))process.stdout.write(k+'='+JSON.stringify(v)+'\\n')")} ${shellQuote(uploaded.path)})"; set +a; `;
+      prefix = `set -a; . ${shellQuote(uploaded.path)}; rm -f ${shellQuote(uploaded.path)}; set +a; `;
     }
 
     const cwd = request.cwd ? `cd ${shellQuote(request.cwd)} && ` : '';
@@ -206,16 +206,38 @@ export class OpenAiWorkspaceRuntime implements WorkspaceRuntime {
       if (credentialGrant && credentialGrant.name !== 'GITHUB_TOKEN') {
         throw new Error('GitHub repository credential grant must expose GITHUB_TOKEN');
       }
-      const credentialHelper = credentialGrant
-        ? `-c credential.helper=${shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f')} `
-        : '';
-      const cloneCommand = input.source.empty
-        ? `mkdir -p /workspace && git ${credentialHelper}clone ${shellQuote(input.source.repository)} /workspace/project && cd /workspace/project && git checkout -b ${shellQuote(input.source.ref)}`
-        : `mkdir -p /workspace && git ${credentialHelper}clone --single-branch --branch ${shellQuote(input.source.ref)} ${shellQuote(input.source.repository)} /workspace/project`;
+      let cloneCommand: string;
+      let cloneSecretGrants: string[] | undefined;
+      if (input.source.snapshot) {
+        const snapshot = await this.options.client.uploadFile(
+          container.id,
+          input.source.snapshot.filename,
+          input.source.snapshot.data,
+        );
+        cloneCommand = [
+          'mkdir -p /workspace/project',
+          `tar -xzf ${shellQuote(snapshot.path)} -C /workspace/project --strip-components=1`,
+          'cd /workspace/project',
+          'git init',
+          `git checkout -b ${shellQuote(input.source.ref)}`,
+          `git remote add origin ${shellQuote(input.source.repository)}`,
+          'git add -A',
+          `git -c user.name=${shellQuote('Selvedge')} -c user.email=${shellQuote('selvedge@users.noreply.github.com')} commit -m ${shellQuote('Imported source snapshot')}`,
+          `rm -f ${shellQuote(snapshot.path)}`,
+        ].join(' && ');
+      } else {
+        const credentialHelper = credentialGrant
+          ? `-c credential.helper=${shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f')} `
+          : '';
+        cloneCommand = input.source.empty
+          ? `mkdir -p /workspace && git ${credentialHelper}clone ${shellQuote(input.source.repository)} /workspace/project && cd /workspace/project && git checkout -b ${shellQuote(input.source.ref)}`
+          : `mkdir -p /workspace && git ${credentialHelper}clone --single-branch --branch ${shellQuote(input.source.ref)} ${shellQuote(input.source.repository)} /workspace/project`;
+        cloneSecretGrants = input.source.credentialGrant ? [input.source.credentialGrant] : undefined;
+      }
       const clone = await workspace.exec({
         command: cloneCommand,
         timeoutSeconds: 300,
-        ...(input.source.credentialGrant ? { secretGrants: [input.source.credentialGrant] } : {}),
+        ...(cloneSecretGrants ? { secretGrants: cloneSecretGrants } : {}),
       });
       if (clone.exitCode !== 0) throw new Error(`repository checkout failed: ${clone.stderr || clone.stdout}`);
       return workspace;

@@ -19,6 +19,8 @@ export type WorkspaceSource = {
   empty?: boolean;
   /** A command-scoped grant used for clone/fetch, never persisted in the checkout. */
   credentialGrant?: string;
+  /** Optional server-fetched source snapshot, used when provider egress cannot safely clone. */
+  snapshot?: { filename: string; data: Uint8Array };
 };
 
 export type NetworkPolicy = {

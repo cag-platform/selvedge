@@ -61,4 +61,23 @@ describe('OpenAI Workspace Runtime', () => {
     expect(prompts).not.toContain(config.token);
     expect(prompts).not.toContain('?preview_token=');
   });
+
+  it('hydrates a server-fetched repository snapshot without exposing GitHub credentials to the container network', async () => {
+    const { client, runtime } = fixture();
+    vi.mocked(client.uploadFile).mockResolvedValueOnce({ id: 'source_1', path: '/mnt/data/source.tar.gz' });
+    await runtime.createWorkspace({
+      orgId: 'org_1', projectId: 'project_1', purpose: 'migration',
+      source: {
+        kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main', credentialGrant: 'github_1',
+        snapshot: { filename: 'source.tar.gz', data: new Uint8Array([1, 2, 3]) },
+      },
+      ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] },
+      secrets: [{ id: 'github_1', name: 'GITHUB_TOKEN', exposure: 'command' }],
+    });
+
+    expect(client.uploadFile).toHaveBeenCalledWith('cntr_1', 'source.tar.gz', new Uint8Array([1, 2, 3]));
+    const prompts = vi.mocked(client.runHostedShell).mock.calls.map(([input]) => input.prompt).join('\n');
+    expect(prompts).toContain('tar -xzf');
+    expect(prompts).not.toContain('x-access-token');
+  });
 });

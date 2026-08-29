@@ -91,10 +91,9 @@ export function developmentWorkspaceRuntime(): OpenAiWorkspaceRuntime {
 async function executeWithEnvironment(workspace: Workspace, command: string, timeoutSec: number, cwd?: string, env?: Record<string, string>): Promise<WorkspaceExecResult> {
   if (!env || Object.keys(env).length === 0) return workspace.exec({ command, cwd, timeoutSeconds: timeoutSec });
   for (const name of Object.keys(env)) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`invalid command environment name: ${name}`);
-  const configPath = `/mnt/data/selvedge-command-env-${randomBytes(8).toString('hex')}.json`;
-  await workspace.upload(configPath, Buffer.from(JSON.stringify(env)));
-  const loader = "const f=require('fs');const p=process.argv[1];const x=JSON.parse(f.readFileSync(p));f.unlinkSync(p);for(const [k,v] of Object.entries(x))process.stdout.write(k+'='+JSON.stringify(v)+'\\n')";
-  return workspace.exec({ command: `set -a; eval "$(node -e ${shellQuote(loader)} ${shellQuote(configPath)})"; set +a; ${command}`, cwd, timeoutSeconds: timeoutSec });
+  const configPath = `/mnt/data/selvedge-command-env-${randomBytes(8).toString('hex')}.sh`;
+  await workspace.upload(configPath, Buffer.from(Object.entries(env).map(([name, value]) => `${name}=${shellQuote(value)}`).join('\n')));
+  return workspace.exec({ command: `set -a; . ${shellQuote(configPath)}; rm -f ${shellQuote(configPath)}; set +a; ${command}`, cwd, timeoutSeconds: timeoutSec });
 }
 
 export function adaptDevelopmentWorkspace(workspace: Workspace): DevelopmentWorkspace {
@@ -111,11 +110,11 @@ export function adaptDevelopmentWorkspace(workspace: Workspace): DevelopmentWork
   };
 }
 
-function workspaceInput(orgId: string, projectId: string, cfg: SandboxConfig): CreateWorkspaceInput {
+function workspaceInput(orgId: string, projectId: string, cfg: SandboxConfig, snapshot?: { filename: string; data: Uint8Array }): CreateWorkspaceInput {
   const gitGrantId = `github:${orgId}:${projectId}`;
   return {
     orgId, projectId, purpose: 'development',
-    source: { kind: 'git', repository: `https://github.com/${cfg.repoFullName}.git`, ref: cfg.branch, credentialGrant: gitGrantId, empty: cfg.emptyRepo },
+    source: { kind: 'git', repository: `https://github.com/${cfg.repoFullName}.git`, ref: cfg.branch, credentialGrant: gitGrantId, empty: cfg.emptyRepo, snapshot },
     ttlMinutes: 24 * 60, idleStopMinutes: SANDBOX_IDLE_MINUTES,
     network: { default: 'deny', allowedHosts: ['github.com', 'api.github.com', 'registry.npmjs.org', 'api.anthropic.com', 'api.openai.com'] },
     secrets: [{ id: gitGrantId, name: 'GITHUB_TOKEN', exposure: 'command' }],
@@ -123,11 +122,29 @@ function workspaceInput(orgId: string, projectId: string, cfg: SandboxConfig): C
   };
 }
 
+async function fetchRepositorySnapshot(cfg: SandboxConfig): Promise<{ filename: string; data: Uint8Array } | undefined> {
+  if (cfg.emptyRepo) return undefined;
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(cfg.repoFullName)) throw new Error('invalid GitHub repository name');
+  const response = await fetch(`https://api.github.com/repos/${cfg.repoFullName}/tarball/${encodeURIComponent(cfg.branch)}`, {
+    headers: {
+      Authorization: `Bearer ${cfg.githubToken}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Selvedge',
+    },
+  });
+  if (!response.ok) throw new Error(`could not prepare repository snapshot (${response.status})`);
+  const data = new Uint8Array(await response.arrayBuffer());
+  if (data.byteLength > 100 * 1024 * 1024) throw new Error('repository snapshot exceeds the 100 MB workspace import limit');
+  return { filename: `selvedge-source-${randomBytes(8).toString('hex')}.tar.gz`, data };
+}
+
 async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
   const gitGrantId = `github:${orgId}:${projectId}`;
   secretValues.set(gitGrantId, cfg.githubToken);
   try {
-    const workspace = await developmentWorkspaceRuntime().createWorkspace(workspaceInput(orgId, projectId, cfg));
+    const snapshot = await fetchRepositorySnapshot(cfg);
+    const workspace = await developmentWorkspaceRuntime().createWorkspace(workspaceInput(orgId, projectId, cfg, snapshot));
     const sandbox = adaptDevelopmentWorkspace(workspace);
     active.set(workspace.id, sandbox);
     await workspace.exec({ command: 'git config user.name "Selvedge" && git config user.email "selvedge@users.noreply.github.com"', cwd: WORKDIR, timeoutSeconds: 30 });
