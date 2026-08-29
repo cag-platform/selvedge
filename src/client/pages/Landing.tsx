@@ -115,12 +115,12 @@ function PricingFaq() {
 type DemoStep = 'connect' | 'map' | 'workspace' | 'preview' | 'verify' | 'cutover';
 
 const DEMO_STEPS: Array<{ id: DemoStep; label: string; short: string }> = [
-  { id: 'connect', label: 'Connect', short: 'Read-only access' },
-  { id: 'map', label: 'Map', short: 'See every dependency' },
-  { id: 'workspace', label: 'Copy', short: 'Keep production untouched' },
+  { id: 'connect', label: 'Ask', short: 'Tell Selvedge where you are leaving' },
+  { id: 'map', label: 'Discover', short: 'The migration agent maps everything' },
+  { id: 'workspace', label: 'Migrate', short: 'The agent builds an isolated copy' },
   { id: 'preview', label: 'Preview', short: 'Use the migrated app' },
-  { id: 'verify', label: 'Verify', short: 'Compare real behavior' },
-  { id: 'cutover', label: 'Approve', short: 'You decide when to ship' },
+  { id: 'verify', label: 'Verify', short: 'Selvedge checks the result independently' },
+  { id: 'cutover', label: 'Approve', short: 'You decide when to go live' },
 ];
 
 function ProductDemo() {
@@ -146,7 +146,7 @@ function ProductDemo() {
     <div className="landing-demo landing-demo-light" aria-label="Guided Selvedge migration demonstration">
       <div className="landing-demo-bar">
         <div className="landing-window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <p>Selvedge migration · Customer portal</p>
+          <p>Selvedge migration agent · Customer portal</p>
         <button type="button" onClick={() => setPlaying((current) => !current)} aria-label={playing ? 'Pause migration walkthrough' : 'Play migration walkthrough'}>
           {playing ? 'Pause' : 'Play'}
         </button>
@@ -170,12 +170,12 @@ function ProductDemo() {
           <div className="landing-demo-heading">
             <p className="landing-demo-label">MIGRATION / {DEMO_STEPS[activeIndex]!.label.toUpperCase()}</p>
             <h3>Bring the portal home without risking production</h3>
-            <p><span>{DEMO_STEPS[activeIndex]!.short}</span> · Selvedge coordinates the work</p>
+            <p><span>{DEMO_STEPS[activeIndex]!.short}</span> · you supervise, Selvedge does the work</p>
           </div>
           <div className="landing-demo-conversation">
             <div className="landing-demo-note"><span>YOU</span><p>Move our Lovable portal into Selvedge. Do not change the live app until the copy is verified.</p></div>
-            <div className="landing-demo-note"><span>SELVEDGE</span><p>{step === 'connect' && 'Connecting read-only. Lovable production, users, data, and domain remain untouched.'}{step === 'map' && 'I found the application, Postgres schema, authentication, file storage, environment secrets, integrations, and domain configuration.'}{step === 'workspace' && 'Approval 1 received. Claude and Codex are working in an isolated copy with test-safe credentials and data.'}{step === 'preview' && 'The migrated portal is running beside this conversation. Use it like a customer would; nothing here can alter production.'}{step === 'verify' && 'Independent checks are comparing screens, permissions, records, uploads, and critical flows against the current live app.'}{step === 'cutover' && 'The replacement is ready in accounts you control. Nothing moves to the live domain until you approve cutover.'}</p></div>
-            {reached('workspace') && <div className="landing-demo-transfer"><b>Agent-neutral workspace</b><span>Claude mapped the dependencies · Codex prepared the copy · project context stayed in Selvedge</span></div>}
+            <div className="landing-demo-note"><span>SELVEDGE MIGRATION AGENT</span><p>{step === 'connect' && 'That is enough to begin. I am connecting read-only; your production app, users, data, and domain remain untouched.'}{step === 'map' && 'I inspected the project and found the application, Postgres schema, authentication, storage, secrets, integrations, and domain configuration. You did not need to inventory them.'}{step === 'workspace' && 'I created an isolated workspace, chose the right workers, copied the project, configured test-safe services, and started the application.'}{step === 'preview' && 'The migrated portal is running beside this conversation. Use it like a customer would; nothing here can alter production.'}{step === 'verify' && 'I assigned verification independently. Screens, permissions, records, uploads, and critical flows are being compared with the current live app.'}{step === 'cutover' && 'The verified replacement is ready in accounts you control. Your only remaining decision is whether I should move the live domain.'}</p></div>
+            {reached('workspace') && <div className="landing-demo-transfer"><b>Selvedge is running the migration</b><span>Claude mapped dependencies · Codex prepared the copy · Selvedge retained context and supervised both workers</span></div>}
             {step === 'cutover' && <div className="landing-approval-card"><span>APPROVAL 2</span><strong>Move the live domain?</strong><p>Verified copy ready · rollback plan prepared</p><div><button type="button">Keep Lovable live</button><button type="button">Approve cutover</button></div></div>}
           </div>
         </section>
@@ -192,12 +192,12 @@ function ProductDemo() {
             <p className="landing-demo-label">PROJECT MAP</p>
             <strong>{step === 'connect' ? 'Connecting without touching production…' : 'Everything the portal depends on, in one place.'}</strong>
             <dl><div><dt>Application</dt><dd>{reached('map') ? 'Next.js · 184 files' : 'Reading…'}</dd></div><div><dt>Data</dt><dd>{reached('map') ? 'Postgres · 24 tables' : 'Waiting'}</dd></div><div><dt>Services</dt><dd>{reached('map') ? 'Auth · storage · email · Stripe' : 'Waiting'}</dd></div></dl>
-            {step === 'map' && <div className="landing-approval-card"><span>APPROVAL 1</span><strong>Create the isolated copy?</strong><p>Production remains untouched</p></div>}
+            {step === 'map' && <div className="landing-approval-card"><span>NO HOMEWORK REQUIRED</span><strong>The migration agent has the map.</strong><p>It continues automatically in an isolated workspace. Production remains untouched.</p></div>}
           </div>}
         </aside>
       </div>
 
-      <div className="landing-migration-promise"><span>Lovable production stays live</span><span aria-hidden>→</span><span>you approve the map</span><span aria-hidden>→</span><span>you approve cutover</span></div>
+      <div className="landing-migration-promise"><span>You connect Lovable</span><span aria-hidden>→</span><span>Selvedge does the migration</span><span aria-hidden>→</span><span>you approve cutover</span></div>
     </div>
   );
 }
@@ -208,7 +208,7 @@ export function Landing() {
     <main>
       <section className="landing-hero mx-auto max-w-6xl px-4 pt-14 sm:px-6 sm:pt-20 lg:pt-24"><div className="landing-hero-copy"><p className={eyebrowCls}>Your project has somewhere better to go</p><h1 className="mt-4 max-w-5xl font-display text-hero font-medium text-ink">The place your projects go when other AI builders price you out.</h1><p className="mt-6 max-w-2xl text-hero-sub text-ink-dim">Bring your project home. Keep hosting, databases, and infrastructure in accounts you control—then build, iterate, and manage it from one simple conversation in Selvedge.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/sign-up" className={btnPrimary}>Bring my project home</Link><a href="#product" className={btnGhost}>See how it works ↓</a></div></div><div id="product" className="landing-product-stage"><ProductDemo /></div><p className="landing-scroll-cue font-mono text-tech text-ink-quiet">Your project is the product. The agent is a worker. ↓</p></section>
 
-      <section id="memory" aria-label="How migration works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>Move once. Keep control.</p><h2 className="mt-4 font-display text-section font-medium text-ink">Leave the builder. Keep the project.</h2><p className="mt-4 max-w-xl text-body-lg text-ink-dim">Selvedge maps what you have, gives agents a safe temporary workspace, shows you the result, verifies it, and ships only when you approve.</p></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Bring it over</strong><p>Connect the repository and the services your project already uses.</p></li><li><span>02</span><strong>Work naturally</strong><p>Ask for an outcome. Selvedge gives the right agent the project context and opens the preview when it is ready.</p></li><li><span>03</span><strong>Approve and ship</strong><p>Review the result and verification, then publish to infrastructure you control.</p></li></ol></section>
+      <section id="memory" aria-label="How migration works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>Move once. Keep control.</p><h2 className="mt-4 font-display text-section font-medium text-ink">Leave the builder. Keep the project.</h2><p className="mt-4 max-w-xl text-body-lg text-ink-dim">Tell Selvedge where the project lives. Its migration agent discovers the rest, coordinates the right workers, builds a safe copy, verifies it, and returns when there is something worth reviewing.</p></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Point Selvedge at it</strong><p>Connect the builder or repository. The migration agent finds the code and services without making you produce an inventory.</p></li><li><span>02</span><strong>Let the agents work</strong><p>Selvedge creates the workspace, assigns the right agents, configures the copy, and opens a usable preview.</p></li><li><span>03</span><strong>Review one decision</strong><p>See the working result and independent verification. Approve cutover only when you are satisfied.</p></li></ol></section>
 
       <section aria-label="Project memory" className="landing-section landing-memory mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PROJECT MEMORY" title="Nothing important disappears into the chat log.">Selvedge separates durable project knowledge from the conversation that produced it—without severing the evidence and history behind it.</SectionIntro><div className="landing-memory-sheet"><div><p className="landing-demo-label">GOVERNING DECISION</p><strong>Ask for the project boundary after import.</strong><small>Accepted Mar 05 · supported by 3 conversations</small></div><div><p className="landing-demo-label">ACCEPTED LANGUAGE</p><strong>“Bring the work you already started.”</strong><small>Used in onboarding and import flows</small></div><div><p className="landing-demo-label">OPEN QUESTION</p><strong>What should happen when there is nothing to import?</strong><small>Owner: Product · fresh today</small></div></div></section>
 
