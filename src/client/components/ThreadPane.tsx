@@ -221,17 +221,23 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
   const [busy, setBusy] = useState(false);
   const [needsBackup, setNeedsBackup] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [limitationsAccepted, setLimitationsAccepted] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<EvidenceSheet | null>(null);
   const [evidenceBusy, setEvidenceBusy] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const lastShip = data.runs.find((r) => r.kind === 'ship' && r.commit)?.commit ?? null;
-  const latestEvidence = [...data.runs]
+  const latestEvidenceRun = [...data.runs]
     .filter((run) => run.evidence)
-    .sort((a, b) => b.at.localeCompare(a.at))[0]?.evidence ?? null;
+    .sort((a, b) => b.at.localeCompare(a.at))[0] ?? null;
+  const latestEvidence = latestEvidenceRun?.evidence ?? null;
   const repository = data.console_links?.find((link) => /github|repository|repo/i.test(`${link.provider} ${link.label}`)) ?? null;
+  const verified = evidence?.outcome === 'verified';
+  const requiresLimitationsApproval = !verified;
+  const canShipEvidence = !evidenceBusy && (verified || limitationsAccepted);
 
   useEffect(() => {
+    setLimitationsAccepted(false);
     if (!latestEvidence) { setEvidence(null); setEvidenceError(null); return; }
     let active = true;
     setEvidenceBusy(true);
@@ -275,12 +281,18 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
   }
 
   return (
-    <div className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
+    <section aria-label="Selvedge completion" className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
       <div className="flex flex-wrap items-start justify-between gap-work border-b border-hairline pb-work-tight">
         <div className="max-w-2xl">
-          <p className="section-label">Review and ship</p>
-          <p className="mt-1 text-body font-medium text-ink">{prompted ? 'Selvedge has prepared the requested change.' : 'There’s finished work here that isn’t live yet.'}</p>
-          <p className="mt-1 text-meta text-ink-dim">Review what was observed below. Shipping commits the workspace and pushes it to {branch ?? 'the project branch'}{repository ? ` in ${repository.label}` : ''}. If hosting follows that branch, deployment begins.</p>
+          <p className="section-label">Selvedge completion</p>
+          <p className="mt-1 text-body font-medium text-ink">{prompted ? 'The requested change is ready for your decision.' : 'The agent finished. Selvedge kept the result, checks, and shipping decision together.'}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-meta text-ink-dim">
+            <span>Built by</span>
+            <AgentChip agent={latestEvidenceRun?.agent ?? data.thread.agent} />
+            <span>{agentById(latestEvidenceRun?.agent ?? data.thread.agent)?.name ?? latestEvidenceRun?.agent ?? data.thread.agent}</span>
+            {latestEvidenceRun?.model && <span className="font-mono text-tech text-ink-quiet">· {latestEvidenceRun.model}</span>}
+            <span className="text-ink-quiet">· project context retained by Selvedge</span>
+          </div>
         </div>
         <div className="flex items-center gap-work">
           {lastShip && (
@@ -288,12 +300,13 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
               Undo last ship
             </button>
           )}
+          {onReview && <button type="button" onClick={onReview} className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-action-bright hover:border-action/50">Review preview</button>}
           <button
-            disabled={busy || data.working || (needsBackup && !backupConfirmed)}
+            disabled={busy || data.working || !canShipEvidence || (needsBackup && !backupConfirmed)}
             onClick={() => void ship()}
             className="rounded-inset bg-action px-4 py-1.5 text-body font-medium text-ink hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
-            {busy ? 'Shipping…' : 'Ship it'}
+            {busy ? 'Shipping…' : verified ? 'Ship verified change' : 'Ship with limitations'}
           </button>
           {prompted && onCancel && <button type="button" disabled={busy} onClick={onCancel} className="text-meta text-ink-quiet hover:text-ink-dim disabled:opacity-50">Not yet</button>}
         </div>
@@ -303,7 +316,7 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
           <p className="text-label uppercase tracking-widest text-ink-quiet">Observed result</p>
           {evidenceBusy && <p className="mt-2 text-meta text-ink-dim">Reading the recorded evidence…</p>}
           {evidenceError && <p className="mt-2 text-meta text-thread">{evidenceError}</p>}
-          {!latestEvidence && <p className="mt-2 text-meta text-ink-dim">No verification record is attached. Selvedge cannot claim this change passed.</p>}
+          {!latestEvidence && <p className="mt-2 text-meta text-thread">No verification record is attached. Selvedge cannot claim this change passed, and shipping stays locked until you explicitly accept that limitation.</p>}
           {evidence && <>
             <div className="mt-2 flex items-start gap-2"><SelvedgeEdge status={evidence.status} /><div><p className="text-body font-medium text-ink">{evidence.summary}</p><p className="text-meta text-ink-dim">{evidence.explanation}</p></div></div>
             <p className="mt-3 text-meta font-medium text-ink">Changed files · {evidence.changed_files.total}</p>
@@ -318,12 +331,17 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
             {(evidence.unavailable_checks.length > 0 || evidence.warnings.length > 0) && <div className="mt-3 border-t border-hairline pt-2 text-meta text-thread">{evidence.unavailable_checks.map((check, index) => <p key={`${check.name}-${index}`}>Not run: {check.name}{check.detail ? ` — ${check.detail}` : ''}</p>)}{evidence.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
           </>}
           <div className="mt-3 flex flex-wrap gap-3 border-t border-hairline pt-2 text-meta">
-            {onReview && <button type="button" onClick={onReview} className="text-action-bright hover:underline">Open preview</button>}
             {repository && <a href={repository.url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">Open {repository.label} ↗</a>}
             {evidence && <Link to={evidence.destinations.project_history.web_path} className="text-action-bright hover:underline">Project history</Link>}
           </div>
         </div>
       </div>
+      {requiresLimitationsApproval && !evidenceBusy && (
+        <label className="flex items-start gap-2 rounded-inset border border-brass/50 bg-panel px-3 py-2 text-meta text-ink-dim">
+          <input type="checkbox" className="mt-0.5" checked={limitationsAccepted} onChange={(event) => setLimitationsAccepted(event.target.checked)} />
+          <span>{evidence ? `I reviewed the “${evidence.summary}” result and its unchecked or inconclusive items. Ship this workspace anyway.` : 'I understand there is no independent verification record. Ship this workspace anyway.'}</span>
+        </label>
+      )}
       {needsBackup && (
         <label className="flex items-start gap-2 text-meta text-ink-dim">
           <input type="checkbox" className="mt-0.5" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} />
@@ -331,7 +349,8 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
         </label>
       )}
       {note && <p className="text-meta text-ink-dim">{note}</p>}
-    </div>
+      <p className="text-meta text-ink-quiet">Shipping commits this workspace and pushes it to {branch ?? 'the project branch'}{repository ? ` in ${repository.label}` : ''}. If hosting follows that branch, deployment begins. Nothing ships until you choose it here.</p>
+    </section>
   );
 }
 
