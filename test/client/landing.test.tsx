@@ -50,6 +50,8 @@ describe('the landing page', () => {
     expect(html).toContain('infrastructure in accounts you control');
     expect(html).toContain('Agent-neutral by design');
     expect(html).toContain('You supervise. Selvedge does the work.');
+    expect(html).toContain('Coming from Codex, Claude Code, or Cursor');
+    expect(html).toContain('Edit in Cursor. Operate and manage in Selvedge.');
   });
 
   it('carries no vendor logo or brand colour, only text chips', () => {

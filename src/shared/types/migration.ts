@@ -1,4 +1,4 @@
-export type MigrationSource = 'replit' | 'lovable' | 'bolt' | 'base44' | 'github' | 'other';
+export type MigrationSource = 'replit' | 'lovable' | 'bolt' | 'base44' | 'github' | 'codex' | 'claude-code' | 'cursor' | 'other';
 export type ProjectMapStatus = 'found' | 'not_detected' | 'needs_access';
 
 export type ProjectMapItem = {
