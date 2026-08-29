@@ -33,8 +33,17 @@ describe('claudeCommand — one stream-json turn', () => {
     expect(cmd).toContain('runuser -u nobody');
     expect(cmd).toContain('--output-format stream-json');
     expect(cmd).toContain('--model sonnet');
-    expect(cmd).toContain("'do a thing'");
+    expect(cmd).toContain('ZG8gYSB0aGluZw==');
+    expect(cmd).toContain('$(cat /tmp/selvedge-claude-prompt)');
     expect(cmd).not.toContain('--resume'); // no session yet → fresh conversation
+  });
+
+  it('transports multiline markdown without embedding it in the nested worker shell', () => {
+    const prompt = "---\nTASK CONTEXT CAPSULE (owner's app)\n- inspect it";
+    const command = claudeCommand(prompt, 'sonnet');
+    expect(command).not.toContain('TASK CONTEXT CAPSULE');
+    expect(command).not.toContain("owner's app");
+    expect(command).toContain(Buffer.from(prompt).toString('base64'));
   });
 
   it('adds --resume when a session id is given — iteration continues the conversation', () => {
@@ -49,8 +58,12 @@ describe('claudeCommand — one stream-json turn', () => {
   });
 
   it('a plan turn leaves out the "do the setup work now" half', () => {
-    expect(claudeCommand('think about it', 'sonnet', null, 'plan')).not.toContain('Installing packages');
-    expect(claudeCommand('build it', 'sonnet', null, 'build')).toContain('Installing packages');
+    const transportedRules = (command: string) => {
+      const encoded = command.match(/printf %s ([A-Za-z0-9+/=]+) \| base64 -d > \/tmp\/selvedge-claude-rules/)?.[1];
+      return encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '';
+    };
+    expect(transportedRules(claudeCommand('think about it', 'sonnet', null, 'plan'))).not.toContain('Installing packages');
+    expect(transportedRules(claudeCommand('build it', 'sonnet', null, 'build'))).toContain('Installing packages');
   });
 });
 

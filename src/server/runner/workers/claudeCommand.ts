@@ -33,6 +33,11 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/** Encode multiline CLI input so it never crosses a nested shell quoting boundary. */
+function shellTransport(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64');
+}
+
 /**
  * The instruction the agent works from. It is the owner's ask, framed so the
  * agent edits the repo in place and keeps the change focused — no ceremony, no
@@ -136,10 +141,12 @@ export function claudeCommand(
    */
   auth?: { envVar: string; secret: string } | null,
 ): string {
+  const promptFile = '/tmp/selvedge-claude-prompt';
+  const rulesFile = '/tmp/selvedge-claude-rules';
   const args = [
     'claude',
     '-p',
-    shellQuote(prompt),
+    `"$(cat ${promptFile})"`,
     '--output-format',
     'stream-json',
     '--verbose',
@@ -147,7 +154,7 @@ export function claudeCommand(
     // Who this is for and how this environment works. Appended rather than
     // written into the repo, so the rules never reach the customer's code.
     '--append-system-prompt',
-    shellQuote(agentRules(mode)),
+    `"$(cat ${rulesFile})"`,
     '--model',
     model,
   ];
@@ -158,7 +165,15 @@ export function claudeCommand(
   // never rendered into the shell command, logs, or hosted-shell prompt.
   void auth;
   const workerCommand = `export PATH="${CLAUDE_TOOLS}/bin:$PATH" && cd ${WORKDIR} && ${args.join(' ')}`;
-  return `runuser -u nobody --preserve-environment -- env HOME=${CLAUDE_HOME} sh -lc ${shellQuote(workerCommand)}`;
+  return [
+    `printf %s ${shellTransport(prompt)} | base64 -d > ${promptFile}`,
+    `printf %s ${shellTransport(agentRules(mode))} | base64 -d > ${rulesFile}`,
+    `chmod 0444 ${promptFile} ${rulesFile}`,
+    `runuser -u nobody --preserve-environment -- env HOME=${CLAUDE_HOME} sh -lc ${shellQuote(workerCommand)}`,
+    `status=$?`,
+    `rm -f ${promptFile} ${rulesFile}`,
+    `exit $status`,
+  ].join('; ');
 }
 
 export type ResultEvent = {
