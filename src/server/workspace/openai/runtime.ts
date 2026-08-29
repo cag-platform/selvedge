@@ -7,7 +7,7 @@ import type {
 } from '../types.js';
 import { previewConnectorSource, PREVIEW_CONNECTOR_FILENAME } from '../relay/connector.js';
 import type { PreviewRelaySessions } from '../relay/session.js';
-import { OpenAiWorkspaceClient, type OpenAiMemoryLimit } from './client.js';
+import { OpenAiWorkspaceApiError, OpenAiWorkspaceClient, type OpenAiMemoryLimit } from './client.js';
 
 const encoder = new TextEncoder();
 const EXIT_MARKER = '__SELVEDGE_EXIT__=';
@@ -68,7 +68,10 @@ class OpenAiWorkspace implements Workspace {
   async inspect(): Promise<WorkspaceHandle> {
     if (this.state === 'destroyed') return { id: this.id, state: this.state };
     const container = await this.options.client.retrieveContainer(this.id);
-    return { id: this.id, state: container.status === 'running' ? 'ready' : this.state };
+    if (container.status === 'expired') {
+      throw new OpenAiWorkspaceApiError(409, 'container_expired', 'Container has expired.');
+    }
+    return { id: this.id, state: container.status === 'running' ? 'ready' : 'stopped' };
   }
 
   async exec(request: WorkspaceExecRequest): Promise<WorkspaceExecResult> {

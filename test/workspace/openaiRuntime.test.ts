@@ -26,6 +26,18 @@ function fixture() {
 }
 
 describe('OpenAI Workspace Runtime', () => {
+  it('reports an expired container as recoverable instead of returning the cached ready state', async () => {
+    const { client, runtime } = fixture();
+    const workspace = await runtime.createWorkspace({
+      orgId: 'org_1', projectId: 'project_1', purpose: 'development',
+      source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
+      ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] }, secrets: [],
+    });
+    vi.mocked(client.retrieveContainer).mockResolvedValueOnce({ id: 'cntr_1', status: 'expired' } as never);
+
+    await expect(workspace.inspect()).rejects.toMatchObject({ status: 409, code: 'container_expired' });
+  });
+
   it('creates a restricted temporary container and checks out the customer source', async () => {
     const { client, runtime } = fixture();
     const workspace = await runtime.createWorkspace({
