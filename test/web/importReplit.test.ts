@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import { zipSync } from 'fflate';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { migrationTestInputs, orgs } from '../../src/server/db/schema/index.js';
+import { migrationJourneys, migrationTestInputs, orgs } from '../../src/server/db/schema/index.js';
 import { createImportReplitRouter } from '../../src/server/web/routes/importReplit.js';
 import { createPack, getPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
@@ -68,6 +68,30 @@ describe('web/routes/import/replit', () => {
     // And the project genuinely exists, pointed at the minted repo.
     const pack = await getPack(db, orgId, 'loom-shop');
     expect(pack?.topology.sources.some((s) => s.connector === 'github' && s.resource_id === 'acme/loom-shop')).toBe(true);
+  });
+
+  it('turns an installed GitHub repository into a guided migration journey', async () => {
+    const started = await request(app({ inspectGithubRepo: async () => ({ defaultBranch: 'main', truncated: false, files: [
+      { path: 'package.json', bytes: new TextEncoder().encode('{"dependencies":{"next":"15.0.0","stripe":"1.0.0"}}') },
+      { path: 'src/app.tsx', bytes: new TextEncoder().encode('const key = process.env.STRIPE_SECRET_KEY') },
+    ] }) })).post('/api/import/github').send({ repo: 'acme/loom-shop', source: 'cursor' });
+    expect(started.status).toBe(201);
+    expect(started.body).toMatchObject({ repo: 'acme/loom-shop', default_branch: 'main' });
+    expect(started.body.project_map.stack).toContain('Next.js');
+    expect(started.body.thread_id).toBeTruthy();
+    const [journey] = await db.select().from(migrationJourneys);
+    expect(journey).toMatchObject({ source: 'cursor', projectId: started.body.project_id, originalUntouched: true, state: 'mapped' });
+    expect((journey?.destinations as Record<string, string>).repository).toBe('acme/loom-shop');
+    const loaded = await request(app()).get(`/api/projects/${started.body.project_id}/migration`);
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.migration_plan.steps[0]).toMatchObject({ id: 'inspect', state: 'complete' });
+  });
+
+  it('refuses an unrecognized GitHub migration source before inspection', async () => {
+    let inspected = false;
+    const result = await request(app({ inspectGithubRepo: async () => { inspected = true; return { defaultBranch: 'main', truncated: false, files: [] }; } })).post('/api/import/github').send({ repo: 'acme/loom-shop', source: 'replit' });
+    expect(result.status).toBe(400);
+    expect(inspected).toBe(false);
   });
 
   it('records neutral destination intent without provisioning anything', async () => {

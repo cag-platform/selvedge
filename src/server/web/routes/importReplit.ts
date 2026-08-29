@@ -27,6 +27,8 @@ import { migrationEvidenceStorageKey, visualObjectStore, type VisualObjectStore 
 import { approveOwnerTestFlowStep, createOwnerTestFlow } from '../../import/ownerTestFlow.js';
 import { runOwnerTestFlow, type OwnerFlowRun } from '../../import/ownerTestFlowRunner.js';
 import { configuredMigrationTestInputIds, consumeMigrationTestInputs, deleteMigrationTestInputs, storeMigrationTestInputs, type OwnerTestInputValues } from '../../import/migrationTestInputs.js';
+import { readGithubProjectFiles, type GithubProjectFiles } from '../../import/githubProjectFiles.js';
+import { resolveProjectId } from '../../resolution/resolveProject.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -66,6 +68,7 @@ export type ImportReplitDeps = CreateDeps & {
   visualStore?: VisualObjectStore | null;
   planOwnerTestFlow?: typeof createOwnerTestFlow;
   executeOwnerTestFlow?: (orgId: string, previewUrl: string, flow: NonNullable<(typeof migrationJourneys.$inferSelect)['ownerTestFlow']>, inputs?: OwnerTestInputValues) => Promise<OwnerFlowRun>;
+  inspectGithubRepo?: (orgId: string, repo: string) => Promise<GithubProjectFiles>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -105,6 +108,34 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: testFlow, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
   };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
+
+  router.post('/api/import/github', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const repo = typeof body.repo === 'string' ? body.repo.trim() : '';
+    const source = body.source;
+    const allowedSources = new Set(['github', 'codex', 'claude-code', 'cursor', 'lovable']);
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || typeof source !== 'string' || !allowedSources.has(source)) { res.status(400).json({ error: 'Choose an installed repository and say where the project is coming from.' }); return; }
+    let inspected: GithubProjectFiles;
+    try { inspected = await (deps.inspectGithubRepo ? deps.inspectGithubRepo(orgId, repo) : readGithubProjectFiles(db, orgId, repo)); }
+    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Selvedge could not inspect that repository.' }); return; }
+    let projectId = await resolveProjectId(db, orgId, 'github', repo);
+    if (projectId && !(await getPack(db, orgId, projectId))) { res.status(409).json({ error: 'This repository belonged to a project you removed. Restore that project before starting a migration from it.' }); return; }
+    if (!projectId) {
+      const requestedName = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : repo.split('/')[1]!.replace(/[-_]+/g, ' ');
+      const made = await createProject(db, orgId, { name: requestedName, repo, tier: 'personal' }, deps);
+      if (!made.ok) { if (made.kind === 'limit') { refuse(res, made.allowance); return; } res.status(made.status).json({ error: made.error }); return; }
+      projectId = made.pack.identity.project_id;
+    }
+    const thread = await ensureWorkshopThread(db, orgId, projectId);
+    const projectMap = inspectProjectFiles(inspected.files);
+    if (inspected.truncated) projectMap.limitations.push('The GitHub tree was larger than the 2,000-file inspection boundary; the workspace agent will inspect the complete checkout.');
+    const destinations = { repository: repo };
+    const migrationPlan = buildMigrationPlan(projectMap, destinations);
+    const migrationId = ulid();
+    await db.insert(migrationJourneys).values({ id: migrationId, orgId, projectId, source: source as typeof migrationJourneys.$inferInsert.source, state: 'mapped', originalUntouched: true, projectMap, migrationPlan, destinations });
+    res.status(201).json({ migration_id: migrationId, project_id: projectId, thread_id: thread.id, repo, default_branch: inspected.defaultBranch, project_map: projectMap, migration_plan: migrationPlan });
+  }));
 
   router.get('/api/projects/:projectId/migration', asyncHandler(async (req, res) => {
     const orgId = orgIdOf(req);
