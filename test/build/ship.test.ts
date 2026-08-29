@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentRuns } from '../../src/server/db/schema/index.js';
-import { shipChanges, rollbackShip, observeAfterShip, shipReach, shipMessageFor } from '../../src/server/build/ship.js';
+import { authenticatedGit, shipChanges, rollbackShip, observeAfterShip, shipReach, shipMessageFor } from '../../src/server/build/ship.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { setBuild, getBuild } from '../../src/server/build/store.js';
@@ -19,7 +19,7 @@ function executor(opts: { paths: string[]; pushExit?: number; sha?: string; onCo
   return async (command: string) => {
     opts.onCommand?.(command);
     if (command.includes('--name-only')) return { exitCode: 0, result: opts.paths.join('\n') };
-    if (command.includes('git push')) return { exitCode: opts.pushExit ?? 0, result: `pushed\n${opts.sha ?? 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'}` };
+    if (command.includes('push origin')) return { exitCode: opts.pushExit ?? 0, result: `pushed\n${opts.sha ?? 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2'}` };
     return { exitCode: 0, result: '' };
   };
 }
@@ -35,6 +35,16 @@ describe('pathSignals — the gate judges the actual diff', () => {
   it('ordinary code is ordinary; an empty diff claims nothing', () => {
     expect(classifyRisk(pathSignals(['src/app.tsx']))).toBe('ordinary');
     expect(classifyRisk(pathSignals([]))).toBe('ordinary');
+  });
+});
+
+describe('authenticatedGit — the live token reaches Git without entering the command', () => {
+  it('uses a command-scoped credential helper and never renders a secret', () => {
+    const command = authenticatedGit("push origin 'main'");
+    expect(command).toContain('credential.helper=');
+    expect(command).toContain('$GITHUB_TOKEN');
+    expect(command).not.toContain('github_pat_');
+    expect(command).toContain("push origin 'main'");
   });
 });
 
@@ -94,7 +104,8 @@ describe('shipChanges — build freely, gate at ship', () => {
     expect(out.outcome).toBe('shipped');
     if (out.outcome !== 'shipped') return;
     expect(out.commit).toMatch(/^[0-9a-f]{40}$/);
-    expect(commands.some((c) => c.includes('git push origin'))).toBe(true);
+    expect(commands.some((c) => c.includes('push origin'))).toBe(true);
+    expect(commands.some((c) => c.includes('credential.helper='))).toBe(true);
 
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.prompt).toBe('ship: dark header');

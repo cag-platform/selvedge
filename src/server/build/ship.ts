@@ -51,6 +51,16 @@ function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * Authenticate one Git network operation from the command-scoped token.
+ * The helper contains only the environment variable name; the token itself
+ * never enters the command string, logs, checkout config, or remote URL.
+ */
+export function authenticatedGit(args: string): string {
+  const helper = shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f');
+  return `git -c credential.helper=${helper} ${args}`;
+}
+
 /** Roles that mean "something out there deploys this repo". */
 const HOST_ROLES = new Set(['production_host', 'preview_host']);
 const HOST_CONNECTORS = HOST_TOPOLOGY_CONNECTORS;
@@ -136,7 +146,7 @@ export async function shipChanges(
       `cd ${WORKDIR}`,
       'git add -A',
       `git commit -q -m ${shellQuote(stampedCommitMessage(`Selvedge: ${summary}`, threadId))}`,
-      `git push origin ${shellQuote(build.branch)}`,
+      authenticatedGit(`push origin ${shellQuote(build.branch)}`),
       'git rev-parse HEAD',
     ].join(' && '),
     300,
@@ -276,7 +286,12 @@ export async function rollbackShip(
     })());
 
   const res = await execute(
-    [`cd ${WORKDIR}`, `git pull --ff-only origin ${shellQuote(build?.branch ?? 'main')}`, `git revert --no-edit ${shellQuote(commit)}`, `git push origin ${shellQuote(build?.branch ?? 'main')}`].join(' && '),
+    [
+      `cd ${WORKDIR}`,
+      authenticatedGit(`pull --ff-only origin ${shellQuote(build?.branch ?? 'main')}`),
+      `git revert --no-edit ${shellQuote(commit)}`,
+      authenticatedGit(`push origin ${shellQuote(build?.branch ?? 'main')}`),
+    ].join(' && '),
     300,
   );
   if (res.exitCode !== 0) {
