@@ -45,11 +45,11 @@ describe('the landing page', () => {
 
   it('says the one sentence the whole product is, and shows it being true', () => {
     const html = render();
-    expect(html).toContain('The place your projects go when other AI builders price you out.');
-    expect(html).toContain('Bring your project home.');
+    expect(html).toContain('Can’t stop vibe coding but don’t want to pay for Replit anymore? Come home.');
+    expect(html).toContain('Selvedge’s agents migrate the project');
     expect(html).toContain('infrastructure in accounts you control');
     expect(html).toContain('Agent-neutral by design');
-    expect(html).toContain('Your project is the product. The agent is a worker.');
+    expect(html).toContain('You supervise. Selvedge does the work.');
   });
 
   it('carries no vendor logo or brand colour, only text chips', () => {
