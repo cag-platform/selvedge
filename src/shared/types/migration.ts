@@ -35,6 +35,17 @@ export type MigrationPlan = {
   next_action: string;
 };
 
+export type MigrationVerification = {
+  schema_version: 1;
+  status: 'passed' | 'failed' | 'inconclusive';
+  verifier: 'selvedge-preview-verifier';
+  independent_from_migration_agent: true;
+  checks: Array<{ name: string; status: 'passed' | 'failed' | 'unavailable'; detail: string }>;
+  screenshot_artifact_ids: string[];
+  limitations: string[];
+  verified_at: string;
+};
+
 export type MigrationJourney = {
   id: string;
   project_id: string;
@@ -43,6 +54,7 @@ export type MigrationJourney = {
   original_untouched: boolean;
   project_map: MigrationProjectMap;
   migration_plan: MigrationPlan;
+  verification: MigrationVerification | null;
   preview: { state: 'ready' | 'pending' | 'error' | 'none'; url: string | null; message: string | null };
   destinations: { repository?: string; hosting?: string; database?: string };
   created_at: string;

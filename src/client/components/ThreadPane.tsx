@@ -50,6 +50,8 @@ function MigrationJourneyPanel({ projectId, working }: { projectId: string; work
   const [hosting, setHosting] = useState('owner');
   const [database, setDatabase] = useState('owner');
   const [saving, setSaving] = useState(false);
+  const [verifyingMigration, setVerifyingMigration] = useState(false);
+  const migrationVerificationAttempted = useRef(false);
   useEffect(() => {
     api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`).then((loaded) => {
       setJourney(loaded);
@@ -57,6 +59,17 @@ function MigrationJourneyPanel({ projectId, working }: { projectId: string; work
       if (loaded.destinations.database) setDatabase(loaded.destinations.database);
     }).catch(() => setJourney(null));
   }, [projectId, working]);
+  useEffect(() => {
+    if (working) { migrationVerificationAttempted.current = false; return; }
+    if (!journey || verifyingMigration || migrationVerificationAttempted.current || journey.verification || journey.preview.state !== 'ready') return;
+    migrationVerificationAttempted.current = true;
+    setVerifyingMigration(true);
+    api.post(`/api/projects/${encodeURIComponent(projectId)}/migration/verify`, {})
+      .then(() => api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`))
+      .then(setJourney)
+      .catch(() => undefined)
+      .finally(() => setVerifyingMigration(false));
+  }, [journey, projectId, verifyingMigration, working]);
   if (!journey) return null;
   const found = journey.project_map.items.filter((item) => item.status === 'found');
   const access = journey.project_map.items.filter((item) => item.status === 'needs_access');
@@ -66,6 +79,8 @@ function MigrationJourneyPanel({ projectId, working }: { projectId: string; work
     <details className="mt-3 rounded-inset border border-hairline bg-panel-soft p-3" open><summary className="cursor-pointer text-meta font-medium text-ink">Migration plan · {journey.migration_plan.steps.filter((step) => step.state === 'complete').length}/{journey.migration_plan.steps.length} complete</summary><ol className="mt-3 grid gap-2">{journey.migration_plan.steps.map((step, index) => <li key={step.id} className="flex gap-3 text-meta"><span className="font-mono text-tech text-ink-quiet">{String(index + 1).padStart(2, '0')}</span><span className="min-w-0 flex-1"><strong className="font-medium text-ink">{step.label}</strong><span className="ml-2 text-ink-quiet">{step.state.replaceAll('_', ' ')}</span><p className="text-ink-dim">{step.detail}</p>{step.blockers.map((blocker) => <p key={blocker} className="text-brass">Needs you: {blocker}</p>)}</span><span className="font-mono text-tech text-ink-quiet">{step.owner.replaceAll('_', ' ')}</span></li>)}</ol><p className="mt-3 border-t border-hairline pt-3 text-meta text-ink-dim"><strong className="text-ink">Next:</strong> {journey.migration_plan.next_action}</p></details>
     {journey.preview.state === 'ready' && journey.preview.url && <div className="mt-3 overflow-hidden rounded-card border border-hairline bg-panel"><div className="flex items-center justify-between gap-3 border-b border-hairline px-3 py-2"><span className="text-meta font-medium text-ink">Migrated app · live development preview</span><a href={journey.preview.url} target="_blank" rel="noreferrer" className="text-meta text-action-bright hover:underline">Open larger ↗</a></div><iframe src={journey.preview.url} title="Migrated app live preview" className="h-[360px] w-full bg-white" /></div>}
     {journey.preview.state === 'error' && <p className="mt-3 rounded-inset border border-brass/40 bg-panel-soft px-3 py-2 text-meta text-ink-dim"><strong className="text-ink">Preview needs configuration:</strong> {journey.preview.message}</p>}
+    {verifyingMigration && <p className="mt-3 rounded-inset border border-hairline bg-panel-soft px-3 py-2 text-meta text-ink-dim">Independent verifier is checking the finished workspace copy…</p>}
+    {journey.verification && <div className="mt-3 rounded-inset border border-hairline bg-panel-soft p-3"><div className="flex items-center justify-between gap-3"><strong className="text-body text-ink">Independent verification</strong><span className={`font-mono text-tech ${journey.verification.status === 'passed' ? 'text-healthy' : journey.verification.status === 'failed' ? 'text-thread' : 'text-ink-quiet'}`}>{journey.verification.status}</span></div><ul className="mt-2 grid gap-1">{journey.verification.checks.map((check) => <li key={check.name} className="text-meta text-ink-dim"><span className="mr-2 text-ink">{check.status === 'passed' ? '✓' : check.status === 'failed' ? '×' : '○'}</span>{check.name} · {check.detail}</li>)}</ul>{journey.verification.limitations.map((limitation) => <p key={limitation} className="mt-2 text-meta text-ink-quiet">Not checked yet: {limitation}</p>)}</div>}
     <details className="mt-3"><summary className="cursor-pointer text-meta text-action-bright">Choose where the migrated app should live</summary><div className="mt-3 flex flex-wrap items-end gap-3"><label className="text-meta text-ink-dim">Hosting<select value={hosting} onChange={(event) => setHosting(event.target.value)} className="mt-1 block rounded-inset border border-hairline bg-panel px-3 py-2 text-body text-ink"><option value="owner">My connected account</option><option value="railway">Railway</option><option value="vercel">Vercel</option><option value="cloudflare">Cloudflare</option></select></label><label className="text-meta text-ink-dim">Database<select value={database} onChange={(event) => setDatabase(event.target.value)} className="mt-1 block rounded-inset border border-hairline bg-panel px-3 py-2 text-body text-ink"><option value="owner">My connected database</option><option value="neon">Neon</option><option value="supabase">Supabase</option></select></label><button type="button" disabled={saving} onClick={async () => { setSaving(true); try { setJourney(await api.patch<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration/destinations`, { hosting, database })); } finally { setSaving(false); } }} className="rounded-inset bg-action px-4 py-2 text-body font-medium text-ink disabled:opacity-50">{saving ? 'Saving…' : 'Use these destinations'}</button></div><p className="mt-2 text-meta text-ink-quiet">This records intent only. Selvedge will request the relevant account connection before provisioning or moving data.</p></details>
   </section>;
 }

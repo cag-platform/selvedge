@@ -10,7 +10,9 @@ import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
-import { buildMigrationPlan, rebuildMigrationPlan, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
+import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordPreviewPreparation, recordWorkspacePreparation } from '../../import/migrationPlan.js';
+import { verifyMigrationPreview } from '../../import/previewVerifier.js';
+import type { MigrationVerification } from '../../../shared/types/migration.js';
 import { configFor } from '../../build/engineConfig.js';
 import { ensureSandbox } from '../../build/sandbox.js';
 import { canStartBuild } from '../../billing/entitlements.js';
@@ -53,6 +55,7 @@ export type ImportReplitDeps = CreateDeps & {
   push?: typeof pushFilesToRepo;
   prepareWorkspace?: (orgId: string, projectId: string) => Promise<{ ok: true; workspaceId: string } | { ok: false; status: number; error: string }>;
   startPreview?: (orgId: string, projectId: string) => Promise<PreviewStatus>;
+  verifyPreview?: (url: string) => Promise<MigrationVerification>;
 };
 
 export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
@@ -73,6 +76,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if ('error' in config) return { state: 'error' as const, url: null, message: config.error };
     return ensurePreview(db, orgId, projectId, config.cfg);
   });
+  const verifyPreview = deps.verifyPreview ?? verifyMigrationPreview;
   const migrationResponse = async (row: typeof migrationJourneys.$inferSelect) => {
     const destinations = row.destinations as Record<string, string>;
     const plan = row.migrationPlan ?? buildMigrationPlan(row.projectMap, destinations, row.updatedAt);
@@ -85,7 +89,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         : previewStep?.state === 'complete'
           ? { state: 'none', url: null, message: previewStep.detail }
           : { state: 'pending', url: null, message: null };
-    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
   };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
@@ -136,6 +140,20 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const nextState = preview.state === 'ready' ? 'preview_ready' : 'copying';
     const [withPreview] = await db.update(migrationJourneys).set({ migrationPlan: previewPlan, state: nextState, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
     res.json({ workspace_id: prepared.workspaceId, state: withPreview!.state, migration_plan: withPreview!.migrationPlan, preview, original_untouched: withPreview!.originalUntouched });
+  }));
+
+  router.post('/api/projects/:projectId/migration/verify', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    const build = await getBuild(db, orgId, projectId);
+    if (!build?.previewUrl) { res.status(409).json({ error: 'The migrated app needs a running preview before it can be verified.' }); return; }
+    const verification = await verifyPreview(build.previewUrl);
+    const migrationPlan = recordMigrationVerification(current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>), verification);
+    const state = verification.status === 'passed' ? 'verified' : 'preview_ready';
+    await db.update(migrationJourneys).set({ migrationPlan, migrationVerification: verification, state, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
+    res.json({ state, verification, migration_plan: migrationPlan, original_untouched: current.originalUntouched });
   }));
 
   router.post(

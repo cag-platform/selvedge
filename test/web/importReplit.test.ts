@@ -8,6 +8,7 @@ import { createPack, getPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { GithubError } from '../../src/server/connectors/github/newRepo.js';
 import { appWithOrg } from './helpers.js';
+import { setBuild } from '../../src/server/build/store.js';
 
 /**
  * THE MIGRATION DOOR: a Repl zip in, a project around a repo the owner
@@ -41,7 +42,7 @@ describe('web/routes/import/replit', () => {
   const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
-    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), ...deps }));
+    appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], limitations: [], verified_at: new Date().toISOString() }), ...deps }));
 
   const send = (a = app(), fields: Record<string, string> = { name: 'Loom Shop' }) => {
     let req = request(a).post('/api/import/replit');
@@ -73,7 +74,7 @@ describe('web/routes/import/replit', () => {
     expect(selected.status).toBe(200);
     expect(selected.body.destinations).toMatchObject({ repository: 'acme/loom-shop', hosting: 'railway', database: 'neon' });
     expect(selected.body.original_untouched).toBe(true);
-    expect(selected.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('approval_required');
+    expect(selected.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('blocked');
     const rejected = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'mystery', database: 'neon' });
     expect(rejected.status).toBe(400);
   });
@@ -96,6 +97,20 @@ describe('web/routes/import/replit', () => {
     expect(attempted.body.migration_plan.steps.find((step: { id: string }) => step.id === 'preview').blockers).toEqual(['The app needs STRIPE_SECRET_KEY.']);
     const journey = await request(app()).get('/api/projects/loom-shop/migration');
     expect(journey.body.preview).toMatchObject({ state: 'error', message: 'The app needs STRIPE_SECRET_KEY.' });
+  });
+
+  it('runs an independent verifier and only then unlocks owner approval', async () => {
+    await send();
+    await request(app()).post('/api/projects/loom-shop/migration/workspace');
+    await setBuild(db, orgId, 'loom-shop', { previewUrl: 'https://preview.example' });
+    const verified = await request(app()).post('/api/projects/loom-shop/migration/verify');
+    expect(verified.status).toBe(200);
+    expect(verified.body.state).toBe('verified');
+    expect(verified.body.verification).toMatchObject({ status: 'passed', independent_from_migration_agent: true });
+    expect(verified.body.migration_plan.steps.find((step: { id: string }) => step.id === 'verify').state).toBe('complete');
+    expect(verified.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('blocked');
+    const destination = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'railway', database: 'neon' });
+    expect(destination.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('approval_required');
   });
 
   it('persists an actionable blocker when workspace preparation cannot start', async () => {

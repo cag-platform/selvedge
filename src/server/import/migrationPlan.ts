@@ -1,4 +1,4 @@
-import type { MigrationPlan, MigrationPlanStep, MigrationProjectMap } from '../../shared/types/migration.js';
+import type { MigrationPlan, MigrationPlanStep, MigrationProjectMap, MigrationVerification } from '../../shared/types/migration.js';
 
 type Destinations = { repository?: string; hosting?: string; database?: string };
 
@@ -10,7 +10,9 @@ export function buildMigrationPlan(map: MigrationProjectMap, destinations: Desti
   const destinationBlockers = [
     ...(!destinations.hosting ? ['Choose the target hosting account.'] : []),
     ...(!destinations.database && map.items.some((item) => item.kind === 'database' && item.status === 'found') ? ['Choose the target database.'] : []),
-  ];
+    ...accessBlockers,
+    ['Independent verification must pass before shipping.'],
+  ].flat();
   const steps: MigrationPlanStep[] = [
     { id: 'inspect', label: 'Inspect and map the project', state: 'complete', owner: 'migration_agent', detail: `${map.files_inspected} files inspected; ${map.stack.join(' + ') || 'application stack'} mapped.`, blockers: [] },
     { id: 'connect', label: 'Connect required services', state: accessBlockers.length ? 'blocked' : 'complete', owner: accessBlockers.length ? 'customer' : 'selvedge', detail: accessBlockers.length ? 'Selvedge found external services but will not guess or copy credentials.' : 'No external service access is currently blocking the safe copy.', blockers: accessBlockers },
@@ -68,11 +70,31 @@ export function recordPreviewPreparation(plan: MigrationPlan, result: { state: '
 export function rebuildMigrationPlan(map: MigrationProjectMap, destinations: Destinations, current: MigrationPlan, now = new Date()): MigrationPlan {
   const rebuilt = buildMigrationPlan(map, destinations, now);
   const keepProgress = new Set(['workspace', 'configure', 'preview', 'verify']);
-  return {
+  const merged = {
     ...rebuilt,
     steps: rebuilt.steps.map((step) => {
       const previous = current.steps.find((candidate) => candidate.id === step.id);
       return previous && keepProgress.has(step.id) && (previous.state === 'complete' || previous.state === 'blocked') ? previous : step;
     }),
   };
+  return current.steps.find((step) => step.id === 'verify')?.state === 'complete'
+    ? recordMigrationVerification(merged, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], limitations: [], verified_at: now.toISOString() }, now)
+    : merged;
+}
+
+export function recordMigrationVerification(plan: MigrationPlan, verification: MigrationVerification, now = new Date()): MigrationPlan {
+  const steps = plan.steps.map((step): MigrationPlanStep => {
+    if (step.id === 'verify') {
+      if (verification.status === 'passed') return { ...step, state: 'complete', detail: 'An independent verifier opened and checked the running copy.', blockers: [] };
+      return { ...step, state: 'blocked', detail: 'Independent verification did not pass.', blockers: verification.checks.filter((check) => check.status === 'failed').map((check) => check.detail).slice(0, 4).concat(verification.status === 'inconclusive' ? ['The verifier could not reach a conclusion.'] : []) };
+    }
+    if (step.id === 'ship') {
+      const blockers = step.blockers.filter((blocker) => blocker !== 'Independent verification must pass before shipping.');
+      if (verification.status !== 'passed') return { ...step, state: 'blocked', blockers: [...blockers, 'Independent verification must pass before shipping.'] };
+      return { ...step, state: blockers.length ? 'blocked' : 'approval_required', blockers };
+    }
+    return step;
+  });
+  const blocked = steps.find((step) => step.state === 'blocked');
+  return { ...plan, generated_at: now.toISOString(), steps, next_action: blocked?.blockers[0] ?? 'Review the verified copy and approve shipping when ready.' };
 }

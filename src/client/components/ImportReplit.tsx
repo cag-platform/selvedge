@@ -56,7 +56,8 @@ export function ImportReplit() {
       if (retryProjectId) form.append('project_id', retryProjectId);
       else form.append('name', name.trim());
       const made = await apiUpload<ImportResult & { project_id?: string }>('/api/import/replit', form);
-      const prepared = await api.post<{ workspace_id: string }>(`/api/projects/${encodeURIComponent(made.project_id)}/migration/workspace`, {}).then(() => true).catch(() => false);
+      const workspace = await api.post<{ workspace_id: string; preview: { state: string } }>(`/api/projects/${encodeURIComponent(made.project_id)}/migration/workspace`, {}).catch(() => null);
+      const prepared = Boolean(workspace);
       await api.post(`/api/threads/${made.thread_id}/message`, {
         text: prepared
           ? 'Continue this migration automatically in the isolated workspace Selvedge prepared. Configure the development-safe copy, start the preview, and verify what can be observed. Identify anything still requiring account access. Do not change production or ship anything.'

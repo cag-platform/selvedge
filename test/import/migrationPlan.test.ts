@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMigrationPlan, rebuildMigrationPlan, recordPreviewPreparation, recordWorkspacePreparation } from '../../src/server/import/migrationPlan.js';
+import { buildMigrationPlan, rebuildMigrationPlan, recordMigrationVerification, recordPreviewPreparation, recordWorkspacePreparation } from '../../src/server/import/migrationPlan.js';
 import type { MigrationProjectMap } from '../../src/shared/types/migration.js';
 
 const map: MigrationProjectMap = {
@@ -25,9 +25,12 @@ describe('migration planner', () => {
     expect(plan.next_action).toContain('database');
   });
 
-  it('makes ship an approval—not an automatic action—after destinations are chosen', () => {
+  it('keeps ship blocked after destinations are chosen until verification passes', () => {
     const plan = buildMigrationPlan(map, { repository: 'acme/app', hosting: 'railway', database: 'neon' });
-    expect(plan.steps.find((step) => step.id === 'ship')?.state).toBe('approval_required');
+    expect(plan.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
+    const verified = recordMigrationVerification(plan, { schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [], screenshot_artifact_ids: [], limitations: [], verified_at: new Date().toISOString() });
+    expect(verified.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
+    expect(verified.steps.find((step) => step.id === 'ship')?.blockers).not.toContain('Independent verification must pass before shipping.');
     expect(plan.steps.find((step) => step.id === 'verify')?.owner).toBe('verification_agent');
   });
 
@@ -55,6 +58,6 @@ describe('migration planner', () => {
     const rebuilt = rebuildMigrationPlan(map, { repository: 'acme/app', hosting: 'vercel', database: 'neon' }, ready);
     expect(rebuilt.steps.find((step) => step.id === 'workspace')?.state).toBe('complete');
     expect(rebuilt.steps.find((step) => step.id === 'preview')?.state).toBe('complete');
-    expect(rebuilt.steps.find((step) => step.id === 'ship')?.state).toBe('approval_required');
+    expect(rebuilt.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
   });
 });
