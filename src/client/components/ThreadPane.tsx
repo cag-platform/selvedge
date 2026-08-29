@@ -40,9 +40,24 @@ import type { LiveReply } from '../pages/Inbox.js';
 import type { GeneratedVisual, ThreadData, ThreadMessage } from '../lib/inbox.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
 import type { EvidenceSheet } from '../../shared/types/evidenceSheet.js';
+import type { MigrationJourney } from '../../shared/types/migration.js';
 import { SelvedgeEdge } from './SelvedgeEdge.js';
 
 type ContextReceipt = { sections: { about: string[]; recent: string[]; open: string[] } };
+
+function MigrationJourneyPanel({ projectId, working }: { projectId: string; working: boolean }) {
+  const [journey, setJourney] = useState<MigrationJourney | null>(null);
+  useEffect(() => {
+    api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`).then(setJourney).catch(() => setJourney(null));
+  }, [projectId, working]);
+  if (!journey) return null;
+  const found = journey.project_map.items.filter((item) => item.status === 'found');
+  const access = journey.project_map.items.filter((item) => item.status === 'needs_access');
+  return <section className="border-b border-hairline bg-sage px-work-loose py-work" aria-label="Migration project map">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="section-label">Migration · {working ? 'agents working' : journey.state.replaceAll('_', ' ')}</p><h2 className="mt-1 font-display text-xl text-ink">Selvedge inspected {journey.project_map.files_inspected} files.</h2><p className="mt-1 text-meta text-ink-dim">{journey.project_map.stack.length ? journey.project_map.stack.join(' · ') : 'Stack not identified yet'} · original environment untouched</p></div><span className="rounded-full bg-panel px-3 py-1.5 font-mono text-tech text-ink-dim">{found.length} observed · {access.length} need access</span></div>
+    <div className="mt-3 flex flex-wrap gap-2">{journey.project_map.items.map((item) => <span key={item.kind} title={item.note} className={`rounded-full border px-2.5 py-1 text-meta ${item.status === 'found' ? 'border-healthy/40 text-ink' : item.status === 'needs_access' ? 'border-brass/50 text-ink-dim' : 'border-hairline text-ink-quiet'}`}>{item.status === 'found' ? '✓' : item.status === 'needs_access' ? '○' : '–'} {item.label}</span>)}</div>
+  </section>;
+}
 
 function ReceivedContext({ projectId, showReceipt }: { projectId: string; showReceipt: boolean }) {
   const [received, setReceived] = useState<ContextReceipt | null>(null);
@@ -1000,6 +1015,8 @@ export function ThreadPane({
           )}
         </div>
       </header>
+
+      {data.project && <MigrationJourneyPanel projectId={data.project.id} working={data.working} />}
 
       <DecisionCard
         threadId={data.thread.id}

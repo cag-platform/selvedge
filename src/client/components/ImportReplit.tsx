@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiUpload } from '../lib/api.js';
+import { api, apiUpload } from '../lib/api.js';
 
 /**
  * IMPORT FROM REPLIT — the migration door, as a screen.
@@ -56,6 +56,10 @@ export function ImportReplit() {
       if (retryProjectId) form.append('project_id', retryProjectId);
       else form.append('name', name.trim());
       const made = await apiUpload<ImportResult & { project_id?: string }>('/api/import/replit', form);
+      await api.post(`/api/threads/${made.thread_id}/message`, {
+        text: 'Continue this migration automatically. Inspect the imported app and its project map, identify anything still requiring account access, prepare the isolated workspace copy, start the preview, and verify what can be observed. Do not change production or ship anything.',
+        mode: 'build',
+      }).catch(() => undefined);
       navigate(`/inbox/${made.thread_id}`);
     } catch (err) {
       const failed = err as Error & { body?: Record<string, unknown> };
