@@ -9,6 +9,10 @@ import { ensureWorkshopThread } from '../../threads/store.js';
 import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
+import { inspectProjectFiles } from '../../import/projectMap.js';
+import { migrationJourneys } from '../../db/schema/index.js';
+import { and, desc, eq } from 'drizzle-orm';
+import { ulid } from 'ulid';
 
 /**
  * IMPORT FROM REPLIT — the migration door.
@@ -47,6 +51,13 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
   const router = Router();
   const push = deps.push ?? pushFilesToRepo;
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
+
+  router.get('/api/projects/:projectId/migration', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, req.params.projectId ?? ''))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!row) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    res.json({ id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, destinations: row.destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() });
+  }));
 
   router.post(
     '/api/import/replit',
@@ -132,7 +143,11 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       }
 
       const thread = await ensureWorkshopThread(db, orgId, projectId);
+      const projectMap = inspectProjectFiles(read.files);
+      const migrationId = ulid();
+      await db.insert(migrationJourneys).values({ id: migrationId, orgId, projectId, source: 'replit', state: 'mapped', originalUntouched: true, projectMap, destinations: { repository: repo } });
       res.json({
+        migration_id: migrationId,
         project_id: projectId,
         thread_id: thread.id,
         repo,
@@ -141,6 +156,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         // mean "except the parts I decided about".
         skipped: read.skipped,
         skipped_count: read.skippedCount,
+        project_map: projectMap,
         summary:
           `${pushed.files} files landed in ${repo}` +
           (read.skippedCount > 0 ? ` — workspace junk left behind: ${read.skipped.join(', ')} (${read.skippedCount} files)` : '') +

@@ -22,6 +22,7 @@ const Inbox = lazy(() => import('./pages/Inbox.js').then((m) => ({ default: m.In
 const Now = lazy(() => import('./pages/Now.js').then((m) => ({ default: m.Now })));
 const Continue = lazy(() => import('./pages/Continue.js').then((m) => ({ default: m.Continue })));
 const Projects = lazy(() => import('./pages/Projects.js').then((m) => ({ default: m.Projects })));
+const Migrate = lazy(() => import('./pages/Migrate.js').then((m) => ({ default: m.Migrate })));
 const Health = lazy(() => import('./pages/Health.js').then((m) => ({ default: m.Health })));
 const ProjectMemory = lazy(() => import('./pages/ProjectMemory.js').then((m) => ({ default: m.ProjectMemory })));
 const PackEditor = lazy(() => import('./pages/PackEditor.js').then((m) => ({ default: m.PackEditor })));
@@ -156,6 +157,7 @@ function AuthedApp() {
               <Route path="/work" element={<Inbox />} />
               <Route path="/health" element={<Health />} />
               <Route path="/projects" element={<Projects />} />
+              <Route path="/migrate" element={<Migrate />} />
               <Route path="/projects/:projectId" element={<ProjectMemory />} />
               <Route path="/projects/:projectId/edit" element={<PackEditor />} />
               {/* The workshop is a thread now — old links land in the conversation they meant. */}
@@ -199,6 +201,7 @@ const SURFACE_NAMES: ReadonlyArray<readonly [string, string]> = [
   ['/inbox', 'Threads'],
   ['/health', 'Health'],
   ['/projects', 'Projects'],
+  ['/migrate', 'Migrate a project'],
   // Longest prefix first: /admin/billing must not be matched by /admin.
   ['/admin/preferences', 'Preferences'],
   ['/admin/record', 'Record'],

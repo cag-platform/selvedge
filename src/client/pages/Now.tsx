@@ -108,7 +108,7 @@ export function Now() {
         <section className="mt-12 max-w-3xl rounded-pane bg-panel p-7 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-9">
           <h2 className="font-display text-3xl font-normal text-ink">Give your work a home.</h2>
           <p className="mt-3 max-w-xl text-body-lg text-ink-dim">Connect an existing repository or bring over a project from Replit. Its conversations, decisions, changes, and releases stay together from then on.</p>
-          <div className="mt-6 flex flex-wrap gap-3"><Link to="/projects" className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Bring in a project</Link><Link to="/projects?import=replit" className="rounded-full bg-panel-soft px-5 py-2.5 text-body font-medium text-ink">Import from Replit</Link></div>
+          <div className="mt-6 flex flex-wrap gap-3"><Link to="/migrate" className="rounded-full bg-action px-5 py-2.5 text-body font-medium text-white">Bring in a project</Link><Link to="/projects" className="rounded-full bg-panel-soft px-5 py-2.5 text-body font-medium text-ink">Connect GitHub</Link></div>
         </section>
       ) : null}
 

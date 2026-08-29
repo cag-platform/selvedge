@@ -102,6 +102,7 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
             <nav aria-label="Secondary" className="absolute right-0 z-50 mt-2 w-56 rounded-card border border-hairline bg-panel p-2 shadow-pane">
               <Link to="/admin/record" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Record</Link>
               <Link to="/projects" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Manage projects</Link>
+              <Link to="/migrate" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Bring a project home</Link>
               <Link to="/inbox?search=1" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Search</Link>
               <Link to="/admin/connections" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Connections</Link>
               <Link to="/admin" onClick={closeSecondaryMenu} className="block rounded-inset px-3 py-2 text-body text-ink-dim hover:bg-panel-soft">Admin</Link>
