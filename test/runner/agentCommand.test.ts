@@ -23,12 +23,14 @@ describe('claudeCommand — one stream-json turn', () => {
   it('installs Claude Code only when the workspace image does not already provide it', () => {
     expect(claudeInstallCommand()).toContain('claude --version');
     expect(claudeInstallCommand()).toContain('@anthropic-ai/claude-code');
-    expect(claudeInstallCommand()).toContain('$HOME/.npm-global');
+    expect(claudeInstallCommand()).toContain('/tmp/selvedge-agent-tools');
+    expect(claudeInstallCommand()).toContain('chmod -R a+rwX /workspace/project');
   });
 
   it('builds the CLI command with the model and quoted prompt', () => {
     const cmd = claudeCommand('do a thing', 'sonnet');
     expect(cmd).toContain('claude -p');
+    expect(cmd).toContain('runuser -u nobody');
     expect(cmd).toContain('--output-format stream-json');
     expect(cmd).toContain('--model sonnet');
     expect(cmd).toContain("'do a thing'");
@@ -36,7 +38,9 @@ describe('claudeCommand — one stream-json turn', () => {
   });
 
   it('adds --resume when a session id is given — iteration continues the conversation', () => {
-    expect(claudeCommand('darker please', 'sonnet', 'sess_1')).toContain("--resume 'sess_1'");
+    const command = claudeCommand('darker please', 'sonnet', 'sess_1');
+    expect(command).toContain('--resume');
+    expect(command).toContain('sess_1');
   });
 
   it('carries the standing rules on every turn, including a resumed one', () => {

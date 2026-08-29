@@ -13,10 +13,19 @@ import { MAX_TOOL_EVENTS, MAX_INPUT_CHARS, MAX_NOTE_CHARS, type ToolEvent } from
 /** The Selvedge workspace checkout directory. */
 export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
+const CLAUDE_TOOLS = '/tmp/selvedge-agent-tools';
+const CLAUDE_HOME = '/tmp/selvedge-worker';
 
 /** Install Claude Code into the disposable workspace when the provider image omits it. */
 export function claudeInstallCommand(): string {
-  return `${PATH_PREFIX} claude --version >/dev/null 2>&1 || npm install -g --prefix "$HOME/.npm-global" @anthropic-ai/claude-code`;
+  return [
+    `mkdir -p ${CLAUDE_TOOLS} ${CLAUDE_HOME}`,
+    `chmod 0777 ${CLAUDE_HOME}`,
+    `export PATH="${CLAUDE_TOOLS}/bin:$PATH"`,
+    `claude --version >/dev/null 2>&1 || npm install -g --prefix ${CLAUDE_TOOLS} @anthropic-ai/claude-code`,
+    `chmod -R a+rX ${CLAUDE_TOOLS}`,
+    `chmod -R a+rwX ${WORKDIR}`,
+  ].join(' && ');
 }
 
 /** Shell-single-quote a value safely (Toile's shellQuote). */
@@ -148,7 +157,8 @@ export function claudeCommand(
   // The credential is injected command-scoped by the Workspace Runtime. It is
   // never rendered into the shell command, logs, or hosted-shell prompt.
   void auth;
-  return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
+  const workerCommand = `export PATH="${CLAUDE_TOOLS}/bin:$PATH" && cd ${WORKDIR} && ${args.join(' ')}`;
+  return `runuser -u nobody --preserve-environment -- env HOME=${CLAUDE_HOME} sh -lc ${shellQuote(workerCommand)}`;
 }
 
 export type ResultEvent = {
