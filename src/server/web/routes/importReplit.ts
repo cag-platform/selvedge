@@ -10,6 +10,7 @@ import { getPack } from '../../packs/store.js';
 import { GithubError } from '../../connectors/github/newRepo.js';
 import { pushFilesToRepo, type PushResult } from '../../connectors/github/pushFiles.js';
 import { inspectProjectFiles } from '../../import/projectMap.js';
+import { buildMigrationPlan } from '../../import/migrationPlan.js';
 import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
@@ -56,7 +57,8 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const orgId = orgIdOf(req);
     const [row] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, req.params.projectId ?? ''))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
     if (!row) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
-    res.json({ id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, destinations: row.destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() });
+    const destinations = row.destinations as Record<string, string>;
+    res.json({ id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: row.migrationPlan ?? buildMigrationPlan(row.projectMap, destinations, row.updatedAt), destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() });
   }));
 
   router.patch('/api/projects/:projectId/migration/destinations', asyncHandler(async (req, res) => {
@@ -73,8 +75,9 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       res.status(400).json({ error: 'Choose a supported hosting and database destination.' }); return;
     }
     const destinations = { ...(current.destinations as Record<string, unknown>), hosting, database };
-    const [updated] = await db.update(migrationJourneys).set({ destinations, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
-    res.json({ id: updated!.id, project_id: updated!.projectId, source: updated!.source, state: updated!.state, original_untouched: updated!.originalUntouched, project_map: updated!.projectMap, destinations: updated!.destinations, created_at: updated!.createdAt.toISOString(), updated_at: updated!.updatedAt.toISOString() });
+    const migrationPlan = buildMigrationPlan(current.projectMap, destinations as Record<string, string>);
+    const [updated] = await db.update(migrationJourneys).set({ destinations, migrationPlan, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json({ id: updated!.id, project_id: updated!.projectId, source: updated!.source, state: updated!.state, original_untouched: updated!.originalUntouched, project_map: updated!.projectMap, migration_plan: updated!.migrationPlan, destinations: updated!.destinations, created_at: updated!.createdAt.toISOString(), updated_at: updated!.updatedAt.toISOString() });
   }));
 
   router.post(
@@ -162,8 +165,10 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
 
       const thread = await ensureWorkshopThread(db, orgId, projectId);
       const projectMap = inspectProjectFiles(read.files);
+      const destinations = { repository: repo };
+      const migrationPlan = buildMigrationPlan(projectMap, destinations);
       const migrationId = ulid();
-      await db.insert(migrationJourneys).values({ id: migrationId, orgId, projectId, source: 'replit', state: 'mapped', originalUntouched: true, projectMap, destinations: { repository: repo } });
+      await db.insert(migrationJourneys).values({ id: migrationId, orgId, projectId, source: 'replit', state: 'mapped', originalUntouched: true, projectMap, migrationPlan, destinations });
       res.json({
         migration_id: migrationId,
         project_id: projectId,
@@ -175,6 +180,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
         skipped: read.skipped,
         skipped_count: read.skippedCount,
         project_map: projectMap,
+        migration_plan: migrationPlan,
         summary:
           `${pushed.files} files landed in ${repo}` +
           (read.skippedCount > 0 ? ` — workspace junk left behind: ${read.skipped.join(', ')} (${read.skippedCount} files)` : '') +

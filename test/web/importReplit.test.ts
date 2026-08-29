@@ -58,6 +58,7 @@ describe('web/routes/import/replit', () => {
     expect(res.body.thread_id).toBeTruthy();
     expect(res.body.skipped).toEqual(['node_modules']);
     expect(res.body.summary).toContain('node_modules');
+    expect(res.body.migration_plan.steps.map((step: { id: string }) => step.id)).toEqual(['inspect', 'connect', 'workspace', 'configure', 'preview', 'verify', 'ship']);
     // The junk never reached the push, and the app did.
     expect(pushes[0]!.files).toEqual(['index.js']);
     expect(pushes[0]!.message).toBe('Imported from Replit');
@@ -72,6 +73,7 @@ describe('web/routes/import/replit', () => {
     expect(selected.status).toBe(200);
     expect(selected.body.destinations).toMatchObject({ repository: 'acme/loom-shop', hosting: 'railway', database: 'neon' });
     expect(selected.body.original_untouched).toBe(true);
+    expect(selected.body.migration_plan.steps.find((step: { id: string }) => step.id === 'ship').state).toBe('approval_required');
     const rejected = await request(app()).patch('/api/projects/loom-shop/migration/destinations').send({ hosting: 'mystery', database: 'neon' });
     expect(rejected.status).toBe(400);
   });

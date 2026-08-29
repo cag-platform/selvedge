@@ -18,6 +18,23 @@ export type MigrationProjectMap = {
   limitations: string[];
 };
 
+export type MigrationPlanStep = {
+  id: 'inspect' | 'connect' | 'workspace' | 'configure' | 'preview' | 'verify' | 'ship';
+  label: string;
+  state: 'complete' | 'ready' | 'blocked' | 'pending' | 'approval_required';
+  owner: 'selvedge' | 'migration_agent' | 'verification_agent' | 'customer';
+  detail: string;
+  blockers: string[];
+};
+
+export type MigrationPlan = {
+  schema_version: 1;
+  generated_at: string;
+  ready_to_start: boolean;
+  steps: MigrationPlanStep[];
+  next_action: string;
+};
+
 export type MigrationJourney = {
   id: string;
   project_id: string;
@@ -25,6 +42,7 @@ export type MigrationJourney = {
   state: 'mapped' | 'copying' | 'preview_ready' | 'verified' | 'cutover_ready' | 'complete' | 'failed';
   original_untouched: boolean;
   project_map: MigrationProjectMap;
+  migration_plan: MigrationPlan;
   destinations: { repository?: string; hosting?: string; database?: string };
   created_at: string;
   updated_at: string;
