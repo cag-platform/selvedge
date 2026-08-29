@@ -412,6 +412,14 @@ export function Inbox() {
     return () => document.removeEventListener('keydown', onKey);
   }, [createThread, inbox, open, paletteOpen, projectId, switcherOpen, thread, threadId, threads]);
 
+  // WHAT EACH PANE SHOWS WHILE IT FILLS. Under 150ms, nothing at all — a
+  // skeleton that appears and vanishes that fast is its own flash of jank, and
+  // most responses land inside it. These hooks must stay above every render
+  // return: an initial request can fail and later recover, and React requires
+  // the same hooks in the same order through both states.
+  const railPhase = useLoadingPhase(inbox === null);
+  const threadPhase = useLoadingPhase(threadId !== null && thread === null);
+
   // A first-load failure is the whole screen; anything after it is a banner
   // over the working one. What must never happen — and did — is an error with
   // nowhere to appear: `setError` on a failed action wrote to state that only
@@ -419,13 +427,6 @@ export function Inbox() {
   // action produced SILENCE. A button that does nothing and says nothing is
   // the interface version of the one output this product can't have.
   if (error && !inbox) return <p className="p-work text-body text-thread">{error}</p>;
-
-  // WHAT EACH PANE SHOWS WHILE IT FILLS. Under 150ms, nothing at all — a
-  // skeleton that appears and vanishes that fast is its own flash of jank, and
-  // most responses land inside it. Past eight seconds the shape stops being
-  // honest and the pane says the true thing instead, without giving up.
-  const railPhase = useLoadingPhase(inbox === null);
-  const threadPhase = useLoadingPhase(threadId !== null && thread === null);
 
   const phone = width < PHONE;
   const showRail = !phone || view === 'rail';
