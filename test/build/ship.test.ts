@@ -167,6 +167,23 @@ describe('shipChanges — build freely, gate at ship', () => {
     expect(out.outcome).toBe('failed');
     expect((await getBuild(db, orgId, 'loom'))?.stagedChangesReady).toBe(true);
   });
+
+  it('retries an already-committed change after a failed push without requiring a second commit', async () => {
+    const commands: string[] = [];
+    const out = await shipChanges(
+      db,
+      orgId,
+      'loom',
+      cfg,
+      { summary: 'retry pending ship' },
+      { execute: executor({ paths: ['index.html'], onCommand: (c) => commands.push(c) }) },
+    );
+
+    expect(out.outcome).toBe('shipped');
+    expect(commands[0]).toContain("git diff --name-only origin/'main'...HEAD");
+    expect(commands.some((c) => c.includes('git diff --cached --quiet || git commit'))).toBe(true);
+    expect(commands.some((c) => c.includes('push origin'))).toBe(true);
+  });
 });
 
 describe('observeAfterShip — the auto-undo, armed on a confirmed break only', () => {

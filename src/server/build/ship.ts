@@ -119,7 +119,13 @@ export async function shipChanges(
     })());
 
   // 1) The gate, judged on the actual changed files.
-  const diff = await execute(`cd ${WORKDIR} && { git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; } | sort -u`, 60);
+  // Include commits that a previous ship attempt created locally but failed to
+  // push. A retry must remain idempotent: those files are still pending work,
+  // even though the working tree itself is now clean.
+  const diff = await execute(
+    `cd ${WORKDIR} && { git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard; git diff --name-only origin/${shellQuote(build.branch)}...HEAD; } | sort -u`,
+    60,
+  );
   if (diff.exitCode !== 0) {
     return { outcome: 'failed', message: "I couldn't read what changed, so I didn't ship anything." };
   }
@@ -145,7 +151,7 @@ export async function shipChanges(
     [
       `cd ${WORKDIR}`,
       'git add -A',
-      `git commit -q -m ${shellQuote(stampedCommitMessage(`Selvedge: ${summary}`, threadId))}`,
+      `git diff --cached --quiet || git commit -q -m ${shellQuote(stampedCommitMessage(`Selvedge: ${summary}`, threadId))}`,
       authenticatedGit(`push origin ${shellQuote(build.branch)}`),
       'git rev-parse HEAD',
     ].join(' && '),
