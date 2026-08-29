@@ -60,7 +60,7 @@ takes effect immediately.
 
 ## What Selvedge's own agent can touch
 
-A builder works in a **Daytona sandbox**: a container with a clone of your
+A builder works in an isolated **temporary development workspace**: a container with a clone of your
 repo, on a branch. It has the repo and nothing else: no access to your other
 projects, your keys, or anything else in your workspace.
 

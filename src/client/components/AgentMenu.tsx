@@ -60,8 +60,8 @@ export function AgentMenu({
       className="absolute bottom-full left-0 z-20 mb-work w-[26rem] max-w-[calc(100vw-2rem)] animate-settle rounded-card border border-hairline bg-panel p-work-tight shadow-lg"
     >
       <div className="mb-work-tight border-b border-hairline px-work-tight pb-work-tight">
-        <p className="text-body font-medium text-ink">Choose the best builder for this turn.</p>
-        <p className="mt-0.5 text-meta text-ink-dim">The project’s decisions, evidence, language, and history stay attached when the builder changes.</p>
+        <p className="text-body font-medium text-ink">Use the right agent for this turn.</p>
+        <p className="mt-0.5 text-meta text-ink-dim">Selvedge stays neutral. Your project, decisions, evidence, and history remain here when the worker changes.</p>
       </div>
       {shown.map((offer) => (
         <button

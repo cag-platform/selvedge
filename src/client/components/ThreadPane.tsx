@@ -1270,10 +1270,12 @@ export function ThreadPane({
             type="button"
             disabled={sending}
             onClick={() => onSwitcherOpenChange(true)}
-            title="Choose who answers (Cmd+J)"
-            className="rounded-inset focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
+            title="Choose an agent (Cmd+J)"
+            className="flex items-center gap-2 rounded-inset border border-hairline bg-panel px-2.5 py-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
             <AgentChip agent={data.thread.agent} />
+            <span className="hidden text-meta text-ink-dim sm:inline">Agent</span>
+            <span aria-hidden className="text-meta text-ink-quiet">⌄</span>
           </button>
           {currentOffer && currentOffer.models.length > 1 && (
             <label className="sr-only" htmlFor={`model-${data.thread.id}`}>Model version</label>

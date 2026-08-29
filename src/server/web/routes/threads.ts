@@ -75,7 +75,7 @@ function surfaceOf(req: Request): ProductSurface {
   return value === 'desktop_web' || value === 'responsive_web' || value === 'ios_native' ? value : 'unknown';
 }
 
-const SANDBOX_CAPACITY_MESSAGE = 'Daytona credits and storage allowance are separate. This organization’s active sandbox storage allowance is full. Archive an inactive workshop or raise the storage allowance, then retry. Nothing was changed.';
+const SANDBOX_CAPACITY_MESSAGE = 'This organization’s active development workspace allowance is full. Close an inactive workspace or raise the allowance, then retry. Nothing was changed.';
 
 /**
  * THE INBOX'S SURFACE — the rail, a thread, and the two things you do to a

@@ -128,6 +128,7 @@ export function Inbox() {
   const [view, setView] = useState<'rail' | 'thread' | 'context'>('thread');
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const presentedThread = useRef<{ id: string; detail: 'simple' | 'full' } | null>(null);
+  const presentedPreview = useRef<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('search') !== '1') return;
@@ -175,6 +176,20 @@ export function Inbox() {
     presentedThread.current = next;
     setContextOpen(contextStartsOpen(next.detail, width));
   }, [thread?.thread.id, thread?.effective_technical_detail, width]);
+
+  // A finished visual change should reveal itself. The conversation remains
+  // the primary surface; the workspace arrives beside it only when there is
+  // something concrete to inspect, once per completed change set.
+  useEffect(() => {
+    if (!thread?.project || thread.working || !thread.staged_changes_ready) return;
+    const latestChange = [...thread.runs].reverse().find((run) => (run.changed_paths?.length ?? 0) > 0);
+    const key = `${thread.thread.id}:${latestChange?.id ?? 'staged'}`;
+    if (presentedPreview.current === key) return;
+    presentedPreview.current = key;
+    setContextTab('preview');
+    setContextOpen(true);
+    if (width < PHONE) setView('context');
+  }, [thread, width]);
 
   // Same-origin SSE needs no second auth mechanism: Clerk's session cookie
   // rides with EventSource. Each event is only a wake-up; the ordinary thread

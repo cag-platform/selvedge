@@ -107,6 +107,12 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
     }
   }, [data.project.id]);
 
+  // Opening the workspace should show the work, not another button. Only
+  // staged work auto-starts a preview; browsing old context remains passive.
+  useEffect(() => {
+    if (data.staged_changes_ready && preview === null && !busy) void load();
+  }, [data.staged_changes_ready, preview, busy, load]);
+
   // When a turn finishes, what you are looking at is out of date — refresh it
   // so the preview shows what the agent just did.
   useEffect(() => {
@@ -131,8 +137,8 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   return (
     <div className="space-y-work">
       <div className="rounded-card border border-action/30 bg-sage p-work">
-        <p className="section-label">App preview</p>
-        <p className="text-body leading-relaxed text-ink-dim">See the app the builder is changing, refresh it after a turn, or open the live address.</p>
+        <p className="section-label">Your workspace</p>
+        <p className="text-body leading-relaxed text-ink-dim">Selvedge opens the result here when an agent has something ready for you to see.</p>
       </div>
       {data.live_url ? (
         <div className="flex flex-wrap items-center justify-between gap-work-tight">
@@ -158,7 +164,7 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
 
       <div className="overflow-hidden rounded-card border border-hairline bg-panel">
         <div className="flex items-center justify-between border-b border-hairline px-work py-work-tight">
-          <p className="text-label font-body uppercase tracking-widest text-ink-quiet">The app, live in the workshop</p>
+          <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Preview</p>
           {preview?.state === 'ready' && (
             <button onClick={() => void load()} disabled={busy} className="text-meta font-medium text-action-bright hover:underline disabled:opacity-50">
               {busy ? 'Refreshing…' : 'Refresh preview'}

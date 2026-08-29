@@ -32,11 +32,11 @@ describe('the landing page', () => {
 
   it('says the one sentence the whole product is, and shows it being true', () => {
     const html = render();
-    expect(html).toContain('Your project remembers, even when the AI changes.');
-    expect(html).toContain('Think with Claude.');
-    expect(html).toContain('Challenge it with GPT.');
-    expect(html).toContain('Build with Codex.');
-    expect(html).toContain('Every decision, conversation, and preview stays with the project.');
+    expect(html).toContain('The place your projects go when other AI builders price you out.');
+    expect(html).toContain('Bring your project home.');
+    expect(html).toContain('infrastructure in accounts you control');
+    expect(html).toContain('Agent-neutral by design');
+    expect(html).toContain('Your project is the product. The agent is a worker.');
   });
 
   it('carries no vendor logo or brand colour, only text chips', () => {
