@@ -1,5 +1,7 @@
 import { railwayGql, type RailwayTarget } from './client.js';
 
+export const PREVIEW_START_COMMAND = `if node -e "const s=require('./package.json').scripts||{};process.exit(s.dev?0:1)"; then npm run dev; elif [ -f "artifacts/$SELVEDGE_PROJECT_ID/package.json" ]; then pnpm --dir "artifacts/$SELVEDGE_PROJECT_ID" run dev -- --port "$PORT"; else echo 'No development start contract found' >&2; exit 1; fi`;
+
 /**
  * The Railway WRITE side — creating a service for an app Selvedge built, giving
  * it its variables and a web address, and waiting for the first deploy to land.
@@ -224,7 +226,7 @@ export async function configurePreviewService(token: string, target: RailwayTarg
       environmentId: target.environmentId,
       input: {
         buildCommand: "echo 'Selvedge development preview: production build skipped'",
-        startCommand: 'npm run dev',
+        startCommand: PREVIEW_START_COMMAND,
       },
     },
   );

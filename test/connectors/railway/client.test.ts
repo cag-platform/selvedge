@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget, serviceExists } from '../../../src/server/connectors/railway/client.js';
-import { configurePreviewService, createService, deployPreviewCommit } from '../../../src/server/connectors/railway/provision.js';
+import { configurePreviewService, createService, deployPreviewCommit, PREVIEW_START_COMMAND } from '../../../src/server/connectors/railway/provision.js';
 
 describe('railway/parseRailwayTarget — address a service, or skip it', () => {
   it('parses the three-part compound resource_id', () => {
@@ -160,7 +160,7 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
       environmentId: 'env',
       input: {
         buildCommand: "echo 'Selvedge development preview: production build skipped'",
-        startCommand: 'npm run dev',
+        startCommand: PREVIEW_START_COMMAND,
       },
     });
   });
