@@ -25,6 +25,7 @@ import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js
 import { goLive } from '../../build/golive.js';
 import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
 import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
+import { RailwayPreviewRuntime } from '../../preview/railway.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -405,6 +406,21 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       if (build?.previewOperationStatus === 'error') {
         res.json({ state: 'error', url: null, message: build.previewOperationMessage ?? "I couldn't bring the preview up." });
         return;
+      }
+      if (process.env.PREVIEW_RUNTIME === 'railway' && build?.previewRuntimeId && build.previewUrl) {
+        const inspected = await new RailwayPreviewRuntime(db).inspectPreview(build.previewRuntimeId);
+        if (inspected.state === 'building') {
+          res.json({ state: 'starting', url: null, message: 'The preview is still building.' });
+          return;
+        }
+        if (inspected.state === 'failed' || inspected.state === 'destroyed') {
+          await setBuild(db, orgId, projectId, {
+            previewOperationStatus: 'error',
+            previewOperationMessage: "The temporary preview didn't finish building. Try again safely.",
+          });
+          res.json({ state: 'error', url: null, message: "The temporary preview didn't finish building. Try again safely." });
+          return;
+        }
       }
       if (build?.previewUrl) {
         res.json({ state: 'ready', url: build.previewUrl, message: build.previewOperationMessage });
