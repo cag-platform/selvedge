@@ -344,7 +344,8 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
           return { state: 'ready', url: current.previewUrl, message: inspected.state === 'building' ? 'The preview is finishing its build.' : null };
         }
       }
-      const ref = await publishPreviewRef(db, orgId, projectId, cfg);
+      const published = await publishPreviewRef(db, orgId, projectId, cfg);
+      const { ref } = published;
       unpublishedRef = ref;
       const env = await previewEnvFile(db, orgId, projectId).catch(() => null);
       const variables = Object.fromEntries((env ?? '').split('\n').map((line) => line.trim()).filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)).map((line) => {
@@ -353,7 +354,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
       }));
       const preview = await runtime.createPreview({
         orgId, projectId,
-        source: { kind: 'git', repository: cfg.repoFullName, ref },
+        source: { kind: 'git', repository: cfg.repoFullName, ref, commitSha: published.commitSha },
         variables,
         ttlMinutes: TOKEN_TTL_SECONDS / 60,
       });

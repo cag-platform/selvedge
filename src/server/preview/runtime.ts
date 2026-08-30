@@ -2,6 +2,7 @@ export type PreviewSource = {
   kind: 'git';
   repository: string;
   ref: string;
+  commitSha: string;
 };
 
 export type CreatePreviewInput = {

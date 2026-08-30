@@ -1,5 +1,5 @@
 import type { Db } from '../db/client.js';
-import { configurePreviewService, createService, deleteService, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
+import { configurePreviewService, createService, deleteService, deployPreviewCommit, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
 import { getDeployState, type RailwayTarget } from '../connectors/railway/client.js';
 import { hostProjectOptions, resolveHostAccount } from '../build/hostAccount.js';
 import type { CreatePreviewInput, PreviewHandle, PreviewRuntime } from './runtime.js';
@@ -27,6 +27,7 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
     try {
       await configurePreviewService(account.token, target);
       await setServiceVariables(account.token, target, { NODE_ENV: 'development', PORT: '3000', ...input.variables });
+      await deployPreviewCommit(account.token, target, input.source.commitSha);
       const url = await ensureServiceDomain(account.token, target);
       const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), url });
       const handle: PreviewHandle = { id, state: 'building', url, expiresAt };

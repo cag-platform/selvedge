@@ -189,21 +189,23 @@ export async function createService(
   branch = 'main',
 ): Promise<string> {
   const mutation = `mutation Create($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`;
+  let serviceId: string | null = null;
   try {
     const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
-      // Railway's current ServiceCreateInput keeps the branch beside source,
-      // not inside it. Keeping the ref explicit is what prevents a disposable
-      // preview from quietly deploying the repository's main branch.
-      input: { projectId, name, branch, variables, source: { repo: repoFullName } },
+      // Create without a source first. Railway otherwise starts an implicit
+      // deployment immediately, and we cannot permit that deployment to fall
+      // back to the repository's default branch even for a moment.
+      input: { projectId, name, variables },
     });
-    return data.serviceCreate.id;
+    serviceId = data.serviceCreate.id;
+    await railwayGql(token, `mutation Connect($id: String!, $input: ServiceConnectInput!) { serviceConnect(id: $id, input: $input) { id } }`, {
+      id: serviceId,
+      input: { repo: repoFullName, branch },
+    });
+    return serviceId;
   } catch (err) {
-    if (!isSchemaDrift(err)) throw err;
-    // Minimal shape: create bare, then variables get set separately below.
-    const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
-      input: { projectId, name, source: { repo: repoFullName } },
-    });
-    return data.serviceCreate.id;
+    if (serviceId) await deleteService(token, serviceId).catch(() => undefined);
+    throw err;
   }
 }
 
@@ -215,6 +217,17 @@ export async function configurePreviewService(token: string, target: RailwayTarg
       serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
     }`,
     { serviceId: target.serviceId, environmentId: target.environmentId, input: { startCommand: 'npm run dev' } },
+  );
+}
+
+/** Deploy exactly the commit GitHub returned for the disposable preview ref. */
+export async function deployPreviewCommit(token: string, target: RailwayTarget, commitSha: string): Promise<void> {
+  await railwayGql(
+    token,
+    `mutation Deploy($serviceId: String!, $environmentId: String!, $commitSha: String!) {
+      serviceInstanceDeployV2(serviceId: $serviceId, environmentId: $environmentId, commitSha: $commitSha)
+    }`,
+    { serviceId: target.serviceId, environmentId: target.environmentId, commitSha },
   );
 }
 

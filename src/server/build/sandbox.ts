@@ -91,7 +91,7 @@ export async function publishPreviewRef(
   orgId: string,
   projectId: string,
   cfg: SandboxConfig,
-): Promise<string> {
+): Promise<{ ref: string; commitSha: string }> {
   const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
   const ref = `selvedge-preview/${projectId}-${Date.now().toString(36)}`;
   const archivePath = '/tmp/selvedge-preview-source.zip';
@@ -112,9 +112,9 @@ export async function publishPreviewRef(
   const files = Object.entries(entries).filter(([path]) => !path.endsWith('/')).map(([path, bytes]) => ({ path, bytes }));
   const totalBytes = files.reduce((sum, file) => sum + file.bytes.byteLength, 0);
   if (files.length > 1_000 || totalBytes > 50 * 1024 * 1024) throw new Error('the disposable preview source exceeds its safe GitHub upload limit');
-  await createPreviewRefWithToken(cfg.githubToken, cfg.repoFullName, files, ref);
+  const pushed = await createPreviewRefWithToken(cfg.githubToken, cfg.repoFullName, files, ref);
   await sandbox.process.executeCommand(`rm -f ${archivePath}`, undefined, undefined, 30).catch(() => undefined);
-  return ref;
+  return { ref, commitSha: pushed.commitSha };
 }
 
 export async function deletePreviewRef(

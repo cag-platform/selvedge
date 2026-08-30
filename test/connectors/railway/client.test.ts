@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget } from '../../../src/server/connectors/railway/client.js';
-import { configurePreviewService, createService } from '../../../src/server/connectors/railway/provision.js';
+import { configurePreviewService, createService, deployPreviewCommit } from '../../../src/server/connectors/railway/provision.js';
 
 describe('railway/parseRailwayTarget — address a service, or skip it', () => {
   it('parses the three-part compound resource_id', () => {
@@ -112,23 +112,19 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
     globalThis.fetch = realFetch;
   });
 
-  it('puts branch at ServiceCreateInput.branch, outside source', async () => {
-    let variables: Record<string, unknown> = {};
+  it('creates empty, then connects only the disposable branch', async () => {
+    const calls: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: string, init: RequestInit) => {
-      variables = JSON.parse(String(init.body)).variables;
-      return new Response(JSON.stringify({ data: { serviceCreate: { id: 'svc_1' } } }), { status: 200 });
+      const request = JSON.parse(String(init.body));
+      calls.push(request.variables);
+      return new Response(JSON.stringify({ data: request.query.includes('serviceCreate') ? { serviceCreate: { id: 'svc_1' } } : { serviceConnect: { id: 'svc_1' } } }), { status: 200 });
     }) as typeof fetch;
 
     await createService('token', 'project', 'preview', 'acme/app', { PORT: '3000' }, 'selvedge-preview/app-1');
-    expect(variables).toEqual({
-      input: {
-        projectId: 'project',
-        name: 'preview',
-        branch: 'selvedge-preview/app-1',
-        variables: { PORT: '3000' },
-        source: { repo: 'acme/app' },
-      },
-    });
+    expect(calls).toEqual([
+      { input: { projectId: 'project', name: 'preview', variables: { PORT: '3000' } } },
+      { id: 'svc_1', input: { repo: 'acme/app', branch: 'selvedge-preview/app-1' } },
+    ]);
   });
 
   it('pins the service instance to the prepared development command', async () => {
@@ -140,5 +136,16 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
 
     await configurePreviewService('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' });
     expect(variables).toEqual({ serviceId: 'svc_1', environmentId: 'env', input: { startCommand: 'npm run dev' } });
+  });
+
+  it('deploys the exact disposable commit SHA', async () => {
+    let variables: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      variables = JSON.parse(String(init.body)).variables;
+      return new Response(JSON.stringify({ data: { serviceInstanceDeployV2: 'deploy_1' } }), { status: 200 });
+    }) as typeof fetch;
+
+    await deployPreviewCommit('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' }, 'abc123');
+    expect(variables).toEqual({ serviceId: 'svc_1', environmentId: 'env', commitSha: 'abc123' });
   });
 });
