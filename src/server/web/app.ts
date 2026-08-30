@@ -54,6 +54,10 @@ import { companionInstaller } from '../companion/installer.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
+  // Railway terminates TLS before forwarding to Express. Trust exactly that
+  // first proxy so req.protocol remains https for security-sensitive links
+  // such as Mac device authorization, without trusting arbitrary proxy chains.
+  app.set('trust proxy', 1);
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
   app.get('/install-companion', (req, res) => {
