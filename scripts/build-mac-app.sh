@@ -8,6 +8,16 @@ app_dir="$build_root/Selvedge.app"
 contents="$app_dir/Contents"
 node_version="v22.23.0"
 node_cache="$root_dir/.build/node-runtime"
+signing_identity="${MAC_CODESIGN_IDENTITY:--}"
+
+sign_binary() {
+  target="$1"
+  if [ "$signing_identity" = "-" ]; then
+    codesign --force --sign - "$target"
+  else
+    codesign --force --timestamp --options runtime --sign "$signing_identity" "$target"
+  fi
+}
 
 ensure_node() {
   arch="$1"
@@ -51,8 +61,12 @@ for node_arch in arm64 x64; do
 done
 lipo -create "$build_root/selvedge-runtime-arm64" "$build_root/selvedge-runtime-x64" -output "$contents/Resources/selvedge-runtime"
 xattr -cr "$app_dir"
-codesign --force --sign - "$contents/Resources/selvedge-runtime"
-codesign --force --deep --sign - "$app_dir"
+sign_binary "$contents/Resources/selvedge-runtime"
+if [ "$signing_identity" = "-" ]; then
+  codesign --force --deep --sign - "$app_dir"
+else
+  codesign --force --deep --timestamp --options runtime --sign "$signing_identity" "$app_dir"
+fi
 codesign --verify --deep --strict "$app_dir"
 mkdir -p "$root_dir/dist/mac"
 ditto -c -k --keepParent --norsrc --noextattr --noqtn --noacl "$app_dir" "$root_dir/dist/mac/Selvedge-for-Mac.zip"
