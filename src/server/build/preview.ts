@@ -283,6 +283,13 @@ export async function sweepHostedPreviews(db: Db, now = new Date()): Promise<num
   let removed = 0;
   for (const row of rows) {
     if (!row.previewRuntimeId) continue;
+    // Starting a replacement preview and reaping the expired preview both run
+    // in the background. Do not let the minute sweep delete the old service,
+    // then clear the replacement's freshly-written URL/runtime id. If startup
+    // fails, the operation leaves `starting` and the next sweep can safely
+    // remove the expired resource.
+    const current = await getBuild(db, row.orgId, row.projectId);
+    if (current?.previewOperationStatus === 'starting') continue;
     const runtime = new RailwayPreviewRuntime(db);
     try {
       await runtime.destroyPreview(row.previewRuntimeId);
@@ -292,7 +299,13 @@ export async function sweepHostedPreviews(db: Db, now = new Date()): Promise<num
           await deletePreviewRefWithToken(credential.token, row.repoFullName, row.previewSourceRef).catch(() => undefined);
         }
       }
-      await setBuild(db, row.orgId, row.projectId, { previewRuntimeId: null, previewSourceRef: null, previewUrl: null, previewTokenExpiresAt: null, previewActiveUntil: null });
+      // A new preview may have landed while the network deletions above were
+      // in flight. Only clear the record if it still names the runtime that we
+      // actually destroyed.
+      const latest = await getBuild(db, row.orgId, row.projectId);
+      if (latest?.previewRuntimeId === row.previewRuntimeId) {
+        await setBuild(db, row.orgId, row.projectId, { previewRuntimeId: null, previewSourceRef: null, previewUrl: null, previewTokenExpiresAt: null, previewActiveUntil: null });
+      }
       removed += 1;
     } catch (error) {
       console.error(`could not remove hosted preview ${row.orgId}/${row.projectId}:`, error);
