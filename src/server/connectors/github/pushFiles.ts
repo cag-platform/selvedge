@@ -31,17 +31,33 @@ const HEADERS = (token: string) => ({
 const BLOB_CONCURRENCY = 8;
 
 async function gh<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API}${path}`, { ...init, headers: HEADERS(token) });
-  } catch (err) {
-    throw new GithubError(`could not reach GitHub (${err instanceof Error ? err.message : String(err)})`);
-  }
-  const body = (await res.json().catch(() => null)) as (T & { message?: string }) | null;
-  if (!res.ok || (body === null && res.status !== 204)) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let res: Response;
+    try {
+      res = await fetch(`${API}${path}`, { ...init, headers: HEADERS(token) });
+    } catch (err) {
+      throw new GithubError(`could not reach GitHub (${err instanceof Error ? err.message : String(err)})`);
+    }
+    const body = (await res.json().catch(() => null)) as (T & { message?: string }) | null;
+    if (res.ok && (body !== null || res.status === 204)) return body as T;
+
+    // GitHub's secondary limit is intentionally transient and often includes
+    // Retry-After. Preview publication is already a background operation, so
+    // waiting here is both safer for GitHub and much smoother than turning an
+    // ordinary burst limit into a manual customer retry.
+    const secondary = res.status === 403 && /secondary rate limit/i.test(body?.message ?? '');
+    if (secondary && attempt < 3) {
+      const retryAfter = Number(res.headers.get('retry-after'));
+      const fallback = [15_000, 30_000, 60_000][attempt] ?? 60_000;
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 120_000)
+        : fallback;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
     throw new GithubError(`GitHub responded ${res.status}${body?.message ? `: ${body.message}` : ''}`);
   }
-  return body as T;
+  throw new GithubError('GitHub preview publication did not recover from rate limiting');
 }
 
 export type PushResult = { commitSha: string; branch: string; files: number };
