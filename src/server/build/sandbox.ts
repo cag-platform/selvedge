@@ -103,7 +103,10 @@ export async function publishPreviewRef(
     'git reset -q HEAD',
   ].join(' && ');
   const result = await sandbox.process.executeCommand(command, undefined, { GITHUB_TOKEN: cfg.githubToken }, 300);
-  if (result.exitCode !== 0) throw new Error('could not publish the disposable preview source');
+  if (result.exitCode !== 0) {
+    const detail = (result.result ?? '').trim().slice(-1_000);
+    throw new Error(`could not publish the disposable preview source${detail ? `: ${detail}` : ''}`);
+  }
   return ref;
 }
 
