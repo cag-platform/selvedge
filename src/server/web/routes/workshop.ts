@@ -396,7 +396,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       const projectId = req.params.projectId ?? '';
       const build = await getBuild(db, orgId, projectId);
       let cfg: SandboxConfig;
-      if (build?.sandboxId && build.repoFullName && build.branch) {
+      if (process.env.PREVIEW_RUNTIME !== 'railway' && build?.sandboxId && build.repoFullName && build.branch) {
         // A workshop that already contains the checkout does not need GitHub
         // merely to show the files it is actively changing. Resolving a fresh
         // clone token here made a warm, working sandbox unpreviewable whenever
