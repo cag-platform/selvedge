@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget } from '../../../src/server/connectors/railway/client.js';
+import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget, serviceExists } from '../../../src/server/connectors/railway/client.js';
 import { configurePreviewService, createService, deployPreviewCommit } from '../../../src/server/connectors/railway/provision.js';
 
 describe('railway/parseRailwayTarget — address a service, or skip it', () => {
@@ -103,6 +103,21 @@ describe('railway/getDeployState — normalized state, never throws', () => {
       throw new Error('boom');
     }) as typeof fetch;
     expect(await getDeployState('tok', target)).toBeNull();
+  });
+});
+
+describe('railway/serviceExists — stale preview recovery', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  it('recognizes a live service', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: { id: 'svc_1' } } }), { status: 200 })) as typeof fetch;
+    expect(await serviceExists('token', 'svc_1')).toBe(true);
+  });
+
+  it('treats a missing or inaccessible service as gone', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: null } }), { status: 200 })) as typeof fetch;
+    expect(await serviceExists('token', 'svc_1')).toBe(false);
   });
 });
 

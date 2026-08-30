@@ -1,6 +1,6 @@
 import type { Db } from '../db/client.js';
 import { configurePreviewService, createService, deleteService, deployPreviewCommit, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
-import { getDeployState, type RailwayTarget } from '../connectors/railway/client.js';
+import { getDeployState, serviceExists, type RailwayTarget } from '../connectors/railway/client.js';
 import { hostProjectOptions, resolveHostAccount } from '../build/hostAccount.js';
 import type { CreatePreviewInput, PreviewHandle, PreviewRuntime } from './runtime.js';
 
@@ -54,7 +54,11 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       return { ...record.handle, state: 'destroyed', url: null };
     }
     const deploy = await getDeployState(record.token, record.target);
-    record.handle.state = deploy?.status === 'live' ? 'ready' : deploy?.status === 'failed' ? 'failed' : 'building';
+    record.handle.state = deploy?.status === 'live'
+      ? 'ready'
+      : deploy?.status === 'failed' || (!deploy && !(await serviceExists(record.token, record.target.serviceId)))
+        ? 'failed'
+        : 'building';
     return { ...record.handle };
   }
 

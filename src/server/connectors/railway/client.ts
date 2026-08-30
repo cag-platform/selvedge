@@ -110,6 +110,20 @@ export type DeployState = {
   rawStatus: string;
 };
 
+/** Distinguish a service with no deployment yet from a service that was removed. */
+export async function serviceExists(token: string, serviceId: string): Promise<boolean> {
+  try {
+    const data = await railwayGql<{ service: { id: string } | null }>(
+      token,
+      `query Service($id: String!) { service(id: $id) { id } }`,
+      { id: serviceId },
+    );
+    return data.service?.id === serviceId;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The latest deploy's normalized state for a service. Returns null when the
  * call fails or there is no deployment yet — the caller treats that as
