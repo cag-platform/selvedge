@@ -1,6 +1,6 @@
 import { railwayGql, type RailwayTarget } from './client.js';
 
-export const PREVIEW_START_COMMAND = `if node -e "const s=require('./package.json').scripts||{};process.exit(s.dev?0:1)"; then npm run dev; elif [ -f "artifacts/$SELVEDGE_PROJECT_ID/package.json" ]; then pnpm --dir "artifacts/$SELVEDGE_PROJECT_ID" run dev -- --port "$PORT"; else echo 'No development start contract found' >&2; exit 1; fi`;
+export const PREVIEW_START_COMMAND = `if node -e "const s=require('./package.json').scripts||{};process.exit(s.dev?0:1)"; then npm run dev; elif [ -f "artifacts/$SELVEDGE_PROJECT_ID/package.json" ]; then pnpm --dir "artifacts/$SELVEDGE_PROJECT_ID" run dev --port "$PORT"; else echo 'No development start contract found' >&2; exit 1; fi`;
 
 /**
  * The Railway WRITE side — creating a service for an app Selvedge built, giving

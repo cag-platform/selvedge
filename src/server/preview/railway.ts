@@ -18,7 +18,7 @@ function decode(id: string): DurableId { return JSON.parse(Buffer.from(id, 'base
 export const PREVIEW_INSTALL_COMMAND = "if [ -f pnpm-lock.yaml ]; then pnpm install --no-frozen-lockfile --prefer-offline; elif [ -f yarn.lock ]; then yarn install --no-immutable; else npm install; fi";
 
 function previewVariables(projectId: string, input: Record<string, string>): Record<string, string> {
-  return { NODE_ENV: 'development', PORT: '3000', ...input, RAILPACK_INSTALL_CMD: PREVIEW_INSTALL_COMMAND, SELVEDGE_PROJECT_ID: projectId };
+  return { NODE_ENV: 'development', PORT: '3000', BASE_PATH: '/', ...input, RAILPACK_INSTALL_CMD: PREVIEW_INSTALL_COMMAND, SELVEDGE_PROJECT_ID: projectId };
 }
 
 /** First disposable preview adapter. Services live in the customer's Railway account and are explicitly deleted. */
