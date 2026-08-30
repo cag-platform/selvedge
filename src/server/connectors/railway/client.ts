@@ -113,14 +113,15 @@ export type DeployState = {
 /** Distinguish a service with no deployment yet from a service that was removed. */
 export async function serviceExists(token: string, target: RailwayTarget): Promise<boolean> {
   try {
-    const data = await railwayGql<{ serviceInstance: { id: string } | null }>(
+    const data = await railwayGql<{ service: { id: string; deletedAt: string | null } | null; serviceInstance: { id: string } | null }>(
       token,
       `query Instance($serviceId: String!, $environmentId: String!) {
+        service(id: $serviceId) { id deletedAt }
         serviceInstance(serviceId: $serviceId, environmentId: $environmentId) { id }
       }`,
       { serviceId: target.serviceId, environmentId: target.environmentId },
     );
-    return Boolean(data.serviceInstance?.id);
+    return Boolean(data.service?.id && !data.service.deletedAt && data.serviceInstance?.id);
   } catch {
     return false;
   }

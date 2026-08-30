@@ -111,12 +111,17 @@ describe('railway/serviceExists — stale preview recovery', () => {
   afterEach(() => { globalThis.fetch = realFetch; });
 
   it('recognizes a live service', async () => {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { serviceInstance: { id: 'instance_1' } } }), { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: { id: 'svc_1', deletedAt: null }, serviceInstance: { id: 'instance_1' } } }), { status: 200 })) as typeof fetch;
     expect(await serviceExists('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' })).toBe(true);
   });
 
   it('treats a missing or inaccessible service as gone', async () => {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { serviceInstance: null } }), { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: null, serviceInstance: null } }), { status: 200 })) as typeof fetch;
+    expect(await serviceExists('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' })).toBe(false);
+  });
+
+  it('rejects Railway soft-deleted services even when their instance remains queryable', async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: { id: 'svc_1', deletedAt: '2026-08-30T00:00:00Z' }, serviceInstance: { id: 'instance_1' } } }), { status: 200 })) as typeof fetch;
     expect(await serviceExists('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' })).toBe(false);
   });
 });
