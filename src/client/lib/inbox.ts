@@ -129,6 +129,8 @@ export type ThreadData = {
   engine_on: boolean;
   working: boolean;
   staged_changes_ready: boolean;
+  /** The exact Git destination shown at the owner approval boundary. */
+  review_destination?: { branch: string; repository: string | null } | null;
   sandbox: 'attached' | 'none';
   handoff_waiting: boolean;
   cost_cents: number;

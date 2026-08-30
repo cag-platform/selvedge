@@ -11,7 +11,7 @@ import { onPlan } from '../helpers/plan.js';
 import { planLimits } from '../../src/shared/plans.js';
 import { monthStartUtc } from '../../src/server/billing/entitlements.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
-import { setBuild } from '../../src/server/build/store.js';
+import { getBuild, setBuild } from '../../src/server/build/store.js';
 
 describe('web/routes/workshop — the workshop surface', () => {
   let db: TestDb;
@@ -110,6 +110,20 @@ describe('web/routes/workshop — the workshop surface', () => {
     const res = await request(app()).get('/api/projects/loom/workshop');
     expect(res.body.cost.today_cents).toBe(200);
     expect(res.body.cost.month_cents).toBe(200);
+  });
+
+  it('discards only the unshipped development copy and clears its checkpoint', async () => {
+    await setBuild(db, orgId, 'loom', {
+      stagedChangesReady: true,
+      checkpointArchiveBase64: Buffer.from('temporary work').toString('base64'),
+      checkpointSha256: 'not-needed-for-discard',
+    });
+    const res = await request(app()).post('/api/projects/loom/workshop/discard').send({});
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ discarded: true });
+    const state = await getBuild(db, orgId, 'loom');
+    expect(state?.stagedChangesReady).toBe(false);
+    expect(state?.checkpointArchiveBase64).toBeNull();
   });
 
   it('is org-scoped: another org gets a 404, and never the thread', async () => {

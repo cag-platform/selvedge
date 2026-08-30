@@ -553,6 +553,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         engine_on: env() !== null,
         working: running !== null,
         staged_changes_ready: build?.stagedChangesReady ?? false,
+        review_destination: build?.stagedChangesReady ? { branch: build.branch, repository: build.repoFullName } : null,
         // A cold sandbox means the first message of a workshop thread waits
         // while it wakes. The composer says so rather than pretending.
         sandbox: build?.sandboxId ? 'attached' : 'none',
@@ -1186,7 +1187,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       // it before mentions, retrieval, uploads, or a sandbox turn can run.
       if (thread.projectId && isShipRequest(text)) {
         const build = await getBuild(db, orgId, thread.projectId);
-        if (!build?.stagedChangesReady || !build.sandboxId) {
+        if (!build?.stagedChangesReady || (!build.sandboxId && !build.checkpointArchiveBase64)) {
           res.status(409).json({ error: "There’s nothing waiting to ship yet — ask a builder for a change first.", code: 'nothing_to_ship' });
           return;
         }

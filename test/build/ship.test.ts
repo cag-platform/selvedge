@@ -127,6 +127,16 @@ describe('shipChanges — build freely, gate at ship', () => {
     expect(thread[0]!.content).toMatch(/pushed/i);
   });
 
+  it('ships a Mac-returned checkpoint without requiring an already attached cloud workspace', async () => {
+    await setBuild(db, orgId, 'loom', {
+      sandboxId: null,
+      checkpointArchiveBase64: Buffer.from('checkpoint').toString('base64'),
+      stagedChangesReady: true,
+    });
+    const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['Ducky/App.swift'] }) });
+    expect(out.outcome).toBe('shipped');
+  });
+
   it('on a project with no host wired, the thread says plainly that it is NOT live', async () => {
     // No pack exists for 'loom' in this suite — the "nobody wired anything" case.
     const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });

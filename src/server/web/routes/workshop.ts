@@ -20,7 +20,7 @@ import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
 import { getPreviewEnvSummary, setPreviewEnv, setPreviewDatabase } from '../../build/previewEnv.js';
 import { canStartBuild } from '../../billing/entitlements.js';
 import { refuse } from '../middleware/limit.js';
-import { stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
+import { deleteSandbox, stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
 import { shipChanges, rollbackShip, observeAfterShip } from '../../build/ship.js';
 import { goLive } from '../../build/golive.js';
 import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
@@ -584,6 +584,35 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
       res.status(out.outcome === 'backup_required' ? 409 : 400).json({ error: out.message, reason: out.outcome });
+    }),
+  );
+
+  /**
+   * Discard the development copy, wherever it ran. The repository and live
+   * app are untouched: cloud workspaces are destroyed and Mac-returned
+   * checkpoints are forgotten. A later turn starts again from the repository.
+   */
+  router.post(
+    '/api/projects/:projectId/workshop/discard',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      if (!(await getPack(db, orgId, projectId))) {
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      if (await activeRun(orgId, projectId)) {
+        res.status(409).json({ error: "I'm still working — stop or let me finish before discarding the development copy." });
+        return;
+      }
+      const build = await getBuild(db, orgId, projectId);
+      if (!build?.stagedChangesReady) {
+        res.status(409).json({ error: 'There is no unshipped development copy to discard.' });
+        return;
+      }
+      await deleteSandbox(db, orgId, projectId);
+      await recordProductEvent(db, orgId, 'workspace_discarded', { surface: surfaceOf(req), projectId, properties: { had_checkpoint: Boolean(build.checkpointArchiveBase64) } });
+      res.json({ discarded: true, message: 'Development changes discarded. The repository and live app were not changed.' });
     }),
   );
 

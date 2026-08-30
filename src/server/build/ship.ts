@@ -104,7 +104,11 @@ export async function shipChanges(
   deps: { execute?: ExecuteInSandbox; destroyWorkspace?: () => Promise<void> } = {},
 ): Promise<ShipOutcome> {
   const build = await getBuild(db, orgId, projectId);
-  if (!build?.stagedChangesReady || !build.sandboxId) {
+  // A Mac/Apple build returns as a durable checkpoint rather than an attached
+  // cloud workspace. `ensureSandbox` below rehydrates either form into the
+  // same disposable shipping workspace, so the review decision must not care
+  // where the coding agent happened to run.
+  if (!build?.stagedChangesReady || (!build.sandboxId && !build.checkpointArchiveBase64)) {
     return { outcome: 'nothing_to_ship', message: "There's nothing waiting to ship — ask for a change first." };
   }
 

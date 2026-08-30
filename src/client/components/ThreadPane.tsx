@@ -210,12 +210,13 @@ function speakerOf(message: ThreadMessage): string {
  * bar that guesses — content moves, chrome does not.
  */
 
-function ShipControls({ data, onDone, prompted = false, branch, onReview, onCancel }: {
+function ShipControls({ data, onDone, prompted = false, branch, onReview, onKeepWorking, onCancel }: {
   data: ThreadData & { project: { id: string; name: string } };
   onDone: () => void;
   prompted?: boolean;
   branch?: string;
   onReview?: () => void;
+  onKeepWorking: () => void;
   onCancel?: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -280,12 +281,26 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
     }
   }
 
+  async function discard() {
+    if (!window.confirm('Discard this development copy? The repository and live app will stay unchanged.')) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(`/api/projects/${data.project.id}/workshop/discard`, {});
+      onDone();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : 'the development copy could not be discarded');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section aria-label="Selvedge completion" className="space-y-work-tight border-t border-hairline bg-panel-soft px-work-loose py-work">
       <div className="flex flex-wrap items-start justify-between gap-work border-b border-hairline pb-work-tight">
         <div className="max-w-2xl">
-          <p className="section-label">Selvedge completion</p>
-          <p className="mt-1 text-body font-medium text-ink">{prompted ? 'The requested change is ready for your decision.' : 'The agent finished. Selvedge kept the result, checks, and shipping decision together.'}</p>
+          <p className="section-label">Ready to review</p>
+          <p className="mt-1 text-body font-medium text-ink">{prompted ? 'The requested change is ready for your decision.' : 'The build, preview, observed checks, and destination are together here.'}</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-meta text-ink-dim">
             <span>Built by</span>
             <AgentChip agent={latestEvidenceRun?.agent ?? data.thread.agent} />
@@ -300,7 +315,7 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
               Undo last ship
             </button>
           )}
-          {onReview && <button type="button" onClick={onReview} className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-action-bright hover:border-action/50">Review preview</button>}
+          {onReview && <button type="button" onClick={onReview} className="rounded-inset border border-hairline bg-panel px-4 py-1.5 text-body font-medium text-action-bright hover:border-action/50">Open preview</button>}
           <button
             disabled={busy || data.working || !canShipEvidence || (needsBackup && !backupConfirmed)}
             onClick={() => void ship()}
@@ -349,7 +364,13 @@ function ShipControls({ data, onDone, prompted = false, branch, onReview, onCanc
         </label>
       )}
       {note && <p className="text-meta text-ink-dim">{note}</p>}
-      <p className="text-meta text-ink-quiet">Shipping commits this workspace and pushes it to {branch ?? 'the project branch'}{repository ? ` in ${repository.label}` : ''}. If hosting follows that branch, deployment begins. Nothing ships until you choose it here.</p>
+      <div className="flex flex-wrap items-center justify-between gap-work border-t border-hairline pt-work-tight">
+        <p className="text-meta text-ink-quiet">Shipping commits this workspace and pushes it to {branch ?? data.review_destination?.branch ?? 'the project branch'}{data.review_destination?.repository ? ` in ${data.review_destination.repository}` : repository ? ` in ${repository.label}` : ''}. If hosting follows that branch, deployment begins. Nothing ships until you choose it here.</p>
+        <div className="flex items-center gap-3">
+          <button type="button" disabled={busy} onClick={onKeepWorking} className="text-meta font-medium text-action-bright hover:underline disabled:opacity-50">Keep working</button>
+          <button type="button" disabled={busy} onClick={() => void discard()} className="text-meta text-thread hover:underline disabled:opacity-50">Discard changes</button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1211,6 +1232,7 @@ export function ThreadPane({
           prompted={Boolean(shipRequested)}
           branch={shipRequested?.branch}
           onReview={onShowPreview}
+          onKeepWorking={() => composerRef.current?.focus()}
           onCancel={shipRequested ? () => setShipRequested(null) : undefined}
           onDone={() => { setShipRequested(null); onReload(); }}
         />
