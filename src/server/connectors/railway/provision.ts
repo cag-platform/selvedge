@@ -191,7 +191,7 @@ export async function createService(
   const mutation = `mutation Create($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`;
   try {
     const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
-      input: { projectId, name, branch, variables, source: { repo: repoFullName } },
+      input: { projectId, name, variables, source: { repo: repoFullName, branch } },
     });
     return data.serviceCreate.id;
   } catch (err) {
