@@ -23,5 +23,7 @@ describe('Preview Relay workspace connector', () => {
     expect(source).toContain("target.hostname !== '127.0.0.1'");
     expect(source).toContain("['selvedge-preview', config.token]");
     expect(source).not.toContain('console.log');
+    expect(source).not.toContain("addEventListener('error', () => socket.close())");
+    expect(source).toContain("addEventListener('close'");
   });
 });

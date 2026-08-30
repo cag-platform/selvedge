@@ -71,7 +71,12 @@ function connect() {
     if (!stopped) setTimeout(connect, retryMs);
     retryMs = Math.min(retryMs * 2, 5000);
   });
-  socket.addEventListener('error', () => socket.close());
+  // A failed connection already transitions to the close event, which owns retrying.
+  // Calling close() from Node's WebSocket error event can synchronously emit
+  // another error while the socket is still CONNECTING. That recurses until
+  // the connector dies with "Maximum call stack size exceeded" and leaves the
+  // preview permanently "waking up".
+  socket.addEventListener('error', () => { /* close schedules the retry */ });
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopped = true; process.exit(0); });
