@@ -14,6 +14,121 @@ import { btnPrimary, EmptyState } from './ui.js';
 type Key = { id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null };
 type AppleRuntime = { id: string; name: string; xcodeVersion: string; macosVersion: string; lastSeenAt: string; online: boolean };
 
+function CopyCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2 flex min-w-0 items-center gap-2 rounded-inset border border-hairline bg-panel-soft px-3 py-2">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-tech text-ink">{command}</code>
+      <button
+        type="button"
+        onClick={() => void navigator.clipboard.writeText(command).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1_500);
+        })}
+        className="shrink-0 text-meta text-action hover:text-action-bright"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
+function SetupStep({ number, title, complete, children }: { number: number; title: string; complete: boolean; children: React.ReactNode }) {
+  return (
+    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-3 border-t border-hairline py-4 first:border-t-0 first:pt-0 last:pb-0">
+      <span className={`flex h-7 w-7 items-center justify-center rounded-full border text-meta ${complete ? 'border-action bg-action text-white' : 'border-hairline bg-panel-soft text-ink-dim'}`} aria-label={complete ? 'Complete' : `Step ${number}`}>
+        {complete ? '✓' : number}
+      </span>
+      <div>
+        <h4 className="text-body font-medium text-ink">{title}</h4>
+        <div className="mt-1 text-meta text-ink-dim">{children}</div>
+      </div>
+    </li>
+  );
+}
+
+function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRuntime[] }) {
+  const activeKeys = keys.filter((key) => !key.revoked_at);
+  const onlineRuntime = runtimes.find((runtime) => runtime.online);
+  const companionSeen = activeKeys.some((key) => key.last_used_at) || Boolean(onlineRuntime);
+
+  return (
+    <section className={`overflow-hidden rounded-card border ${onlineRuntime ? 'border-action/40 bg-action-soft/40' : 'border-hairline bg-panel'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
+        <div className="max-w-2xl">
+          <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Apple apps</p>
+          <h3 className="mt-1 text-headline font-medium text-ink">Connect your Mac</h3>
+          <p className="mt-1 text-body text-ink-dim">
+            This lets Selvedge build and check SwiftUI projects using the real Xcode and iPhone Simulator on your Mac.
+            You only set it up once.
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1.5 text-meta font-medium ${onlineRuntime ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>
+          {onlineRuntime ? 'Mac connected' : 'Not connected yet'}
+        </span>
+      </div>
+
+      {onlineRuntime ? (
+        <div className="border-t border-hairline px-5 py-4">
+          <p className="text-body text-ink"><strong>{onlineRuntime.name}</strong> is ready for Apple work.</p>
+          <p className="mt-1 text-meta text-ink-dim">
+            macOS {onlineRuntime.macosVersion} · {onlineRuntime.xcodeVersion.split('\n')[0]}. Keep the Terminal window running while an agent builds or checks an Apple app.
+          </p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-meta text-action">Show setup and troubleshooting</summary>
+            <div className="mt-3"><AppleSetupSteps activeKey={true} companionSeen={true} connected={true} /></div>
+          </details>
+        </div>
+      ) : (
+        <div className="border-t border-hairline px-5 py-4">
+          <AppleSetupSteps activeKey={activeKeys.length > 0} companionSeen={companionSeen} connected={false} />
+        </div>
+      )}
+
+      <div className="border-t border-hairline bg-panel-soft px-5 py-3 text-meta text-ink-dim">
+        <strong className="text-ink">Stays on your Mac:</strong> Apple ID, signing certificates, provisioning profiles and Keychain secrets.
+        Selvedge only receives tool availability and whether the connection is alive.
+      </div>
+    </section>
+  );
+}
+
+function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: boolean; companionSeen: boolean; connected: boolean }) {
+  return (
+    <>
+      <ol>
+        <SetupStep number={1} title="Prepare Xcode" complete={connected}>
+          <p>Install Xcode from the Mac App Store, open it once, accept the license, and let it finish installing components.</p>
+          <p className="mt-1">In Xcode, open <strong>Settings → Components</strong> and make sure at least one iOS Simulator runtime is installed.</p>
+        </SetupStep>
+        <SetupStep number={2} title="Install the Selvedge companion" complete={companionSeen}>
+          <p>Open Terminal on the Mac and install the small connection program.</p>
+          <CopyCommand command="npm install -g selvedge" />
+        </SetupStep>
+        <SetupStep number={3} title="Connect this Mac to your Selvedge account" complete={activeKey}>
+          {activeKey
+            ? <p>Your account has an active machine key. If this is a new Mac, make a new key below and use the command shown once.</p>
+            : <p>Use <strong>Make a key</strong> below. Name it something recognizable, such as “Greg’s MacBook,” then copy the login command shown once.</p>}
+        </SetupStep>
+        <SetupStep number={4} title="Turn on the Apple runtime" complete={connected}>
+          <p>Run this in Terminal and leave that window open while Selvedge works on an Apple app.</p>
+          <CopyCommand command="selvedge runtime apple" />
+          {!connected && <p className="mt-2">This page will change to <strong>Mac connected</strong> automatically when Xcode and Simulator are ready.</p>}
+        </SetupStep>
+      </ol>
+      <details className="mt-4 rounded-inset border border-hairline bg-panel-soft px-3 py-2">
+        <summary className="cursor-pointer text-meta text-ink">Something not working?</summary>
+        <div className="mt-2 space-y-2 text-meta text-ink-dim">
+          <p><strong className="text-ink">“xcodebuild not found”</strong> — install Xcode, open it once, then run <code className="font-mono text-tech">sudo xcode-select -s /Applications/Xcode.app</code>.</p>
+          <p><strong className="text-ink">No iPhone Simulator</strong> — open Xcode → Settings → Components and install an iOS runtime.</p>
+          <p><strong className="text-ink">License not accepted</strong> — open Xcode and accept it, or run <code className="font-mono text-tech">sudo xcodebuild -license accept</code>.</p>
+          <p><strong className="text-ink">It was connected and went offline</strong> — return to the Terminal window and run <code className="font-mono text-tech">selvedge runtime apple</code> again.</p>
+        </div>
+      </details>
+    </>
+  );
+}
+
 export function CompanionKeys() {
   const [keys, setKeys] = useState<Key[] | null>(null);
   const [appleRuntimes, setAppleRuntimes] = useState<AppleRuntime[]>([]);
@@ -30,6 +145,8 @@ export function CompanionKeys() {
 
   useEffect(() => {
     load();
+    const timer = window.setInterval(load, 15_000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   async function mint(e: React.FormEvent) {
@@ -75,6 +192,8 @@ export function CompanionKeys() {
         </div>
       </details>
 
+      {keys && <AppleRuntimeGuide keys={keys} runtimes={appleRuntimes} />}
+
       {issued && (
         <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-action-bright bg-panel px-4 py-3">
           <p className="text-body text-ink">Copy this now; it’s shown only once.</p>
@@ -104,26 +223,6 @@ export function CompanionKeys() {
         </button>
         {error && <span className="text-meta text-thread">{error}</span>}
       </form>
-
-      <div className="rounded-card border border-hairline bg-panel px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-body font-medium text-ink">Apple runtime</h3>
-            <p className="mt-1 max-w-xl text-meta text-ink-dim">
-              SwiftUI work runs through Xcode and an iPhone Simulator on your Mac. Selvedge receives capability and liveness signals; signing identities stay on the Mac.
-            </p>
-          </div>
-          <span className={`rounded-full px-2 py-1 text-meta ${appleRuntimes.some((runtime) => runtime.online) ? 'bg-action-soft text-action' : 'bg-panel-soft text-ink-quiet'}`}>
-            {appleRuntimes.some((runtime) => runtime.online) ? 'Connected' : 'Not connected'}
-          </span>
-        </div>
-        <p className="mt-3 font-mono text-tech text-ink">selvedge runtime apple</p>
-        {appleRuntimes.map((runtime) => (
-          <p key={runtime.id} className="mt-2 text-meta text-ink-dim">
-            {runtime.name} · macOS {runtime.macosVersion} · {runtime.xcodeVersion.split('\n')[0]} · {runtime.online ? 'online now' : 'offline'}
-          </p>
-        ))}
-      </div>
 
       {keys && keys.length === 0 && (
         <EmptyState>
