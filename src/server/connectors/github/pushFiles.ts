@@ -38,10 +38,10 @@ async function gh<T>(token: string, path: string, init?: RequestInit): Promise<T
     throw new GithubError(`could not reach GitHub (${err instanceof Error ? err.message : String(err)})`);
   }
   const body = (await res.json().catch(() => null)) as (T & { message?: string }) | null;
-  if (!res.ok || body === null) {
+  if (!res.ok || (body === null && res.status !== 204)) {
     throw new GithubError(`GitHub responded ${res.status}${body?.message ? `: ${body.message}` : ''}`);
   }
-  return body;
+  return body as T;
 }
 
 export type PushResult = { commitSha: string; branch: string; files: number };

@@ -54,14 +54,32 @@ export async function resolveHostProject(
   token: string,
   opts: { pinnedProjectId?: string | null; anyProject?: boolean } = {},
 ): Promise<{ projectId: string; environmentId: string }> {
-  const data = await railwayGql<{
-    projects: { edges: Array<{ node: { id: string; name: string; environments: { edges: Array<{ node: { id: string; name: string } }> } } }> };
-  }>(
-    token,
-    `query { projects { edges { node { id name environments { edges { node { id name } } } } } } }`,
-  );
-
-  const projects = data.projects.edges.map((e) => e.node);
+  type Project = { id: string; name: string; environments: { edges: Array<{ node: { id: string; name: string } }> } };
+  let projects: Project[];
+  if (opts.anyProject) {
+    // OAuth workspace grants deliberately cannot use the account-wide
+    // `projects` field. Discover only the workspaces selected on Railway's
+    // consent screen, then enumerate projects inside those boundaries.
+    const visible = await railwayGql<{ me: { workspaces: Array<{ id: string }> } }>(
+      token,
+      `query { me { workspaces { id } } }`,
+    );
+    projects = [];
+    for (const workspace of visible.me.workspaces) {
+      const data = await railwayGql<{ workspace: { projects: { edges: Array<{ node: Project }> } } }>(
+        token,
+        `query($workspaceId: String!) { workspace(workspaceId: $workspaceId) { projects { edges { node { id name environments { edges { node { id name } } } } } } } }`,
+        { workspaceId: workspace.id },
+      );
+      projects.push(...data.workspace.projects.edges.map((edge) => edge.node));
+    }
+  } else {
+    const data = await railwayGql<{ projects: { edges: Array<{ node: Project }> } }>(
+      token,
+      `query { projects { edges { node { id name environments { edges { node { id name } } } } } } }`,
+    );
+    projects = data.projects.edges.map((edge) => edge.node);
+  }
   const pinned = opts.pinnedProjectId?.trim();
   const project = pinned
     ? projects.find((p) => p.id === pinned)
