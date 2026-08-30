@@ -9,6 +9,18 @@ type DurableId = { orgId: string; target: RailwayTarget; expiresAt: string; crea
 function encode(value: DurableId): string { return Buffer.from(JSON.stringify(value)).toString('base64url'); }
 function decode(id: string): DurableId { return JSON.parse(Buffer.from(id, 'base64url').toString('utf8')) as DurableId; }
 
+// A development checkpoint can legitimately contain package-manifest changes
+// before its lockfile has been refreshed. Production should stay frozen; this
+// disposable preview must install the checkpoint the agent actually produced.
+// Railpack runs this override in a shell, so keep all common JS managers local
+// to the temporary service instead of teaching Selvedge a project-specific
+// package-manager preference.
+export const PREVIEW_INSTALL_COMMAND = "if [ -f pnpm-lock.yaml ]; then pnpm install --no-frozen-lockfile --prefer-offline; elif [ -f yarn.lock ]; then yarn install --no-immutable; else npm install; fi";
+
+function previewVariables(input: Record<string, string>): Record<string, string> {
+  return { NODE_ENV: 'development', PORT: '3000', ...input, RAILPACK_INSTALL_CMD: PREVIEW_INSTALL_COMMAND };
+}
+
 /** First disposable preview adapter. Services live in the customer's Railway account and are explicitly deleted. */
 export class RailwayPreviewRuntime implements PreviewRuntime {
   private readonly previews = new Map<string, PreviewRecord>();
@@ -19,15 +31,14 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
     if (!account || account.owner !== 'customer') throw new Error('Connect your Railway account before starting a hosted preview.');
     const host = await resolveHostProject(account.token, hostProjectOptions(account));
     const name = `preview-${input.projectId}-${Date.now().toString(36)}`.slice(0, 40);
-    const serviceId = await createService(account.token, host.projectId, name, input.source.repository, {
-      NODE_ENV: 'development', PORT: '3000', ...input.variables,
-    }, input.source.ref);
+    const variables = previewVariables(input.variables);
+    const serviceId = await createService(account.token, host.projectId, name, input.source.repository, variables, input.source.ref);
     const target = { ...host, serviceId };
     const createdAt = new Date();
     const expiresAt = new Date(Date.now() + input.ttlMinutes * 60_000);
     try {
       await configurePreviewService(account.token, target);
-      await setServiceVariables(account.token, target, { NODE_ENV: 'development', PORT: '3000', ...input.variables });
+      await setServiceVariables(account.token, target, variables);
       await deployPreviewCommit(account.token, target, input.source.commitSha);
       const url = await ensureServiceDomain(account.token, target);
       const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), createdAt: createdAt.toISOString(), url });
