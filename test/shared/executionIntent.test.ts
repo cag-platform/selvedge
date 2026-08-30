@@ -7,6 +7,7 @@ describe('execution intent', () => {
     expect(executionModeFor('Implement the migration now.')).toBe('build');
     expect(executionModeFor('Execute that plan now in the isolated workspace.')).toBe('build');
     expect(executionModeFor('Resolve the blocker, install dependencies, and start the preview.')).toBe('build');
+    expect(executionModeFor('Continue this migration automatically. Inspect the plan, prepare the isolated copy, and run independent browser verification.')).toBe('build');
     expect(executionModeFor('Plan it', 'build')).toBe('build');
   });
 });

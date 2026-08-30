@@ -19,7 +19,7 @@ export function executionModeFor(text: string, explicit?: unknown): ExecutionMod
   // Action verbs win even when the owner refers to an existing "plan". A
   // completion turn such as "execute that plan" must not fall back into a
   // read-only planning loop merely because the noun plan is present.
-  if (/\b(implement|execute|proceed|resolve|install|build it|code it|fix|edit|change the code|add the|remove the|start (?:the )?(?:app|preview|server))\b/.test(normalized)) return 'build';
+  if (/\b(implement|execute|proceed|resolve|install|build it|code it|fix|edit|change the code|add the|remove the|start (?:the )?(?:app|preview|server)|continue (?:this |the )?migration|prepare (?:the )?(?:isolated |development )?(?:copy|workspace)|run (?:the )?independent (?:browser )?verification)\b/.test(normalized)) return 'build';
   if (/\b(plan|inspect|look at|review|analy[sz]e|walk me through|rundown|assess|investigate)\b/.test(normalized)) return 'plan';
   return 'build';
 }
