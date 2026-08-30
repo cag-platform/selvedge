@@ -111,13 +111,13 @@ describe('railway/serviceExists — stale preview recovery', () => {
   afterEach(() => { globalThis.fetch = realFetch; });
 
   it('recognizes a live service', async () => {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: { id: 'svc_1' } } }), { status: 200 })) as typeof fetch;
-    expect(await serviceExists('token', 'svc_1')).toBe(true);
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { serviceInstance: { id: 'instance_1' } } }), { status: 200 })) as typeof fetch;
+    expect(await serviceExists('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' })).toBe(true);
   });
 
   it('treats a missing or inaccessible service as gone', async () => {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { service: null } }), { status: 200 })) as typeof fetch;
-    expect(await serviceExists('token', 'svc_1')).toBe(false);
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: { serviceInstance: null } }), { status: 200 })) as typeof fetch;
+    expect(await serviceExists('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' })).toBe(false);
   });
 });
 

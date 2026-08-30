@@ -56,7 +56,7 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
     const deploy = await getDeployState(record.token, record.target);
     record.handle.state = deploy?.status === 'live'
       ? 'ready'
-      : deploy?.status === 'failed' || (!deploy && !(await serviceExists(record.token, record.target.serviceId)))
+      : deploy?.status === 'failed' || (!deploy && !(await serviceExists(record.token, record.target)))
         ? 'failed'
         : 'building';
     return { ...record.handle };
