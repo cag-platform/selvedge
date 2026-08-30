@@ -22,6 +22,17 @@ if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) th
 
 let stopped = false;
 let retryMs = 250;
+let retryTimer = null;
+
+function scheduleRetry() {
+  if (stopped || retryTimer) return;
+  const delay = retryMs;
+  retryMs = Math.min(retryMs * 2, 5000);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    connect();
+  }, delay);
+}
 
 function safeHeaders(headers) {
   const blocked = new Set(['authorization', 'cookie', 'connection', 'keep-alive', 'proxy-authenticate',
@@ -67,16 +78,11 @@ function connect() {
       else if (message.type === 'ping') socket.send(JSON.stringify({ type: 'pong', at: message.at }));
     } catch { /* malformed relay messages are ignored */ }
   });
-  socket.addEventListener('close', () => {
-    if (!stopped) setTimeout(connect, retryMs);
-    retryMs = Math.min(retryMs * 2, 5000);
-  });
-  // A failed connection already transitions to the close event, which owns retrying.
-  // Calling close() from Node's WebSocket error event can synchronously emit
-  // another error while the socket is still CONNECTING. That recurses until
-  // the connector dies with "Maximum call stack size exceeded" and leaves the
-  // preview permanently "waking up".
-  socket.addEventListener('error', () => { /* close schedules the retry */ });
+  socket.addEventListener('close', scheduleRetry);
+  // Node does not guarantee that a failed CONNECTING socket emits close after
+  // error. Schedule the same guarded retry from both events; never call
+  // socket.close() here, because that recursively emits error on Node 22.
+  socket.addEventListener('error', scheduleRetry);
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopped = true; process.exit(0); });

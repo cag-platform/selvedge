@@ -25,5 +25,7 @@ describe('Preview Relay workspace connector', () => {
     expect(source).not.toContain('console.log');
     expect(source).not.toContain("addEventListener('error', () => socket.close())");
     expect(source).toContain("addEventListener('close'");
+    expect(source).toContain("addEventListener('error', scheduleRetry)");
+    expect(source).toContain('if (stopped || retryTimer) return');
   });
 });
