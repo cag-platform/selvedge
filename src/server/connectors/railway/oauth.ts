@@ -75,7 +75,10 @@ export function authorizeUrl(config: RailwayOAuthConfig, state: string, challeng
     response_type: 'code',
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
-    scope: 'openid email profile offline_access',
+    // Preview services are created inside a workspace the owner explicitly
+    // selects on Railway's consent screen. Identity-only scopes authenticate
+    // the person but cannot read or modify any workspace resources.
+    scope: 'openid email profile offline_access workspace:admin',
     state,
     prompt: 'consent',
     code_challenge: challenge,

@@ -84,6 +84,11 @@ export async function createPreviewRefWithToken(
   return { commitSha: commit.sha, branch: ref, files: files.length };
 }
 
+export async function deletePreviewRefWithToken(token: string, fullName: string, ref: string): Promise<void> {
+  if (!/^selvedge-preview\/[A-Za-z0-9._-]+$/.test(ref)) throw new GithubError('invalid disposable preview ref');
+  await gh(token, `/repos/${fullName}/git/refs/${encodeURIComponent(`heads/${ref}`)}`, { method: 'DELETE' });
+}
+
 /** Push using a credential supplied by the caller. Installation credentials are
  * short-lived and tenant-scoped; keeping the token out of module state prevents
  * one deployment identity from quietly becoming every customer's GitHub key. */

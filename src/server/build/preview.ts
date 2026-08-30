@@ -8,6 +8,7 @@ import { projectBuild } from '../db/schema/index.js';
 import { resolveRepoToken } from './repoToken.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
 import { previewEnvFile, getPreviewEnvSummary } from './previewEnv.js';
+import { deletePreviewRefWithToken } from '../connectors/github/pushFiles.js';
 
 /**
  * The live preview — see the app running in the project's sandbox, in an
@@ -288,10 +289,7 @@ export async function sweepHostedPreviews(db: Db, now = new Date()): Promise<num
       if (row.previewSourceRef && row.repoFullName) {
         const credential = await resolveRepoToken(db, row.orgId, row.repoFullName);
         if (credential.ok) {
-          await fetch(`https://api.github.com/repos/${row.repoFullName}/git/refs/heads/${encodeURIComponent(row.previewSourceRef)}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${credential.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
-          }).catch(() => undefined);
+          await deletePreviewRefWithToken(credential.token, row.repoFullName, row.previewSourceRef).catch(() => undefined);
         }
       }
       await setBuild(db, row.orgId, row.projectId, { previewRuntimeId: null, previewSourceRef: null, previewUrl: null, previewTokenExpiresAt: null, previewActiveUntil: null });
@@ -334,6 +332,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
    * quiet. A preview that starts a sandbox is a bounded, visible cost rather
    * than an open tap.
    */
+  let unpublishedRef: string | null = null;
   try {
     if (process.env.PREVIEW_RUNTIME === 'railway') {
       const runtime = new RailwayPreviewRuntime(db);
@@ -346,6 +345,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         }
       }
       const ref = await publishPreviewRef(db, orgId, projectId, cfg);
+      unpublishedRef = ref;
       const env = await previewEnvFile(db, orgId, projectId).catch(() => null);
       const variables = Object.fromEntries((env ?? '').split('\n').map((line) => line.trim()).filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)).map((line) => {
         const at = line.indexOf('=');
@@ -365,6 +365,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         previewTokenExpiresAt: preview.expiresAt,
         previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
       });
+      unpublishedRef = null;
       return { state: 'ready', url: preview.url, message: 'The preview is finishing its build.' };
     }
     const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
@@ -386,6 +387,11 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
     });
     return { state: 'ready', url: preview.url, message: null };
   } catch (err) {
+    if (unpublishedRef) {
+      await deletePreviewRefWithToken(cfg.githubToken, cfg.repoFullName, unpublishedRef).catch((cleanupError) => {
+        console.error(`could not remove failed preview ref ${cfg.repoFullName}/${unpublishedRef}:`, cleanupError);
+      });
+    }
     /**
      * THE STACK TRACE STOPS HERE.
      *

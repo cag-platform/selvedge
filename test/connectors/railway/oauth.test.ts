@@ -19,6 +19,7 @@ describe('authorizeUrl — asks for what a lasting connection needs', () => {
     const url = new URL(authorizeUrl(config, 'state123', 'chal'));
     expect(url.origin + url.pathname).toBe('https://backboard.railway.com/oauth/auth');
     expect(url.searchParams.get('scope')).toContain('offline_access');
+    expect(url.searchParams.get('scope')).toContain('workspace:admin');
     expect(url.searchParams.get('prompt')).toBe('consent');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('state')).toBe('state123');
