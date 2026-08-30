@@ -356,6 +356,14 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
           await setBuild(db, orgId, projectId, { previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS) });
           return { state: 'ready', url: current.previewUrl, message: inspected.state === 'building' ? 'The preview is finishing its build.' : null };
         }
+        // A retry replaces a failed disposable service. Keep failures around
+        // until then (or the normal TTL sweep) so their Railway logs remain
+        // available long enough to diagnose instead of disappearing at the
+        // same instant the owner sees the error.
+        if (inspected.state !== 'destroyed') await runtime.destroyPreview(current.previewRuntimeId).catch(() => undefined);
+        if (current.previewSourceRef && current.repoFullName) {
+          await deletePreviewRefWithToken(cfg.githubToken, current.repoFullName, current.previewSourceRef).catch(() => undefined);
+        }
       }
       const published = await publishPreviewRef(db, orgId, projectId, cfg);
       const { ref } = published;
@@ -371,6 +379,18 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         variables,
         ttlMinutes: TOKEN_TTL_SECONDS / 60,
       });
+      // Persist the quarantined resource before waiting. If its build fails,
+      // support can inspect the logs and the ordinary preview sweep still
+      // guarantees that both the service and ref disappear automatically.
+      await setBuild(db, orgId, projectId, {
+        previewUrl: preview.url,
+        previewRuntimeId: preview.id,
+        previewSourceRef: ref,
+        previewToken: null,
+        previewTokenExpiresAt: preview.expiresAt,
+        previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
+      });
+      unpublishedRef = null;
       // A domain existing only means Railway accepted the deployment. It can
       // still serve Railway's own Not Found page while building, or forever if
       // the build fails. Keep the durable operation in `starting` until the
@@ -384,24 +404,13 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
           break;
         }
         if (inspected.state === 'failed' || inspected.state === 'destroyed') {
-          await runtime.destroyPreview(preview.id).catch(() => undefined);
           throw new Error('the hosted preview deployment failed');
         }
         await new Promise((resolve) => setTimeout(resolve, 5_000));
       }
       if (!live) {
-        await runtime.destroyPreview(preview.id).catch(() => undefined);
         throw new Error('the hosted preview did not become ready in time');
       }
-      await setBuild(db, orgId, projectId, {
-        previewUrl: preview.url,
-        previewRuntimeId: preview.id,
-        previewSourceRef: ref,
-        previewToken: null,
-        previewTokenExpiresAt: preview.expiresAt,
-        previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
-      });
-      unpublishedRef = null;
       return { state: 'ready', url: preview.url, message: null };
     }
     const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
