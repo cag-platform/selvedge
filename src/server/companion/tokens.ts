@@ -1,8 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
-import { companionTokens } from '../db/schema/index.js';
+import { companionPairings, companionTokens } from '../db/schema/index.js';
 
 /**
  * The key a program on the owner's machine carries.
@@ -17,7 +17,7 @@ import { companionTokens } from '../db/schema/index.js';
 
 const TOKEN_PREFIX = 'slv_'; // selvedge companion key
 
-function hashToken(token: string): string {
+export function hashCompanionToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
@@ -31,7 +31,7 @@ export async function issueCompanionToken(db: Db, orgId: string, name: string): 
     id,
     orgId,
     name: name.trim().slice(0, 80) || 'a machine',
-    tokenHash: hashToken(token),
+    tokenHash: hashCompanionToken(token),
   });
   return { id, token };
 }
@@ -45,7 +45,7 @@ export async function issueCompanionToken(db: Db, orgId: string, name: string): 
  */
 export async function resolveCompanionToken(db: Db, token: string | undefined | null): Promise<{ orgId: string; id: string } | null> {
   if (!token || !token.startsWith(TOKEN_PREFIX)) return null;
-  const hash = hashToken(token);
+  const hash = hashCompanionToken(token);
   const [row] = await db
     .select({ orgId: companionTokens.orgId, id: companionTokens.id, tokenHash: companionTokens.tokenHash })
     .from(companionTokens)
@@ -58,6 +58,46 @@ export async function resolveCompanionToken(db: Db, token: string | undefined | 
   const b = Buffer.from(hash);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   return { orgId: row.orgId, id: row.id };
+}
+
+const PAIRING_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function pairingCode(): string {
+  const bytes = randomBytes(8);
+  return [...bytes].map((byte) => PAIRING_ALPHABET[byte % PAIRING_ALPHABET.length]).join('');
+}
+
+export async function startCompanionPairing(db: Db, name: string, tokenHash: string) {
+  if (!/^[a-f0-9]{64}$/i.test(tokenHash)) return null;
+  const code = pairingCode();
+  const expiresAt = new Date(Date.now() + 10 * 60_000);
+  await db.insert(companionPairings).values({
+    code, name: name.trim().slice(0, 80) || 'Mac', tokenHash: tokenHash.toLowerCase(), expiresAt,
+  });
+  return { code, expiresAt };
+}
+
+export async function companionPairingStatus(db: Db, code: string, token: string) {
+  const [row] = await db.select().from(companionPairings).where(and(
+    eq(companionPairings.code, code.toUpperCase()), eq(companionPairings.tokenHash, hashCompanionToken(token)),
+    gt(companionPairings.expiresAt, new Date()),
+  )).limit(1);
+  return row ? { state: row.state, approved: row.state === 'approved' } : null;
+}
+
+export async function approveCompanionPairing(db: Db, orgId: string, code: string) {
+  return db.transaction(async (tx) => {
+    const id = ulid();
+    const [pairing] = await tx.update(companionPairings).set({
+      orgId, tokenId: id, state: 'approved', approvedAt: new Date(),
+    }).where(and(
+      eq(companionPairings.code, code.toUpperCase()), eq(companionPairings.state, 'waiting'),
+      gt(companionPairings.expiresAt, new Date()),
+    )).returning();
+    if (!pairing) return null;
+    await tx.insert(companionTokens).values({ id, orgId, name: pairing.name, tokenHash: pairing.tokenHash });
+    return pairing;
+  });
 }
 
 /** Note that a key was just used — the "last seen" a person checks when something looks wrong. */

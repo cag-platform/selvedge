@@ -5,6 +5,7 @@ dist-server/
 .env.local
 *.log
 coverage/
+.build/
 .DS_Store
 
 # Throwaway visual-audit harness (fixtures + screenshots). Never shipped.

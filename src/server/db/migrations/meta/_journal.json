@@ -421,6 +421,13 @@
       "when": 1788742800010,
       "tag": "0059_apple_runtime_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1788742800011,
+      "tag": "0060_companion_pairing",
+      "breakpoints": true
     }
   ]
 }

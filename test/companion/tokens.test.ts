@@ -4,10 +4,14 @@ import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { companionTokens, orgs } from '../../src/server/db/schema/index.js';
 import {
   issueCompanionToken,
+  approveCompanionPairing,
+  companionPairingStatus,
+  hashCompanionToken,
   listCompanionTokens,
   resolveCompanionToken,
   revokeCompanionToken,
   touchCompanionToken,
+  startCompanionPairing,
 } from '../../src/server/companion/tokens.js';
 
 /**
@@ -71,5 +75,21 @@ describe('companion keys', () => {
     const [key] = await listCompanionTokens(db, 'org_1');
     expect(key!.last_used_at).not.toBeNull();
     expect(Object.keys(key!)).toEqual(['id', 'name', 'created_at', 'last_used_at', 'revoked_at']);
+  });
+
+  it('pairs a Mac through browser approval without storing or displaying its secret', async () => {
+    const token = `slv_${'a'.repeat(48)}`;
+    const pairing = await startCompanionPairing(db, 'Greg’s Mac', hashCompanionToken(token));
+    expect(pairing?.code).toMatch(/^[A-Z2-9]{8}$/);
+    expect(await companionPairingStatus(db, pairing!.code, token)).toEqual({ state: 'waiting', approved: false });
+    expect(await companionPairingStatus(db, pairing!.code, 'slv_wrong')).toBeNull();
+
+    expect(await approveCompanionPairing(db, 'org_1', pairing!.code)).toMatchObject({ state: 'approved', orgId: 'org_1' });
+    expect(await companionPairingStatus(db, pairing!.code, token)).toEqual({ state: 'approved', approved: true });
+    expect(await resolveCompanionToken(db, token)).toMatchObject({ orgId: 'org_1' });
+    expect(await approveCompanionPairing(db, 'org_2', pairing!.code)).toBeNull();
+
+    const [stored] = await db.select().from(companionTokens).where(eq(companionTokens.orgId, 'org_1'));
+    expect(JSON.stringify(stored)).not.toContain(token);
   });
 });

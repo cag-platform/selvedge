@@ -16,6 +16,7 @@ import {
   finishAppleRuntimeJob, heartbeatAppleRuntime, storeAppleWorkspaceCheckpoint, type AppleChatTurnRequest,
 } from '../../companion/appleRuntime.js';
 import { resolveRepoToken } from '../../build/repoToken.js';
+import { companionPairingStatus, revokeCompanionToken, startCompanionPairing } from '../../companion/tokens.js';
 
 /**
  * THE LOOP'S DOOR — the one surface a program on the owner's machine talks to.
@@ -58,7 +59,46 @@ export function companionAuth(db: Db) {
 
 export function createCompanionRouter(db: Db) {
   const router = Router();
+
+  // Device authorization: the Mac creates its eventual bearer token locally
+  // and sends only the hash. A signed-in owner approves the short code on the
+  // web; no secret is ever rendered, copied, or stored in plaintext here.
+  router.post('/api/companion/pairings', asyncHandler(async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.name !== 'string' || typeof body.token_hash !== 'string') {
+      res.status(400).json({ error: 'A Mac name and local credential hash are required.' });
+      return;
+    }
+    const pairing = await startCompanionPairing(db, body.name, body.token_hash);
+    if (!pairing) {
+      res.status(400).json({ error: 'That local credential hash is not valid.' });
+      return;
+    }
+    const origin = process.env.PUBLIC_ORIGIN?.trim() || `${req.protocol}://${req.get('host')}`;
+    res.status(201).json({
+      code: pairing.code, expires_at: pairing.expiresAt.toISOString(),
+      verification_url: `${origin.replace(/\/+$/, '')}/admin/connections?pair=${encodeURIComponent(pairing.code)}`,
+    });
+  }));
+
+  router.get('/api/companion/pairings/:code', asyncHandler(async (req, res) => {
+    const header = req.header('authorization') ?? '';
+    const token = header.toLowerCase().startsWith('pair ') ? header.slice(5).trim() : '';
+    const status = await companionPairingStatus(db, req.params.code ?? '', token);
+    if (!status) {
+      res.status(404).json({ error: 'This pairing request expired or is not valid.' });
+      return;
+    }
+    res.json(status);
+  }));
+
   router.use('/api/companion', companionAuth(db));
+
+  router.delete('/api/companion/me', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest;
+    await revokeCompanionToken(db, owner.orgId, owner.tokenId);
+    res.json({ disconnected: true });
+  }));
 
   /** Who am I, and what can this key see? The companion's first call. */
   router.get(

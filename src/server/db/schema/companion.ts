@@ -38,6 +38,25 @@ export const companionTokens = pgTable(
   (t) => [index('companion_tokens_org_idx').on(t.orgId)],
 );
 
+/** Short-lived browser pairing requests created by Selvedge for Mac. */
+export const companionPairings = pgTable(
+  'companion_pairings',
+  {
+    code: text('code').primaryKey(),
+    /** Filled only after a signed-in owner approves the Mac. */
+    orgId: text('org_id'),
+    name: text('name').notNull(),
+    /** The Mac creates the bearer token. Selvedge receives only its hash. */
+    tokenHash: text('token_hash').notNull().unique(),
+    state: text('state').notNull().default('waiting'),
+    tokenId: text('token_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+  },
+  (t) => [index('companion_pairings_expiry_idx').on(t.expiresAt)],
+);
+
 export const externalSessions = pgTable(
   'external_sessions',
   {

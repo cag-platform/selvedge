@@ -168,6 +168,8 @@ export function CompanionKeys() {
   const [name, setName] = useState('');
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pairCode] = useState(() => new URLSearchParams(window.location.search).get('pair'));
+  const [pairState, setPairState] = useState<'idle' | 'approving' | 'approved' | 'failed'>('idle');
 
   const load = useCallback(() => {
     api
@@ -200,8 +202,38 @@ export function CompanionKeys() {
     load();
   }
 
+  async function approveMac() {
+    if (!pairCode) return;
+    setPairState('approving');
+    setError(null);
+    try {
+      await api.post(`/api/companion-pairings/${encodeURIComponent(pairCode)}/approve`, {});
+      setPairState('approved');
+      window.history.replaceState({}, '', window.location.pathname);
+      load();
+    } catch (err) {
+      setPairState('failed');
+      setError(err instanceof Error ? err.message : 'That Mac could not be approved.');
+    }
+  }
+
   return (
     <section className="space-y-3">
+      {pairCode && pairState !== 'approved' && (
+        <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4">
+          <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge for Mac</p>
+          <h2 className="mt-1 text-headline font-medium text-ink">Allow this Mac?</h2>
+          <p className="mt-1 text-body text-ink-dim">Pairing code <strong className="font-mono text-ink">{pairCode}</strong>. Approve only if the Selvedge app on your Mac opened this page.</p>
+          <button type="button" onClick={() => void approveMac()} disabled={pairState === 'approving'} className={`${btnPrimary} mt-3`}>
+            {pairState === 'approving' ? 'Connecting…' : 'Allow this Mac'}
+          </button>
+        </div>
+      )}
+      {pairState === 'approved' && (
+        <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4 text-body text-ink">
+          <strong>Mac approved.</strong> You can return to Selvedge for Mac; it will finish connecting automatically.
+        </div>
+      )}
       <div>
         <h2 className="text-headline font-medium text-ink">Your machines</h2>
         <p className="mt-1 max-w-xl text-body text-ink-dim">

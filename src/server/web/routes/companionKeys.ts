@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { issueCompanionToken, listCompanionTokens, revokeCompanionToken } from '../../companion/tokens.js';
+import { approveCompanionPairing, issueCompanionToken, listCompanionTokens, revokeCompanionToken } from '../../companion/tokens.js';
 import { getAppleRuntimeJob, listAppleRuntimes, queueAppleRuntimeTest } from '../../companion/appleRuntime.js';
 
 function orgIdOf(req: Request): string {
@@ -31,6 +31,18 @@ export function createCompanionKeysRouter(db: Db) {
       const name = typeof (req.body as { name?: unknown })?.name === 'string' ? (req.body as { name: string }).name : 'a machine';
       const issued = await issueCompanionToken(db, orgIdOf(req), name);
       res.status(201).json({ ...issued, note: 'Copy this now — it is shown only once.' });
+    }),
+  );
+
+  router.post(
+    '/api/companion-pairings/:code/approve',
+    asyncHandler(async (req, res) => {
+      const approved = await approveCompanionPairing(db, orgIdOf(req), req.params.code ?? '');
+      if (!approved) {
+        res.status(404).json({ error: 'That Mac pairing request expired or was already used.' });
+        return;
+      }
+      res.json({ approved: true, name: approved.name });
     }),
   );
 
