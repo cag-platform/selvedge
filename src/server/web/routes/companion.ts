@@ -12,7 +12,7 @@ import { contextForProject, listContextProjects, openIssuesFor, recentChangesFor
 import { checkSessionSummary } from '../../../shared/types/session.js';
 import {
   APPLE_RUNTIME_HEARTBEAT_MS, checkAppleRuntimeRegistration, connectAppleRuntime,
-  disconnectAppleRuntime, heartbeatAppleRuntime,
+  claimAppleRuntimeJob, disconnectAppleRuntime, finishAppleRuntimeJob, heartbeatAppleRuntime,
 } from '../../companion/appleRuntime.js';
 
 /**
@@ -100,6 +100,38 @@ export function createCompanionRouter(db: Db) {
       const owner = req as CompanionRequest;
       await disconnectAppleRuntime(db, owner.orgId, owner.tokenId);
       res.json({ disconnected: true });
+    }),
+  );
+
+  router.post(
+    '/api/companion/runtime/apple/jobs/claim',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const job = await claimAppleRuntimeJob(db, owner.orgId, owner.tokenId);
+      res.json({ job: job ? { id: job.id, kind: job.kind, request: job.request } : null });
+    }),
+  );
+
+  router.post(
+    '/api/companion/runtime/apple/jobs/:jobId/complete',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.ok !== 'boolean') {
+        res.status(400).json({ error: 'A bounded Apple runtime result is required.' });
+        return;
+      }
+      const text = (name: string, max: number) => typeof body[name] === 'string' ? String(body[name]).slice(0, max) : undefined;
+      const job = await finishAppleRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '', {
+        ok: body.ok,
+        xcodeVersion: text('xcodeVersion', 500), simulatorName: text('simulatorName', 200),
+        macosVersion: text('macosVersion', 200), detail: text('detail', 2_000),
+      });
+      if (!job) {
+        res.status(409).json({ error: 'That Apple runtime job is not assigned to this Mac.' });
+        return;
+      }
+      res.json({ recorded: true });
     }),
   );
 

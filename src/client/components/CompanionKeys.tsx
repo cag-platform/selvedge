@@ -51,6 +51,31 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
   const activeKeys = keys.filter((key) => !key.revoked_at);
   const onlineRuntime = runtimes.find((runtime) => runtime.online);
   const companionSeen = activeKeys.some((key) => key.last_used_at) || Boolean(onlineRuntime);
+  const [test, setTest] = useState<{ id?: string; state: string; message?: string } | null>(null);
+
+  async function testConnection() {
+    setTest({ state: 'queued', message: 'Waiting for your Mac…' });
+    try {
+      const started = await api.post<{ job_id: string; state: string }>('/api/apple-runtime/test', {});
+      setTest({ id: started.job_id, state: started.state, message: 'Waiting for your Mac…' });
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        const status = await api.get<{ state: string; result?: { xcodeVersion?: string; simulatorName?: string }; error?: string }>('/api/apple-runtime/test/' + started.job_id);
+        if (status.state === 'succeeded') {
+          setTest({ id: started.job_id, state: status.state, message: `${status.result?.xcodeVersion?.split('\n')[0] ?? 'Xcode'} · ${status.result?.simulatorName ?? 'iPhone Simulator'} ready` });
+          return;
+        }
+        if (status.state === 'failed') {
+          setTest({ id: started.job_id, state: status.state, message: status.error ?? 'The Mac could not complete the test.' });
+          return;
+        }
+        setTest({ id: started.job_id, state: status.state, message: status.state === 'running' ? 'Xcode is checking the Simulator…' : 'Waiting for your Mac…' });
+      }
+      setTest({ id: started.job_id, state: 'waiting', message: 'The Mac did not answer. Make sure the runtime Terminal window is still open.' });
+    } catch (error) {
+      setTest({ state: 'failed', message: error instanceof Error ? error.message : 'The connection test did not start.' });
+    }
+  }
 
   return (
     <section className={`overflow-hidden rounded-card border ${onlineRuntime ? 'border-action/40 bg-action-soft/40' : 'border-hairline bg-panel'}`}>
@@ -74,6 +99,12 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
           <p className="mt-1 text-meta text-ink-dim">
             macOS {onlineRuntime.macosVersion} · {onlineRuntime.xcodeVersion.split('\n')[0]}. Keep the Terminal window running while an agent builds or checks an Apple app.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={() => void testConnection()} disabled={test?.state === 'queued' || test?.state === 'running'} className={btnPrimary}>
+              {test?.state === 'queued' || test?.state === 'running' ? 'Testing…' : 'Test connection'}
+            </button>
+            {test?.message && <span className={`text-meta ${test.state === 'failed' || test.state === 'waiting' ? 'text-thread' : test.state === 'succeeded' ? 'text-action' : 'text-ink-dim'}`}>{test.message}</span>}
+          </div>
           <details className="mt-3">
             <summary className="cursor-pointer text-meta text-action">Show setup and troubleshooting</summary>
             <div className="mt-3"><AppleSetupSteps activeKey={true} companionSeen={true} connected={true} /></div>
@@ -103,7 +134,7 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
         </SetupStep>
         <SetupStep number={2} title="Install the Selvedge companion" complete={companionSeen}>
           <p>Open Terminal on the Mac and install the small connection program.</p>
-          <CopyCommand command="npm install -g selvedge" />
+          <CopyCommand command="curl -fsSL https://tryselvedge.com/install-companion | sh" />
         </SetupStep>
         <SetupStep number={3} title="Connect this Mac to your Selvedge account" complete={activeKey}>
           {activeKey
@@ -112,7 +143,7 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
         </SetupStep>
         <SetupStep number={4} title="Turn on the Apple runtime" complete={connected}>
           <p>Run this in Terminal and leave that window open while Selvedge works on an Apple app.</p>
-          <CopyCommand command="selvedge runtime apple" />
+          <CopyCommand command="$HOME/.local/bin/selvedge runtime apple" />
           {!connected && <p className="mt-2">This page will change to <strong>Mac connected</strong> automatically when Xcode and Simulator are ready.</p>}
         </SetupStep>
       </ol>
@@ -122,7 +153,7 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
           <p><strong className="text-ink">“xcodebuild not found”</strong> — install Xcode, open it once, then run <code className="font-mono text-tech">sudo xcode-select -s /Applications/Xcode.app</code>.</p>
           <p><strong className="text-ink">No iPhone Simulator</strong> — open Xcode → Settings → Components and install an iOS runtime.</p>
           <p><strong className="text-ink">License not accepted</strong> — open Xcode and accept it, or run <code className="font-mono text-tech">sudo xcodebuild -license accept</code>.</p>
-          <p><strong className="text-ink">It was connected and went offline</strong> — return to the Terminal window and run <code className="font-mono text-tech">selvedge runtime apple</code> again.</p>
+          <p><strong className="text-ink">It was connected and went offline</strong> — return to the Terminal window and run <code className="font-mono text-tech">$HOME/.local/bin/selvedge runtime apple</code> again.</p>
         </div>
       </details>
     </>
@@ -199,10 +230,10 @@ export function CompanionKeys() {
           <p className="text-body text-ink">Copy this now; it’s shown only once.</p>
           <p className="select-all break-all font-mono text-tech text-ink">{issued}</p>
           <div className="space-y-1 font-mono text-tech text-ink-quiet">
-            <p>npm install -g selvedge</p>
-            <p>selvedge login --token {issued.slice(0, 8)}…</p>
-            <p>selvedge watch</p>
-            <p>selvedge runtime apple</p>
+            <p>curl -fsSL https://tryselvedge.com/install-companion | sh</p>
+            <p>$HOME/.local/bin/selvedge login --token {issued.slice(0, 8)}…</p>
+            <p>$HOME/.local/bin/selvedge watch</p>
+            <p>$HOME/.local/bin/selvedge runtime apple</p>
           </div>
           <p className="text-meta text-ink-quiet">
             To give your agents this project's context, mount the same program as an MCP server:{' '}
@@ -227,7 +258,7 @@ export function CompanionKeys() {
       {keys && keys.length === 0 && (
         <EmptyState>
           The companion hasn&rsquo;t seen a session yet. Install with{' '}
-          <span className="font-mono text-tech">npx selvedge</span> &mdash; summaries appear here, code never leaves
+          <span className="font-mono text-tech">$HOME/.local/bin/selvedge</span> &mdash; summaries appear here, code never leaves
           your machine.
         </EmptyState>
       )}

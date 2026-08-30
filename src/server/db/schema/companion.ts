@@ -100,3 +100,23 @@ export const appleRuntimeHosts = pgTable(
   },
   (t) => [index('apple_runtime_hosts_org_seen_idx').on(t.orgId, t.lastSeenAt)],
 );
+
+/** Bounded work handed to a connected Apple runtime. No arbitrary shell. */
+export const appleRuntimeJobs = pgTable(
+  'apple_runtime_jobs',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    projectId: text('project_id'),
+    hostId: text('host_id'),
+    kind: text('kind').notNull(),
+    state: text('state').notNull().default('queued'),
+    request: jsonb('request').notNull(),
+    result: jsonb('result'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('apple_runtime_jobs_org_state_idx').on(t.orgId, t.state, t.createdAt)],
+);

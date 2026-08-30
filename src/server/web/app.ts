@@ -50,11 +50,16 @@ import { createDistributionOpsRouter } from './routes/distributionOps.js';
 import { buildBuildEngine } from '../runner/native/factory.js';
 import { driveCard } from '../cards/drive.js';
 import { getPreviewRelay } from '../workspace/relay/factory.js';
+import { companionInstaller } from '../companion/installer.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
+  app.get('/install-companion', (req, res) => {
+    const configured = process.env.PUBLIC_ORIGIN?.trim() || `${req.protocol}://${req.get('host')}`;
+    res.type('text/x-shellscript').send(companionInstaller(configured));
+  });
 
   // Selvedge-native workspace previews. The customer app connects OUT to this
   // relay; browsers never receive a provider URL or workspace credential.

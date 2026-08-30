@@ -143,10 +143,47 @@ async function main(): Promise<number> {
     process.once('SIGINT', () => void stop());
     process.once('SIGTERM', () => void stop());
     const every = connected.value.heartbeat_seconds * 1000;
+    let checking = false;
+    const checkForWork = async () => {
+      if (checking || stopping) return;
+      checking = true;
+      try {
+        const claimed = await api.claimAppleRuntimeJob();
+        if (!claimed.ok) {
+          console.error(`Apple runtime check-in failed: ${claimed.error}`);
+          return;
+        }
+        const job = claimed.value.job;
+        if (!job) return;
+        if (job.kind !== 'toolchain_check') {
+          await api.finishAppleRuntimeJob(job.id, { ok: false, detail: `This companion does not support ${job.kind}.` });
+          return;
+        }
+        console.log('Selvedge is testing Xcode and iPhone Simulator…');
+        try {
+          const currentXcode = (await run('xcodebuild', ['-version'], { timeout: 10_000 })).stdout.trim();
+          const currentMacos = (await run('sw_vers', ['-productVersion'], { timeout: 10_000 })).stdout.trim();
+          const simulatorJson = (await run('xcrun', ['simctl', 'list', 'devices', 'available', '-j'], { timeout: 15_000 })).stdout;
+          const simulatorData = JSON.parse(simulatorJson) as { devices?: Record<string, Array<{ name?: string; isAvailable?: boolean }>> };
+          const simulator = Object.values(simulatorData.devices ?? {}).flat().find((device) => device.isAvailable !== false && /iPhone/i.test(device.name ?? ''));
+          if (!simulator?.name) throw new Error('no available iPhone Simulator');
+          await api.finishAppleRuntimeJob(job.id, { ok: true, xcodeVersion: currentXcode, macosVersion: currentMacos, simulatorName: simulator.name });
+          console.log(`Connection test passed: ${simulator.name}`);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          await api.finishAppleRuntimeJob(job.id, { ok: false, detail });
+          console.error(`Connection test failed: ${detail}`);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    setInterval(() => void checkForWork(), 2_000);
     setInterval(async () => {
       const beat = await api.heartbeatAppleRuntime();
       if (!beat.ok) console.error(`Apple runtime heartbeat failed: ${beat.error}`);
     }, every);
+    void checkForWork();
     return new Promise<number>(() => undefined);
   }
 

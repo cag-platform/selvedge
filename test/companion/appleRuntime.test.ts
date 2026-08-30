@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { appleRuntimeHosts, companionTokens, orgs } from '../../src/server/db/schema/index.js';
+import { appleRuntimeHosts, appleRuntimeJobs, companionTokens, orgs } from '../../src/server/db/schema/index.js';
 import {
-  availableAppleRuntime, checkAppleRuntimeRegistration, connectAppleRuntime,
-  disconnectAppleRuntime, heartbeatAppleRuntime,
+  availableAppleRuntime, checkAppleRuntimeRegistration, claimAppleRuntimeJob, connectAppleRuntime,
+  disconnectAppleRuntime, finishAppleRuntimeJob, heartbeatAppleRuntime, queueAppleRuntimeTest,
 } from '../../src/server/companion/appleRuntime.js';
 
 const orgId = 'org_apple_runtime_test';
@@ -39,5 +39,19 @@ describe('Apple runtime connection', () => {
     expect(await heartbeatAppleRuntime(db, orgId, tokenId)).not.toBeNull();
     await disconnectAppleRuntime(db, orgId, tokenId);
     expect(await availableAppleRuntime(db, orgId)).toBeNull();
+  });
+
+  it('moves a bounded toolchain test through the connected Mac', async () => {
+    const host = await connectAppleRuntime(db, orgId, tokenId, registration);
+    const queued = await queueAppleRuntimeTest(db, orgId);
+    expect(queued?.state).toBe('queued');
+    const claimed = await claimAppleRuntimeJob(db, orgId, tokenId);
+    expect(claimed).toMatchObject({ id: queued?.id, hostId: host.id, state: 'running', kind: 'toolchain_check' });
+    const finished = await finishAppleRuntimeJob(db, orgId, tokenId, claimed!.id, {
+      ok: true, xcodeVersion: 'Xcode 18', macosVersion: '16.0', simulatorName: 'iPhone 18',
+    });
+    expect(finished?.state).toBe('succeeded');
+    const [stored] = await db.select().from(appleRuntimeJobs).where(eq(appleRuntimeJobs.id, claimed!.id));
+    expect(stored?.result).toMatchObject({ simulatorName: 'iPhone 18' });
   });
 });

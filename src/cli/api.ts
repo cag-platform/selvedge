@@ -94,4 +94,14 @@ export class CompanionApi {
   disconnectAppleRuntime() {
     return this.call<{ disconnected: true }>('/api/companion/runtime/apple', { method: 'DELETE' });
   }
+
+  claimAppleRuntimeJob() {
+    return this.call<{ job: null | { id: string; kind: 'toolchain_check'; request: { version: number } } }>('/api/companion/runtime/apple/jobs/claim', { method: 'POST' });
+  }
+
+  finishAppleRuntimeJob(jobId: string, result: { ok: boolean; xcodeVersion?: string; simulatorName?: string; macosVersion?: string; detail?: string }) {
+    return this.call<{ recorded: true }>(`/api/companion/runtime/apple/jobs/${encodeURIComponent(jobId)}/complete`, {
+      method: 'POST', body: JSON.stringify(result),
+    });
+  }
 }

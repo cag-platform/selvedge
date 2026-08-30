@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { issueCompanionToken, listCompanionTokens, revokeCompanionToken } from '../../companion/tokens.js';
-import { listAppleRuntimes } from '../../companion/appleRuntime.js';
+import { getAppleRuntimeJob, listAppleRuntimes, queueAppleRuntimeTest } from '../../companion/appleRuntime.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -31,6 +31,30 @@ export function createCompanionKeysRouter(db: Db) {
       const name = typeof (req.body as { name?: unknown })?.name === 'string' ? (req.body as { name: string }).name : 'a machine';
       const issued = await issueCompanionToken(db, orgIdOf(req), name);
       res.status(201).json({ ...issued, note: 'Copy this now — it is shown only once.' });
+    }),
+  );
+
+  router.post(
+    '/api/apple-runtime/test',
+    asyncHandler(async (req, res) => {
+      const job = await queueAppleRuntimeTest(db, orgIdOf(req));
+      if (!job) {
+        res.status(409).json({ error: 'Connect a Mac before testing the Apple runtime.' });
+        return;
+      }
+      res.status(202).json({ job_id: job.id, state: job.state });
+    }),
+  );
+
+  router.get(
+    '/api/apple-runtime/test/:jobId',
+    asyncHandler(async (req, res) => {
+      const job = await getAppleRuntimeJob(db, orgIdOf(req), req.params.jobId ?? '');
+      if (!job || job.kind !== 'toolchain_check') {
+        res.status(404).json({ error: 'No such Apple connection test.' });
+        return;
+      }
+      res.json({ id: job.id, state: job.state, result: job.result, error: job.error });
     }),
   );
 

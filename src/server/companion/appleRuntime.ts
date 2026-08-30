@@ -1,7 +1,7 @@
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
-import { appleRuntimeHosts } from '../db/schema/index.js';
+import { appleRuntimeHosts, appleRuntimeJobs } from '../db/schema/index.js';
 
 export const APPLE_RUNTIME_HEARTBEAT_MS = 20_000;
 export const APPLE_RUNTIME_ONLINE_WINDOW_MS = 75_000;
@@ -66,4 +66,52 @@ export async function listAppleRuntimes(db: Db, orgId: string) {
   const rows = await db.select().from(appleRuntimeHosts).where(eq(appleRuntimeHosts.orgId, orgId)).orderBy(desc(appleRuntimeHosts.lastSeenAt));
   const cutoff = Date.now() - APPLE_RUNTIME_ONLINE_WINDOW_MS;
   return rows.map((host) => ({ ...host, online: host.status === 'online' && !host.disconnectedAt && host.lastSeenAt.getTime() > cutoff }));
+}
+
+export type AppleRuntimeJobResult = {
+  ok: boolean;
+  xcodeVersion?: string;
+  simulatorName?: string;
+  macosVersion?: string;
+  detail?: string;
+};
+
+export async function queueAppleRuntimeTest(db: Db, orgId: string) {
+  const host = await availableAppleRuntime(db, orgId);
+  if (!host) return null;
+  const [job] = await db.insert(appleRuntimeJobs).values({
+    id: ulid(), orgId, kind: 'toolchain_check', state: 'queued', request: { version: 1 },
+  }).returning();
+  return job ?? null;
+}
+
+export async function getAppleRuntimeJob(db: Db, orgId: string, jobId: string) {
+  const [job] = await db.select().from(appleRuntimeJobs).where(and(eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.id, jobId))).limit(1);
+  return job ?? null;
+}
+
+export async function claimAppleRuntimeJob(db: Db, orgId: string, tokenId: string) {
+  const host = await heartbeatAppleRuntime(db, orgId, tokenId);
+  if (!host) return null;
+  const [candidate] = await db.select({ id: appleRuntimeJobs.id }).from(appleRuntimeJobs)
+    .where(and(eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.state, 'queued')))
+    .orderBy(asc(appleRuntimeJobs.createdAt)).limit(1);
+  if (!candidate) return null;
+  const [claimed] = await db.update(appleRuntimeJobs).set({ state: 'running', hostId: host.id, claimedAt: new Date() })
+    .where(and(eq(appleRuntimeJobs.id, candidate.id), eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.state, 'queued')))
+    .returning();
+  return claimed ?? null;
+}
+
+export async function finishAppleRuntimeJob(
+  db: Db, orgId: string, tokenId: string, jobId: string, result: AppleRuntimeJobResult,
+) {
+  const host = await heartbeatAppleRuntime(db, orgId, tokenId);
+  if (!host) return null;
+  const [job] = await db.update(appleRuntimeJobs).set({
+    state: result.ok ? 'succeeded' : 'failed', result, error: result.ok ? null : (result.detail ?? 'Apple runtime check failed'), finishedAt: new Date(),
+  }).where(and(
+    eq(appleRuntimeJobs.id, jobId), eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.hostId, host.id), eq(appleRuntimeJobs.state, 'running'),
+  )).returning();
+  return job ?? null;
 }
