@@ -4,8 +4,8 @@ import { getDeployState, serviceExists, type RailwayTarget } from '../connectors
 import { hostProjectOptions, resolveHostAccount } from '../build/hostAccount.js';
 import type { CreatePreviewInput, PreviewHandle, PreviewRuntime } from './runtime.js';
 
-type PreviewRecord = { orgId: string; handle: PreviewHandle; token: string; target: RailwayTarget };
-type DurableId = { orgId: string; target: RailwayTarget; expiresAt: string; url: string };
+type PreviewRecord = { orgId: string; handle: PreviewHandle; token: string; target: RailwayTarget; createdAt: Date };
+type DurableId = { orgId: string; target: RailwayTarget; expiresAt: string; createdAt?: string; url: string };
 function encode(value: DurableId): string { return Buffer.from(JSON.stringify(value)).toString('base64url'); }
 function decode(id: string): DurableId { return JSON.parse(Buffer.from(id, 'base64url').toString('utf8')) as DurableId; }
 
@@ -23,15 +23,16 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       NODE_ENV: 'development', PORT: '3000', ...input.variables,
     }, input.source.ref);
     const target = { ...host, serviceId };
+    const createdAt = new Date();
     const expiresAt = new Date(Date.now() + input.ttlMinutes * 60_000);
     try {
       await configurePreviewService(account.token, target);
       await setServiceVariables(account.token, target, { NODE_ENV: 'development', PORT: '3000', ...input.variables });
       await deployPreviewCommit(account.token, target, input.source.commitSha);
       const url = await ensureServiceDomain(account.token, target);
-      const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), url });
+      const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), createdAt: createdAt.toISOString(), url });
       const handle: PreviewHandle = { id, state: 'building', url, expiresAt };
-      this.previews.set(id, { orgId: input.orgId, handle, token: account.token, target });
+      this.previews.set(id, { orgId: input.orgId, handle, token: account.token, target, createdAt });
       return { ...handle };
     } catch (error) {
       await deleteService(account.token, serviceId).catch(() => undefined);
@@ -46,7 +47,8 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       const account = await resolveHostAccount(this.db, saved.orgId);
       if (!account || account.owner !== 'customer') throw new Error('the Railway connection for this preview is unavailable');
       const handle: PreviewHandle = { id, state: 'building', url: saved.url, expiresAt: new Date(saved.expiresAt) };
-      record = { orgId: saved.orgId, handle, token: account.token, target: saved.target };
+      const createdAt = saved.createdAt ? new Date(saved.createdAt) : new Date(handle.expiresAt.getTime() - 10 * 60_000);
+      record = { orgId: saved.orgId, handle, token: account.token, target: saved.target, createdAt };
       this.previews.set(id, record);
     }
     if (record.handle.expiresAt.getTime() <= Date.now()) {
@@ -54,9 +56,10 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       return { ...record.handle, state: 'destroyed', url: null };
     }
     const deploy = await getDeployState(record.token, record.target);
+    const noDeployIsStale = !deploy && record.createdAt.getTime() < Date.now() - 2 * 60_000;
     record.handle.state = deploy?.status === 'live'
       ? 'ready'
-      : deploy?.status === 'failed' || (!deploy && !(await serviceExists(record.token, record.target)))
+      : deploy?.status === 'failed' || noDeployIsStale || (!deploy && !(await serviceExists(record.token, record.target)))
         ? 'failed'
         : 'building';
     return { ...record.handle };
@@ -68,7 +71,8 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       const saved = decode(id);
       const account = await resolveHostAccount(this.db, saved.orgId);
       if (!account || account.owner !== 'customer') return;
-      record = { orgId: saved.orgId, token: account.token, target: saved.target, handle: { id, state: 'building', url: saved.url, expiresAt: new Date(saved.expiresAt) } };
+      const expiresAt = new Date(saved.expiresAt);
+      record = { orgId: saved.orgId, token: account.token, target: saved.target, createdAt: saved.createdAt ? new Date(saved.createdAt) : new Date(expiresAt.getTime() - 10 * 60_000), handle: { id, state: 'building', url: saved.url, expiresAt } };
     }
     await deleteService(record.token, record.target.serviceId);
     record.handle.state = 'destroyed';
