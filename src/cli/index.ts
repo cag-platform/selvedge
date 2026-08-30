@@ -5,6 +5,9 @@ import { dryRun, watchOnce } from './watch.js';
 import { defaultRoots, type Roots } from './sessions/discover.js';
 import { runContextServer } from './mcp.js';
 import { findSessionFiles, looksFinished } from './sessions/discover.js';
+import { execFile } from 'node:child_process';
+import { hostname } from 'node:os';
+import { promisify } from 'node:util';
 
 /**
  * `selvedge` — the companion. Two jobs, one binary:
@@ -28,6 +31,7 @@ const HELP = `selvedge — the local companion for Selvedge
   selvedge watch [--once] [--interval 60]    report finished coding sessions
   selvedge watch --dry-run                   print what WOULD be sent, send nothing
   selvedge context                           run the MCP server (stdio) for agents
+  selvedge runtime apple                     connect this Mac's Xcode + iPhone Simulator
   selvedge import cursor [--dry-run]         bring this machine's Cursor chats into Selvedge
 
 What leaves this machine: for each finished session, its tool and id, when it
@@ -88,6 +92,62 @@ async function main(): Promise<number> {
     }
     console.log(`Projects it can see: ${hello.value.projects.map((p) => p.id).join(', ') || 'none yet'}`);
     return 0;
+  }
+
+  if (command === 'runtime') {
+    if (argv[0] !== 'apple') {
+      console.error('The runtime available here is: apple');
+      return 1;
+    }
+    if (!config.token) {
+      console.error('No key yet — run `selvedge login --token slv_…` first.');
+      return 1;
+    }
+    if (process.platform !== 'darwin') {
+      console.error('The Apple runtime must run on a Mac with Xcode and an iPhone Simulator.');
+      return 1;
+    }
+    const run = promisify(execFile);
+    let xcodeVersion = '';
+    let macosVersion = '';
+    try {
+      xcodeVersion = (await run('xcodebuild', ['-version'], { timeout: 10_000 })).stdout.trim();
+      macosVersion = (await run('sw_vers', ['-productVersion'], { timeout: 10_000 })).stdout.trim();
+      const simulators = (await run('xcrun', ['simctl', 'list', 'devices', 'available', '-j'], { timeout: 15_000 })).stdout;
+      const parsed = JSON.parse(simulators) as { devices?: Record<string, unknown[]> };
+      if (!Object.values(parsed.devices ?? {}).some((devices) => devices.length > 0)) throw new Error('no available iPhone Simulator');
+    } catch (error) {
+      console.error(`Apple runtime unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('Open Xcode once, accept its license, and install an iPhone Simulator runtime, then try again.');
+      return 1;
+    }
+    const api = new CompanionApi(config);
+    const connected = await api.connectAppleRuntime({
+      name: flag(argv, 'name') ?? hostname(), xcodeVersion, macosVersion,
+      capabilities: { xcode: true, iosSimulator: true },
+    });
+    if (!connected.ok) {
+      console.error(`Could not connect this Mac: ${connected.error}`);
+      return 1;
+    }
+    console.log(`Apple runtime connected: ${hostname()}`);
+    console.log(xcodeVersion.replace(/\n/g, ' · '));
+    console.log('Keep this running while Selvedge builds or verifies an Apple app. Ctrl-C disconnects.');
+    let stopping = false;
+    const stop = async () => {
+      if (stopping) return;
+      stopping = true;
+      await api.disconnectAppleRuntime();
+      process.exit(0);
+    };
+    process.once('SIGINT', () => void stop());
+    process.once('SIGTERM', () => void stop());
+    const every = connected.value.heartbeat_seconds * 1000;
+    setInterval(async () => {
+      const beat = await api.heartbeatAppleRuntime();
+      if (!beat.ok) console.error(`Apple runtime heartbeat failed: ${beat.error}`);
+    }, every);
+    return new Promise<number>(() => undefined);
   }
 
   if (command === 'watch') {

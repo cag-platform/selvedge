@@ -12,17 +12,19 @@ import { btnPrimary, EmptyState } from './ui.js';
  */
 
 type Key = { id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null };
+type AppleRuntime = { id: string; name: string; xcodeVersion: string; macosVersion: string; lastSeenAt: string; online: boolean };
 
 export function CompanionKeys() {
   const [keys, setKeys] = useState<Key[] | null>(null);
+  const [appleRuntimes, setAppleRuntimes] = useState<AppleRuntime[]>([]);
   const [name, setName] = useState('');
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api
-      .get<{ keys: Key[] }>('/api/companion-keys')
-      .then((r) => setKeys(r.keys))
+      .get<{ keys: Key[]; apple_runtimes: AppleRuntime[] }>('/api/companion-keys')
+      .then((r) => { setKeys(r.keys); setAppleRuntimes(r.apple_runtimes ?? []); })
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -81,6 +83,7 @@ export function CompanionKeys() {
             <p>npm install -g selvedge</p>
             <p>selvedge login --token {issued.slice(0, 8)}…</p>
             <p>selvedge watch</p>
+            <p>selvedge runtime apple</p>
           </div>
           <p className="text-meta text-ink-quiet">
             To give your agents this project's context, mount the same program as an MCP server:{' '}
@@ -101,6 +104,26 @@ export function CompanionKeys() {
         </button>
         {error && <span className="text-meta text-thread">{error}</span>}
       </form>
+
+      <div className="rounded-card border border-hairline bg-panel px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-body font-medium text-ink">Apple runtime</h3>
+            <p className="mt-1 max-w-xl text-meta text-ink-dim">
+              SwiftUI work runs through Xcode and an iPhone Simulator on your Mac. Selvedge receives capability and liveness signals; signing identities stay on the Mac.
+            </p>
+          </div>
+          <span className={`rounded-full px-2 py-1 text-meta ${appleRuntimes.some((runtime) => runtime.online) ? 'bg-action-soft text-action' : 'bg-panel-soft text-ink-quiet'}`}>
+            {appleRuntimes.some((runtime) => runtime.online) ? 'Connected' : 'Not connected'}
+          </span>
+        </div>
+        <p className="mt-3 font-mono text-tech text-ink">selvedge runtime apple</p>
+        {appleRuntimes.map((runtime) => (
+          <p key={runtime.id} className="mt-2 text-meta text-ink-dim">
+            {runtime.name} · macOS {runtime.macosVersion} · {runtime.xcodeVersion.split('\n')[0]} · {runtime.online ? 'online now' : 'offline'}
+          </p>
+        ))}
+      </div>
 
       {keys && keys.length === 0 && (
         <EmptyState>

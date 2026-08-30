@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { issueCompanionToken, listCompanionTokens, revokeCompanionToken } from '../../companion/tokens.js';
+import { listAppleRuntimes } from '../../companion/appleRuntime.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -19,7 +20,8 @@ export function createCompanionKeysRouter(db: Db) {
   router.get(
     '/api/companion-keys',
     asyncHandler(async (req, res) => {
-      res.json({ keys: await listCompanionTokens(db, orgIdOf(req)) });
+      const orgId = orgIdOf(req);
+      res.json({ keys: await listCompanionTokens(db, orgId), apple_runtimes: await listAppleRuntimes(db, orgId) });
     }),
   );
 

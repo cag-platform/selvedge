@@ -74,3 +74,29 @@ export const externalSessions = pgTable(
     index('external_sessions_org_project_idx').on(t.orgId, t.projectId),
   ],
 );
+
+/**
+ * A Mac which has explicitly offered its Apple toolchain to Selvedge.
+ *
+ * The bearer key still defines the org boundary. This row stores capability
+ * evidence and liveness only — never an Apple ID, signing certificate, source
+ * archive or command output. A short heartbeat window makes "connected" a
+ * fact about a machine that is online now, not a stale setup claim.
+ */
+export const appleRuntimeHosts = pgTable(
+  'apple_runtime_hosts',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    tokenId: text('token_id').notNull().unique(),
+    name: text('name').notNull(),
+    status: text('status').notNull().default('online'),
+    xcodeVersion: text('xcode_version').notNull(),
+    macosVersion: text('macos_version').notNull(),
+    capabilities: jsonb('capabilities').notNull(),
+    connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
+  },
+  (t) => [index('apple_runtime_hosts_org_seen_idx').on(t.orgId, t.lastSeenAt)],
+);

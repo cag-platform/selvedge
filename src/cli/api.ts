@@ -80,4 +80,18 @@ export class CompanionApi {
   issues(projectId: string) {
     return this.call<{ issues: string[] }>(`/api/companion/context/${encodeURIComponent(projectId)}/issues`);
   }
+
+  connectAppleRuntime(input: { name: string; xcodeVersion: string; macosVersion: string; capabilities: { xcode: true; iosSimulator: true } }) {
+    return this.call<{ connected: true; host_id: string; heartbeat_seconds: number }>('/api/companion/runtime/apple/connect', {
+      method: 'POST', body: JSON.stringify(input),
+    });
+  }
+
+  heartbeatAppleRuntime() {
+    return this.call<{ connected: true }>('/api/companion/runtime/apple/heartbeat', { method: 'POST' });
+  }
+
+  disconnectAppleRuntime() {
+    return this.call<{ disconnected: true }>('/api/companion/runtime/apple', { method: 'DELETE' });
+  }
 }

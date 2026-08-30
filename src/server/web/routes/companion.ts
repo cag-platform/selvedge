@@ -10,6 +10,10 @@ import { resolveCompanionToken, touchCompanionToken } from '../../companion/toke
 import { recordSession } from '../../companion/sessions.js';
 import { contextForProject, listContextProjects, openIssuesFor, recentChangesFor } from '../../companion/context.js';
 import { checkSessionSummary } from '../../../shared/types/session.js';
+import {
+  APPLE_RUNTIME_HEARTBEAT_MS, checkAppleRuntimeRegistration, connectAppleRuntime,
+  disconnectAppleRuntime, heartbeatAppleRuntime,
+} from '../../companion/appleRuntime.js';
 
 /**
  * THE LOOP'S DOOR — the one surface a program on the owner's machine talks to.
@@ -60,6 +64,42 @@ export function createCompanionRouter(db: Db) {
     asyncHandler(async (req, res) => {
       const orgId = (req as CompanionRequest).orgId;
       res.json({ ok: true, projects: await listContextProjects(db, orgId) });
+    }),
+  );
+
+  router.post(
+    '/api/companion/runtime/apple/connect',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const checked = checkAppleRuntimeRegistration(req.body);
+      if (!checked) {
+        res.status(400).json({ error: 'Xcode and an available iPhone Simulator are required for an Apple runtime.' });
+        return;
+      }
+      const host = await connectAppleRuntime(db, owner.orgId, owner.tokenId, checked);
+      res.status(201).json({ connected: true, host_id: host.id, heartbeat_seconds: APPLE_RUNTIME_HEARTBEAT_MS / 1000 });
+    }),
+  );
+
+  router.post(
+    '/api/companion/runtime/apple/heartbeat',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const host = await heartbeatAppleRuntime(db, owner.orgId, owner.tokenId);
+      if (!host) {
+        res.status(409).json({ error: 'This Mac is not registered as an Apple runtime. Reconnect it.' });
+        return;
+      }
+      res.json({ connected: true });
+    }),
+  );
+
+  router.delete(
+    '/api/companion/runtime/apple',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      await disconnectAppleRuntime(db, owner.orgId, owner.tokenId);
+      res.json({ disconnected: true });
     }),
   );
 
