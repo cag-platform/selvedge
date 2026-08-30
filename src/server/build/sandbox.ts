@@ -96,15 +96,24 @@ export async function publishPreviewRef(
   const ref = `selvedge-preview/${projectId}-${Date.now().toString(36)}`;
   const archivePath = '/tmp/selvedge-preview-source.zip';
   const script = `import os, zipfile\nroot=${JSON.stringify(WORKDIR)}\nout=${JSON.stringify(archivePath)}\nskip={'.git','node_modules','.env','.env.local','.env.development.local','.env.production.local','.env.test.local'}\nwith zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:\n for base,dirs,names in os.walk(root):\n  dirs[:]=[d for d in dirs if d not in skip]\n  for name in names:\n   path=os.path.join(base,name)\n   rel=os.path.relpath(path,root)\n   if rel not in skip and not os.path.islink(path): z.write(path,rel)\n`;
-  await sandbox.workspace.upload('/tmp/selvedge-preview-pack.py', Buffer.from(script));
-  const packed = await sandbox.process.executeCommand('python3 /tmp/selvedge-preview-pack.py', undefined, undefined, 180);
+  // Hosted container file attachments can disappear between the upload call
+  // and the next model-backed shell turn. The fixed script contains no user
+  // input beyond JSON-escaped paths, so carry it inline as base64 and avoid
+  // relying on that transient attachment boundary.
+  const encodedScript = Buffer.from(script).toString('base64');
+  const packed = await sandbox.process.executeCommand(
+    `python3 -c ${shellQuote(`import base64;exec(base64.b64decode(${JSON.stringify(encodedScript)}))`)}`,
+    undefined,
+    undefined,
+    180,
+  );
   if (packed.exitCode !== 0) throw new Error('could not package the disposable preview source');
   const entries = unzipSync(await sandbox.workspace.download(archivePath));
   const files = Object.entries(entries).filter(([path]) => !path.endsWith('/')).map(([path, bytes]) => ({ path, bytes }));
   const totalBytes = files.reduce((sum, file) => sum + file.bytes.byteLength, 0);
   if (files.length > 1_000 || totalBytes > 50 * 1024 * 1024) throw new Error('the disposable preview source exceeds its safe GitHub upload limit');
   await createPreviewRefWithToken(cfg.githubToken, cfg.repoFullName, files, ref);
-  await sandbox.process.executeCommand(`rm -f ${archivePath} /tmp/selvedge-preview-pack.py`, undefined, undefined, 30).catch(() => undefined);
+  await sandbox.process.executeCommand(`rm -f ${archivePath}`, undefined, undefined, 30).catch(() => undefined);
   return ref;
 }
 
