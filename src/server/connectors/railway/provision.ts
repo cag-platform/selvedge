@@ -209,14 +209,24 @@ export async function createService(
   }
 }
 
-/** Pin the disposable service to the development command prepared by the agent. */
+/** Pin the disposable service to the development command prepared by the agent.
+ * A repository-wide production build is deliberately skipped: imported
+ * monorepos often contain unrelated deployables with production-only env
+ * requirements, while the selected dev command is the preview contract. */
 export async function configurePreviewService(token: string, target: RailwayTarget): Promise<void> {
   await railwayGql(
     token,
     `mutation Update($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
       serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
     }`,
-    { serviceId: target.serviceId, environmentId: target.environmentId, input: { startCommand: 'npm run dev' } },
+    {
+      serviceId: target.serviceId,
+      environmentId: target.environmentId,
+      input: {
+        buildCommand: "echo 'Selvedge development preview: production build skipped'",
+        startCommand: 'npm run dev',
+      },
+    },
   );
 }
 

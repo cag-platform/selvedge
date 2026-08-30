@@ -155,7 +155,14 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
     }) as typeof fetch;
 
     await configurePreviewService('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' });
-    expect(variables).toEqual({ serviceId: 'svc_1', environmentId: 'env', input: { startCommand: 'npm run dev' } });
+    expect(variables).toEqual({
+      serviceId: 'svc_1',
+      environmentId: 'env',
+      input: {
+        buildCommand: "echo 'Selvedge development preview: production build skipped'",
+        startCommand: 'npm run dev',
+      },
+    });
   });
 
   it('deploys the exact disposable commit SHA', async () => {
