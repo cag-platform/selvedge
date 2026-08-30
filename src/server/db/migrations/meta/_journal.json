@@ -386,6 +386,13 @@
       "when": 1788742800005,
       "tag": "0054_migration_test_inputs",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1788051600000,
+      "tag": "0055_workspace_checkpoints",
+      "breakpoints": true
     }
   ]
 }

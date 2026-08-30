@@ -72,7 +72,7 @@ describe('web/routes/packs', () => {
     const app = appWithOrg(
       'org_a',
       createPacksRouter(db, {
-        createRepo: async (name) => {
+        createRepo: async (_orgId, name) => {
           created.push(name);
           return { fullName: `cag-platform/${name}` };
         },
@@ -90,7 +90,7 @@ describe('web/routes/packs', () => {
     const app = appWithOrg(
       'org_a',
       createPacksRouter(db, {
-        createRepo: async (name) => {
+        createRepo: async (_orgId, name) => {
           throw new GithubError(`a repo named "${name}" already exists in cag-platform`, true);
         },
       }),
@@ -106,7 +106,7 @@ describe('web/routes/packs', () => {
     const app = appWithOrg('org_a', createPacksRouter(db)); // no createRepo dep
     const res = await request(app).post('/api/packs').send({ name: 'No Engine', create_repo: true, tier: 'sandbox' });
     expect(res.status).toBe(503);
-    expect(res.body.error).toMatch(/GITHUB_TOKEN/);
+    expect(res.body.error).toMatch(/Connect or update GitHub/);
   });
 
   it('POST rejects bad input and duplicate project ids', async () => {

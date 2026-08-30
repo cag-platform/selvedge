@@ -186,6 +186,11 @@ export async function createService(
   }
 }
 
+/** Remove a disposable preview service and its domain/deployments. Idempotency is handled by the caller. */
+export async function deleteService(token: string, serviceId: string): Promise<void> {
+  await railwayGql(token, `mutation Delete($id: String!) { serviceDelete(id: $id) }`, { id: serviceId });
+}
+
 /** Upsert variables one at a time — the stable API. */
 export async function setServiceVariables(token: string, target: RailwayTarget, variables: Record<string, string>): Promise<void> {
   for (const [name, value] of Object.entries(variables)) {

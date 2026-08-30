@@ -18,7 +18,7 @@ export type PacksRouterDeps = {
   /** Fire-and-forget history seed for a newly mapped repo; injected so tests don't need GitHub credentials. */
   backfill?: (orgId: string, repo: string) => Promise<void>;
   /** Create a fresh private repo for a start-from-nothing project. Absent when GITHUB_TOKEN isn't configured. */
-  createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
+  createRepo?: (orgId: string, name: string, description: string) => Promise<{ fullName: string }>;
 };
 
 export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {

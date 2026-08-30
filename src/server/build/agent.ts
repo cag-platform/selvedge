@@ -4,7 +4,7 @@ import type { Db } from '../db/client.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/index.js';
 import { and, eq } from 'drizzle-orm';
 import { getBuild, setBuild } from './store.js';
-import { ensureSandbox, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
+import { checkpointSandbox, ensureSandbox, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
 import { touchProjectSandbox } from './metering.js';
 import { ensureWorkshopThread } from '../threads/store.js';
 import { driverFor } from '../runner/agents/driver.js';
@@ -640,6 +640,11 @@ export async function runAgentTurn(
         : { dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null }
       : {}),
   });
+  if (succeeded && !planning && stagedChangesReady) {
+    await checkpointSandbox(db, orgId, projectId).catch((error) => {
+      console.error(`could not checkpoint unshipped workspace ${orgId}/${projectId}:`, error);
+    });
+  }
 
   return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents, reply, stagedChangesReady };
 }

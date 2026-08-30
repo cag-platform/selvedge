@@ -49,7 +49,7 @@ describe('an idea, and what becomes of it', () => {
 
   const subjectsApp = (org = orgId) => appWithOrg(org, createSubjectsRouter(db));
   const threadsApp = (org = orgId, made?: (n: string, d: string) => Promise<{ fullName: string }>) =>
-    appWithOrg(org, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...(made ? { createRepo: made } : {}) }));
+    appWithOrg(org, createThreadsRouter(db, { lookup: stubRepoLookup, env: engineOn, ...(made ? { createRepo: (_orgId, n, d) => made(n, d) } : {}) }));
 
   async function anIdea(): Promise<string> {
     const res = await request(subjectsApp()).post('/api/ideas').send({}).expect(201);

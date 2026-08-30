@@ -114,7 +114,7 @@ export type ThreadsDeps = {
    * when the deployment has no GITHUB_TOKEN — in which case "start a new one"
    * is not offered at all rather than offered and then refused.
    */
-  createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
+  createRepo?: (orgId: string, name: string, description: string) => Promise<{ fullName: string }>;
   checkoutGuardEnabled?: boolean;
   visualStore?: VisualObjectStore | null;
   /** The single server-side compilation seam; injected so route tests can freeze it. */

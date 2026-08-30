@@ -1,9 +1,7 @@
-/**
- * Create a GitHub repo for a brand-new project — the "start from nothing"
- * path, ported from Toile's Ship flow. Uses the build engine's GITHUB_TOKEN
- * (sent as a header only — never logged, never echoed in errors). The repo
- * lands in GITHUB_ORG when that's set, otherwise under the token's own user.
- */
+import { createAppAuth } from '@octokit/auth-app';
+import type { Db } from '../../db/client.js';
+import { loadGithubAppConfig } from './app.js';
+import { listInstallations } from './health.js';
 
 const API_HEADERS = {
   Accept: 'application/vnd.github+json',
@@ -24,21 +22,20 @@ export class GithubError extends Error {
 
 export type CreatedRepo = { fullName: string; htmlUrl: string };
 
-/**
- * Create a private repo, initialized with a README so it has a default branch
- * from the first second — the watcher has something to watch and the Workshop
- * has something to clone.
- */
-export async function createNewRepo(name: string, description: string): Promise<CreatedRepo> {
-  const org = (process.env.GITHUB_ORG ?? '').trim();
-  const url = org ? `https://api.github.com/orgs/${org}/repos` : 'https://api.github.com/user/repos';
-  const where = org || 'your GitHub account';
-
+export async function createRepoWithInstallationToken(
+  owner: string,
+  token: string,
+  name: string,
+  description: string,
+  request: typeof fetch = fetch,
+): Promise<CreatedRepo> {
+  const url = `https://api.github.com/orgs/${encodeURIComponent(owner)}/repos`;
+  const where = owner;
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await request(url, {
       method: 'POST',
-      headers: { ...API_HEADERS, Authorization: `Bearer ${process.env.GITHUB_TOKEN}` },
+      headers: { ...API_HEADERS, Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name, description, private: true, auto_init: true, has_wiki: false }),
     });
   } catch (err) {
@@ -46,26 +43,39 @@ export async function createNewRepo(name: string, description: string): Promise<
   }
 
   const body = (await res.json().catch(() => null)) as {
-    full_name?: string;
-    html_url?: string;
-    message?: string;
-    errors?: Array<{ message?: string }>;
+    full_name?: string; html_url?: string; message?: string; errors?: Array<{ message?: string }>;
   } | null;
-
-  if (res.status === 201 && body?.full_name && body.html_url) {
-    return { fullName: body.full_name, htmlUrl: body.html_url };
-  }
-
+  if (res.status === 201 && body?.full_name && body.html_url) return { fullName: body.full_name, htmlUrl: body.html_url };
   const detail = body?.errors?.[0]?.message ?? body?.message ?? '';
-  if (res.status === 422 && /already exists/i.test(detail)) {
-    throw new GithubError(`a repo named "${name}" already exists in ${where}`, true);
-  }
-  if (res.status === 401) {
-    throw new GithubError('GitHub rejected the token (GITHUB_TOKEN is bad or expired)');
-  }
-  if (res.status === 403 || res.status === 404) {
-    // 404 is GitHub's answer for "the token lacks access to the org" on org endpoints.
-    throw new GithubError(`the token cannot create repos in ${where}${detail ? ` (${detail})` : ''}`);
-  }
+  if (res.status === 422 && /already exists/i.test(detail)) throw new GithubError(`a repo named "${name}" already exists in ${where}`, true);
+  if (res.status === 401) throw new GithubError('GitHub rejected the short-lived installation credential; reconnect the Selvedge GitHub App');
+  if (res.status === 403 || res.status === 404) throw new GithubError(`the Selvedge GitHub App cannot create repos in ${where}; grant Administration (write) permission${detail ? ` (${detail})` : ''}`);
   throw new GithubError(`GitHub responded ${res.status}${detail ? `: ${detail}` : ''}`);
+}
+
+/**
+ * Create a private repo, initialized with a README so it has a default branch
+ * from the first second — the watcher has something to watch and the Workshop
+ * has something to clone.
+ */
+export async function createNewRepo(db: Db, orgId: string, name: string, description: string): Promise<CreatedRepo> {
+  const [installation] = await listInstallations(db, orgId);
+  if (!installation) {
+    throw new GithubError('connect the Selvedge GitHub App first');
+  }
+  const owner = installation.meta?.trim();
+  if (!owner || owner === 'unknown') {
+    throw new GithubError('the GitHub connection is missing its destination account; reconnect it and try again');
+  }
+
+  let token: string;
+  try {
+    const config = loadGithubAppConfig();
+    const auth = createAppAuth({ appId: config.appId, privateKey: config.privateKey });
+    token = (await auth({ type: 'installation', installationId: installation.sourceAccountId })).token;
+  } catch {
+    throw new GithubError('GitHub would not issue a short-lived installation credential; reconnect the Selvedge GitHub App');
+  }
+
+  return createRepoWithInstallationToken(owner, token, name, description);
 }

@@ -43,6 +43,11 @@ export const projectBuild = pgTable(
     dirtyThreadId: text('dirty_thread_id'),
     dirtyAgent: text('dirty_agent'),
     dirtyObservedAt: timestamp('dirty_observed_at', { withTimezone: true }),
+    /** Bounded development checkpoint. It survives disposable workspace expiry but is never a Git commit. */
+    checkpointArchiveBase64: text('checkpoint_archive_base64'),
+    checkpointSha256: text('checkpoint_sha256'),
+    checkpointBytes: integer('checkpoint_bytes'),
+    checkpointCreatedAt: timestamp('checkpoint_created_at', { withTimezone: true }),
     /** Claude model alias the agent runs under (haiku | sonnet | opus). */
     agentModel: text('agent_model').notNull().default('sonnet'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

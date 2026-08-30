@@ -146,9 +146,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(
     createPacksRouter(db, {
       backfill: (orgId, repo) => backfillRepoForOrg(db, orgId, repo),
-      // Start-from-nothing projects can mint their own private repo, but only
-      // when the build engine's GitHub token is around to do it.
-      ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}),
+      createRepo: (orgId, name, description) => createNewRepo(db, orgId, name, description),
     }),
   );
   app.use(createBillingRouter(db));
@@ -189,10 +187,10 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createWorkshopRouter(db, { checkoutGuardEnabled: continuationWedgeEnabled }));
   // The Inbox: the rail, a thread, and what you do inside one. Project-scoped
   // work (ship, preview, go-live, attachments) stays on the workshop router.
-  // The repo maker is handed in rather than reached for, so a deployment
-  // without GITHUB_TOKEN simply does not offer "start a new one" — see the
-  // needs_project refusal in the threads router.
-  app.use(createThreadsRouter(db, { ...(process.env.GITHUB_TOKEN ? { createRepo: createNewRepo } : {}), checkoutGuardEnabled: continuationWedgeEnabled }));
+  app.use(createThreadsRouter(db, {
+    createRepo: (orgId, name, description) => createNewRepo(db, orgId, name, description),
+    checkoutGuardEnabled: continuationWedgeEnabled,
+  }));
   // Visible memory: one project's history, and search inside it.
   app.use(createTimelineRouter(db, { evidenceEnabled: continuationWedgeEnabled }));
   app.use(createSubjectsRouter(db));

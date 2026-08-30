@@ -47,16 +47,22 @@ export async function renewPreviewLeaseBySlug(db: Db, slug: string, activeUntil:
  * outlive it — stale state would make the next --resume fail or offer a ship
  * with nothing to push (Toile's persistSandboxId(null) lesson).
  */
-export async function clearSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
+export async function clearSandbox(db: Db, orgId: string, projectId: string, preserveCheckpoint = false): Promise<void> {
   await setBuild(db, orgId, projectId, {
     sandboxId: null,
     claudeSessionId: null,
     codexSessionId: null,
-    stagedChangesReady: false,
-    dirtyRunId: null,
-    dirtyThreadId: null,
-    dirtyAgent: null,
-    dirtyObservedAt: null,
+    ...(preserveCheckpoint ? {} : {
+      stagedChangesReady: false,
+      dirtyRunId: null,
+      dirtyThreadId: null,
+      dirtyAgent: null,
+      dirtyObservedAt: null,
+      checkpointArchiveBase64: null,
+      checkpointSha256: null,
+      checkpointBytes: null,
+      checkpointCreatedAt: null,
+    }),
     previewUrl: null,
     previewToken: null,
     previewTokenExpiresAt: null,

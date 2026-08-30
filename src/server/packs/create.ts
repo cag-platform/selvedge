@@ -35,8 +35,8 @@ export type NewProject = {
 };
 
 export type CreateDeps = {
-  /** Make a fresh private repo. Absent when the deployment has no GITHUB_TOKEN. */
-  createRepo?: (name: string, description: string) => Promise<{ fullName: string }>;
+  /** Make a fresh private repo in the signed-in customer's GitHub installation. */
+  createRepo?: (orgId: string, name: string, description: string) => Promise<{ fullName: string }>;
 };
 
 export type CreateResult =
@@ -65,11 +65,11 @@ export async function createProject(db: Db, orgId: string, input: NewProject, de
         ok: false,
         kind: 'no_repo_maker',
         status: 503,
-        error: 'Creating repos needs the build engine’s GITHUB_TOKEN — set it, or pick an existing repo.',
+        error: 'Connect or update GitHub first, or pick an existing repository.',
       };
     }
     try {
-      repo = (await deps.createRepo(projectId, `${name} — created by Selvedge`)).fullName;
+      repo = (await deps.createRepo(orgId, projectId, `${name} — created by Selvedge`)).fullName;
     } catch (err: unknown) {
       if (err instanceof GithubError) {
         return {

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
 import type { CreateWorkspaceInput, Workspace, WorkspaceExecResult } from '../workspace/types.js';
@@ -39,6 +39,50 @@ export async function stopDevelopmentWorkspaceById(id: string): Promise<void> {
 }
 
 export type SandboxExecutionSnapshot = { observedAt: Date; changedFiles: string[]; diffSummary: string | null };
+const CHECKPOINT_PATH = '/tmp/selvedge-worktree-checkpoint.tgz';
+const CHECKPOINT_MAX_BYTES = 25 * 1024 * 1024;
+
+/** Persist the current worktree without committing or pushing it. */
+export async function checkpointSandbox(db: Db, orgId: string, projectId: string): Promise<boolean> {
+  const build = await getBuild(db, orgId, projectId);
+  const sandbox = build?.sandboxId ? active.get(build.sandboxId) : null;
+  if (!sandbox) return false;
+  const packed = await sandbox.process.executeCommand(
+    `cd ${WORKDIR} && tar -czf ${CHECKPOINT_PATH} --exclude=.git --exclude=node_modules --exclude=.env --exclude=.env.local --exclude=.env.development.local --exclude=.env.production.local --exclude=.env.test.local .`,
+    undefined,
+    undefined,
+    120,
+  );
+  if (packed.exitCode !== 0) return false;
+  const archive = await sandbox.workspace.download(CHECKPOINT_PATH);
+  await sandbox.process.executeCommand(`rm -f ${CHECKPOINT_PATH}`, undefined, undefined, 15).catch(() => undefined);
+  if (archive.byteLength > CHECKPOINT_MAX_BYTES) {
+    throw new Error('The unshipped workspace is larger than the 25 MB recovery limit. Ship or remove generated files before continuing.');
+  }
+  await setBuild(db, orgId, projectId, {
+    checkpointArchiveBase64: Buffer.from(archive).toString('base64'),
+    checkpointSha256: createHash('sha256').update(archive).digest('hex'),
+    checkpointBytes: archive.byteLength,
+    checkpointCreatedAt: new Date(),
+  });
+  return true;
+}
+
+async function restoreCheckpoint(db: Db, orgId: string, projectId: string, sandbox: DevelopmentWorkspace): Promise<void> {
+  const build = await getBuild(db, orgId, projectId);
+  if (!build?.checkpointArchiveBase64) return;
+  const archive = Buffer.from(build.checkpointArchiveBase64, 'base64');
+  const sha = createHash('sha256').update(archive).digest('hex');
+  if (build.checkpointSha256 && sha !== build.checkpointSha256) throw new Error('workspace checkpoint integrity check failed');
+  await sandbox.workspace.upload(CHECKPOINT_PATH, archive);
+  const restored = await sandbox.process.executeCommand(
+    `cd ${WORKDIR} && find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} + && tar -xzf ${CHECKPOINT_PATH} -C ${WORKDIR} && rm -f ${CHECKPOINT_PATH}`,
+    undefined,
+    undefined,
+    120,
+  );
+  if (restored.exitCode !== 0) throw new Error('workspace checkpoint could not be restored');
+}
 
 export async function inspectSandboxWorktree(db: Db, orgId: string, projectId: string): Promise<SandboxExecutionSnapshot | null> {
   const build = await getBuild(db, orgId, projectId);
@@ -157,6 +201,7 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
     const workspace = await developmentWorkspaceRuntime().createWorkspace(workspaceInput(orgId, projectId, cfg, snapshot));
     const sandbox = adaptDevelopmentWorkspace(workspace);
     active.set(workspace.id, sandbox);
+    await restoreCheckpoint(db, orgId, projectId, sandbox);
     await workspace.exec({ command: 'git config user.name "Selvedge" && git config user.email "selvedge@users.noreply.github.com"', cwd: WORKDIR, timeoutSeconds: 30 });
     await setBuild(db, orgId, projectId, { sandboxId: workspace.id, repoFullName: cfg.repoFullName, branch: cfg.branch });
     await openSandboxRun(db, orgId, projectId, workspace.id).catch((error) => console.error('could not open workspace metering segment:', error));
@@ -185,7 +230,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
         if (!isExpiredWorkspaceError(error)) throw error;
         active.delete(build.sandboxId);
         await closeSandboxRun(db, build.sandboxId, 'failed').catch(() => null);
-        await clearSandbox(db, orgId, projectId);
+        await clearSandbox(db, orgId, projectId, Boolean(build.checkpointArchiveBase64));
         if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
       }
     }
@@ -205,7 +250,7 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
         return reconnected;
       } catch (error) {
         if (!isExpiredWorkspaceError(error)) throw error;
-        await clearSandbox(db, orgId, projectId);
+        await clearSandbox(db, orgId, projectId, Boolean(build.checkpointArchiveBase64));
         if (cfg.reuseOnly) throw new Error('The old workshop copy has expired. Connect the repository to create a fresh preview.');
       }
     }
