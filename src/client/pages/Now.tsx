@@ -21,7 +21,11 @@ export function Now() {
   const firstName = (window as { Clerk?: { user?: { firstName?: string | null } } }).Clerk?.user?.firstName?.trim();
   const [data, setData] = useState<InboxData | null>(null);
   const [command, setCommand] = useState('');
-  const [selectedId, setSelectedId] = useState('');
+  // `null` means the project list has not been initialized yet. An empty
+  // string is a real, user-selected value: start a new idea with no project.
+  // Keeping those states distinct prevents the default-project effect from
+  // immediately undoing a deliberate "New idea" selection.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [continuationAvailable, setContinuationAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +45,7 @@ export function Now() {
   const selected = places.find((place) => place.id === selectedId) ?? null;
 
   useEffect(() => {
-    if (!selectedId && places[0]) setSelectedId(places[0].id);
+    if (selectedId === null && places[0]) setSelectedId(places[0].id);
   }, [places, selectedId]);
 
   function startHere(place: RailPlace) {
@@ -95,7 +99,7 @@ export function Now() {
         <form onSubmit={(e) => void start(e)} className="rounded-pane bg-panel p-5 shadow-[0_18px_55px_rgba(26,58,40,0.07)] sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div><h2 className="font-display text-2xl font-normal text-ink">Start something</h2><p className="mt-1 text-meta text-ink-dim">Choose its home. Selvedge brings the project context and current builder.</p></div>
-            <select aria-label="Choose a project" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="rounded-full bg-panel-soft px-4 py-2 text-body text-ink outline-none focus:ring-2 focus:ring-action-bright">
+            <select aria-label="Choose a project" value={selectedId ?? ''} onChange={(e) => setSelectedId(e.target.value)} className="rounded-full bg-panel-soft px-4 py-2 text-body text-ink outline-none focus:ring-2 focus:ring-action-bright">
               {places.map((place) => <option key={place.id} value={place.id}>{place.name}</option>)}
               <option value="">New idea</option>
             </select>
