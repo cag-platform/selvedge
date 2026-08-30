@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { orgs, agentMessages, agentMessageAttachments, agentRuns } from '../../src/server/db/schema/index.js';
+import { orgs, agentMessages, agentMessageAttachments, agentRuns, companionTokens } from '../../src/server/db/schema/index.js';
 import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
 import { getBuild, setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
+import { claimAppleRuntimeJob, connectAppleRuntime, finishAppleRuntimeJob } from '../../src/server/companion/appleRuntime.js';
 
 const cfg = { githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 
@@ -147,6 +148,34 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(executed).toBe(false);
     const rows = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
     expect(rows.map((row) => row.role)).toEqual(['owner', 'agent']);
+  });
+
+  it('routes Apple-native chat to the selected coding agent on the connected Mac and returns verification', async () => {
+    const tokenId = 'token_ducky_mac';
+    await db.insert(companionTokens).values({ id: tokenId, orgId, name: 'Ducky Mac', tokenHash: 'ducky-mac-hash' });
+    await connectAppleRuntime(db, orgId, tokenId, {
+      name: 'Ducky Mac', xcodeVersion: 'Xcode 18', macosVersion: '16.0',
+      capabilities: { xcode: true, iosSimulator: true },
+    });
+    let completed = false;
+    const sleep = async () => {
+      if (completed) return;
+      const job = await claimAppleRuntimeJob(db, orgId, tokenId);
+      if (!job) return;
+      completed = true;
+      expect(job).toMatchObject({ kind: 'chat_turn', request: { agent: 'codex', prompt: expect.stringContaining('cartoon duck') } });
+      await finishAppleRuntimeJob(db, orgId, tokenId, job.id, {
+        ok: true, narrative: 'I built the cartoon duck screen.', changedPaths: ['Ducky/App.swift'], simulatorName: 'iPhone 18',
+      });
+    };
+    const out = await runAgentTurn(db, orgId, 'ducky', 'Build the cartoon duck screen', { ...cfg, agent: 'codex' }, {
+      handoff: 'The approved specification is a single-screen iOS application written in SwiftUI.',
+    }, { sleep });
+    expect(out).toMatchObject({ status: 'succeeded', agent: 'codex', stagedChangesReady: true });
+    expect(out.reply).toContain('I built the cartoon duck screen.');
+    expect(out.reply).toContain('Verified with Xcode using iPhone 18.');
+    const rows = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(rows.map((row) => row.role)).toEqual(['owner', 'activity', 'agent']);
   });
 
   it('the second turn resumes the saved session — iteration, not starting over', async () => {

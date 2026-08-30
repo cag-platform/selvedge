@@ -108,6 +108,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // A batch of imported conversations is bigger than a chat message and
   // smaller than an export zip; the CLI chunks to 200 conversations per call.
   app.use('/api/companion/import/conversations', express.json({ limit: '25mb' }));
+  app.use('/api/companion/runtime/apple/jobs/:jobId/archive', express.raw({ type: 'application/octet-stream', limit: '25mb' }));
 
   // STRIPE'S WEBHOOK, MOUNTED HERE AND NOWHERE ELSE.
   //

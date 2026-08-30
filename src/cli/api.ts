@@ -96,12 +96,42 @@ export class CompanionApi {
   }
 
   claimAppleRuntimeJob() {
-    return this.call<{ job: null | { id: string; kind: 'toolchain_check'; request: { version: number } } }>('/api/companion/runtime/apple/jobs/claim', { method: 'POST' });
+    return this.call<{ job: null | { id: string; projectId?: string | null; kind: 'toolchain_check' | 'chat_turn'; request: Record<string, unknown> } }>('/api/companion/runtime/apple/jobs/claim', { method: 'POST' });
   }
 
-  finishAppleRuntimeJob(jobId: string, result: { ok: boolean; xcodeVersion?: string; simulatorName?: string; macosVersion?: string; detail?: string }) {
+  finishAppleRuntimeJob(jobId: string, result: { ok: boolean; xcodeVersion?: string; simulatorName?: string; macosVersion?: string; detail?: string; narrative?: string; changedPaths?: string[]; buildOutput?: string }) {
     return this.call<{ recorded: true }>(`/api/companion/runtime/apple/jobs/${encodeURIComponent(jobId)}/complete`, {
       method: 'POST', body: JSON.stringify(result),
     });
+  }
+
+  async downloadAppleRuntimeSource(jobId: string): Promise<ApiResult<{ bytes: Uint8Array; layout: 'github' | 'workspace' | 'empty' }>> {
+    if (!this.config.token) return { ok: false, error: 'no key' };
+    try {
+      const res = await this.fetchImpl(`${this.config.api}/api/companion/runtime/apple/jobs/${encodeURIComponent(jobId)}/source`, {
+        headers: { Authorization: `Bearer ${this.config.token}` },
+      });
+      if (!res.ok && res.status !== 204) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        return { ok: false, error: body.error ?? `${res.status} ${res.statusText}` };
+      }
+      const layout = (res.headers.get('x-selvedge-archive-layout') ?? 'empty') as 'github' | 'workspace' | 'empty';
+      return { ok: true, value: { bytes: res.status === 204 ? new Uint8Array() : new Uint8Array(await res.arrayBuffer()), layout } };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'source download failed' };
+    }
+  }
+
+  async uploadAppleRuntimeArchive(jobId: string, bytes: Uint8Array): Promise<ApiResult<{ stored: true; bytes: number }>> {
+    if (!this.config.token) return { ok: false, error: 'no key' };
+    try {
+      const res = await this.fetchImpl(`${this.config.api}/api/companion/runtime/apple/jobs/${encodeURIComponent(jobId)}/archive`, {
+        method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/octet-stream' }, body: Buffer.from(bytes),
+      });
+      const body = await res.json().catch(() => ({})) as { stored?: true; bytes?: number; error?: string };
+      return res.ok ? { ok: true, value: body as { stored: true; bytes: number } } : { ok: false, error: body.error ?? `${res.status} ${res.statusText}` };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'workspace upload failed' };
+    }
   }
 }

@@ -1,7 +1,9 @@
 import { and, asc, desc, eq, gt, isNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
+import { createHash } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { appleRuntimeHosts, appleRuntimeJobs } from '../db/schema/index.js';
+import { getBuild, setBuild } from '../build/store.js';
 
 export const APPLE_RUNTIME_HEARTBEAT_MS = 20_000;
 export const APPLE_RUNTIME_ONLINE_WINDOW_MS = 75_000;
@@ -74,6 +76,21 @@ export type AppleRuntimeJobResult = {
   simulatorName?: string;
   macosVersion?: string;
   detail?: string;
+  narrative?: string;
+  changedPaths?: string[];
+  buildOutput?: string;
+};
+
+export type AppleChatTurnRequest = {
+  version: 1;
+  runId: string;
+  threadId: string;
+  repoFullName: string;
+  branch: string;
+  emptyRepo: boolean;
+  agent: 'codex' | 'claude-code';
+  model: string;
+  prompt: string;
 };
 
 export async function queueAppleRuntimeTest(db: Db, orgId: string) {
@@ -81,6 +98,17 @@ export async function queueAppleRuntimeTest(db: Db, orgId: string) {
   if (!host) return null;
   const [job] = await db.insert(appleRuntimeJobs).values({
     id: ulid(), orgId, kind: 'toolchain_check', state: 'queued', request: { version: 1 },
+  }).returning();
+  return job ?? null;
+}
+
+export async function queueAppleChatTurn(
+  db: Db, orgId: string, projectId: string, request: AppleChatTurnRequest,
+) {
+  const host = await availableAppleRuntime(db, orgId);
+  if (!host) return null;
+  const [job] = await db.insert(appleRuntimeJobs).values({
+    id: ulid(), orgId, projectId, kind: 'chat_turn', state: 'queued', request,
   }).returning();
   return job ?? null;
 }
@@ -114,4 +142,29 @@ export async function finishAppleRuntimeJob(
     eq(appleRuntimeJobs.id, jobId), eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.hostId, host.id), eq(appleRuntimeJobs.state, 'running'),
   )).returning();
   return job ?? null;
+}
+
+export async function assignedAppleRuntimeJob(db: Db, orgId: string, tokenId: string, jobId: string) {
+  const host = await heartbeatAppleRuntime(db, orgId, tokenId);
+  if (!host) return null;
+  const [job] = await db.select().from(appleRuntimeJobs).where(and(
+    eq(appleRuntimeJobs.id, jobId), eq(appleRuntimeJobs.orgId, orgId), eq(appleRuntimeJobs.hostId, host.id), eq(appleRuntimeJobs.state, 'running'),
+  )).limit(1);
+  return job ?? null;
+}
+
+export async function appleWorkspaceCheckpoint(db: Db, orgId: string, projectId: string) {
+  const build = await getBuild(db, orgId, projectId);
+  return build?.checkpointArchiveBase64 ? Buffer.from(build.checkpointArchiveBase64, 'base64') : null;
+}
+
+export async function storeAppleWorkspaceCheckpoint(
+  db: Db, orgId: string, projectId: string, runId: string, threadId: string, agent: 'codex' | 'claude-code', archive: Buffer,
+) {
+  if (archive.byteLength === 0 || archive.byteLength > 25 * 1024 * 1024) throw new Error('Apple workspace checkpoint must be between 1 byte and 25 MB');
+  await setBuild(db, orgId, projectId, {
+    checkpointArchiveBase64: archive.toString('base64'), checkpointSha256: createHash('sha256').update(archive).digest('hex'),
+    checkpointBytes: archive.byteLength, checkpointCreatedAt: new Date(), stagedChangesReady: true,
+    dirtyRunId: runId, dirtyThreadId: threadId, dirtyAgent: agent, dirtyObservedAt: new Date(), sandboxId: null,
+  });
 }

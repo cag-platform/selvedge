@@ -8,6 +8,7 @@ import { findSessionFiles, looksFinished } from './sessions/discover.js';
 import { execFile } from 'node:child_process';
 import { hostname } from 'node:os';
 import { promisify } from 'node:util';
+import { executeAppleChatJob } from './appleRuntime.js';
 
 /**
  * `selvedge` — the companion. Two jobs, one binary:
@@ -155,6 +156,12 @@ async function main(): Promise<number> {
         }
         const job = claimed.value.job;
         if (!job) return;
+        if (job.kind === 'chat_turn') {
+          console.log('Selvedge handed this Mac an Apple chat turn…');
+          await executeAppleChatJob(api, job);
+          console.log('Apple chat turn returned to Selvedge.');
+          return;
+        }
         if (job.kind !== 'toolchain_check') {
           await api.finishAppleRuntimeJob(job.id, { ok: false, detail: `This companion does not support ${job.kind}.` });
           return;

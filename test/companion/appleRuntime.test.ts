@@ -3,9 +3,11 @@ import { eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { appleRuntimeHosts, appleRuntimeJobs, companionTokens, orgs } from '../../src/server/db/schema/index.js';
 import {
-  availableAppleRuntime, checkAppleRuntimeRegistration, claimAppleRuntimeJob, connectAppleRuntime,
-  disconnectAppleRuntime, finishAppleRuntimeJob, heartbeatAppleRuntime, queueAppleRuntimeTest,
+  assignedAppleRuntimeJob, availableAppleRuntime, checkAppleRuntimeRegistration, claimAppleRuntimeJob, connectAppleRuntime,
+  disconnectAppleRuntime, finishAppleRuntimeJob, heartbeatAppleRuntime, queueAppleChatTurn, queueAppleRuntimeTest,
+  storeAppleWorkspaceCheckpoint,
 } from '../../src/server/companion/appleRuntime.js';
+import { getBuild } from '../../src/server/build/store.js';
 
 const orgId = 'org_apple_runtime_test';
 const tokenId = 'token_apple_runtime_test';
@@ -53,5 +55,28 @@ describe('Apple runtime connection', () => {
     expect(finished?.state).toBe('succeeded');
     const [stored] = await db.select().from(appleRuntimeJobs).where(eq(appleRuntimeJobs.id, claimed!.id));
     expect(stored?.result).toMatchObject({ simulatorName: 'iPhone 18' });
+  });
+
+  it('hands a selected coding agent a bounded chat turn and saves its returned workspace', async () => {
+    await connectAppleRuntime(db, orgId, tokenId, registration);
+    const request = {
+      version: 1 as const, runId: 'run_apple', threadId: 'thread_apple', repoFullName: 'cag-platform/ducky',
+      branch: 'main', emptyRepo: false, agent: 'codex' as const, model: 'gpt-5.6-terra', prompt: 'Build the SwiftUI screen.',
+    };
+    const queued = await queueAppleChatTurn(db, orgId, 'ducky', request);
+    expect(queued).toMatchObject({ kind: 'chat_turn', state: 'queued', projectId: 'ducky', request });
+    const claimed = await claimAppleRuntimeJob(db, orgId, tokenId);
+    expect((await assignedAppleRuntimeJob(db, orgId, tokenId, claimed!.id))?.id).toBe(claimed!.id);
+
+    const archive = Buffer.from('bounded workspace checkpoint');
+    await storeAppleWorkspaceCheckpoint(db, orgId, 'ducky', request.runId, request.threadId, request.agent, archive);
+    expect(await getBuild(db, orgId, 'ducky')).toMatchObject({
+      checkpointBytes: archive.byteLength, stagedChangesReady: true, dirtyRunId: request.runId,
+      dirtyThreadId: request.threadId, dirtyAgent: 'codex', sandboxId: null,
+    });
+    const finished = await finishAppleRuntimeJob(db, orgId, tokenId, claimed!.id, {
+      ok: true, narrative: 'Built the SwiftUI screen.', changedPaths: ['Ducky/App.swift'], simulatorName: 'iPhone 18',
+    });
+    expect(finished).toMatchObject({ state: 'succeeded', result: { narrative: 'Built the SwiftUI screen.' } });
   });
 });

@@ -12,8 +12,10 @@ import { contextForProject, listContextProjects, openIssuesFor, recentChangesFor
 import { checkSessionSummary } from '../../../shared/types/session.js';
 import {
   APPLE_RUNTIME_HEARTBEAT_MS, checkAppleRuntimeRegistration, connectAppleRuntime,
-  claimAppleRuntimeJob, disconnectAppleRuntime, finishAppleRuntimeJob, heartbeatAppleRuntime,
+  appleWorkspaceCheckpoint, assignedAppleRuntimeJob, claimAppleRuntimeJob, disconnectAppleRuntime,
+  finishAppleRuntimeJob, heartbeatAppleRuntime, storeAppleWorkspaceCheckpoint, type AppleChatTurnRequest,
 } from '../../companion/appleRuntime.js';
+import { resolveRepoToken } from '../../build/repoToken.js';
 
 /**
  * THE LOOP'S DOOR — the one surface a program on the owner's machine talks to.
@@ -81,6 +83,64 @@ export function createCompanionRouter(db: Db) {
     }),
   );
 
+  router.get(
+    '/api/companion/runtime/apple/jobs/:jobId/source',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const job = await assignedAppleRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '');
+      if (!job || job.kind !== 'chat_turn' || !job.projectId) {
+        res.status(404).json({ error: 'No assigned Apple project source for this Mac.' });
+        return;
+      }
+      const request = job.request as AppleChatTurnRequest;
+      const checkpoint = await appleWorkspaceCheckpoint(db, owner.orgId, job.projectId);
+      if (checkpoint) {
+        res.setHeader('x-selvedge-archive-layout', 'workspace');
+        res.type('application/gzip').send(checkpoint);
+        return;
+      }
+      if (request.emptyRepo) {
+        res.setHeader('x-selvedge-archive-layout', 'empty');
+        res.status(204).end();
+        return;
+      }
+      const token = await resolveRepoToken(db, owner.orgId, request.repoFullName);
+      if (!token.ok) {
+        res.status(409).json({ error: token.reason });
+        return;
+      }
+      const source = await fetch(`https://api.github.com/repos/${request.repoFullName}/tarball/${encodeURIComponent(request.branch)}`, {
+        headers: { Authorization: `Bearer ${token.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'Selvedge Apple Runtime' },
+      });
+      if (!source.ok || !source.body) {
+        res.status(502).json({ error: `GitHub could not prepare the Apple project source (${source.status}).` });
+        return;
+      }
+      const bytes = Buffer.from(await source.arrayBuffer());
+      if (bytes.byteLength > 100 * 1024 * 1024) {
+        res.status(413).json({ error: 'The Apple project source is larger than 100 MB.' });
+        return;
+      }
+      res.setHeader('x-selvedge-archive-layout', 'github');
+      res.type('application/gzip').send(bytes);
+    }),
+  );
+
+  router.post(
+    '/api/companion/runtime/apple/jobs/:jobId/archive',
+    asyncHandler(async (req, res) => {
+      const owner = req as CompanionRequest;
+      const job = await assignedAppleRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '');
+      if (!job || job.kind !== 'chat_turn' || !job.projectId || !Buffer.isBuffer(req.body)) {
+        res.status(409).json({ error: 'That Apple workspace upload is not assigned to this Mac.' });
+        return;
+      }
+      const request = job.request as AppleChatTurnRequest;
+      await storeAppleWorkspaceCheckpoint(db, owner.orgId, job.projectId, request.runId, request.threadId, request.agent, req.body);
+      res.json({ stored: true, bytes: req.body.byteLength });
+    }),
+  );
+
   router.post(
     '/api/companion/runtime/apple/heartbeat',
     asyncHandler(async (req, res) => {
@@ -125,7 +185,9 @@ export function createCompanionRouter(db: Db) {
       const job = await finishAppleRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '', {
         ok: body.ok,
         xcodeVersion: text('xcodeVersion', 500), simulatorName: text('simulatorName', 200),
-        macosVersion: text('macosVersion', 200), detail: text('detail', 2_000),
+        macosVersion: text('macosVersion', 200), detail: text('detail', 2_000), narrative: text('narrative', 12_000),
+        buildOutput: text('buildOutput', 12_000),
+        changedPaths: Array.isArray(body.changedPaths) ? body.changedPaths.filter((path): path is string => typeof path === 'string').slice(0, 200).map((path) => path.slice(0, 500)) : undefined,
       });
       if (!job) {
         res.status(409).json({ error: 'That Apple runtime job is not assigned to this Mac.' });

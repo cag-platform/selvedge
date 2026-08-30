@@ -84,8 +84,8 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Apple apps</p>
           <h3 className="mt-1 text-headline font-medium text-ink">Connect your Mac</h3>
           <p className="mt-1 text-body text-ink-dim">
-            This lets Selvedge build and check SwiftUI projects using the real Xcode and iPhone Simulator on your Mac.
-            You only set it up once.
+            This lets Codex or Claude Code take an Apple request directly from Selvedge chat, work in a private project folder on your Mac,
+            and return the checked result using the real Xcode and iPhone Simulator. You only set it up once.
           </p>
         </div>
         <span className={`rounded-full px-3 py-1.5 text-meta font-medium ${onlineRuntime ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>
@@ -97,7 +97,8 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
         <div className="border-t border-hairline px-5 py-4">
           <p className="text-body text-ink"><strong>{onlineRuntime.name}</strong> is ready for Apple work.</p>
           <p className="mt-1 text-meta text-ink-dim">
-            macOS {onlineRuntime.macosVersion} · {onlineRuntime.xcodeVersion.split('\n')[0]}. Keep the Terminal window running while an agent builds or checks an Apple app.
+            macOS {onlineRuntime.macosVersion} · {onlineRuntime.xcodeVersion.split('\n')[0]}. Choose Codex or Claude Code in a project chat and ask normally.
+            Keep the Terminal window running while the agent builds or checks the app.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => void testConnection()} disabled={test?.state === 'queued' || test?.state === 'running'} className={btnPrimary}>
@@ -118,7 +119,8 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
 
       <div className="border-t border-hairline bg-panel-soft px-5 py-3 text-meta text-ink-dim">
         <strong className="text-ink">Stays on your Mac:</strong> Apple ID, signing certificates, provisioning profiles and Keychain secrets.
-        Selvedge only receives tool availability and whether the connection is alive.
+        Selvedge transfers that project’s source and saved workspace through your authenticated connection so the selected agent can continue it,
+        then stores the returned project checkpoint and verification result. Signing material is never included.
       </div>
     </section>
   );

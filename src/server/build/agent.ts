@@ -16,6 +16,7 @@ import { renderTaskContextCapsule } from '../context/compiler.js';
 import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
 import { getPack } from '../packs/store.js';
 import { appleWorkspaceUnavailableLine, workspaceRequirementsFor } from '../workspace/requirements.js';
+import { getAppleRuntimeJob, queueAppleChatTurn, type AppleRuntimeJobResult } from '../companion/appleRuntime.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -357,12 +358,63 @@ export async function runAgentTurn(
   const requirements = workspaceRequirementsFor(platformEvidence, pack?.topology.stack_summary ?? '');
   if (options.mode !== 'plan' && requirements.platform === 'apple') {
     const agent: AgentId = cfg.agent ?? 'claude-code';
-    const reply = appleWorkspaceUnavailableLine();
-    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+    if (agent !== 'claude-code' && agent !== 'codex') {
+      const reply = 'Choose Claude Code or Codex for Apple project work. Nothing was changed or shipped.';
+      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+      if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+      await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
+      return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+    }
+    const model = cfg.model ?? (agent === 'codex' ? 'gpt-5.6-terra' : 'sonnet');
+    const context = [
+      'Repository boundary: do not commit, push, merge, deploy, publish, or change signing credentials. Prepare and verify changes only.',
+      options.contextCapsule ? renderTaskContextCapsule(options.contextCapsule) : null,
+      options.handoff,
+      renderDocuments(options.documents ?? []),
+      ownerText,
+    ].filter(Boolean).join('\n\n---\n\n');
+    const job = await queueAppleChatTurn(db, orgId, projectId, {
+      version: 1, runId, threadId, repoFullName: cfg.repoFullName, branch: cfg.branch, emptyRepo: cfg.emptyRepo ?? false,
+      agent, model, prompt: context,
+    });
+    if (!job) {
+      const reply = appleWorkspaceUnavailableLine();
+      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+      if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+      await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
+      return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+    }
     if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'running', startedAt: new Date() });
+    const activityId = ulid();
+    await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content: 'Waiting for the connected Mac…', runId });
+    const started = now();
+    let completed: Awaited<ReturnType<typeof getAppleRuntimeJob>> = null;
+    let lastState = '';
+    while (now() - started < TURN_TIMEOUT_MS) {
+      await sleep(POLL_MS);
+      completed = await getAppleRuntimeJob(db, orgId, job.id);
+      if (!completed) break;
+      if (completed.state !== lastState) {
+        lastState = completed.state;
+        const content = completed.state === 'running'
+          ? `${agentById(agent)?.name ?? agent} is working on the connected Mac · Xcode verification follows`
+          : completed.state === 'queued' ? 'Waiting for the connected Mac…' : 'Apple workspace returned to Selvedge';
+        await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId))).catch(() => undefined);
+      }
+      if (completed.state === 'succeeded' || completed.state === 'failed') break;
+    }
+    const result = (completed?.result ?? null) as AppleRuntimeJobResult | null;
+    const succeeded = completed?.state === 'succeeded' && result?.ok === true;
+    const changedPaths = result?.changedPaths ?? [];
+    const verification = result?.simulatorName ? `\n\nVerified with Xcode using ${result.simulatorName}.` : '';
+    const reply = succeeded
+      ? `${result?.narrative || 'The Apple build finished on the connected Mac.'}${verification}`
+      : `${result?.narrative ? `${result.narrative}\n\n` : ''}${result?.detail || completed?.error || 'The Apple runtime stopped before it could finish.'} Nothing was shipped.`;
+    await db.update(agentRuns).set({ status: succeeded ? 'succeeded' : 'failed', costCents: 0, changedPaths, finishedAt: new Date() }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
-      ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: 'failed', failure_code: 'apple_workspace_required', retryable: false } } } : {}) });
-    return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+      ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: succeeded ? 'succeeded' : 'failed', failure_code: succeeded ? null : 'apple_runtime_failed', retryable: true } } } : {}) });
+    return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents: 0, reply, stagedChangesReady: changedPaths.length > 0 };
   }
 
   // Which builder is running this turn, and can it run here at all? An agent
