@@ -14,6 +14,7 @@ import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
 import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
+import { sweepHostedPreviews } from '../build/preview.js';
 
 /**
  * Every 15 minutes: compose the digest for any org whose local time is in
@@ -76,6 +77,9 @@ export function startCronJobs(db: Db): void {
       runSandboxSweep(db).catch((err) => console.error('sandbox sweep failed:', err));
     });
   }
+  cron.schedule('* * * * *', () => {
+    sweepHostedPreviews(db).catch((err) => console.error('hosted preview sweep failed:', err));
+  });
 
   cron.schedule('0 3 * * *', () => {
     runStallSweep(db).catch((err) => console.error('stall sweep failed:', err));

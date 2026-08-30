@@ -84,6 +84,48 @@ async function restoreCheckpoint(db: Db, orgId: string, projectId: string, sandb
   if (restored.exitCode !== 0) throw new Error('workspace checkpoint could not be restored');
 }
 
+export async function publishPreviewRef(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  cfg: SandboxConfig,
+): Promise<string> {
+  const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
+  const ref = `selvedge-preview/${projectId}-${Date.now().toString(36)}`;
+  const helper = shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f');
+  const command = [
+    `cd ${WORKDIR}`,
+    'git add -A',
+    'tree=$(git write-tree)',
+    'parent=$(git rev-parse HEAD)',
+    `commit=$(printf %s ${shellQuote('Selvedge disposable preview')} | git commit-tree "$tree" -p "$parent")`,
+    `git -c credential.helper=${helper} push origin "$commit:refs/heads/${ref}"`,
+    'git reset -q HEAD',
+  ].join(' && ');
+  const result = await sandbox.process.executeCommand(command, undefined, { GITHUB_TOKEN: cfg.githubToken }, 300);
+  if (result.exitCode !== 0) throw new Error('could not publish the disposable preview source');
+  return ref;
+}
+
+export async function deletePreviewRef(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  cfg: SandboxConfig,
+  ref: string,
+): Promise<void> {
+  if (!/^selvedge-preview\/[A-Za-z0-9._-]+$/.test(ref)) throw new Error('invalid preview ref');
+  const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
+  const helper = shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f');
+  const result = await sandbox.process.executeCommand(
+    `cd ${WORKDIR} && git -c credential.helper=${helper} push origin --delete ${shellQuote(ref)}`,
+    undefined,
+    { GITHUB_TOKEN: cfg.githubToken },
+    120,
+  );
+  if (result.exitCode !== 0) throw new Error('could not remove the disposable preview source');
+}
+
 export async function inspectSandboxWorktree(db: Db, orgId: string, projectId: string): Promise<SandboxExecutionSnapshot | null> {
   const build = await getBuild(db, orgId, projectId);
   const sandbox = build?.sandboxId ? active.get(build.sandboxId) : null;

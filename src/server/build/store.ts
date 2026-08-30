@@ -66,6 +66,8 @@ export async function clearSandbox(db: Db, orgId: string, projectId: string, pre
     previewUrl: null,
     previewToken: null,
     previewTokenExpiresAt: null,
+    previewRuntimeId: null,
+    previewSourceRef: null,
     previewActiveUntil: null,
   });
 }

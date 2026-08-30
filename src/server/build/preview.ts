@@ -1,7 +1,11 @@
 import type { Db } from '../db/client.js';
-import { setBuild } from './store.js';
+import { getBuild, setBuild } from './store.js';
 import { PREVIEW_TTL_MS } from './metering.js';
-import { ensureSandbox, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
+import { ensureSandbox, publishPreviewRef, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
+import { RailwayPreviewRuntime } from '../preview/railway.js';
+import { and, isNotNull, lt } from 'drizzle-orm';
+import { projectBuild } from '../db/schema/index.js';
+import { resolveRepoToken } from './repoToken.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
 import { previewEnvFile, getPreviewEnvSummary } from './previewEnv.js';
 
@@ -272,6 +276,33 @@ export class StartFailedError extends Error {
 /** One in-flight ensure per (org, project): concurrent wakes must not race two app-server restarts. */
 const inflight = new Map<string, Promise<PreviewStatus>>();
 
+/** Delete expired Railway preview services and their temporary Git refs. Safe to retry each minute. */
+export async function sweepHostedPreviews(db: Db, now = new Date()): Promise<number> {
+  const rows = await db.select().from(projectBuild).where(and(isNotNull(projectBuild.previewRuntimeId), lt(projectBuild.previewActiveUntil, now)));
+  let removed = 0;
+  for (const row of rows) {
+    if (!row.previewRuntimeId) continue;
+    const runtime = new RailwayPreviewRuntime(db);
+    try {
+      await runtime.destroyPreview(row.previewRuntimeId);
+      if (row.previewSourceRef && row.repoFullName) {
+        const credential = await resolveRepoToken(db, row.orgId, row.repoFullName);
+        if (credential.ok) {
+          await fetch(`https://api.github.com/repos/${row.repoFullName}/git/refs/heads/${encodeURIComponent(row.previewSourceRef)}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${credential.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+          }).catch(() => undefined);
+        }
+      }
+      await setBuild(db, row.orgId, row.projectId, { previewRuntimeId: null, previewSourceRef: null, previewUrl: null, previewTokenExpiresAt: null, previewActiveUntil: null });
+      removed += 1;
+    } catch (error) {
+      console.error(`could not remove hosted preview ${row.orgId}/${row.projectId}:`, error);
+    }
+  }
+  return removed;
+}
+
 /**
  * Bring the preview up and return its URL: resume the sandbox if stopped,
  * (re)start the app server if it isn't answering, resolve the public URL for
@@ -304,6 +335,38 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
    * than an open tap.
    */
   try {
+    if (process.env.PREVIEW_RUNTIME === 'railway') {
+      const runtime = new RailwayPreviewRuntime(db);
+      const current = await getBuild(db, orgId, projectId);
+      if (current?.previewRuntimeId && current.previewUrl && current.previewTokenExpiresAt && current.previewTokenExpiresAt.getTime() > Date.now()) {
+        const inspected = await runtime.inspectPreview(current.previewRuntimeId);
+        if (inspected.state !== 'failed' && inspected.state !== 'destroyed') {
+          await setBuild(db, orgId, projectId, { previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS) });
+          return { state: 'ready', url: current.previewUrl, message: inspected.state === 'building' ? 'The preview is finishing its build.' : null };
+        }
+      }
+      const ref = await publishPreviewRef(db, orgId, projectId, cfg);
+      const env = await previewEnvFile(db, orgId, projectId).catch(() => null);
+      const variables = Object.fromEntries((env ?? '').split('\n').map((line) => line.trim()).filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)).map((line) => {
+        const at = line.indexOf('=');
+        return [line.slice(0, at), line.slice(at + 1)];
+      }));
+      const preview = await runtime.createPreview({
+        orgId, projectId,
+        source: { kind: 'git', repository: cfg.repoFullName, ref },
+        variables,
+        ttlMinutes: TOKEN_TTL_SECONDS / 60,
+      });
+      await setBuild(db, orgId, projectId, {
+        previewUrl: preview.url,
+        previewRuntimeId: preview.id,
+        previewSourceRef: ref,
+        previewToken: null,
+        previewTokenExpiresAt: preview.expiresAt,
+        previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
+      });
+      return { state: 'ready', url: preview.url, message: 'The preview is finishing its build.' };
+    }
     const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
 
     if (!(await isAppServerUp(sandbox))) {

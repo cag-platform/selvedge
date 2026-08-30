@@ -1,14 +1,13 @@
 import type { Db } from '../db/client.js';
-import { createService, deleteService, ensureServiceDomain, resolveHostProject, setServiceVariables, waitForDeploy } from '../connectors/railway/provision.js';
+import { createService, deleteService, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
 import { getDeployState, type RailwayTarget } from '../connectors/railway/client.js';
 import { hostProjectOptions, resolveHostAccount } from '../build/hostAccount.js';
 import type { CreatePreviewInput, PreviewHandle, PreviewRuntime } from './runtime.js';
 
-type PreviewRecord = { handle: PreviewHandle; token: string; target: RailwayTarget };
-
-function encode(target: RailwayTarget): string {
-  return `${target.projectId}/${target.environmentId}/${target.serviceId}`;
-}
+type PreviewRecord = { orgId: string; handle: PreviewHandle; token: string; target: RailwayTarget };
+type DurableId = { orgId: string; target: RailwayTarget; expiresAt: string; url: string };
+function encode(value: DurableId): string { return Buffer.from(JSON.stringify(value)).toString('base64url'); }
+function decode(id: string): DurableId { return JSON.parse(Buffer.from(id, 'base64url').toString('utf8')) as DurableId; }
 
 /** First disposable preview adapter. Services live in the customer's Railway account and are explicitly deleted. */
 export class RailwayPreviewRuntime implements PreviewRuntime {
@@ -24,15 +23,13 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
       NODE_ENV: 'development', PORT: '3000', ...input.variables,
     }, input.source.ref);
     const target = { ...host, serviceId };
-    const id = encode(target);
     const expiresAt = new Date(Date.now() + input.ttlMinutes * 60_000);
     try {
       await setServiceVariables(account.token, target, { NODE_ENV: 'development', PORT: '3000', ...input.variables });
       const url = await ensureServiceDomain(account.token, target);
+      const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), url });
       const handle: PreviewHandle = { id, state: 'building', url, expiresAt };
-      this.previews.set(id, { handle, token: account.token, target });
-      await waitForDeploy(account.token, target);
-      handle.state = 'ready';
+      this.previews.set(id, { orgId: input.orgId, handle, token: account.token, target });
       return { ...handle };
     } catch (error) {
       await deleteService(account.token, serviceId).catch(() => undefined);
@@ -41,8 +38,15 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
   }
 
   async inspectPreview(id: string): Promise<PreviewHandle> {
-    const record = this.previews.get(id);
-    if (!record) throw new Error('preview is not available in this server process');
+    let record = this.previews.get(id);
+    if (!record) {
+      const saved = decode(id);
+      const account = await resolveHostAccount(this.db, saved.orgId);
+      if (!account || account.owner !== 'customer') throw new Error('the Railway connection for this preview is unavailable');
+      const handle: PreviewHandle = { id, state: 'building', url: saved.url, expiresAt: new Date(saved.expiresAt) };
+      record = { orgId: saved.orgId, handle, token: account.token, target: saved.target };
+      this.previews.set(id, record);
+    }
     if (record.handle.expiresAt.getTime() <= Date.now()) {
       await this.destroyPreview(id);
       return { ...record.handle, state: 'destroyed', url: null };
@@ -53,8 +57,13 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
   }
 
   async destroyPreview(id: string): Promise<void> {
-    const record = this.previews.get(id);
-    if (!record) return;
+    let record = this.previews.get(id);
+    if (!record) {
+      const saved = decode(id);
+      const account = await resolveHostAccount(this.db, saved.orgId);
+      if (!account || account.owner !== 'customer') return;
+      record = { orgId: saved.orgId, token: account.token, target: saved.target, handle: { id, state: 'building', url: saved.url, expiresAt: new Date(saved.expiresAt) } };
+    }
     await deleteService(record.token, record.target.serviceId);
     record.handle.state = 'destroyed';
     record.handle.url = null;
