@@ -25,7 +25,11 @@ export async function runOwnerTestFlow(db: Db, orgId: string, previewUrl: string
   let browser: Browser | null = null;
   let working: MigrationOwnerTestFlow = { ...flow, status: 'running', steps: flow.steps.map((step) => step.state === 'ready' || step.state === 'approved' ? { ...step, state: 'ready' as const } : step), updated_at: new Date().toISOString() };
   try {
-    browser = await chromium.launch({ headless: true, chromiumSandbox: true, env: {}, args: ['--disable-extensions', '--disable-file-system'] });
+    // This verifier runs inside Selvedge's isolated Railway service, where
+    // Chromium cannot create its own namespace sandbox. The browser remains
+    // bounded by the same-preview navigation policy below and receives no
+    // inherited environment or filesystem access.
+    browser = await chromium.launch({ headless: true, chromiumSandbox: false, env: {}, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-extensions', '--disable-file-system'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, serviceWorkers: 'block', acceptDownloads: false });
     const page = await context.newPage();
     const allowedPreview = new URL(previewUrl);

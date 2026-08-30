@@ -17,12 +17,13 @@ const map: MigrationProjectMap = {
 };
 
 describe('migration planner', () => {
-  it('turns observed services into explicit access blockers and preserves the approval boundary', () => {
+  it('lets the migration agent try safe service substitutes before asking the owner', () => {
     const plan = buildMigrationPlan(map, { repository: 'acme/app' }, new Date('2026-08-28T01:00:00Z'));
     expect(plan.ready_to_start).toBe(true);
-    expect(plan.steps.find((step) => step.id === 'connect')?.blockers).toHaveLength(2);
+    expect(plan.steps.find((step) => step.id === 'connect')).toMatchObject({ state: 'ready', owner: 'migration_agent', blockers: [] });
+    expect(plan.steps.find((step) => step.id === 'configure')).toMatchObject({ state: 'pending', blockers: [] });
     expect(plan.steps.find((step) => step.id === 'ship')?.state).toBe('blocked');
-    expect(plan.next_action).toContain('database');
+    expect(plan.next_action).toContain('safe local substitutes');
   });
 
   it('keeps ship blocked after destinations are chosen until verification passes', () => {

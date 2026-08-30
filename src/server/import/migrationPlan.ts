@@ -15,20 +15,21 @@ export function buildMigrationPlan(map: MigrationProjectMap, destinations: Desti
   ].flat();
   const steps: MigrationPlanStep[] = [
     { id: 'inspect', label: 'Inspect and map the project', state: 'complete', owner: 'migration_agent', detail: `${map.files_inspected} files inspected; ${map.stack.join(' + ') || 'application stack'} mapped.`, blockers: [] },
-    { id: 'connect', label: 'Connect required services', state: accessBlockers.length ? 'blocked' : 'complete', owner: accessBlockers.length ? 'customer' : 'selvedge', detail: accessBlockers.length ? 'Selvedge found external services but will not guess or copy credentials.' : 'No external service access is currently blocking the safe copy.', blockers: accessBlockers },
+    { id: 'connect', label: 'Prepare development-safe services', state: accessBlockers.length ? 'ready' : 'complete', owner: accessBlockers.length ? 'migration_agent' : 'selvedge', detail: accessBlockers.length ? 'Selvedge found service references and will first try safe local substitutes or existing development configuration. The owner is asked only if the app proves it needs access.' : 'No external service access is currently blocking the safe copy.', blockers: [] },
     { id: 'workspace', label: 'Create an isolated workspace', state: 'ready', owner: 'selvedge', detail: 'Create a temporary development environment from the owner-controlled repository.', blockers: [] },
-    { id: 'configure', label: 'Configure the development copy', state: accessBlockers.length ? 'blocked' : 'pending', owner: 'migration_agent', detail: 'Install dependencies and configure development-safe services without touching production.', blockers: accessBlockers },
+    { id: 'configure', label: 'Configure the development copy', state: 'pending', owner: 'migration_agent', detail: 'Install dependencies and configure development-safe services without touching production. Ask the owner only for a value the running copy demonstrably requires.', blockers: [] },
     { id: 'preview', label: 'Open the live preview', state: 'pending', owner: 'migration_agent', detail: 'Start the application and expose it through Selvedge’s signed preview relay.', blockers: [] },
     { id: 'verify', label: 'Verify independently', state: 'pending', owner: 'verification_agent', detail: 'A different worker checks startup, visible behavior, screenshots, and migration evidence.', blockers: [] },
     { id: 'ship', label: 'Review and ship', state: destinationBlockers.length ? 'blocked' : 'approval_required', owner: 'customer', detail: 'Show the verified result and proposed production changes before any cutover.', blockers: destinationBlockers },
   ];
+  const nextWork = steps.find((step) => step.id !== 'ship' && (step.state === 'ready' || step.state === 'pending'));
   const firstBlocked = steps.find((step) => step.state === 'blocked');
   return {
     schema_version: 1,
     generated_at: now.toISOString(),
     ready_to_start: Boolean(destinations.repository),
     steps,
-    next_action: firstBlocked?.blockers[0] ?? 'Create the isolated workspace and begin the safe copy.',
+    next_action: nextWork?.detail ?? firstBlocked?.blockers[0] ?? 'Create the isolated workspace and begin the safe copy.',
   };
 }
 
@@ -39,9 +40,8 @@ export function recordWorkspacePreparation(plan: MigrationPlan, result: { ok: tr
       ? { ...step, state: 'complete', detail: 'The isolated workspace is ready from the owner-controlled repository.', blockers: [] }
       : { ...step, state: 'blocked', detail: 'Selvedge could not prepare the isolated workspace yet.', blockers: [result.reason] };
   });
-  const next = steps.find((step) => step.id === 'connect' && step.state === 'blocked')
-    ?? steps.find((step) => step.state === 'blocked')
-    ?? steps.find((step) => step.state === 'pending');
+  const next = steps.find((step) => step.id !== 'ship' && (step.state === 'ready' || step.state === 'pending'))
+    ?? steps.find((step) => step.state === 'blocked');
   return {
     ...plan,
     generated_at: now.toISOString(),

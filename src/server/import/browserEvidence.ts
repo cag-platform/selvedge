@@ -70,7 +70,12 @@ export async function captureMigrationBrowserEvidence(url: string, planJourney?:
   let guidedJourney: MigrationBrowserEvidence['guidedJourney'] = { status: 'unavailable', name: 'Guided smoke journey', steps: [] };
   const seenFailures = new Set<string>();
   try {
-    browser = await chromium.launch({ headless: true, chromiumSandbox: true, env: {}, args: ['--disable-extensions', '--disable-file-system'] });
+    // Railway already isolates this process. Chromium's own Linux namespace
+    // sandbox cannot initialize in that container and previously made every
+    // otherwise healthy migration fail independent verification before a page
+    // was opened. Keep browser privileges narrow through the empty environment,
+    // request interception, and disabled extensions/filesystem instead.
+    browser = await chromium.launch({ headless: true, chromiumSandbox: false, env: {}, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-extensions', '--disable-file-system'] });
     const desktop = await browser.newContext({ viewport: DESKTOP, serviceWorkers: 'block', acceptDownloads: false });
     const page = await desktop.newPage();
     await observePage(page, new URL(url).hostname, consoleErrors, failedRequests, seenFailures);
