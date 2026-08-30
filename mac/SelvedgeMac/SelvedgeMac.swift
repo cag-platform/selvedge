@@ -115,12 +115,12 @@ private enum Keychain {
 
     func startWorker() {
         guard worker?.isRunning != true, let token = Keychain.read() else { return }
-        guard let companion = Bundle.main.url(forResource: "selvedge-companion", withExtension: "mjs") else {
+        guard let companion = Bundle.main.url(forResource: "selvedge-runtime", withExtension: nil) else {
             status = "Companion missing"; detail = "Reinstall Selvedge for Mac."; return
         }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["node", companion.path, "runtime", "apple", "--name", Host.current().localizedName ?? "Mac"]
+        process.executableURL = companion
+        process.arguments = ["runtime", "apple", "--name", Host.current().localizedName ?? "Mac"]
         var environment = ProcessInfo.processInfo.environment
         environment["SELVEDGE_TOKEN"] = token
         environment["SELVEDGE_API"] = apiOrigin.absoluteString
@@ -136,7 +136,7 @@ private enum Keychain {
             detail = "Ready for Apple work from Selvedge chat."
         } catch {
             status = "Couldn’t start"
-            detail = "Install Node 22, then choose Reconnect."
+            detail = "Reinstall Selvedge for Mac, then choose Reconnect."
         }
     }
 

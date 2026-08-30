@@ -1,0 +1,5 @@
+{
+  "main": "dist/mac/selvedge-companion.cjs",
+  "output": "dist/mac/selvedge-companion.blob",
+  "disableExperimentalSEAWarning": true
+}

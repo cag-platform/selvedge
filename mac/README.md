@@ -8,4 +8,4 @@ Build the internal preview on an Apple Silicon Mac:
 scripts/build-mac-app.sh
 ```
 
-The preview archive is written to `dist/mac/Selvedge-for-Mac.zip` and is ad-hoc signed for local testing. A public release still requires an Apple Developer ID Application signature, notarization, a bundled worker runtime that does not depend on a separately installed Node executable, and an update feed.
+The preview archive is written to `dist/mac/Selvedge-for-Mac.zip`. Its worker is a self-contained Node Single Executable Application, so the customer does not install Node. The local preview is ad-hoc signed; a public release still requires an Apple Developer ID Application signature, notarization, and an update feed.
