@@ -81,6 +81,7 @@ describe('OpenAI Workspace Runtime', () => {
     const config = JSON.parse(new TextDecoder().decode(configBytes));
     const prompts = vi.mocked(client.runHostedShell).mock.calls.map(([input]) => input.prompt).join('\n');
     expect(config.token).toBeTruthy();
+    expect(config.url).toContain('/workspace-relay/poll/');
     expect(prompts).not.toContain(config.token);
     expect(prompts).not.toContain('?preview_token=');
   });

@@ -11,6 +11,7 @@ export type PreviewRelaySession = {
   connectorToken: string;
   viewerToken: string;
   connectorUrl: string;
+  pollUrl: string;
   previewUrl: string;
 };
 
@@ -70,6 +71,7 @@ export class PreviewRelaySessions {
       connectorToken,
       viewerToken,
       connectorUrl: `${origin}/workspace-relay/connect/${encodeURIComponent(id)}`,
+      pollUrl: `${origin}/workspace-relay/poll/${encodeURIComponent(id)}`,
       previewUrl: `${origin}/workspace-preview/${encodeURIComponent(id)}/?preview_token=${encodeURIComponent(viewerToken)}`,
     };
   }

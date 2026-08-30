@@ -59,6 +59,11 @@ export type PreviewRelayWeb = {
 
 export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: PreviewRelayBroker): PreviewRelayWeb {
   const router = Router();
+  const pollers = new Map<string, {
+    queue: string[];
+    waiter: ((message: string | null) => void) | null;
+    detach: () => void;
+  }>();
   const sockets = new WebSocketServer({
     noServer: true,
     handleProtocols: (protocols) => protocols.has('selvedge-preview') ? 'selvedge-preview' : false,
@@ -92,6 +97,80 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
     sockets.handleUpgrade(req, socket, head, (ws) => sockets.emit('connection', ws, req, previewId));
     return true;
   }
+
+  function verifyPoll(req: Request, previewId: string): boolean {
+    try {
+      const token = bearer(req);
+      const claims = token ? tokens.verifyConnector(token) : null;
+      return claims?.previewId === previewId;
+    } catch {
+      return false;
+    }
+  }
+
+  function poller(previewId: string) {
+    const found = pollers.get(previewId);
+    if (found) return found;
+    const state: { queue: string[]; waiter: ((message: string | null) => void) | null; detach: () => void } = {
+      queue: [], waiter: null, detach: () => undefined,
+    };
+    state.detach = broker.attach(previewId, {
+      send(message) {
+        if (state.waiter) {
+          const resolve = state.waiter;
+          state.waiter = null;
+          resolve(message);
+        } else if (state.queue.length < 100) state.queue.push(message);
+      },
+      close() {
+        pollers.delete(previewId);
+        if (state.waiter) state.waiter(null);
+        state.waiter = null;
+      },
+    });
+    pollers.set(previewId, state);
+    return state;
+  }
+
+  router.get('/workspace-relay/poll/:previewId', async (req, res) => {
+    const previewId = req.params.previewId ?? '';
+    if (!verifyPoll(req, previewId)) {
+      res.status(401).json({ error: 'invalid connector capability' });
+      return;
+    }
+    const state = poller(previewId);
+    const queued = state.queue.shift();
+    if (queued) {
+      res.json({ message: queued });
+      return;
+    }
+    const message = await new Promise<string | null>((resolve) => {
+      state.waiter = resolve;
+      const timer = setTimeout(() => {
+        if (state.waiter !== resolve) return;
+        state.waiter = null;
+        resolve(null);
+      }, 20_000);
+      void timer;
+    });
+    if (!res.headersSent) res.json({ message });
+  });
+
+  router.post('/workspace-relay/poll/:previewId', async (req, res) => {
+    const previewId = req.params.previewId ?? '';
+    if (!verifyPoll(req, previewId)) {
+      res.status(401).json({ error: 'invalid connector capability' });
+      return;
+    }
+    const body = await bodyOf(req);
+    if (!body.length) {
+      res.status(400).json({ error: 'relay response is required' });
+      return;
+    }
+    poller(previewId);
+    broker.receive(previewId, body.toString('utf8'));
+    res.status(202).json({ ok: true });
+  });
 
   router.use('/workspace-preview/:previewId', async (req, res) => {
     const previewId = req.params.previewId ?? '';
@@ -131,7 +210,12 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
       for (const [name, value] of Object.entries(safeRelayHeaders(forwarded.headers))) res.setHeader(name, value);
       res.send(forwarded.bodyBase64 ? Buffer.from(forwarded.bodyBase64, 'base64') : undefined);
     } catch (error) {
-      if (error instanceof PreviewRelayUnavailableError) res.status(503).send('Preview is waking up.');
+      if (error instanceof PreviewRelayUnavailableError) {
+        // The connector starts asynchronously inside the hosted workspace.
+        // Keep the iframe on the same signed, cookie-backed URL and retry
+        // without making the owner press Refresh during that short race.
+        res.status(503).type('html').send('<!doctype html><meta http-equiv="refresh" content="2"><p>Preview is waking up.</p>');
+      }
       else if (error instanceof PreviewRelayTimeoutError) res.status(504).send('Preview did not answer in time.');
       else res.status(401).send('Preview link is invalid or expired.');
     }

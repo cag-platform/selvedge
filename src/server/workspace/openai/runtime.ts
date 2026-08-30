@@ -159,7 +159,7 @@ class OpenAiWorkspace implements Workspace {
     });
     const source = await this.options.client.uploadFile(this.id, PREVIEW_CONNECTOR_FILENAME, encoder.encode(previewConnectorSource()));
     const config = await this.options.client.uploadFile(this.id, `selvedge-relay-${session.id}.json`, encoder.encode(JSON.stringify({
-      url: session.connectorUrl.replace(/^https:/, 'wss:'), token: session.connectorToken, port: input.port,
+      url: session.pollUrl, token: session.connectorToken, port: input.port,
     })));
     const connector = await this.startProcess({
       name: `preview:${session.id}`,

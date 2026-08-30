@@ -17,6 +17,7 @@ describe('Preview Relay capabilities', () => {
     expect(relay.verifyViewer(session.viewerToken).audience).toBe('viewer');
     expect(() => relay.verifyViewer(session.connectorToken)).toThrow(InvalidRelayTokenError);
     expect(session.previewUrl).toContain('/workspace-preview/');
+    expect(session.pollUrl).toContain('/workspace-relay/poll/');
   });
 
   it('rejects tampering and expiry', () => {
