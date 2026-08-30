@@ -7,6 +7,8 @@ import { OpenAiWorkspaceApiError, OpenAiWorkspaceClient } from '../workspace/ope
 import { OpenAiWorkspaceRuntime } from '../workspace/openai/runtime.js';
 import { getPreviewRelay } from '../workspace/relay/factory.js';
 import { closeSandboxRun, openSandboxRun } from './metering.js';
+import { unzipSync } from 'fflate';
+import { createPreviewRefWithToken } from '../connectors/github/pushFiles.js';
 
 export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
@@ -92,21 +94,17 @@ export async function publishPreviewRef(
 ): Promise<string> {
   const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
   const ref = `selvedge-preview/${projectId}-${Date.now().toString(36)}`;
-  const helper = shellQuote('!f() { echo username=x-access-token; echo password="$GITHUB_TOKEN"; }; f');
-  const command = [
-    `cd ${WORKDIR}`,
-    'git add -A',
-    'tree=$(git write-tree)',
-    'parent=$(git rev-parse HEAD)',
-    `commit=$(printf %s ${shellQuote('Selvedge disposable preview')} | git commit-tree "$tree" -p "$parent")`,
-    `git -c credential.helper=${helper} push origin "$commit:refs/heads/${ref}"`,
-    'git reset -q HEAD',
-  ].join(' && ');
-  const result = await sandbox.process.executeCommand(command, undefined, { GITHUB_TOKEN: cfg.githubToken }, 300);
-  if (result.exitCode !== 0) {
-    const detail = (result.result ?? '').trim().slice(-1_000);
-    throw new Error(`could not publish the disposable preview source${detail ? `: ${detail}` : ''}`);
-  }
+  const archivePath = '/tmp/selvedge-preview-source.zip';
+  const script = `import os, zipfile\nroot=${JSON.stringify(WORKDIR)}\nout=${JSON.stringify(archivePath)}\nskip={'.git','node_modules','.env','.env.local','.env.development.local','.env.production.local','.env.test.local'}\nwith zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:\n for base,dirs,names in os.walk(root):\n  dirs[:]=[d for d in dirs if d not in skip]\n  for name in names:\n   path=os.path.join(base,name)\n   rel=os.path.relpath(path,root)\n   if rel not in skip and not os.path.islink(path): z.write(path,rel)\n`;
+  await sandbox.workspace.upload('/tmp/selvedge-preview-pack.py', Buffer.from(script));
+  const packed = await sandbox.process.executeCommand('python3 /tmp/selvedge-preview-pack.py', undefined, undefined, 180);
+  if (packed.exitCode !== 0) throw new Error('could not package the disposable preview source');
+  const entries = unzipSync(await sandbox.workspace.download(archivePath));
+  const files = Object.entries(entries).filter(([path]) => !path.endsWith('/')).map(([path, bytes]) => ({ path, bytes }));
+  const totalBytes = files.reduce((sum, file) => sum + file.bytes.byteLength, 0);
+  if (files.length > 1_000 || totalBytes > 50 * 1024 * 1024) throw new Error('the disposable preview source exceeds its safe GitHub upload limit');
+  await createPreviewRefWithToken(cfg.githubToken, cfg.repoFullName, files, ref);
+  await sandbox.process.executeCommand(`rm -f ${archivePath} /tmp/selvedge-preview-pack.py`, undefined, undefined, 30).catch(() => undefined);
   return ref;
 }
 

@@ -46,6 +46,44 @@ async function gh<T>(token: string, path: string, init?: RequestInit): Promise<T
 
 export type PushResult = { commitSha: string; branch: string; files: number };
 
+export async function createPreviewRefWithToken(
+  token: string,
+  fullName: string,
+  files: Array<{ path: string; bytes: Uint8Array }>,
+  ref: string,
+): Promise<PushResult> {
+  if (!/^selvedge-preview\/[A-Za-z0-9._-]+$/.test(ref)) throw new GithubError('invalid disposable preview ref');
+  if (!token.trim() || files.length === 0) throw new GithubError('GitHub preview source is unavailable');
+  const repo = await gh<{ default_branch: string }>(token, `/repos/${fullName}`);
+  const head = await gh<{ object: { sha: string } }>(token, `/repos/${fullName}/git/ref/${encodeURIComponent(`heads/${repo.default_branch}`)}`);
+  const shas = new Array<string>(files.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < files.length) {
+      const i = next++;
+      const blob = await gh<{ sha: string }>(token, `/repos/${fullName}/git/blobs`, {
+        method: 'POST',
+        body: JSON.stringify({ content: Buffer.from(files[i]!.bytes).toString('base64'), encoding: 'base64' }),
+      });
+      shas[i] = blob.sha;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(BLOB_CONCURRENCY, files.length) }, worker));
+  const tree = await gh<{ sha: string }>(token, `/repos/${fullName}/git/trees`, {
+    method: 'POST',
+    body: JSON.stringify({ tree: files.map((file, i) => ({ path: file.path, mode: '100644', type: 'blob', sha: shas[i] })) }),
+  });
+  const commit = await gh<{ sha: string }>(token, `/repos/${fullName}/git/commits`, {
+    method: 'POST',
+    body: JSON.stringify({ message: 'Selvedge disposable preview', tree: tree.sha, parents: [head.object.sha] }),
+  });
+  await gh(token, `/repos/${fullName}/git/refs`, {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${ref}`, sha: commit.sha }),
+  });
+  return { commitSha: commit.sha, branch: ref, files: files.length };
+}
+
 /** Push using a credential supplied by the caller. Installation credentials are
  * short-lived and tenant-scoped; keeping the token out of module state prevents
  * one deployment identity from quietly becoming every customer's GitHub key. */
