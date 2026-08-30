@@ -88,11 +88,14 @@ export async function railwayGql<T>(
 
   const body = (await res.json().catch(() => null)) as {
     data?: T;
-    errors?: Array<{ message: string }>;
+    errors?: Array<{ message: string; extensions?: { code?: string; traceId?: string } }>;
   } | null;
 
   if (body?.errors?.length) {
-    throw new Error(`Railway API error: ${body.errors.map((e) => e.message).join('; ')}`);
+    throw new Error(`Railway API error: ${body.errors.map((e) => {
+      const detail = [e.extensions?.code, e.extensions?.traceId && `trace ${e.extensions.traceId}`].filter(Boolean).join(', ');
+      return detail ? `${e.message} (${detail})` : e.message;
+    }).join('; ')}`);
   }
   if (!res.ok || !body?.data) {
     throw new Error(`Railway API responded ${res.status} with no usable data`);

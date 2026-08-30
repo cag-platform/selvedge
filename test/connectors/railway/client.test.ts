@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget } from '../../../src/server/connectors/railway/client.js';
+import { configurePreviewService, createService } from '../../../src/server/connectors/railway/provision.js';
 
 describe('railway/parseRailwayTarget — address a service, or skip it', () => {
   it('parses the three-part compound resource_id', () => {
@@ -102,5 +103,42 @@ describe('railway/getDeployState — normalized state, never throws', () => {
       throw new Error('boom');
     }) as typeof fetch;
     expect(await getDeployState('tok', target)).toBeNull();
+  });
+});
+
+describe('railway preview provisioning — pins the disposable ref and dev command', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('puts branch at ServiceCreateInput.branch, outside source', async () => {
+    let variables: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      variables = JSON.parse(String(init.body)).variables;
+      return new Response(JSON.stringify({ data: { serviceCreate: { id: 'svc_1' } } }), { status: 200 });
+    }) as typeof fetch;
+
+    await createService('token', 'project', 'preview', 'acme/app', { PORT: '3000' }, 'selvedge-preview/app-1');
+    expect(variables).toEqual({
+      input: {
+        projectId: 'project',
+        name: 'preview',
+        branch: 'selvedge-preview/app-1',
+        variables: { PORT: '3000' },
+        source: { repo: 'acme/app' },
+      },
+    });
+  });
+
+  it('pins the service instance to the prepared development command', async () => {
+    let variables: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      variables = JSON.parse(String(init.body)).variables;
+      return new Response(JSON.stringify({ data: { serviceInstanceUpdate: true } }), { status: 200 });
+    }) as typeof fetch;
+
+    await configurePreviewService('token', { projectId: 'project', environmentId: 'env', serviceId: 'svc_1' });
+    expect(variables).toEqual({ serviceId: 'svc_1', environmentId: 'env', input: { startCommand: 'npm run dev' } });
   });
 });

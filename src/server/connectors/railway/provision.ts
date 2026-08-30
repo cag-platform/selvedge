@@ -191,7 +191,10 @@ export async function createService(
   const mutation = `mutation Create($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`;
   try {
     const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
-      input: { projectId, name, variables, source: { repo: repoFullName, branch } },
+      // Railway's current ServiceCreateInput keeps the branch beside source,
+      // not inside it. Keeping the ref explicit is what prevents a disposable
+      // preview from quietly deploying the repository's main branch.
+      input: { projectId, name, branch, variables, source: { repo: repoFullName } },
     });
     return data.serviceCreate.id;
   } catch (err) {
@@ -202,6 +205,17 @@ export async function createService(
     });
     return data.serviceCreate.id;
   }
+}
+
+/** Pin the disposable service to the development command prepared by the agent. */
+export async function configurePreviewService(token: string, target: RailwayTarget): Promise<void> {
+  await railwayGql(
+    token,
+    `mutation Update($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
+      serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input)
+    }`,
+    { serviceId: target.serviceId, environmentId: target.environmentId, input: { startCommand: 'npm run dev' } },
+  );
 }
 
 /** Remove a disposable preview service and its domain/deployments. Idempotency is handled by the caller. */
