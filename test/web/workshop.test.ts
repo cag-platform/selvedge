@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
@@ -94,10 +94,11 @@ describe('web/routes/workshop — the workshop surface', () => {
         seen = { token: cfg.githubToken, repo: cfg.repoFullName, branch: cfg.branch };
         return { state: 'ready', url: 'https://preview.example.test', message: null };
       },
-    })).get('/api/projects/loom/workshop/preview');
+    })).post('/api/projects/loom/workshop/preview').send({});
 
-    expect(res.status).toBe(200);
-    expect(res.body.state).toBe('ready');
+    expect(res.status).toBe(202);
+    expect(res.body.state).toBe('starting');
+    await vi.waitFor(() => expect(seen.repo).toBe('acme/loom'));
     expect(seen).toEqual({ token: '', repo: 'acme/loom', branch: 'main' });
   });
 
@@ -301,7 +302,7 @@ describe('web/routes/workshop — the workshop surface', () => {
             return { state: 'ready', url: 'http://x' } as never;
           },
         }),
-      ).get('/api/projects/loom/workshop/preview');
+      ).post('/api/projects/loom/workshop/preview').send({});
 
       expect(res.status).toBe(402);
       expect(opened).toBe(false);

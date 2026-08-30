@@ -34,6 +34,9 @@ export const projectBuild = pgTable(
     previewTokenExpiresAt: timestamp('preview_token_expires_at', { withTimezone: true }),
     previewRuntimeId: text('preview_runtime_id'),
     previewSourceRef: text('preview_source_ref'),
+    previewOperationStatus: text('preview_operation_status'),
+    previewOperationMessage: text('preview_operation_message'),
+    previewOperationStartedAt: timestamp('preview_operation_started_at', { withTimezone: true }),
     /** A browser is actively using the development preview until this time. */
     previewActiveUntil: timestamp('preview_active_until', { withTimezone: true }),
     /** The unique subdomain label this project's preview is served from (preview proxy). */

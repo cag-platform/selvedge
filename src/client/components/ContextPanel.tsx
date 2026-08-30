@@ -78,7 +78,7 @@ function MemoryNow({ data, onChangeAgent }: { data: ThreadData & { project: { id
   );
 }
 type Preview = {
-  state: 'ready' | 'none' | 'error';
+  state: 'ready' | 'starting' | 'none' | 'error';
   url: string | null;
   message: string | null;
   /**
@@ -109,13 +109,25 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      setPreview(await api.get<Preview>(`/api/projects/${data.project.id}/workshop/preview`));
+      setPreview(await api.post<Preview>(`/api/projects/${data.project.id}/workshop/preview`, {}));
     } catch (e) {
       setPreview({ state: 'error', url: null, message: e instanceof Error ? e.message : 'preview failed' });
     } finally {
       setBusy(false);
     }
   }, [data.project.id]);
+
+  const readPreview = useCallback(async () => {
+    const next = await api.get<Preview>(`/api/projects/${data.project.id}/workshop/preview`);
+    setPreview(next.state === 'none' ? null : next);
+  }, [data.project.id]);
+
+  useEffect(() => { void readPreview().catch(() => undefined); }, [readPreview]);
+  useEffect(() => {
+    if (preview?.state !== 'starting') return;
+    const timer = window.setInterval(() => void readPreview().catch(() => undefined), 2000);
+    return () => window.clearInterval(timer);
+  }, [preview?.state, readPreview]);
 
   // Opening the workspace should show the work, not another button. Only
   // staged work auto-starts a preview; browsing old context remains passive.
@@ -199,17 +211,17 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
           />
         ) : (
           <div className="p-work">
-            {!busy && preview === null && (
+            {!busy && (preview === null || preview.state === 'error') && (
               <button
                 type="button"
                 onClick={() => void load()}
                 className="w-full rounded-inset bg-action px-4 py-3 text-body font-semibold text-ink shadow-sm hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-bright"
               >
-                Open app preview →
+                {preview?.state === 'error' ? 'Try app preview again →' : 'Open app preview →'}
               </button>
             )}
             <p className="mt-3 text-body text-ink-quiet">
-            {busy
+            {busy || preview?.state === 'starting'
               ? 'Waking the workshop and starting the app — this can take a minute the first time.'
               : preview?.state === 'error' && data.live_url
                 ? `The workshop copy could not start: ${preview.message ?? 'preview unavailable'} The live app above is still available.`

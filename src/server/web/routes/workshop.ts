@@ -8,7 +8,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
-import { getBuild } from '../../build/store.js';
+import { getBuild, setBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
 import { runAgentTurn, type AttachedFile } from '../../build/agent.js';
 import { MAX_STAGED_FILE_BYTES, validateFileRefs, validateImages } from '../attachments.js';
@@ -383,11 +383,9 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   );
 
   /**
-   * The live preview URL (brings the app server up if needed) — which means it
-   * starts a sandbox, which means it costs wall-clock time, which is why the
-   * quota applies here as well as to a build turn. A preview holds a sandbox
-   * open for as long as someone is looking at it; that is the single easiest
-   * way to spend an afternoon of minutes without noticing.
+   * Reading the live preview state is deliberately side-effect free. Starting
+   * the runtime happens through POST below, then the UI can disappear,
+   * remount, or reload while this endpoint keeps reporting durable progress.
    */
   router.get(
     '/api/projects/:projectId/workshop/preview',
@@ -395,6 +393,38 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       const orgId = orgIdOf(req);
       const projectId = req.params.projectId ?? '';
       const build = await getBuild(db, orgId, projectId);
+      const freshStart = build?.previewOperationStartedAt && build.previewOperationStartedAt.getTime() > Date.now() - 10 * 60_000;
+      if (build?.previewOperationStatus === 'starting' && freshStart) {
+        res.json({ state: 'starting', url: null, message: build.previewOperationMessage ?? 'Preparing the development preview.' });
+        return;
+      }
+      if (build?.previewOperationStatus === 'starting') {
+        res.json({ state: 'error', url: null, message: 'That preview start was interrupted. Try again to resume safely.' });
+        return;
+      }
+      if (build?.previewOperationStatus === 'error') {
+        res.json({ state: 'error', url: null, message: build.previewOperationMessage ?? "I couldn't bring the preview up." });
+        return;
+      }
+      if (build?.previewUrl) {
+        res.json({ state: 'ready', url: build.previewUrl, message: build.previewOperationMessage });
+        return;
+      }
+      res.json({ state: 'none', url: null, message: null });
+    }),
+  );
+
+  router.post(
+    '/api/projects/:projectId/workshop/preview',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const build = await getBuild(db, orgId, projectId);
+      const freshStart = build?.previewOperationStartedAt && build.previewOperationStartedAt.getTime() > Date.now() - 10 * 60_000;
+      if (build?.previewOperationStatus === 'starting' && freshStart) {
+        res.status(202).json({ state: 'starting', url: null, message: build.previewOperationMessage });
+        return;
+      }
       let cfg: SandboxConfig;
       if (process.env.PREVIEW_RUNTIME !== 'railway' && build?.sandboxId && build.repoFullName && build.branch) {
         // A workshop that already contains the checkout does not need GitHub
@@ -417,7 +447,24 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         refuse(res, minutes);
         return;
       }
-      res.json(await preview(db, orgId, projectId, cfg));
+      await setBuild(db, orgId, projectId, {
+        previewOperationStatus: 'starting',
+        previewOperationMessage: 'Preparing the development preview.',
+        previewOperationStartedAt: new Date(),
+      });
+      void preview(db, orgId, projectId, cfg).then(async (result) => {
+        await setBuild(db, orgId, projectId, {
+          previewOperationStatus: result.state === 'ready' ? 'ready' : result.state === 'none' ? 'none' : 'error',
+          previewOperationMessage: result.message,
+        });
+      }).catch(async (error) => {
+        console.error(`background preview failed for ${orgId}/${projectId}:`, error);
+        await setBuild(db, orgId, projectId, {
+          previewOperationStatus: 'error',
+          previewOperationMessage: "I couldn't bring the preview up. The reason is in the record — nothing was changed.",
+        }).catch(() => undefined);
+      });
+      res.status(202).json({ state: 'starting', url: null, message: 'Preparing the development preview.' });
     }),
   );
 
