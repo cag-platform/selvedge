@@ -14,6 +14,8 @@ import { MAX_TOOL_EVENTS, type RunRecord, type ToolEvent } from '../../shared/ty
 import { renderDocuments, type PastedDocument } from '../../shared/documents.js';
 import { renderTaskContextCapsule } from '../context/compiler.js';
 import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
+import { getPack } from '../packs/store.js';
+import { appleWorkspaceUnavailableLine, workspaceRequirementsFor } from '../workspace/requirements.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -126,8 +128,13 @@ function shellQuote(v: string): string {
 }
 
 /** Start the turn detached: stream-json to a log, pid saved, exit code appended when done. */
-function startCommand(inner: string, log: string, pid: string): string {
-  return `${PATH_PREFIX} nohup bash -c ${shellQuote(`${inner}; echo "__EXIT:$?" >> ${log}`)} >> ${log} 2>&1 < /dev/null & echo $! > ${pid}`;
+export function startCommand(inner: string, log: string, pid: string): string {
+  // Encode the complete script rather than shell-quoting a command which may
+  // already contain quoted arguments. Shell escaping is not composable across
+  // nested `bash -c` boundaries; transporting the script as base64 makes the
+  // outer command data-only and lets the inner shell parse it exactly once.
+  const script = Buffer.from(`${inner}; echo "__EXIT:$?" >> ${log}`, 'utf8').toString('base64');
+  return `${PATH_PREFIX} nohup bash -c "$(printf %s ${script} | base64 -d)" >> ${log} 2>&1 < /dev/null & echo $! > ${pid}`;
 }
 
 /** One poll: the whole log so far, plus whether the process still runs. */
@@ -334,6 +341,30 @@ export async function runAgentTurn(
         ...(options.contextCapsule ? { context_capsule_id: options.contextCapsule.capsule_id, context_capsule_hash: options.contextCapsule.content_hash } : {}) }
     : undefined;
 
+  // Machine selection belongs to Selvedge, not to Claude or Codex. Detect an
+  // explicit Apple-native target before spending model fuel or starting the
+  // Linux workspace. Until the Apple runtime is connected, refusing here is
+  // the only honest outcome: editing Swift in Linux and calling it built would
+  // violate the command-center promise.
+  const pack = await getPack(db, orgId, projectId).catch(() => null);
+  const platformEvidence = [
+    ownerText,
+    options.handoff,
+    ...(options.documents ?? []).map((document) => document.text),
+    ...(options.contextCapsule?.known_already.architecture ?? []).map((fact) => fact.value),
+    options.contextCapsule?.observed_now.current_objective?.value,
+  ].filter((value): value is string => Boolean(value)).join('\n');
+  const requirements = workspaceRequirementsFor(platformEvidence, pack?.topology.stack_summary ?? '');
+  if (options.mode !== 'plan' && requirements.platform === 'apple') {
+    const agent: AgentId = cfg.agent ?? 'claude-code';
+    const reply = appleWorkspaceUnavailableLine();
+    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+    if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+    await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
+      ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: 'failed', failure_code: 'apple_workspace_required', retryable: false } } } : {}) });
+    return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+  }
+
   // Which builder is running this turn, and can it run here at all? An agent
   // this deployment has no fuel for is said plainly on the thread — never a
   // silent fallback to a different one, which would make the switcher a lie.
@@ -417,7 +448,7 @@ export async function runAgentTurn(
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
   let sandboxPromise: Promise<DevelopmentWorkspace> | null = null;
-  const getSandbox = (): Promise<DevelopmentWorkspace> => (sandboxPromise ??= ensureSandbox(db, orgId, projectId, cfg));
+  const getSandbox = (): Promise<DevelopmentWorkspace> => (sandboxPromise ??= ensureSandbox(db, orgId, projectId, { ...cfg, requirements }));
 
   const execute: ExecuteInSandbox =
     deps.execute ??

@@ -9,12 +9,13 @@ import { getPreviewRelay } from '../workspace/relay/factory.js';
 import { closeSandboxRun, openSandboxRun } from './metering.js';
 import { unzipSync } from 'fflate';
 import { createPreviewRefWithToken } from '../connectors/github/pushFiles.js';
+import { WEB_WORKSPACE_REQUIREMENTS, type WorkspaceRequirements } from '../workspace/requirements.js';
 
 export const WORKDIR = '/workspace/project';
 export const PATH_PREFIX = 'export PATH="$HOME/.npm-global/bin:$PATH" &&';
 export const SANDBOX_IDLE_MINUTES = 15;
 
-export type SandboxConfig = { githubToken: string; repoFullName: string; branch: string; emptyRepo?: boolean; reuseOnly?: boolean };
+export type SandboxConfig = { githubToken: string; repoFullName: string; branch: string; emptyRepo?: boolean; reuseOnly?: boolean; requirements?: WorkspaceRequirements };
 export type WorkspaceCommandResult = { exitCode: number; result?: string };
 export type DevelopmentWorkspace = {
   id: string;
@@ -224,6 +225,7 @@ function workspaceInput(orgId: string, projectId: string, cfg: SandboxConfig, sn
     ttlMinutes: 24 * 60, idleStopMinutes: SANDBOX_IDLE_MINUTES,
     network: { default: 'deny', allowedHosts: ['github.com', 'api.github.com', 'registry.npmjs.org', 'api.anthropic.com', 'api.openai.com'] },
     secrets: [{ id: gitGrantId, name: 'GITHUB_TOKEN', exposure: 'command' }],
+    requirements: cfg.requirements ?? WEB_WORKSPACE_REQUIREMENTS,
     labels: { orgId, projectId },
   };
 }

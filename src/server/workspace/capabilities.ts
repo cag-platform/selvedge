@@ -1,4 +1,5 @@
 import type { WorkspaceCapabilities } from './types.js';
+import type { WorkspaceRequirements } from './requirements.js';
 
 /**
  * Selvedge promises a running, inspectable candidate rather than a blind code
@@ -32,4 +33,14 @@ export class InadequateWorkspaceRuntimeError extends Error {
 export function requireDevelopmentCapabilities(actual: WorkspaceCapabilities): void {
   const missing = missingDevelopmentCapabilities(actual);
   if (missing.length) throw new InadequateWorkspaceRuntimeError(missing);
+}
+
+export function supportsWorkspaceRequirements(
+  actual: WorkspaceCapabilities,
+  required: WorkspaceRequirements,
+): boolean {
+  if (!(actual.platforms ?? ['linux']).includes(required.platform)) return false;
+  if (required.platform !== 'apple') return true;
+  const tools = new Set(actual.nativeTools ?? []);
+  return required.tools.every((tool) => tool === 'browser' || tools.has(tool));
 }

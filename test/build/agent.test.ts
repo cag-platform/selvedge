@@ -57,6 +57,17 @@ function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: str
 
 const noSleep = async () => {};
 
+function detachedScript(command: string): string {
+  const encoded = /printf %s ([A-Za-z0-9+/=]+) \| base64 -d/.exec(command)?.[1];
+  return encoded ? Buffer.from(encoded, 'base64').toString('utf8') : command;
+}
+
+function transportedFile(script: string, path: string): string {
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const encoded = new RegExp(`printf %s ([A-Za-z0-9+/=]+) \\| base64 -d > ${escaped}`).exec(script)?.[1];
+  return encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '';
+}
+
 describe('runAgentTurn — streamed, costed, resumable', () => {
   let db: TestDb;
   let close: () => Promise<void>;
@@ -122,6 +133,22 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_1');
   });
 
+  it('refuses Apple-native work before model fuel or a Linux workspace is touched', async () => {
+    let executed = false;
+    const out = await runAgentTurn(db, orgId, 'ducky', 'Build in the workshop based on the spec here', cfg, {
+      handoff: 'The approved specification is a single-screen iOS application written in SwiftUI.',
+    }, {
+      execute: async () => { executed = true; return { exitCode: 0, result: '' }; },
+      sleep: noSleep,
+    });
+    expect(out).toMatchObject({ status: 'failed', costCents: 0, stagedChangesReady: false });
+    expect(out.reply).toContain('macOS, Xcode, and an iPhone Simulator');
+    expect(out.reply).toContain("didn't send it to the web workshop");
+    expect(executed).toBe(false);
+    const rows = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
+    expect(rows.map((row) => row.role)).toEqual(['owner', 'agent']);
+  });
+
   it('the second turn resumes the saved session — iteration, not starting over', async () => {
     await setBuild(db, orgId, 'loom', { claudeSessionId: 'sess_1' });
     const commands: string[] = [];
@@ -130,7 +157,7 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
       sleep: noSleep,
     });
     // The inner command rides through the outer nohup quoting, so assert parts.
-    const resumed = commands.find((command) => command.includes('--resume'));
+    const resumed = commands.map(detachedScript).find((command) => command.includes('--resume'));
     expect(resumed).toContain('--resume');
     expect(resumed).toContain('sess_1');
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_2');
@@ -155,8 +182,8 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     };
     const out = await runAgentTurn(db, orgId, 'loom', 'try again', cfg, {}, { execute, sleep: noSleep });
     expect(out.status).toBe('succeeded');
-    expect(starts[0]).toContain('--resume');
-    expect(starts[1]).not.toContain('--resume');
+    expect(detachedScript(starts[0]!)).toContain('--resume');
+    expect(detachedScript(starts[1]!)).not.toContain('--resume');
   });
 
   it('a retried turn reports the cost of BOTH attempts — the failed one spent real money too', async () => {
@@ -281,10 +308,11 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(uploads.some((u) => u.path === '/workspace/project/sample.csv')).toBe(true);
 
     // The CLI prompt (what the nohup command actually ran) points the agent at both.
-    const startCmd = commands.find((c) => c.includes('nohup'))!;
-    expect(startCmd).toContain('.selvedge/uploads');
-    expect(startCmd).toContain('sample.csv');
-    expect(startCmd).toContain('do not commit, push, merge, deploy, publish, or force-push');
+    const startCmd = detachedScript(commands.find((c) => c.includes('nohup'))!);
+    const prompt = transportedFile(startCmd, '/tmp/selvedge-claude-prompt');
+    expect(prompt).toContain('.selvedge/uploads');
+    expect(prompt).toContain('sample.csv');
+    expect(prompt).toContain('do not commit, push, merge, deploy, publish, or force-push');
 
     // The image is persisted for the thread; the CSV is not (transient input only).
     const owner = (await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.role, 'owner'))))[0]!;
@@ -314,8 +342,8 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(out.reply).toContain('Here is the plan');
 
     // The agent was told, in the prompt itself, not to change anything.
-    const startCmd = commands.find((c) => c.includes('nohup'))!;
-    expect(startCmd).toContain('Do NOT create, edit, move, or delete any files');
+    const startCmd = detachedScript(commands.find((c) => c.includes('nohup'))!);
+    expect(transportedFile(startCmd, '/tmp/selvedge-claude-prompt')).toContain('Do NOT create, edit, move, or delete any files');
     // And it never even asked git what changed.
     expect(commands.some((c) => c.includes('git status'))).toBe(false);
 
@@ -461,7 +489,7 @@ describe('runAgentTurn — building with Codex', () => {
     expect(out.status).toBe('succeeded');
     expect(out.agent).toBe('codex');
     expect(out.reply).toContain('I made the header dark.');
-    expect(commands.some((c) => c.includes('codex exec'))).toBe(true);
+    expect(commands.map(detachedScript).some((c) => c.includes('codex exec'))).toBe(true);
     expect(commands.some((c) => c.includes('@openai/codex'))).toBe(true); // installs itself if the image lacks it
     expect(commands.some((c) => c.includes('claude -p'))).toBe(false);
 
@@ -492,9 +520,10 @@ describe('runAgentTurn — building with Codex', () => {
       { handoff: 'THE PROJECT\n- Loom — a curtain shop.' },
       { execute: executor({ polls: [codexLog], onCommand: (c) => commands.push(c) }), sleep: noSleep },
     );
-    const start = commands.find((c) => c.includes('codex exec'))!;
-    expect(start).toContain('Loom — a curtain shop.');
-    expect(start).toContain('now finish the checkout');
+    const start = detachedScript(commands.find((c) => c.includes('nohup'))!);
+    const prompt = transportedFile(start, '/tmp/selvedge-codex-prompt');
+    expect(prompt).toContain('Loom — a curtain shop.');
+    expect(prompt).toContain('now finish the checkout');
   });
 
   it('an agent with no account to run on is refused in plain words, not silently swapped', async () => {

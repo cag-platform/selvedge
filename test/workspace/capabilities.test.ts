@@ -3,7 +3,9 @@ import {
   InadequateWorkspaceRuntimeError,
   missingDevelopmentCapabilities,
   requireDevelopmentCapabilities,
+  supportsWorkspaceRequirements,
 } from '../../src/server/workspace/capabilities.js';
+import { APPLE_WORKSPACE_REQUIREMENTS, WEB_WORKSPACE_REQUIREMENTS } from '../../src/server/workspace/requirements.js';
 import type { WorkspaceCapabilities } from '../../src/server/workspace/types.js';
 
 const complete: WorkspaceCapabilities = {
@@ -12,6 +14,8 @@ const complete: WorkspaceCapabilities = {
   browserAutomation: true,
   enforceableNetworkPolicy: true,
   commandScopedSecrets: true,
+  platforms: ['linux'],
+  nativeTools: [],
 };
 
 describe('Selvedge Development Workspace capability gate', () => {
@@ -36,5 +40,11 @@ describe('Selvedge Development Workspace capability gate', () => {
     expect(() => requireDevelopmentCapabilities({ ...complete, browserAutomation: false })).toThrow(
       InadequateWorkspaceRuntimeError,
     );
+  });
+
+  it('distinguishes a browser workspace from an Apple/Xcode workspace', () => {
+    expect(supportsWorkspaceRequirements(complete, WEB_WORKSPACE_REQUIREMENTS)).toBe(true);
+    expect(supportsWorkspaceRequirements(complete, APPLE_WORKSPACE_REQUIREMENTS)).toBe(false);
+    expect(supportsWorkspaceRequirements({ ...complete, platforms: ['linux', 'apple'], nativeTools: ['xcode', 'ios-simulator'] }, APPLE_WORKSPACE_REQUIREMENTS)).toBe(true);
   });
 });

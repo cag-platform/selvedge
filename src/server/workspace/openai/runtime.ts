@@ -8,6 +8,7 @@ import type {
 import { previewConnectorSource, PREVIEW_CONNECTOR_FILENAME } from '../relay/connector.js';
 import type { PreviewRelaySessions } from '../relay/session.js';
 import { OpenAiWorkspaceApiError, OpenAiWorkspaceClient, type OpenAiMemoryLimit } from './client.js';
+import { supportsWorkspaceRequirements } from '../capabilities.js';
 
 const encoder = new TextEncoder();
 const EXIT_MARKER = '__SELVEDGE_EXIT__=';
@@ -60,6 +61,8 @@ class OpenAiWorkspace implements Workspace {
     browserAutomation: true,
     enforceableNetworkPolicy: true,
     commandScopedSecrets: true,
+    platforms: ['linux'],
+    nativeTools: [],
   };
 
   private state: WorkspaceHandle['state'] = 'ready';
@@ -189,9 +192,21 @@ class OpenAiWorkspace implements Workspace {
 
 export class OpenAiWorkspaceRuntime implements WorkspaceRuntime {
   private readonly metadata = new Map<string, WorkspaceMetadata>();
+  readonly capabilities: WorkspaceCapabilities = {
+    longRunningProcesses: true,
+    authenticatedPreview: true,
+    browserAutomation: true,
+    enforceableNetworkPolicy: true,
+    commandScopedSecrets: true,
+    platforms: ['linux'],
+    nativeTools: [],
+  };
   constructor(private readonly options: OpenAiWorkspaceRuntimeOptions) {}
 
   async createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
+    if (input.requirements && !supportsWorkspaceRequirements(this.capabilities, input.requirements)) {
+      throw new Error(`workspace runtime does not support ${input.requirements.platform} projects`);
+    }
     const relayHost = new URL(this.options.relay.origin).hostname;
     const repositoryHost = repositoryHostname(input.source.repository);
     const allowedDomains = [...new Set([...input.network.allowedHosts, relayHost, repositoryHost])];

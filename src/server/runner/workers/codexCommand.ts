@@ -49,6 +49,8 @@ export function codexCommand(
   opts: { apiKey?: string; model?: string; resumeSessionId?: string | null; mode?: 'build' | 'plan' },
 ): string {
   const mode = opts.mode ?? 'build';
+  const promptFile = '/tmp/selvedge-codex-prompt';
+  const transportedPrompt = Buffer.from(`${agentRules(mode)}\n\n---\n\n${prompt}`, 'utf8').toString('base64');
   const args = [
     'codex',
     'exec',
@@ -59,11 +61,22 @@ export function codexCommand(
     // Plan mode reads and reasons but changes nothing — the same promise the
     // "think it first" checkbox makes on the Claude side.
     ...(mode === 'plan' ? ['--sandbox', 'read-only'] : ['--dangerously-bypass-approvals-and-sandbox']),
-    shellQuote(`${agentRules(mode)}\n\n---\n\n${prompt}`),
+    // A lone dash makes Codex read the prompt from stdin. The prompt must
+    // never be part of a shell command: this command is itself launched by a
+    // detached shell, and nested quote escaping once caused lines of the
+    // owner's prompt and Selvedge's rules to be executed as commands.
+    '-',
   ];
   // OPENAI_API_KEY is injected command-scoped by the Workspace Runtime. Putting
   // it here would expose it to the hosted-shell model prompt and flight record.
-  return `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')}`;
+  return [
+    `printf %s ${transportedPrompt} | base64 -d > ${promptFile}`,
+    `chmod 0400 ${promptFile}`,
+    `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')} < ${promptFile}`,
+    'status=$?',
+    `rm -f ${promptFile}`,
+    'exit $status',
+  ].join('; ');
 }
 
 export type CodexResult = {

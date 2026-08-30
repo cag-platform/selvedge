@@ -46,6 +46,8 @@ export type CreateWorkspaceInput = {
   idleStopMinutes: number;
   network: NetworkPolicy;
   secrets: SecretGrant[];
+  /** Machine/tool contract selected from the project, never from the agent. */
+  requirements?: import('./requirements.js').WorkspaceRequirements;
   labels?: Record<string, string>;
 };
 
@@ -97,6 +99,9 @@ export type WorkspaceCapabilities = {
   browserAutomation: boolean;
   enforceableNetworkPolicy: boolean;
   commandScopedSecrets: boolean;
+  /** Omitted by legacy adapters; new routing must declare these explicitly. */
+  platforms?: Array<import('./requirements.js').WorkspacePlatform>;
+  nativeTools?: Array<'xcode' | 'ios-simulator'>;
 };
 
 export interface Workspace {

@@ -7,6 +7,7 @@ import {
   parseCodexResult,
   parseCodexText,
 } from '../../src/server/runner/workers/codexCommand.js';
+import { startCommand } from '../../src/server/build/agent.js';
 
 /**
  * The second builder's CLI has an undocumented event stream that has changed
@@ -32,8 +33,11 @@ describe('the Codex command', () => {
     const cmd = codexCommand('make the header dark', { apiKey: 'k' });
     // The rules must reach the agent somehow, and the one way they must NOT is
     // a file in the customer's repository.
-    expect(cmd).toContain('no terminal');
-    expect(cmd).toContain('make the header dark');
+    const encoded = /printf %s ([A-Za-z0-9+/=]+) \| base64 -d > \/tmp\/selvedge-codex-prompt/.exec(cmd)?.[1];
+    expect(encoded).toBeTruthy();
+    const transported = Buffer.from(encoded!, 'base64').toString('utf8');
+    expect(transported).toContain('no terminal');
+    expect(transported).toContain('make the header dark');
     expect(cmd).not.toContain('AGENTS.md');
   });
 
@@ -51,7 +55,28 @@ describe('the Codex command', () => {
 
   it('quotes a prompt that would otherwise escape the shell', () => {
     const cmd = codexCommand("it's broken; rm -rf /", { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } });
-    expect(cmd).toContain(`'\\''`); // the apostrophe is quoted, not closing the string
+    expect(cmd).not.toContain("it's broken");
+    expect(cmd).toContain('base64 -d');
+    expect(cmd).toContain('codex exec');
+    expect(cmd).toContain(' - < /tmp/selvedge-codex-prompt');
+  });
+
+  it('keeps the complete prompt as data through the detached launcher', () => {
+    const prompt = "owner's app (build it)\n- Anything secret stays in environment\n`touch /tmp/never`";
+    const inner = codexCommand(prompt, { auth: { envVar: 'OPENAI_API_KEY', secret: 'k' } });
+    const detached = startCommand(inner, '/tmp/turn.log', '/tmp/turn.pid');
+    expect(detached).not.toContain(prompt);
+    expect(detached).not.toContain("owner's app");
+
+    const encodedScript = /printf %s ([A-Za-z0-9+/=]+) \| base64 -d/.exec(detached)?.[1];
+    expect(encodedScript).toBeTruthy();
+    const decodedScript = Buffer.from(encodedScript!, 'base64').toString('utf8');
+    expect(decodedScript).toContain('codex exec');
+    expect(decodedScript).not.toContain(prompt);
+
+    const encodedPrompt = /printf %s ([A-Za-z0-9+/=]+) \| base64 -d > \/tmp\/selvedge-codex-prompt/.exec(decodedScript)?.[1];
+    expect(encodedPrompt).toBeTruthy();
+    expect(Buffer.from(encodedPrompt!, 'base64').toString('utf8')).toContain(prompt);
   });
 });
 
