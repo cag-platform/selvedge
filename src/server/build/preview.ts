@@ -371,6 +371,28 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         variables,
         ttlMinutes: TOKEN_TTL_SECONDS / 60,
       });
+      // A domain existing only means Railway accepted the deployment. It can
+      // still serve Railway's own Not Found page while building, or forever if
+      // the build fails. Keep the durable operation in `starting` until the
+      // deployment itself is live so "ready" always means an app a person can
+      // actually use.
+      let live = false;
+      for (let attempt = 0; attempt < 72; attempt += 1) {
+        const inspected = await runtime.inspectPreview(preview.id);
+        if (inspected.state === 'ready') {
+          live = true;
+          break;
+        }
+        if (inspected.state === 'failed' || inspected.state === 'destroyed') {
+          await runtime.destroyPreview(preview.id).catch(() => undefined);
+          throw new Error('the hosted preview deployment failed');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+      if (!live) {
+        await runtime.destroyPreview(preview.id).catch(() => undefined);
+        throw new Error('the hosted preview did not become ready in time');
+      }
       await setBuild(db, orgId, projectId, {
         previewUrl: preview.url,
         previewRuntimeId: preview.id,
@@ -380,7 +402,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         previewActiveUntil: new Date(Date.now() + PREVIEW_TTL_MS),
       });
       unpublishedRef = null;
-      return { state: 'ready', url: preview.url, message: 'The preview is finishing its build.' };
+      return { state: 'ready', url: preview.url, message: null };
     }
     const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
 
