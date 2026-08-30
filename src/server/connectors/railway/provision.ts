@@ -181,7 +181,30 @@ export async function findServiceByRepo(token: string, repoFullName: string): Pr
   return service;
 }
 
-/** Create a service that deploys from a GitHub repo. Variables are passed at creation so the first auto-deploy already has them. */
+/** Create an unconnected service. The caller configures it completely before
+ * attaching source, because source attachment can trigger an immediate build. */
+export async function createEmptyService(
+  token: string,
+  projectId: string,
+  name: string,
+  variables: Record<string, string>,
+): Promise<string> {
+  const mutation = `mutation Create($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`;
+  const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
+    input: { projectId, name, variables },
+  });
+  return data.serviceCreate.id;
+}
+
+export async function connectServiceRepository(token: string, serviceId: string, repoFullName: string, branch: string): Promise<void> {
+  await railwayGql(token, `mutation Connect($id: String!, $input: ServiceConnectInput!) { serviceConnect(id: $id, input: $input) { id } }`, {
+    id: serviceId,
+    input: { repo: repoFullName, branch },
+  });
+}
+
+/** Production creation keeps its established one-call contract. Disposable
+ * previews use createEmptyService directly so they can configure first. */
 export async function createService(
   token: string,
   projectId: string,
@@ -190,24 +213,13 @@ export async function createService(
   variables: Record<string, string>,
   branch = 'main',
 ): Promise<string> {
-  const mutation = `mutation Create($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }`;
-  let serviceId: string | null = null;
+  const serviceId = await createEmptyService(token, projectId, name, variables);
   try {
-    const data = await railwayGql<{ serviceCreate: { id: string } }>(token, mutation, {
-      // Create without a source first. Railway otherwise starts an implicit
-      // deployment immediately, and we cannot permit that deployment to fall
-      // back to the repository's default branch even for a moment.
-      input: { projectId, name, variables },
-    });
-    serviceId = data.serviceCreate.id;
-    await railwayGql(token, `mutation Connect($id: String!, $input: ServiceConnectInput!) { serviceConnect(id: $id, input: $input) { id } }`, {
-      id: serviceId,
-      input: { repo: repoFullName, branch },
-    });
+    await connectServiceRepository(token, serviceId, repoFullName, branch);
     return serviceId;
-  } catch (err) {
-    if (serviceId) await deleteService(token, serviceId).catch(() => undefined);
-    throw err;
+  } catch (error) {
+    await deleteService(token, serviceId).catch(() => undefined);
+    throw error;
   }
 }
 

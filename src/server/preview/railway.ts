@@ -1,5 +1,5 @@
 import type { Db } from '../db/client.js';
-import { configurePreviewService, createService, deleteService, deployPreviewCommit, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
+import { configurePreviewService, connectServiceRepository, createEmptyService, deleteService, deployPreviewCommit, ensureServiceDomain, resolveHostProject, setServiceVariables } from '../connectors/railway/provision.js';
 import { getDeployState, serviceExists, type RailwayTarget } from '../connectors/railway/client.js';
 import { hostProjectOptions, resolveHostAccount } from '../build/hostAccount.js';
 import type { CreatePreviewInput, PreviewHandle, PreviewRuntime } from './runtime.js';
@@ -32,13 +32,14 @@ export class RailwayPreviewRuntime implements PreviewRuntime {
     const host = await resolveHostProject(account.token, hostProjectOptions(account));
     const name = `preview-${input.projectId}-${Date.now().toString(36)}`.slice(0, 40);
     const variables = previewVariables(input.projectId, input.variables);
-    const serviceId = await createService(account.token, host.projectId, name, input.source.repository, variables, input.source.ref);
+    const serviceId = await createEmptyService(account.token, host.projectId, name, variables);
     const target = { ...host, serviceId };
     const createdAt = new Date();
     const expiresAt = new Date(Date.now() + input.ttlMinutes * 60_000);
     try {
       await configurePreviewService(account.token, target);
       await setServiceVariables(account.token, target, variables);
+      await connectServiceRepository(account.token, serviceId, input.source.repository, input.source.ref);
       await deployPreviewCommit(account.token, target, input.source.commitSha);
       const url = await ensureServiceDomain(account.token, target);
       const id = encode({ orgId: input.orgId, target, expiresAt: expiresAt.toISOString(), createdAt: createdAt.toISOString(), url });
