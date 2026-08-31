@@ -122,7 +122,10 @@ class BlaxelWorkspace implements Workspace {
       // Blaxel's process status and wait-for-completion endpoints can remain
       // open after a command has exited. Emit our own unambiguous terminal
       // marker and observe stdout instead, so completion is Selvedge-owned.
-      command: `( ${request.command} ); code=$?; printf '\n${marker}%s\n' "$code"; exit "$code"`,
+      // Do not wrap the command in a subshell. Agent turns deliberately launch
+      // their worker with `nohup ... &`; a parenthesized shell waits for that
+      // background job and prevents this exec call from returning to the poller.
+      command: `${request.command}; code=$?; printf '\n${marker}%s\n' "$code"; exit "$code"`,
       workingDir: request.cwd,
       env: await this.environment(request.secretGrants),
       timeout: request.timeoutSeconds,

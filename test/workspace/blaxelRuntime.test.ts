@@ -134,5 +134,8 @@ describe('Blaxel Workspace Runtime', () => {
     await expect(workspace.exec({ command: 'echo done', timeoutSeconds: 5 })).resolves.toEqual({
       exitCode: 0, stdout: 'done', stderr: '',
     });
+    const wrapped = process.exec.mock.calls.at(-1)?.[0]?.command as string;
+    expect(wrapped).toMatch(/^echo done; code=\$\?/);
+    expect(wrapped).not.toMatch(/^\( echo done \)/);
   });
 });
