@@ -13,8 +13,9 @@ import { unzipSync } from 'fflate';
  * project: node_modules, caches, virtualenvs — often 95% of the bytes and none
  * of the app. Those are filtered by a fixed list and REPORTED, so "your Repl
  * is in" never quietly means "except the parts I decided about". Build outputs
- * like dist/ are kept: for a static site they ARE the app, and a builder can
- * always regenerate what it doesn't need.
+ * like dist/ are kept: for a static site they ARE the app. Generated source
+ * maps are the exception: they are rebuildable diagnostics, not runtime files,
+ * and Replit exports can contain several multi-megabyte copies of them.
  *
  * THE CAPS REFUSE, THEY NEVER TRIM. An import that lands 380 of 400 files is
  * an app that almost works and a bug hunt nobody signed up for. Over a cap,
@@ -48,12 +49,17 @@ const JUNK_SEGMENTS = new Set([
 /** After filtering. More files than this is a workspace, not an app. */
 export const MAX_FILES = 400;
 /** Unpacked, after filtering. */
-export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
+export const MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 /** One file over this is an asset that belongs in object storage, not git. */
-export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function isJunk(path: string): boolean {
   return path.split('/').some((seg) => JUNK_SEGMENTS.has(seg));
+}
+
+/** Rebuildable diagnostics emitted by JS/CSS bundlers, never app runtime. */
+function isGeneratedSourceMap(path: string): boolean {
+  return /\.(?:js|mjs|cjs|css)\.map$/i.test(path);
 }
 
 export function readAppZip(bytes: Uint8Array): AppZipResult {
@@ -95,6 +101,11 @@ export function readAppZip(bytes: Uint8Array): AppZipResult {
       skippedDirs.add(f.path.split('/').find((seg) => JUNK_SEGMENTS.has(seg))!);
       continue;
     }
+    if (isGeneratedSourceMap(f.path)) {
+      skippedCount += 1;
+      skippedDirs.add('generated source maps');
+      continue;
+    }
     files.push(f);
   }
   if (files.length === 0) {
@@ -106,7 +117,7 @@ export function readAppZip(bytes: Uint8Array): AppZipResult {
     const worst = over.sort((a, b) => b.bytes.length - a.bytes.length)[0]!;
     return {
       ok: false,
-      error: `${worst.path} is ${(worst.bytes.length / 1024 / 1024).toFixed(1)}MB — too big for a repo file. Remove it from the zip (${over.length} file${over.length === 1 ? ' is' : 's are'} over ${MAX_FILE_BYTES / 1024 / 1024}MB) and try again.`,
+      error: `${worst.path} is ${(worst.bytes.length / 1024 / 1024).toFixed(1)}MB — too large to move safely into the project's GitHub repository (${over.length} file${over.length === 1 ? ' is' : 's are'} over ${MAX_FILE_BYTES / 1024 / 1024}MB). Move that asset to storage or remove it from the export, then try again.`,
     };
   }
   if (files.length > MAX_FILES) {

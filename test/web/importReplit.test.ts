@@ -41,7 +41,7 @@ describe('web/routes/import/replit', () => {
     pushes.push({ repo, files: files.map((f) => f.path), message });
     return { commitSha: 'c0ffee', branch: 'main', files: files.length };
   };
-  const okCreateRepo = async (name: string) => ({ fullName: `acme/${name}` });
+  const okCreateRepo = async (_orgId: string, name: string) => ({ fullName: `acme/${name}` });
 
   const app = (deps = {}) =>
     appWithOrg(orgId, createImportReplitRouter(db, { createRepo: okCreateRepo, push: okPush, prepareWorkspace: async () => ({ ok: true, workspaceId: 'ws_migration' }), startPreview: async () => ({ state: 'ready', url: 'https://preview.example', message: null }), verifyPreview: async () => ({ schema_version: 1, status: 'passed', verifier: 'selvedge-preview-verifier', independent_from_migration_agent: true, checks: [{ name: 'Preview responds', status: 'passed', detail: 'HTTP 200' }], screenshot_artifact_ids: [], screenshot_artifacts: [], console_errors: [], failed_requests: [], routes_checked: [], guided_journey: { status: 'passed', name: 'Test', steps: [] }, limitations: [], verified_at: new Date().toISOString() }), ...deps }));

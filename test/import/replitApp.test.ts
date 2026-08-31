@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { zipSync } from 'fflate';
-import { readAppZip, MAX_FILES } from '../../src/server/import/replitApp.js';
+import { readAppZip, MAX_FILES, MAX_FILE_BYTES } from '../../src/server/import/replitApp.js';
 
 /**
  * A Repl's zip is a WORKSPACE — the app plus node_modules, caches and
@@ -37,6 +37,26 @@ describe('reading a Repl out of its zip', () => {
     expect(read.ok && read.files.map((f) => f.path).sort()).toEqual(['dist/index.html', 'dist/main.css']);
   });
 
+  it('automatically leaves generated source maps behind while keeping the built app', () => {
+    const read = readAppZip(zip({
+      'r/artifacts/api-server/dist/index.mjs': enc('export default {}'),
+      'r/artifacts/api-server/dist/index.mjs.map': new Uint8Array(4 * 1024 * 1024),
+      'r/dist/app.js': enc('console.log(1)'),
+      'r/dist/app.js.map': new Uint8Array(3 * 1024 * 1024),
+    }));
+    expect(read.ok && read.files.map((f) => f.path).sort()).toEqual([
+      'artifacts/api-server/dist/index.mjs',
+      'dist/app.js',
+    ]);
+    expect(read.ok && read.skipped).toContain('generated source maps');
+    expect(read.ok && read.skippedCount).toBe(2);
+  });
+
+  it('accepts normal application assets larger than the old 2MB ceiling', () => {
+    const read = readAppZip(zip({ 'r/app.js': enc('fine'), 'r/hero.png': new Uint8Array(3 * 1024 * 1024) }));
+    expect(read.ok).toBe(true);
+  });
+
   it('refuses a zip with escaping paths whole — those bytes go into a git tree', () => {
     const read = readAppZip(zip({ 'ok.js': enc('fine'), '../escape.sh': enc('nope') }));
     expect(read.ok).toBe(false);
@@ -52,7 +72,7 @@ describe('reading a Repl out of its zip', () => {
   });
 
   it('refuses one oversized file by name, never trims it', () => {
-    const read = readAppZip(zip({ 'r/app.js': enc('fine'), 'r/video.mp4': new Uint8Array(3 * 1024 * 1024) }));
+    const read = readAppZip(zip({ 'r/app.js': enc('fine'), 'r/video.mp4': new Uint8Array(MAX_FILE_BYTES + 1) }));
     expect(read.ok).toBe(false);
     expect(!read.ok && read.error).toContain('video.mp4');
   });
