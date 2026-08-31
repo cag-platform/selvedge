@@ -6,7 +6,7 @@ import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createWorkshopRouter } from '../../src/server/web/routes/workshop.js';
 import { diagnoseStartFailure } from '../../src/server/build/previewDiagnosis.js';
-import { previewEnvFile } from '../../src/server/build/previewEnv.js';
+import { mergePreviewEnv, previewEnvFile } from '../../src/server/build/previewEnv.js';
 import { appWithOrg } from '../web/helpers.js';
 import { stubRepoLookup } from '../helpers/repoLookup.js';
 
@@ -102,6 +102,19 @@ describe('the preview environment, end to end', () => {
     expect(file).toContain('MSG=');
     expect(file).toContain('it is set');
     expect(file).toContain('PORT=');
+  });
+
+  it('adds service credentials without erasing an existing preview environment', async () => {
+    await request(app()).put('/api/projects/loom/preview-env').send({ env: 'DATABASE_URL=postgres://test\nOTHER_SERVICE=kept' }).expect(200);
+
+    const summary = await mergePreviewEnv(db, orgId, 'loom', [
+      { key: 'VITE_CLERK_PUBLISHABLE_KEY', value: 'pk_test_public' },
+      { key: 'CLERK_SECRET_KEY', value: 'sk_test_secret' },
+    ]);
+    expect(summary.keys).toEqual(['DATABASE_URL', 'OTHER_SERVICE', 'VITE_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY']);
+    const file = await previewEnvFile(db, orgId, 'loom');
+    expect(file).toContain('OTHER_SERVICE');
+    expect(file).toContain('CLERK_SECRET_KEY');
   });
 
   /** A `.env` is a whole file, not a patch — and the screen says so before you save. */

@@ -110,6 +110,26 @@ export async function setPreviewEnv(
   return getPreviewEnvSummary(db, orgId, projectId);
 }
 
+/**
+ * Add or replace a small set of values without erasing credentials the owner
+ * already supplied for another service. Values remain write-only at the HTTP
+ * boundary; decryption happens here solely to produce the next encrypted blob.
+ */
+export async function mergePreviewEnv(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  additions: Array<{ key: string; value: string }>,
+): Promise<PreviewEnvSummary> {
+  const current = parseEnvText((await previewEnvFile(db, orgId, projectId)) ?? '');
+  const merged = new Map(current.map((entry) => [entry.key, entry.value]));
+  for (const addition of additions) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(addition.key)) continue;
+    merged.set(addition.key, addition.value);
+  }
+  return setPreviewEnv(db, orgId, projectId, toEnvFile([...merged].map(([key, value]) => ({ key, value }))));
+}
+
 export async function setPreviewDatabase(db: Db, orgId: string, projectId: string, wanted: boolean): Promise<void> {
   await db
     .insert(previewEnv)

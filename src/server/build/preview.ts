@@ -329,6 +329,30 @@ export async function ensurePreview(db: Db, orgId: string, projectId: string, cf
   return promise;
 }
 
+/** Remove only the disposable preview so changed development credentials are
+ * picked up by a clean rebuild. The workspace and production deployment stay
+ * untouched. */
+export async function invalidatePreview(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<void> {
+  const current = await getBuild(db, orgId, projectId);
+  if (current?.previewRuntimeId && process.env.PREVIEW_RUNTIME === 'railway') {
+    await new RailwayPreviewRuntime(db).destroyPreview(current.previewRuntimeId).catch(() => undefined);
+  }
+  if (current?.previewSourceRef && current.repoFullName) {
+    await deletePreviewRefWithToken(cfg.githubToken, current.repoFullName, current.previewSourceRef).catch(() => undefined);
+  }
+  await setBuild(db, orgId, projectId, {
+    previewUrl: null,
+    previewRuntimeId: null,
+    previewSourceRef: null,
+    previewToken: null,
+    previewTokenExpiresAt: null,
+    previewActiveUntil: null,
+    previewOperationStatus: 'none',
+    previewOperationMessage: null,
+    previewOperationStartedAt: null,
+  });
+}
+
 async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<PreviewStatus> {
   /**
    * NO SANDBOX YET IS NOT A REASON TO REFUSE.

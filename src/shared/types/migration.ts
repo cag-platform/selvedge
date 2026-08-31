@@ -87,6 +87,15 @@ export type MigrationJourney = {
   test_flow: MigrationOwnerTestFlow | null;
   preview: { state: 'ready' | 'pending' | 'error' | 'none'; url: string | null; message: string | null };
   destinations: { repository?: string; hosting?: string; database?: string };
+  account_bridge: {
+    requirements: Array<{
+      id: 'clerk' | 'replit_integrations';
+      label: string;
+      status: 'ready' | 'needs_connection' | 'needs_rebuild' | 'needs_review';
+      detail: string;
+      configured_keys: string[];
+    }>;
+  };
   created_at: string;
   updated_at: string;
 };

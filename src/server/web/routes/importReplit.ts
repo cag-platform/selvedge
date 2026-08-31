@@ -21,8 +21,9 @@ import type { MigrationVerification } from '../../../shared/types/migration.js';
 import { configFor } from '../../build/engineConfig.js';
 import { ensureSandbox } from '../../build/sandbox.js';
 import { canStartBuild } from '../../billing/entitlements.js';
-import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
+import { ensurePreview, invalidatePreview, type PreviewStatus } from '../../build/preview.js';
 import { getBuild } from '../../build/store.js';
+import { getPreviewEnvSummary, mergePreviewEnv } from '../../build/previewEnv.js';
 import { migrationJourneys } from '../../db/schema/index.js';
 import { and, desc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
@@ -115,8 +116,16 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
           ? { state: 'none', url: null, message: previewStep.detail }
           : { state: 'pending', url: null, message: null };
     const configured = row.ownerTestFlow ? await configuredMigrationTestInputIds(db, row.orgId, row.id) : new Set<string>();
+    const previewEnv = await getPreviewEnvSummary(db, row.orgId, row.projectId);
+    const authDetected = row.projectMap.items.some((item) => item.kind === 'auth' && item.status === 'found');
+    const integrationDetected = row.projectMap.items.some((item) => item.kind === 'integration' && item.status === 'found');
+    const clerkConfigured = ['VITE_CLERK_PUBLISHABLE_KEY', 'CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY'].every((key) => previewEnv.keys.includes(key));
+    const requirements = [
+      ...(authDetected ? [{ id: 'clerk' as const, label: 'Development sign-in', status: clerkConfigured ? 'ready' as const : 'needs_connection' as const, detail: clerkConfigured ? 'Development Clerk keys are stored and will be used only by the temporary preview.' : 'Connect a Clerk development instance so Selvedge can render and test signed-in behavior without production credentials.', configured_keys: previewEnv.keys.filter((key) => key.includes('CLERK')) }] : []),
+      ...(row.source === 'replit' ? [{ id: 'replit_integrations' as const, label: 'Replit-managed connections', status: integrationDetected ? 'needs_rebuild' as const : 'needs_review' as const, detail: integrationDetected ? 'One or more integrations depend on Replit. A coding agent must replace each with its normal provider connection before cutover.' : 'Selvedge will confirm that no Replit-only connection remains before cutover.', configured_keys: [] }] : []),
+    ];
     const testFlow = row.ownerTestFlow ? { ...row.ownerTestFlow, steps: row.ownerTestFlow.steps.map((step) => ({ ...step, input_requirements: (step.input_requirements ?? []).map((input) => ({ ...input, configured: configured.has(`${step.id}:${input.id}`) })) })) } : null;
-    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: testFlow, preview, destinations, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
+    return { id: row.id, project_id: row.projectId, source: row.source, state: row.state, original_untouched: row.originalUntouched, project_map: row.projectMap, migration_plan: plan, verification: row.migrationVerification, test_flow: testFlow, preview, destinations, account_bridge: { requirements }, created_at: row.createdAt.toISOString(), updated_at: row.updatedAt.toISOString() };
   };
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_ZIP_BYTES, files: 1 } }).single('file');
 
@@ -317,6 +326,28 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const state = verification.status === 'passed' ? 'verified' : 'preview_ready';
     await db.update(migrationJourneys).set({ migrationPlan, migrationVerification: verification, state, updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
     res.json({ state, verification, migration_plan: migrationPlan, original_untouched: current.originalUntouched });
+  }));
+
+  router.put('/api/projects/:projectId/migration/account-bridge/clerk', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
+    if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const publishable = typeof body.publishable_key === 'string' ? body.publishable_key.trim() : '';
+    const secret = typeof body.secret_key === 'string' ? body.secret_key.trim() : '';
+    if (body.development_only !== true) { res.status(400).json({ error: 'Confirm that these belong to a development Clerk instance.' }); return; }
+    if (!publishable.startsWith('pk_test_') || !secret.startsWith('sk_test_')) { res.status(400).json({ error: 'Use Clerk test keys (pk_test_… and sk_test_…). Production sign-in keys are not accepted in a temporary preview.' }); return; }
+    const config = await configFor(db, orgId, projectId);
+    if ('error' in config) { res.status(config.status).json({ error: config.error }); return; }
+    await mergePreviewEnv(db, orgId, projectId, [
+      { key: 'VITE_CLERK_PUBLISHABLE_KEY', value: publishable },
+      { key: 'CLERK_PUBLISHABLE_KEY', value: publishable },
+      { key: 'CLERK_SECRET_KEY', value: secret },
+    ]);
+    await invalidatePreview(db, orgId, projectId, config.cfg);
+    const [updated] = await db.update(migrationJourneys).set({ migrationVerification: null, state: 'copying', updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    res.json(await migrationResponse(updated!));
   }));
 
   router.post(
