@@ -121,6 +121,45 @@ const PRODUCT_PROOFS = [
   { eyebrow: 'See it working', title: 'Preview, verify, and put it online.', image: workspacePreview, alt: 'Selvedge workspace with a private app preview and a put it online action beside the project conversation', className: 'landing-proof-image-preview' },
 ] as const;
 
+type VisitorSystem = 'mac' | 'windows' | 'linux' | 'mobile' | 'web';
+type ArrivalSource = 'replit' | 'lovable' | 'cursor' | null;
+
+const SYSTEM_LABELS: Array<{ id: VisitorSystem; label: string }> = [
+  { id: 'mac', label: 'Mac' },
+  { id: 'windows', label: 'Windows' },
+  { id: 'linux', label: 'Linux' },
+  { id: 'mobile', label: 'Mobile' },
+  { id: 'web', label: 'Web' },
+];
+
+const SYSTEM_COPY: Record<VisitorSystem, { eyebrow: string; detail: string; cta: string }> = {
+  mac: { eyebrow: 'Built for this Mac—and wherever the project runs', detail: 'Connect local tools, Xcode, and Apple previews when you need them.', cta: 'Start on this Mac' },
+  windows: { eyebrow: 'Built for Windows and the web', detail: 'Use a private cloud workspace while Selvedge keeps the project together.', cta: 'Start on Windows' },
+  linux: { eyebrow: 'Built for Linux and the web', detail: 'Bring your repository and tools. Selvedge handles the shared workspace.', cta: 'Start on Linux' },
+  mobile: { eyebrow: 'Start here. Continue on your computer.', detail: 'Create the project now, then connect local tools when you are back at your desk.', cta: 'Create my workspace' },
+  web: { eyebrow: 'One workspace, from any system', detail: 'Start in the browser. Connect local tools only when the project needs them.', cta: 'Start in the browser' },
+};
+
+function detectVisitorSystem(): VisitorSystem {
+  if (typeof navigator === 'undefined') return 'web';
+  const agent = navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(agent)) return 'mobile';
+  if (/Macintosh|Mac OS X/i.test(agent)) return 'mac';
+  if (/Windows/i.test(agent)) return 'windows';
+  if (/Linux/i.test(agent)) return 'linux';
+  return 'web';
+}
+
+function detectArrivalSource(): ArrivalSource {
+  if (typeof window === 'undefined') return null;
+  const explicit = new URLSearchParams(window.location.search).get('from')?.toLowerCase();
+  const evidence = `${explicit ?? ''} ${document.referrer}`.toLowerCase();
+  if (evidence.includes('replit')) return 'replit';
+  if (evidence.includes('lovable')) return 'lovable';
+  if (evidence.includes('cursor')) return 'cursor';
+  return null;
+}
+
 function ProductProofs() {
   const [open, setOpen] = useState<number | null>(null);
   const selected = open === null ? null : PRODUCT_PROOFS[open];
@@ -146,10 +185,18 @@ function ProductProofs() {
 }
 
 export function Landing() {
+  const [visitorSystem, setVisitorSystem] = useState<VisitorSystem>(() => detectVisitorSystem());
+  const [arrivalSource] = useState<ArrivalSource>(() => detectArrivalSource());
+  const systemCopy = SYSTEM_COPY[visitorSystem];
+  const eyebrow = arrivalSource
+    ? `Leaving ${arrivalSource === 'cursor' ? 'Cursor' : arrivalSource[0]!.toUpperCase() + arrivalSource.slice(1)}? Bring the project with you.`
+    : systemCopy.eyebrow;
+  const signUpHref = `/sign-up?system=${visitorSystem}${arrivalSource ? `&from=${arrivalSource}` : ''}`;
+
   return <div className="landing-site overflow-hidden">
     <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>A permanent home for AI-built projects</p><h1 className="mt-4 font-display text-hero font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-6 max-w-xl text-hero-sub text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/sign-up" className={btnPrimary}>Bring in a project</Link><a href="#how" className={btnGhost}>See how it works</a></div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
+      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#how" className={btnGhost}>See how it works</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
 
       <ProductProofs />
 
