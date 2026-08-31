@@ -25,7 +25,9 @@ type WorkspaceMetadata = {
 };
 
 function sandboxName(input: CreateWorkspaceInput): string {
-  const readable = input.projectId.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'project';
+  // Blaxel caps metadata.name at 49 characters. `selvedge-` + 27 readable
+  // characters + `-` + the 12-character unique suffix fits exactly.
+  const readable = input.projectId.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 27) || 'project';
   const unique = createHash('sha256').update(`${input.orgId}:${input.projectId}:${randomBytes(8).toString('hex')}`).digest('hex').slice(0, 12);
   return `selvedge-${readable}-${unique}`;
 }

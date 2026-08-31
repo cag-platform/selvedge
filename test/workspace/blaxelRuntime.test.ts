@@ -59,7 +59,7 @@ describe('Blaxel Workspace Runtime', () => {
   it('creates a restricted microVM and checks out the project without changing the Selvedge contract', async () => {
     const { runtime, process } = fixture();
     const workspace = await runtime.createWorkspace({
-      orgId: 'org_1', projectId: 'project_1', purpose: 'development',
+      orgId: 'org_1', projectId: 'blaxel-launchboard-clean-proof-with-a-long-name', purpose: 'development',
       source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main', credentialGrant: 'github_1' },
       ttlMinutes: 180, idleStopMinutes: 15,
       network: { default: 'deny', allowedHosts: ['registry.npmjs.org'] },
@@ -67,6 +67,8 @@ describe('Blaxel Workspace Runtime', () => {
     });
 
     expect(workspace.id).toBe('selvedge-project-123');
+    const createInput = sdk.create.mock.calls[0]?.[0] as { name: string };
+    expect(createInput.name.length).toBeLessThanOrEqual(49);
     expect(sdk.create).toHaveBeenCalledWith(expect.objectContaining({
       image: 'blaxel/ts-app:latest', memory: 4096, region: 'us-pdx-1',
       lifecycle: { expirationPolicies: [
