@@ -94,4 +94,17 @@ describe('Blaxel Workspace Runtime', () => {
     }));
     expect(fs.writeBinary).toHaveBeenCalledWith('/workspace/project/input.bin', new Uint8Array([7, 8]));
   });
+
+  it('retries transient filesystem failures while a sandbox wakes', async () => {
+    const { runtime, fs } = fixture();
+    fs.writeBinary.mockRejectedValueOnce(new Error('Failed to write binary: 502')).mockResolvedValueOnce(undefined);
+    const workspace = await runtime.createWorkspace({
+      orgId: 'org_1', projectId: 'project_1', purpose: 'development',
+      source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
+      ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] }, secrets: [],
+    });
+
+    await expect(workspace.upload('/workspace/project/input.bin', new Uint8Array([7, 8]))).resolves.toBeUndefined();
+    expect(fs.writeBinary).toHaveBeenCalledTimes(2);
+  });
 });

@@ -43,6 +43,24 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+function isTransientSandboxError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b(?:502|503|504)\b|ECONNRESET|fetch failed|socket hang up/i.test(message);
+}
+
+async function withTransientSandboxRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await operation(); }
+    catch (error) {
+      lastError = error;
+      if (!isTransientSandboxError(error) || attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 function stateOf(sandbox: SandboxInstance): WorkspaceHandle['state'] {
   if (sandbox.status === 'FAILED' || sandbox.status === 'TERMINATED') return 'failed';
   if (sandbox.status === 'DELETING' || sandbox.status === 'DEACTIVATING') return 'destroying';
@@ -146,12 +164,12 @@ class BlaxelWorkspace implements Workspace {
 
   async upload(path: string, data: Uint8Array): Promise<void> {
     const parent = path.slice(0, Math.max(1, path.lastIndexOf('/')));
-    await this.sandbox.fs.mkdir(parent).catch(() => undefined);
-    await this.sandbox.fs.writeBinary(path, data);
+    await withTransientSandboxRetry(() => this.sandbox.fs.mkdir(parent)).catch(() => undefined);
+    await withTransientSandboxRetry(() => this.sandbox.fs.writeBinary(path, data));
   }
 
   async download(path: string): Promise<Uint8Array> {
-    const blob = await this.sandbox.fs.readBinary(path);
+    const blob = await withTransientSandboxRetry(() => this.sandbox.fs.readBinary(path));
     return new Uint8Array(await blob.arrayBuffer());
   }
 
