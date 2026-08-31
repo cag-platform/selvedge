@@ -7,7 +7,7 @@ import { and, isNotNull, lt } from 'drizzle-orm';
 import { projectBuild } from '../db/schema/index.js';
 import { resolveRepoToken } from './repoToken.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
-import { previewEnvFile, getPreviewEnvSummary } from './previewEnv.js';
+import { previewEnvFile, getPreviewEnvSummary, parseEnvText } from './previewEnv.js';
 import { deletePreviewRefWithToken } from '../connectors/github/pushFiles.js';
 
 /**
@@ -393,10 +393,11 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
       const { ref } = published;
       unpublishedRef = ref;
       const env = await previewEnvFile(db, orgId, projectId).catch(() => null);
-      const variables = Object.fromEntries((env ?? '').split('\n').map((line) => line.trim()).filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)).map((line) => {
-        const at = line.indexOf('=');
-        return [line.slice(0, at), line.slice(at + 1)];
-      }));
+      // previewEnvFile is deliberately shell-quoted for sandbox sourcing.
+      // Railway variables are values, not shell source: parse the file first
+      // so surrounding quotes never become part of a Clerk key or other
+      // credential at build time.
+      const variables = Object.fromEntries(parseEnvText(env ?? '').map(({ key, value }) => [key, value]));
       const preview = await runtime.createPreview({
         orgId, projectId,
         source: { kind: 'git', repository: cfg.repoFullName, ref, commitSha: published.commitSha },
