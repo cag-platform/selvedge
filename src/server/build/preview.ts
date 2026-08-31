@@ -459,6 +459,15 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
     }
 
     const preview = await sandbox.workspace.exposePreview({ port: APP_PORT, ttlMinutes: TOKEN_TTL_SECONDS / 60 });
+    // Verification belongs to one exact preview capability. Native workspace
+    // previews are re-issued with a fresh signed relay URL just like hosted
+    // previews receive a fresh deployment URL, so evidence from the previous
+    // capability must not survive the handoff.
+    await db.update(migrationJourneys).set({
+      migrationVerification: null,
+      state: 'copying',
+      updatedAt: new Date(),
+    }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId)));
     await setBuild(db, orgId, projectId, {
       previewUrl: preview.url,
       previewToken: null,
