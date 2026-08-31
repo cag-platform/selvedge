@@ -164,6 +164,8 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
         startCommand: PREVIEW_START_COMMAND,
       },
     });
+    expect(PREVIEW_START_COMMAND).toContain('pkg.devDependencies?.vite');
+    expect(PREVIEW_START_COMMAND).toContain('pnpm --dir "$PREVIEW_DIR" run dev');
   });
 
   it('deploys the exact disposable commit SHA', async () => {

@@ -1,6 +1,17 @@
 import { railwayGql, type RailwayTarget } from './client.js';
 
-export const PREVIEW_START_COMMAND = `if node -e "const s=require('./package.json').scripts||{};process.exit(s.dev?0:1)"; then npm run dev; elif [ -f "artifacts/$SELVEDGE_PROJECT_ID/package.json" ]; then pnpm --dir "artifacts/$SELVEDGE_PROJECT_ID" run dev --port "$PORT"; else echo 'No development start contract found' >&2; exit 1; fi`;
+/**
+ * Start the imported app without assuming its display name is its package
+ * directory. Replit's generated monorepos commonly put a project named
+ * `clothier-daily-dashboard` in `artifacts/clothier-dashboard`; other builders
+ * make the same distinction between workspace and deployable names.
+ *
+ * Explicit contracts still win: root `dev`, then the exact project package.
+ * The fallback considers only artifact packages with a dev script and prefers
+ * a Vite/web package over API or utility packages. Independent verification
+ * remains responsible for proving that the chosen surface actually works.
+ */
+export const PREVIEW_START_COMMAND = `if node -e "const s=require('./package.json').scripts||{};process.exit(s.dev?0:1)"; then npm run dev; elif [ -f "artifacts/$SELVEDGE_PROJECT_ID/package.json" ]; then pnpm --dir "artifacts/$SELVEDGE_PROJECT_ID" run dev --port "$PORT"; else PREVIEW_DIR="$(node -e 'const fs=require("fs"),path=require("path");const root="artifacts";const found=fs.existsSync(root)?fs.readdirSync(root).flatMap((name)=>{const file=path.join(root,name,"package.json");try{const pkg=JSON.parse(fs.readFileSync(file,"utf8"));if(!pkg.scripts?.dev)return[];const vite=Boolean(pkg.dependencies?.vite||pkg.devDependencies?.vite);return[{dir:path.join(root,name),vite}]}catch{return[]}}).sort((a,b)=>Number(b.vite)-Number(a.vite)||a.dir.localeCompare(b.dir)):[];process.stdout.write(found[0]?.dir||"")')"; if [ -n "$PREVIEW_DIR" ]; then pnpm --dir "$PREVIEW_DIR" run dev --port "$PORT"; else echo 'No development start contract found' >&2; exit 1; fi; fi`;
 
 /**
  * The Railway WRITE side — creating a service for an app Selvedge built, giving
