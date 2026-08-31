@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { TimelineTab } from './TimelineTab.js';
@@ -88,11 +88,19 @@ type Preview = {
    */
   offer?: 'database' | 'env';
 };
+type GoLiveOperation = {
+  status: 'idle' | 'running' | 'building' | 'succeeded' | 'failed';
+  message: string | null;
+  url: string | null;
+};
 
 function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: string; name: string } }; onReload: () => void }) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [goLiveOperation, setGoLiveOperation] = useState<GoLiveOperation | null>(null);
+  const onReloadRef = useRef(onReload);
+  const liveRefreshSent = useRef(false);
   // Opened by the failure that needs it, and stays open afterwards so a second
   // variable can go in without hunting for the link again.
   const [envOpen, setEnvOpen] = useState(false);
@@ -122,7 +130,25 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
     setPreview(next.state === 'none' ? null : next);
   }, [data.project.id]);
 
+  const readGoLive = useCallback(async () => {
+    const next = await api.get<GoLiveOperation>(`/api/projects/${data.project.id}/workshop/golive`);
+    setGoLiveOperation(next);
+    setNote(next.message);
+    if (next.url && !liveRefreshSent.current) {
+      liveRefreshSent.current = true;
+      onReloadRef.current();
+    }
+  }, [data.project.id]);
+
+  useEffect(() => { onReloadRef.current = onReload; }, [onReload]);
+  useEffect(() => { liveRefreshSent.current = false; }, [data.project.id]);
   useEffect(() => { void readPreview().catch(() => undefined); }, [readPreview]);
+  useEffect(() => { void readGoLive().catch(() => undefined); }, [readGoLive]);
+  useEffect(() => {
+    if (goLiveOperation?.status !== 'running') return;
+    const timer = window.setInterval(() => void readGoLive().catch(() => undefined), 2000);
+    return () => window.clearInterval(timer);
+  }, [goLiveOperation?.status, readGoLive]);
   useEffect(() => {
     if (preview?.state !== 'starting') return;
     const timer = window.setInterval(() => void readPreview().catch(() => undefined), 2000);
@@ -154,8 +180,9 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
     setBusy(true);
     setNote(null);
     try {
-      await api.post(`/api/projects/${data.project.id}/workshop/golive`, {});
-      setNote("Setting it up — I'll say how it goes on the thread. This takes a few minutes.");
+      const next = await api.post<GoLiveOperation>(`/api/projects/${data.project.id}/workshop/golive`, {});
+      setGoLiveOperation(next);
+      setNote(next.message);
       onReload();
     } catch (e) {
       setNote(e instanceof Error ? e.message : "that didn't go through");
@@ -185,8 +212,8 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
       ) : (
         <div className="space-y-work-tight">
           <p className="text-body text-ink-dim">This isn’t online yet; only you can see it.</p>
-          <button disabled={busy} onClick={() => void goLive()} className={btnPrimary}>
-            {busy ? 'Starting…' : 'Put it online'}
+          <button disabled={busy || goLiveOperation?.status === 'running' || goLiveOperation?.status === 'building'} onClick={() => void goLive()} className={btnPrimary}>
+            {busy || goLiveOperation?.status === 'running' ? 'Setting it up…' : goLiveOperation?.status === 'building' ? 'Host is building…' : 'Put it online'}
           </button>
           {note && <p className="text-meta text-ink-quiet">{note}</p>}
         </div>

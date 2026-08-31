@@ -435,6 +435,13 @@
       "when": 1788742800012,
       "tag": "0061_agent_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1788742800013,
+      "tag": "0062_go_live_operations",
+      "breakpoints": true
     }
   ]
 }

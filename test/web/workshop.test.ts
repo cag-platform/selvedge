@@ -102,6 +102,30 @@ describe('web/routes/workshop — the workshop surface', () => {
     expect(seen).toEqual({ token: '', repo: 'acme/loom', branch: 'main' });
   });
 
+  it('persists go-live progress and exposes the completed result after the request returns', async () => {
+    let finish!: (value: { outcome: 'live'; url: string; message: string }) => void;
+    const pending = new Promise<{ outcome: 'live'; url: string; message: string }>((resolve) => { finish = resolve; });
+    const theApp = app({ goLive: (async () => pending) as WorkshopDeps['goLive'] });
+
+    const started = await request(theApp).post('/api/projects/loom/workshop/golive').send({});
+    expect(started.status).toBe(202);
+    expect((await request(theApp).get('/api/projects/loom/workshop/golive')).body).toMatchObject({ status: 'running' });
+
+    finish({ outcome: 'live', url: 'https://loom.example', message: 'It is online.' });
+    await vi.waitFor(async () => {
+      expect((await request(theApp).get('/api/projects/loom/workshop/golive')).body).toMatchObject({ status: 'succeeded', message: 'It is online.' });
+    });
+  });
+
+  it('does not start a duplicate go-live while one is already running', async () => {
+    let calls = 0;
+    const never = new Promise<never>(() => undefined);
+    const theApp = app({ goLive: (async () => { calls += 1; return never; }) as WorkshopDeps['goLive'] });
+    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({})).status).toBe(202);
+    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({})).status).toBe(202);
+    expect(calls).toBe(1);
+  });
+
   it('sums the cost watch from real runs', async () => {
     await db.insert(agentRuns).values([
       { id: ulid(), orgId, projectId: 'loom', prompt: 'a', status: 'succeeded', costCents: 120 },

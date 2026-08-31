@@ -39,6 +39,10 @@ export const projectBuild = pgTable(
     previewOperationStatus: text('preview_operation_status'),
     previewOperationMessage: text('preview_operation_message'),
     previewOperationStartedAt: timestamp('preview_operation_started_at', { withTimezone: true }),
+    /** Durable production-publish progress. */
+    goLiveStatus: text('go_live_status'),
+    goLiveMessage: text('go_live_message'),
+    goLiveStartedAt: timestamp('go_live_started_at', { withTimezone: true }),
     /** A browser is actively using the development preview until this time. */
     previewActiveUntil: timestamp('preview_active_until', { withTimezone: true }),
     /** The unique subdomain label this project's preview is served from (preview proxy). */

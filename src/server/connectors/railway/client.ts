@@ -15,6 +15,7 @@ import type { HostDeployStatus } from '../host/deploy.js';
 export type { HostDeployStatus } from '../host/deploy.js';
 
 const ENDPOINT = 'https://backboard.railway.com/graphql/v2';
+const RAILWAY_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface RailwayTarget {
   projectId: string;
@@ -81,6 +82,7 @@ export async function railwayGql<T>(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(RAILWAY_REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     throw new Error(`Could not reach the Railway API: ${err instanceof Error ? err.message : String(err)}`);

@@ -50,6 +50,7 @@ function surfaceOf(req: Request): ProductSurface {
 
 /** A run this old still marked running is a crashed process, not real work — it must not block forever. */
 const STUCK_RUN_MS = 45 * 60 * 1000;
+const STUCK_GO_LIVE_MS = 10 * 60 * 1000;
 
 // Files for the agent to analyze, dissect, or learn from while building.
 //
@@ -650,10 +651,60 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(404).json({ error: 'no such project' });
         return;
       }
-      void (deps.goLive ?? goLive)(db, orgId, projectId).catch((err) => {
-        console.error(`go-live failed for ${orgId}/${projectId}:`, err);
+      const current = await getBuild(db, orgId, projectId);
+      const fresh = current?.goLiveStartedAt && current.goLiveStartedAt.getTime() > Date.now() - STUCK_GO_LIVE_MS;
+      if (current?.goLiveStatus === 'running' && fresh) {
+        res.status(202).json({ status: 'running', message: current.goLiveMessage ?? 'Setting up the live app.', url: null });
+        return;
+      }
+      await setBuild(db, orgId, projectId, {
+        goLiveStatus: 'running',
+        goLiveMessage: 'Setting up the live app.',
+        goLiveStartedAt: new Date(),
       });
-      res.status(202).json({ started: true });
+      void (deps.goLive ?? goLive)(db, orgId, projectId).then(async (outcome) => {
+        await setBuild(db, orgId, projectId, {
+          goLiveStatus: outcome.outcome === 'live' || outcome.outcome === 'already_live'
+            ? 'succeeded'
+            : outcome.outcome === 'still_building'
+              ? 'building'
+              : 'failed',
+          goLiveMessage: outcome.message,
+        });
+      }).catch(async (err) => {
+        console.error(`go-live failed for ${orgId}/${projectId}:`, err);
+        await setBuild(db, orgId, projectId, {
+          goLiveStatus: 'failed',
+          goLiveMessage: `I couldn't finish putting it online — ${err instanceof Error ? err.message : String(err)}. You can safely try again.`,
+        }).catch(() => undefined);
+      });
+      res.status(202).json({ status: 'running', message: 'Setting up the live app.', url: null });
+    }),
+  );
+
+  router.get(
+    '/api/projects/:projectId/workshop/golive',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const projectId = req.params.projectId ?? '';
+      const pack = await getPack(db, orgId, projectId);
+      if (!pack) {
+        res.status(404).json({ error: 'no such project' });
+        return;
+      }
+      const build = await getBuild(db, orgId, projectId);
+      const fresh = build?.goLiveStartedAt && build.goLiveStartedAt.getTime() > Date.now() - STUCK_GO_LIVE_MS;
+      if (build?.goLiveStatus === 'running' && !fresh) {
+        const message = 'That setup was interrupted before it finished. Nothing new was shipped; try again to resume safely.';
+        await setBuild(db, orgId, projectId, { goLiveStatus: 'failed', goLiveMessage: message });
+        res.json({ status: 'failed', message, url: pack.identity.links?.live_url ?? null });
+        return;
+      }
+      res.json({
+        status: build?.goLiveStatus ?? 'idle',
+        message: build?.goLiveMessage ?? null,
+        url: pack.identity.links?.live_url ?? null,
+      });
     }),
   );
 
