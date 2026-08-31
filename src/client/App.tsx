@@ -44,6 +44,7 @@ import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
 import { DEFAULT_TITLE, titleFor } from './components/Head.js';
+import { AgentOnboarding } from './components/AgentOnboarding.js';
 
 /**
  * First sign-in from any browser teaches the org its timezone, so the
@@ -131,6 +132,7 @@ function AuthedApp() {
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
+        <AgentOnboarding />
         <div className="product-shell min-h-screen" data-theme={resolvedTheme} style={{ colorScheme: resolvedTheme === 'night' ? 'dark' : 'light' }}>
           <Nav theme={theme} resolvedTheme={resolvedTheme} onThemeChange={setTheme} />
           <main className={workbench || dashboard || health || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>

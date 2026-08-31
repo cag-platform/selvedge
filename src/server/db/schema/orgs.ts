@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
 
 /**
  * One row per Clerk organization. Created lazily on first authenticated
@@ -27,5 +27,12 @@ export const orgs = pgTable('orgs', {
    * in ordinary language. The underlying run record is retained either way.
    */
   technicalDetail: text('technical_detail').notNull().default('simple'),
+  /**
+   * The tools this team already reaches for. This is onboarding context, not
+   * a lock-in list: every agent remains available, while these choices are
+   * placed first and their connection steps are made obvious.
+   */
+  preferredAgents: jsonb('preferred_agents').$type<string[]>(),
+  agentPreferencesSetAt: timestamp('agent_preferences_set_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

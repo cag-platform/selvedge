@@ -4,6 +4,7 @@ import { claudeCommand, claudeInstallCommand, parseAssistantText, parseResult, p
 import { codexCommand, codexInstallCommand, codexModel, parseCodexEvents, parseCodexResult, parseCodexText } from '../workers/codexCommand.js';
 import { costUsd } from '../../llm/pricing.js';
 import type { BuilderAuth } from '../../build/builderAuth.js';
+import { compatibleCodeCommand, compatibleInstallCommand, parseCompatible, type CompatibleWorker } from '../workers/compatibleCodeCommand.js';
 
 /**
  * ONE SHAPE FOR "A BUILDER". The workshop turn (build/agent.ts) is a long,
@@ -93,6 +94,26 @@ function codexDriver(auth: BuilderAuth): AgentDriver {
   };
 }
 
+function compatibleDriver(id: CompatibleWorker): AgentDriver {
+  return {
+    id,
+    setupCommand: compatibleInstallCommand(id),
+    command: (prompt, opts) => compatibleCodeCommand(id, prompt, opts),
+    result: (log) => ({ sessionId: parseCompatible(log).sessionId, isError: false, costUsd: 0, costReported: false }),
+    text: (log) => parseCompatible(log).text,
+    events: (log) => { const parsed = parseCompatible(log); return { tools: parsed.tools, truncated: parsed.truncated }; },
+  };
+}
+
+function deepSeekDriver(): AgentDriver {
+  const base = claudeDriver({} as BuilderAuth);
+  return {
+    ...base,
+    id: 'deepseek-build',
+    command: (prompt, opts) => claudeCommand(prompt, opts.model ?? 'deepseek-chat', opts.resumeSessionId, opts.mode),
+  };
+}
+
 /**
  * The driver for an agent, or null when it can't run — which now means exactly
  * one thing for every builder: nobody has given it an account to run on. The
@@ -103,6 +124,9 @@ export function driverFor(agent: AgentId, auth: BuilderAuth | null): AgentDriver
   if (!auth) return null;
   if (agent === 'claude-code' && auth.agent === 'claude-code') return claudeDriver(auth);
   if (agent === 'codex' && auth.agent === 'codex') return codexDriver(auth);
+  if (agent === 'kimi-code' && auth.agent === 'kimi-code') return compatibleDriver('kimi-code');
+  if (agent === 'grok-build' && auth.agent === 'grok-build') return compatibleDriver('grok-build');
+  if (agent === 'deepseek-build' && auth.agent === 'deepseek-build') return deepSeekDriver();
   // Chat agents don't run in a sandbox at all — chat/turn.ts is their path.
   return null;
 }

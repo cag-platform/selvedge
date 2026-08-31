@@ -4,6 +4,7 @@ import type { Db } from '../../db/client.js';
 import { orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { DEFAULT_TECHNICAL_DETAIL, isTechnicalDetail } from '../../../shared/technicalDetail.js';
+import { isAgentId, type AgentId } from '../../../shared/agents.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -35,7 +36,25 @@ export function createOrgRouter(db: Db) {
         timezone: row?.timezone ?? 'UTC',
         timezone_source: row?.timezoneSource ?? 'default',
         technical_detail: isTechnicalDetail(row?.technicalDetail) ? row.technicalDetail : DEFAULT_TECHNICAL_DETAIL,
+        preferred_agents: Array.isArray(row?.preferredAgents) ? row.preferredAgents.filter(isAgentId) : null,
+        agent_preferences_set: row?.agentPreferencesSetAt != null,
       });
+    }),
+  );
+
+  router.patch(
+    '/api/org/agent-preferences',
+    asyncHandler(async (req, res) => {
+      const raw = (req.body as { agents?: unknown } | undefined)?.agents;
+      if (!Array.isArray(raw) || raw.length > 20 || !raw.every(isAgentId)) {
+        res.status(400).json({ error: 'agents must be a list of supported agents' });
+        return;
+      }
+      const agents = [...new Set(raw as AgentId[])];
+      const orgId = orgIdOf(req);
+      const now = new Date();
+      await db.update(orgs).set({ preferredAgents: agents, agentPreferencesSetAt: now }).where(eq(orgs.orgId, orgId));
+      res.json({ preferred_agents: agents, agent_preferences_set: true });
     }),
   );
 

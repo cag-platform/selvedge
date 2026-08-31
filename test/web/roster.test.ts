@@ -181,7 +181,7 @@ describe('who could answer this, and what handing it over would cost', () => {
     const agents = await roster((await conversation()).id, () => null);
 
     const builders = agents.filter((a) => a.changes_files);
-    expect(builders).toHaveLength(2);
+    expect(builders).toHaveLength(5);
     expect(builders.every((a) => !a.available)).toBe(true);
     expect(builders[0]!.unavailable_note).toMatch(/build engine isn't switched on/i);
   });

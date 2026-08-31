@@ -41,13 +41,15 @@ import { agentById, type AgentId, type AgentProvider } from '../../shared/agents
  *      builder that can't run is a fact the owner can act on, not an error.
  */
 
-export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex'>;
+export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex' | 'kimi-code' | 'grok-build' | 'deepseek-build'>;
 
 export type BuilderAuth = {
   agent: BuilderAgentId;
   provider: AgentProvider;
   /** The variable this CLI reads the secret from. Decided by `kind`, never assumed. */
   envVar: string;
+  /** Complete command-scoped environment. Some CLIs use a compatibility name. */
+  environment: Record<string, string>;
   secret: string;
   kind: CredentialKind;
   /** 'byo' = the org's own credential; 'managed' = this deployment covering it. */
@@ -74,6 +76,7 @@ type BuilderWiring = {
   connectNote: string;
   /** What to say when the credential they connected is the wrong sort for this CLI. */
   wrongKindNote: string;
+  commandEnv?: (secret: string, envVar: string) => Record<string, string>;
 };
 
 /**
@@ -112,6 +115,20 @@ const BUILDER_WIRING: Record<BuilderAgentId, BuilderWiring> = {
     // buys an auth error on a metered minute, so it is refused here instead.
     wrongKindNote:
       'Codex needs an OpenAI API key — it can’t build on a ChatGPT subscription. Connect an API key under Connections and it can build here.',
+  },
+  'kimi-code': {
+    provider: 'kimi', envVarByKind: { api_key: 'KIMI_API_KEY' }, platform: [{ envVar: 'KIMI_API_KEY', kind: 'api_key' }],
+    connectNote: 'Kimi Code builds on a Moonshot API key. Add one under Connections and it can build here.', wrongKindNote: '',
+    commandEnv: (secret) => ({ KIMI_API_KEY: secret, KIMI_MODEL_NAME: 'kimi-for-coding', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_API_KEY: secret, KIMI_MODEL_BASE_URL: 'https://api.moonshot.ai/v1', KIMI_MODEL_MAX_CONTEXT_SIZE: '262144' }),
+  },
+  'grok-build': {
+    provider: 'xai', envVarByKind: { api_key: 'XAI_API_KEY' }, platform: [{ envVar: 'XAI_API_KEY', kind: 'api_key' }],
+    connectNote: 'Grok Build builds on an xAI API key. Add one under Connections and it can build here.', wrongKindNote: '',
+  },
+  'deepseek-build': {
+    provider: 'deepseek', envVarByKind: { api_key: 'DEEPSEEK_API_KEY' }, platform: [{ envVar: 'DEEPSEEK_API_KEY', kind: 'api_key' }],
+    connectNote: 'DeepSeek Build builds on a DeepSeek API key. Add one under Connections and it can build here.', wrongKindNote: '',
+    commandEnv: (secret) => ({ DEEPSEEK_API_KEY: secret, ANTHROPIC_AUTH_TOKEN: secret, ANTHROPIC_API_KEY: '', ANTHROPIC_BASE_URL: 'https://api.deepseek.com/anthropic' }),
   },
 };
 
@@ -168,6 +185,7 @@ export async function resolveBuilderAuth(
         agent,
         provider: wiring.provider,
         envVar,
+        environment: wiring.commandEnv ? wiring.commandEnv(connected.secret.trim(), envVar) : { [envVar]: connected.secret.trim() },
         secret: connected.secret.trim(),
         kind: connected.kind,
         source: 'byo',
@@ -185,6 +203,7 @@ export async function resolveBuilderAuth(
             agent,
             provider: wiring.provider,
             envVar: candidate.envVar,
+            environment: wiring.commandEnv ? wiring.commandEnv(secret, candidate.envVar) : { [candidate.envVar]: secret },
             secret,
             kind: candidate.kind,
             source: 'managed',

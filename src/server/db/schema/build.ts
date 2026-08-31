@@ -25,6 +25,8 @@ export const projectBuild = pgTable(
     /** The Codex CLI session id, for the same reason. Separate column because they are separate conversations
      *  inside the same sandbox: switching builders must not resume the other one's session. */
     codexSessionId: text('codex_session_id'),
+    /** Sessions for neutral third-party builders, keyed by immutable agent id. */
+    builderSessions: jsonb('builder_sessions').$type<Record<string, string>>().notNull().default({}),
     /** The GitHub repo the sandbox works in, and the branch. */
     repoFullName: text('repo_full_name'),
     branch: text('branch').notNull().default('main'),

@@ -7,6 +7,8 @@ import { quoteHandoff, quoteNote } from './switch.js';
 import type { Thread } from './store.js';
 import { chatModelsFor, defaultChatModelFor, type ChatModelOption } from '../llm/chatModels.js';
 import { modelReadiness, type ModelReadiness } from '../llm/readiness.js';
+import { orgs } from '../db/schema/index.js';
+import { eq } from 'drizzle-orm';
 
 /**
  * THE ROSTER — everyone who could answer this conversation, what each would
@@ -152,6 +154,11 @@ export async function agentRoster(
 ): Promise<AgentOffer[]> {
   const engine = env();
   const from = thread.agent as AgentId;
+  const [org] = await db.select({ preferredAgents: orgs.preferredAgents }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
+  const preferred = new Set(Array.isArray(org?.preferredAgents) ? org.preferredAgents : []);
+  // Familiar tools appear first, but nothing is removed. Stable sort preserves
+  // the neutral registry order inside the familiar and unfamiliar groups.
+  const orderedAgents = [...AGENTS].sort((a, b) => Number(preferred.has(b.id)) - Number(preferred.has(a.id)));
   // Asked once per builder, and only if something asks. Each answer is cached
   // because two agents can share a provider, and the roster is rendered on
   // every thread open.
@@ -166,7 +173,7 @@ export async function agentRoster(
   };
 
   return Promise.all(
-    AGENTS.map(async (agent): Promise<AgentOffer> => {
+    orderedAgents.map(async (agent): Promise<AgentOffer> => {
       const answeringNow = agent.id === from;
       const base = await availability(db, orgId, agent, engine, Boolean(thread.projectId), builderCan);
       const selectedModel = answeringNow && thread.model ? thread.model : defaultChatModelFor(agent.id);

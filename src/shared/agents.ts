@@ -34,6 +34,9 @@
 export type AgentId =
   | 'claude-code'
   | 'codex'
+  | 'kimi-code'
+  | 'grok-build'
+  | 'deepseek-build'
   | 'claude'
   | 'gpt'
   | 'gemini'
@@ -117,6 +120,21 @@ const AGENT_TABLE = {
     costNote: 'builds in the same sandbox, on your own OpenAI key — about $0.05–0.30 a turn',
     // The driver is real (runner/agents/driver.ts); without an OpenAI key it
     // returns null and the caller says so. That is fuel, not wiring.
+    live: true,
+  },
+  'kimi-code': {
+    id: 'kimi-code', chip: 'KC', name: 'Kimi Code', changesFiles: true, provider: 'kimi', pricingModel: 'kimi-k2',
+    costNote: "builds in your project's sandbox on your own Moonshot key; its CLI does not yet report a dependable dollar total",
+    live: true,
+  },
+  'grok-build': {
+    id: 'grok-build', chip: 'GB', name: 'Grok Build', changesFiles: true, provider: 'xai', pricingModel: 'grok-4',
+    costNote: "builds in your project's sandbox on your own xAI key; its CLI does not yet report a dependable dollar total",
+    live: true,
+  },
+  'deepseek-build': {
+    id: 'deepseek-build', chip: 'DB', name: 'DeepSeek Build', changesFiles: true, provider: 'deepseek', pricingModel: 'deepseek-chat',
+    costNote: "builds in your project's sandbox on your own DeepSeek key through a compatible coding harness",
     live: true,
   },
   claude: {

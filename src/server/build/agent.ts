@@ -511,7 +511,7 @@ export async function runAgentTurn(
       // than whatever was true when the sandbox was first built.
       const merged = {
         GITHUB_TOKEN: cfg.githubToken,
-        ...(resolved.ok ? { [resolved.auth.envVar]: resolved.auth.secret } : {}),
+        ...(resolved.ok ? resolved.auth.environment : {}),
         ...(env ?? {}),
       };
       return sandbox.process.executeCommand(command, undefined, merged, timeoutSec);
@@ -613,7 +613,7 @@ export async function runAgentTurn(
   const prior = await getBuild(db, orgId, projectId);
   // Each builder has its own session inside the shared sandbox: resuming the
   // other one's would hand this agent someone else's transcript.
-  const priorSessionId = agent === 'codex' ? (prior?.codexSessionId ?? null) : (prior?.claudeSessionId ?? null);
+  const priorSessionId = agent === 'codex' ? (prior?.codexSessionId ?? null) : agent === 'claude-code' ? (prior?.claudeSessionId ?? null) : (prior?.builderSessions?.[agent] ?? null);
   let log = await attempt(priorSessionId);
 
   // A stale session (sandbox was recreated; the session file died with it)
@@ -627,7 +627,7 @@ export async function runAgentTurn(
     priorAttemptCostUsd = driver.result(log).costUsd;
     priorAttemptTools = driver.events(log).tools;
     priorAttemptLines = priorAttemptTools.map((t) => t.detail);
-    await setBuild(db, orgId, projectId, agent === 'codex' ? { codexSessionId: null } : { claudeSessionId: null });
+    await setBuild(db, orgId, projectId, agent === 'codex' ? { codexSessionId: null } : agent === 'claude-code' ? { claudeSessionId: null } : { builderSessions: { ...(prior?.builderSessions ?? {}), [agent]: '' } });
     log = await attempt(null);
   }
 
@@ -715,7 +715,7 @@ export async function runAgentTurn(
   await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
     ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: succeeded ? 'answered' : 'failed', ...(succeeded ? {} : { failure_code: 'builder_failed', retryable: true }) } } } : {}) });
   await setBuild(db, orgId, projectId, {
-    ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : { claudeSessionId: result.sessionId }) : {}),
+    ...(result?.sessionId ? (agent === 'codex' ? { codexSessionId: result.sessionId } : agent === 'claude-code' ? { claudeSessionId: result.sessionId } : { builderSessions: { ...(prior?.builderSessions ?? {}), [agent]: result.sessionId } }) : {}),
     stagedChangesReady,
     ...(succeeded && !planning
       ? stagedChangesReady

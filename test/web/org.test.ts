@@ -29,6 +29,8 @@ describe('web/routes/org', () => {
       timezone: 'UTC',
       timezone_source: 'default',
       technical_detail: 'simple',
+      preferred_agents: null,
+      agent_preferences_set: false,
     });
 
     const res = await request(app).patch('/api/org/timezone').send({ timezone: 'America/New_York', source: 'auto' });
@@ -63,5 +65,19 @@ describe('web/routes/org', () => {
 
     expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: 'plain' })).status).toBe(400);
     expect((await request(app).patch('/api/org/technical-detail').send({ technical_detail: null })).status).toBe(400);
+  });
+
+  it('stores the chat and coding agents chosen during onboarding, including an empty help-me-choose answer', async () => {
+    const app = appWithOrg(orgId, createOrgRouter(db));
+    const saved = await request(app).patch('/api/org/agent-preferences').send({ agents: ['gpt', 'kimi-code', 'gpt'] });
+    expect(saved.status).toBe(200);
+    expect(saved.body.preferred_agents).toEqual(['gpt', 'kimi-code']);
+    expect(saved.body.agent_preferences_set).toBe(true);
+
+    const org = await request(app).get('/api/org');
+    expect(org.body.preferred_agents).toEqual(['gpt', 'kimi-code']);
+    expect(org.body.agent_preferences_set).toBe(true);
+
+    expect((await request(app).patch('/api/org/agent-preferences').send({ agents: ['not-real'] })).status).toBe(400);
   });
 });

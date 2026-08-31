@@ -45,12 +45,24 @@ export type FuelVerifier = (provider: FuelProvider, key: string) => Promise<bool
 const PING_MODEL: Partial<Record<FuelProvider, string>> = {
   anthropic: 'claude-haiku-4-5-20251001',
   openai: 'gpt-5.6-luna',
+  gemini: PROVIDER_WIRING.gemini.chatModel,
+  kimi: PROVIDER_WIRING.kimi.chatModel,
+  xai: PROVIDER_WIRING.xai.chatModel,
+  deepseek: PROVIDER_WIRING.deepseek.chatModel,
+  mistral: PROVIDER_WIRING.mistral.chatModel,
 };
 
 const realVerifier: FuelVerifier = async (provider, key) => {
   const model = PING_MODEL[provider];
   if (!model) return false;
-  const client: LlmClient = provider === 'openai' ? new OpenAiLlmClient(key) : new AnthropicLlmClient(key);
+  const wiring = PROVIDER_WIRING[provider];
+  const client: LlmClient = provider === 'anthropic'
+    ? new AnthropicLlmClient(key)
+    : new OpenAiLlmClient(key, {
+        ...(wiring.baseUrl ? { baseURL: wiring.baseUrl } : {}),
+        provider,
+        structured: wiring.structured,
+      });
   const res = await client.complete({
     model,
     system: 'Reply in the required format.',

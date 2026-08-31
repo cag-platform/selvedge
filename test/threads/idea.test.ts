@@ -121,7 +121,7 @@ describe('an idea, and what becomes of it', () => {
       const res = await request(threadsApp()).get(`/api/threads/${id}/agents`).expect(200);
       const builders = res.body.agents.filter((a: { changes_files: boolean }) => a.changes_files);
 
-      expect(builders).toHaveLength(2);
+      expect(builders).toHaveLength(5);
       for (const b of builders) {
         // Listed, because hiding it teaches people the product is smaller than
         // it is — and unavailable, because it is.
