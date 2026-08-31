@@ -134,7 +134,10 @@ export function startCommand(inner: string, log: string, pid: string): string {
   // already contain quoted arguments. Shell escaping is not composable across
   // nested `bash -c` boundaries; transporting the script as base64 makes the
   // outer command data-only and lets the inner shell parse it exactly once.
-  const script = Buffer.from(`${inner}; echo "__EXIT:$?" >> ${log}`, 'utf8').toString('base64');
+  // Run the worker in a child shell so a driver-level `exit $status` cannot
+  // bypass Selvedge's authoritative exit record. Every coding driver uses that
+  // pattern to preserve the CLI's status after cleaning its prompt files.
+  const script = Buffer.from(`( ${inner} ); status=$?; echo "__EXIT:$status" >> ${log}`, 'utf8').toString('base64');
   return `${PATH_PREFIX} nohup bash -c "$(printf %s ${script} | base64 -d)" >> ${log} 2>&1 < /dev/null & echo $! > ${pid}`;
 }
 

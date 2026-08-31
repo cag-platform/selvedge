@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import { orgs, agentMessages, agentMessageAttachments, agentRuns, companionTokens } from '../../src/server/db/schema/index.js';
-import { runAgentTurn, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
+import { runAgentTurn, startCommand, type ExecuteInSandbox, type UploadToSandbox } from '../../src/server/build/agent.js';
 import { getBuild, setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
 import { claimAppleRuntimeJob, connectAppleRuntime, finishAppleRuntimeJob } from '../../src/server/companion/appleRuntime.js';
@@ -68,6 +68,13 @@ function transportedFile(script: string, path: string): string {
   const encoded = new RegExp(`printf %s ([A-Za-z0-9+/=]+) \\| base64 -d > ${escaped}`).exec(script)?.[1];
   return encoded ? Buffer.from(encoded, 'base64').toString('utf8') : '';
 }
+
+describe('detached agent command', () => {
+  it('records the worker status even when the driver exits its own shell', () => {
+    const script = detachedScript(startCommand('do-work; exit $status', '/tmp/turn.log', '/tmp/turn.pid'));
+    expect(script).toContain('( do-work; exit $status ); status=$?; echo "__EXIT:$status" >> /tmp/turn.log');
+  });
+});
 
 describe('runAgentTurn — streamed, costed, resumable', () => {
   let db: TestDb;
