@@ -149,7 +149,7 @@ function ProductDemo() {
     <div className="landing-demo landing-demo-light" aria-label="Guided Selvedge migration demonstration">
       <div className="landing-demo-bar">
         <div className="landing-window-dots" aria-hidden="true"><i /><i /><i /></div>
-          <p>Selvedge migration agent · Customer portal</p>
+          <p>Guided preview · Selvedge migration agent</p>
         <button type="button" onClick={() => setPlaying((current) => !current)} aria-label={playing ? 'Pause migration walkthrough' : 'Play migration walkthrough'}>
           {playing ? 'Pause' : 'Play'}
         </button>
@@ -174,6 +174,7 @@ function ProductDemo() {
             <p className="landing-demo-label">MIGRATION / {DEMO_STEPS[activeIndex]!.label.toUpperCase()}</p>
             <h3>Bring the portal home without risking production</h3>
             <p><span>{DEMO_STEPS[activeIndex]!.short}</span> · you supervise, Selvedge does the work</p>
+            <div className="landing-tour-tip"><span>{activeIndex + 1} / {DEMO_STEPS.length}</span><strong>{DEMO_STEPS[activeIndex]!.label}</strong><small>Choose any step above to explore.</small></div>
           </div>
           <div className="landing-demo-conversation">
             <div className="landing-demo-note"><span>YOU</span><p>Move our Lovable portal into Selvedge. Do not change the live app until the copy is verified.</p></div>
@@ -205,17 +206,43 @@ function ProductDemo() {
   );
 }
 
+const PRODUCT_PROOFS = [
+  { eyebrow: 'Bring anything in', title: 'Move without starting over.', image: migratePreview, alt: 'Selvedge migration screen showing sources including Replit, Lovable, GitHub, Codex, Claude Code, and Cursor', className: '' },
+  { eyebrow: 'Use any agent', title: 'Pick the best worker for the job.', image: agentsPreview, alt: 'Selvedge agent chooser showing Claude Code, Codex, Claude, and GPT working from the same project context', className: 'landing-proof-image-agents' },
+  { eyebrow: 'See it working', title: 'Preview, verify, and put it online.', image: workspacePreview, alt: 'Selvedge workspace with a private app preview and a put it online action beside the project conversation', className: 'landing-proof-image-preview' },
+] as const;
+
+function ProductProofs() {
+  const [open, setOpen] = useState<number | null>(null);
+  const selected = open === null ? null : PRODUCT_PROOFS[open];
+
+  useEffect(() => {
+    if (open === null) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(null); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open]);
+
+  return <>
+    <section aria-label="Selvedge in action" className="landing-proof mx-auto max-w-6xl px-4 sm:px-6">
+      {PRODUCT_PROOFS.map((proof, index) => <article key={proof.eyebrow}>
+        <button type="button" className={`landing-proof-image ${proof.className ?? ''}`} onClick={() => setOpen(index)} aria-label={`Enlarge: ${proof.title}`}><img src={proof.image} alt={proof.alt} /><span>View larger ↗</span></button>
+        <p className={eyebrowCls}>{proof.eyebrow}</p><h2>{proof.title}</h2>
+      </article>)}
+    </section>
+    {selected && <div className="landing-lightbox" role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(null); }}>
+      <div className="landing-lightbox-panel"><div><p className={eyebrowCls}>{selected.eyebrow}</p><h2>{selected.title}</h2><button type="button" onClick={() => setOpen(null)} aria-label="Close enlarged preview">Close ×</button></div><img src={selected.image} alt={selected.alt} /></div>
+    </div>}
+  </>;
+}
+
 export function Landing() {
   return <div className="landing-site overflow-hidden">
     <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#memory">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
       <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>Your project has somewhere better to go</p><h1 className="mt-4 font-display text-hero font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-6 max-w-2xl text-hero-sub text-ink-dim">One home for your projects, context, and AI agents—from first build to production.</p><div className="mt-8 flex flex-wrap gap-3"><Link to="/sign-up" className={btnPrimary}>Bring in a project</Link><Link to="/sign-up" className={btnGhost}>Start something new</Link></div></div><div id="product" className="landing-product-stage"><ProductDemo /></div></div><p className="landing-scroll-cue font-mono text-tech text-ink-quiet">You supervise. Selvedge does the work. ↓</p></section>
 
-      <section aria-label="Selvedge in action" className="landing-proof mx-auto max-w-6xl px-4 sm:px-6">
-        <article><div className="landing-proof-image"><img src={migratePreview} alt="Selvedge migration screen showing sources including Replit, Lovable, GitHub, Codex, Claude Code, and Cursor" /></div><p className={eyebrowCls}>Bring anything in</p><h2>Move without starting over.</h2></article>
-        <article><div className="landing-proof-image landing-proof-image-agents"><img src={agentsPreview} alt="Selvedge agent chooser showing Claude Code, Codex, Claude, and GPT working from the same project context" /></div><p className={eyebrowCls}>Use any agent</p><h2>Pick the best worker for the job.</h2></article>
-        <article><div className="landing-proof-image landing-proof-image-preview"><img src={workspacePreview} alt="Selvedge workspace with a private app preview and a put it online action beside the project conversation" /></div><p className={eyebrowCls}>See it working</p><h2>Preview, verify, and put it online.</h2></article>
-      </section>
+      <ProductProofs />
 
       <section id="memory" aria-label="How migration works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>Move once. Keep control.</p><h2 className="mt-4 font-display text-section font-medium text-ink">Leave the builder. Keep the project.</h2><p className="mt-4 max-w-xl text-body-lg text-ink-dim">Tell Selvedge where the project lives. Its migration agent discovers the rest, coordinates the right workers, builds a safe copy, verifies it, and returns when there is something worth reviewing.</p></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Point Selvedge at it</strong><p>Connect the builder or repository. The migration agent finds the code and services without making you produce an inventory.</p></li><li><span>02</span><strong>Let the agents work</strong><p>Selvedge creates the workspace, assigns the right agents, configures the copy, and opens a usable preview.</p></li><li><span>03</span><strong>Review one decision</strong><p>See the working result and independent verification. Approve cutover only when you are satisfied.</p></li></ol></section>
 
