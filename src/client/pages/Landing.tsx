@@ -122,7 +122,14 @@ const PRODUCT_PROOFS = [
 ] as const;
 
 type VisitorSystem = 'mac' | 'windows' | 'linux' | 'mobile' | 'web';
-type ArrivalSource = 'replit' | 'lovable' | 'cursor' | null;
+type ArrivalSource = 'replit' | 'lovable' | 'cursor' | 'v0' | null;
+
+const SOURCE_COPY: Record<Exclude<ArrivalSource, null>, { name: string; detail: string; cta: string }> = {
+  replit: { name: 'Replit', detail: 'Bring the working app, then keep building without keeping the project inside one builder.', cta: 'Bring my Replit project' },
+  lovable: { name: 'Lovable', detail: 'Keep the app you made. Move its code, context, and next decisions into a neutral home.', cta: 'Bring my Lovable project' },
+  cursor: { name: 'Cursor', detail: 'Keep using Cursor when it is the right worker while Selvedge keeps the whole project together.', cta: 'Bring my Cursor project' },
+  v0: { name: 'v0', detail: 'Use v0 for a fast first build, then keep the project, context, and infrastructure on neutral ground.', cta: 'Bring my v0 project' },
+};
 
 const SYSTEM_LABELS: Array<{ id: VisitorSystem; label: string }> = [
   { id: 'mac', label: 'Mac' },
@@ -157,6 +164,7 @@ function detectArrivalSource(): ArrivalSource {
   if (evidence.includes('replit')) return 'replit';
   if (evidence.includes('lovable')) return 'lovable';
   if (evidence.includes('cursor')) return 'cursor';
+  if (explicit === 'v0' || evidence.includes('v0.app') || evidence.includes('v0.dev')) return 'v0';
   return null;
 }
 
@@ -220,15 +228,16 @@ export function Landing() {
   const [visitorSystem, setVisitorSystem] = useState<VisitorSystem>(() => detectVisitorSystem());
   const [arrivalSource] = useState<ArrivalSource>(() => detectArrivalSource());
   const systemCopy = SYSTEM_COPY[visitorSystem];
+  const sourceCopy = arrivalSource ? SOURCE_COPY[arrivalSource] : null;
   const eyebrow = arrivalSource
-    ? `Leaving ${arrivalSource === 'cursor' ? 'Cursor' : arrivalSource[0]!.toUpperCase() + arrivalSource.slice(1)}? Bring the project with you.`
+    ? `Coming from ${sourceCopy!.name}? Bring the project with you.`
     : systemCopy.eyebrow;
   const signUpHref = `/sign-up?system=${visitorSystem}${arrivalSource ? `&from=${arrivalSource}` : ''}`;
 
   return <div className="landing-site overflow-hidden">
     <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
+      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{sourceCopy?.detail ?? systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{sourceCopy?.cta ?? systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
 
       <div id="working-demo"><WorkingProjectDemo /></div>
 
