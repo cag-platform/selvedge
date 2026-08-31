@@ -29,7 +29,12 @@ function fixture() {
   const fs = {
     mkdir: vi.fn().mockResolvedValue(undefined),
     writeBinary: vi.fn().mockResolvedValue(undefined),
-    readBinary: vi.fn().mockResolvedValue(new Blob([new Uint8Array([1, 2, 3])])),
+    readBinary: vi.fn().mockImplementation(async (path: string) => {
+      if (path.endsWith('.exit')) return new Blob(['0']);
+      if (path.endsWith('.stdout')) return new Blob(['ok\n']);
+      if (path.endsWith('.stderr')) return new Blob(['']);
+      return new Blob([new Uint8Array([1, 2, 3])]);
+    }),
   };
   const sandbox = {
     metadata: { name: 'selvedge-project-123' },
@@ -107,7 +112,7 @@ describe('Blaxel Workspace Runtime', () => {
     expect(fs.writeBinary).toHaveBeenCalledTimes(2);
   });
 
-  it('recognizes its own completion marker when Blaxel status remains running', async () => {
+  it('uses filesystem results when Blaxel process status remains running', async () => {
     const { runtime, process } = fixture();
     process.exec.mockResolvedValueOnce({
       pid: 'clone', name: 'clone', status: 'completed', exitCode: 0, stdout: '', stderr: '',
@@ -116,15 +121,6 @@ describe('Blaxel Workspace Runtime', () => {
       pid: 'pid-2', name: 'command', status: 'running', exitCode: 0, stdout: '', stderr: '',
       logs: '', command: '', workingDir: '/workspace/project', startedAt: '', completedAt: '',
     });
-    process.get.mockImplementation(async () => {
-      const command = process.exec.mock.calls.at(-1)?.[0]?.command as string;
-      const marker = /(__SELVEDGE_EXIT_[a-f0-9]+__)/.exec(command)?.[1];
-      return {
-        pid: 'pid-2', name: 'command', status: 'running', exitCode: 0,
-        stdout: `done\n${marker}0\n`, stderr: '', logs: '', command: '',
-        workingDir: '/workspace/project', startedAt: '', completedAt: '',
-      };
-    });
     const workspace = await runtime.createWorkspace({
       orgId: 'org_1', projectId: 'project_1', purpose: 'development',
       source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
@@ -132,10 +128,11 @@ describe('Blaxel Workspace Runtime', () => {
     });
 
     await expect(workspace.exec({ command: 'echo done', timeoutSeconds: 5 })).resolves.toEqual({
-      exitCode: 0, stdout: 'done', stderr: '',
+      exitCode: 0, stdout: 'ok\n', stderr: '',
     });
     const wrapped = process.exec.mock.calls.at(-1)?.[0]?.command as string;
-    expect(wrapped).toMatch(/^echo done; code=\$\?/);
-    expect(wrapped).not.toMatch(/^\( echo done \)/);
+    expect(wrapped).toMatch(/^\{ echo done; code=\$\?/);
+    expect(wrapped).not.toContain('process.get');
+    expect(process.get).not.toHaveBeenCalled();
   });
 });

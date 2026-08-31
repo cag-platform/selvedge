@@ -116,44 +116,53 @@ class BlaxelWorkspace implements Workspace {
 
   async exec(request: WorkspaceExecRequest): Promise<WorkspaceExecResult> {
     const name = `selvedge-exec-${randomBytes(8).toString('hex')}`;
-    const marker = `__SELVEDGE_EXIT_${randomBytes(12).toString('hex')}__`;
+    const resultBase = `/tmp/${name}-${randomBytes(8).toString('hex')}`;
+    const stdoutPath = `${resultBase}.stdout`;
+    const stderrPath = `${resultBase}.stderr`;
+    const exitPath = `${resultBase}.exit`;
     const started = await this.sandbox.process.exec({
       name,
-      // Blaxel's process status and wait-for-completion endpoints can remain
-      // open after a command has exited. Emit our own unambiguous terminal
-      // marker and observe stdout instead, so completion is Selvedge-owned.
-      // Do not wrap the command in a subshell. Agent turns deliberately launch
-      // their worker with `nohup ... &`; a parenthesized shell waits for that
-      // background job and prevents this exec call from returning to the poller.
-      command: `${request.command}; code=$?; printf '\n${marker}%s\n' "$code"; exit "$code"`,
+      // Blaxel's process status, list, and wait endpoints can remain open after
+      // a command has exited. Persist the result inside the sandbox and poll
+      // the filesystem instead, so completion is entirely Selvedge-owned.
+      // Braces intentionally avoid a subshell: agent turns launch their worker
+      // with `nohup ... &` and must return immediately to the outer poller.
+      command: `{ ${request.command}; code=$?; printf '%s' "$code" > ${shellQuote(exitPath)}; } > ${shellQuote(stdoutPath)} 2> ${shellQuote(stderrPath)}`,
       workingDir: request.cwd,
       env: await this.environment(request.secretGrants),
       timeout: request.timeoutSeconds,
     });
-    let finished = started;
-    if (started.status === 'running') {
-      const identifier = started.pid || name;
-      const deadline = Date.now() + request.timeoutSeconds * 1_000;
-      try {
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          try { finished = await this.sandbox.process.get(identifier); }
-          catch { continue; }
-          if ((finished.stdout ?? '').includes(marker) || finished.status !== 'running') break;
-        }
-        if (!(finished.stdout ?? '').includes(marker) && finished.status === 'running') {
-          throw new Error('Process did not finish in time');
-        }
-      } catch (error) {
-        await this.sandbox.process.kill(identifier).catch(() => undefined);
-        throw error;
-      }
+    if (started.status === 'failed') {
+      throw new Error(started.stderr || started.stdout || 'Blaxel could not start the command');
     }
-    const markerMatch = new RegExp(`\\n?${marker}(\\d+)\\n?`).exec(finished.stdout ?? '');
+
+    const readResult = async (path: string): Promise<string> => {
+      const blob = await withTransientSandboxRetry(() => this.sandbox.fs.readBinary(path));
+      return await blob.text();
+    };
+    const deadline = Date.now() + request.timeoutSeconds * 1_000;
+    let exitCode: number | null = null;
+    while (Date.now() < deadline) {
+      try {
+        const value = (await readResult(exitPath)).trim();
+        if (/^\d+$/.test(value)) {
+          exitCode = Number(value);
+          break;
+        }
+      } catch {
+        // The result file does not exist until the command is complete. Blaxel
+        // may also briefly return a gateway error while a sandbox wakes.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    if (exitCode === null) {
+      await this.sandbox.process.kill(started.pid || name).catch(() => undefined);
+      throw new Error('Process did not finish in time');
+    }
     return {
-      exitCode: markerMatch ? Number(markerMatch[1]) : finished.exitCode,
-      stdout: (finished.stdout ?? '').replace(new RegExp(`\\n?${marker}\\d+\\n?`), ''),
-      stderr: finished.stderr ?? '',
+      exitCode,
+      stdout: await readResult(stdoutPath).catch(() => ''),
+      stderr: await readResult(stderrPath).catch(() => ''),
     };
   }
 
