@@ -177,6 +177,7 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   }, [data.working]);
 
   async function goLive() {
+    if (!window.confirm('Deploy this app to your connected hosting account? This creates or updates a public production service. Your private Selvedge preview will remain separate.')) return;
     setBusy(true);
     setNote(null);
     try {
@@ -211,9 +212,9 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         </div>
       ) : (
         <div className="space-y-work-tight">
-          <p className="text-body text-ink-dim">This isn’t online yet; only you can see it.</p>
+          <p className="text-body text-ink-dim">The preview below is private. Deploy only when you want a separate public production app.</p>
           <button disabled={busy || goLiveOperation?.status === 'running' || goLiveOperation?.status === 'building'} onClick={() => void goLive()} className={btnPrimary}>
-            {busy || goLiveOperation?.status === 'running' ? 'Setting it up…' : goLiveOperation?.status === 'building' ? 'Host is building…' : 'Put it online'}
+            {busy || goLiveOperation?.status === 'running' ? 'Creating production app…' : goLiveOperation?.status === 'building' ? 'Production host is building…' : 'Deploy to production hosting'}
           </button>
           {note && <p className="text-meta text-ink-quiet">{note}</p>}
         </div>

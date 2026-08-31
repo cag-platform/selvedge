@@ -299,13 +299,17 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const projectId = req.params.projectId ?? '';
     const [current] = await db.select().from(migrationJourneys).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId))).orderBy(desc(migrationJourneys.updatedAt)).limit(1);
     if (!current) { res.status(404).json({ error: 'No migration record exists for this project.' }); return; }
-    const build = await getBuild(db, orgId, projectId);
-    if (!build?.previewUrl) { res.status(409).json({ error: 'The migrated app needs a running preview before it can be verified.' }); return; }
-    let verification = await verifyPreview(build.previewUrl);
+    // A relay URL is a short-lived capability and may have belonged to a
+    // previous Selvedge process. Verification always wakes/reissues the
+    // private preview first so it can never grade an expired URL while the
+    // current Blaxel workspace is healthy.
+    const preview = await startPreview(orgId, projectId);
+    if (preview.state !== 'ready' || !preview.url) { res.status(409).json({ error: preview.message ?? 'The migrated app needs a running preview before it can be verified.' }); return; }
+    let verification = await verifyPreview(preview.url);
     if (!deps.verifyPreview || deps.captureBrowserEvidence) {
       const evidence = deps.captureBrowserEvidence
-        ? await deps.captureBrowserEvidence(build.previewUrl)
-        : await captureMigrationBrowserEvidence(build.previewUrl, (candidates) => planMigrationGuidedJourney(db, orgId, candidates));
+        ? await deps.captureBrowserEvidence(preview.url)
+        : await captureMigrationBrowserEvidence(preview.url, (candidates) => planMigrationGuidedJourney(db, orgId, candidates));
       const screenshotIds: string[] = [];
       if (visualStore) {
         try {
