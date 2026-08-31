@@ -238,7 +238,10 @@ export function developmentWorkspaceRuntime(): DevelopmentRuntime {
 async function executeWithEnvironment(workspace: Workspace, command: string, timeoutSec: number, cwd?: string, env?: Record<string, string>): Promise<WorkspaceExecResult> {
   if (!env || Object.keys(env).length === 0) return workspace.exec({ command, cwd, timeoutSeconds: timeoutSec });
   for (const name of Object.keys(env)) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`invalid command environment name: ${name}`);
-  const configPath = `/mnt/data/selvedge-command-env-${randomBytes(8).toString('hex')}.sh`;
+  // This file exists for one command only. `/tmp` is part of the workspace
+  // contract across providers; `/mnt/data` is an OpenAI container detail and
+  // is not present in Blaxel images.
+  const configPath = `/tmp/selvedge-command-env-${randomBytes(8).toString('hex')}.sh`;
   await workspace.upload(configPath, Buffer.from(Object.entries(env).map(([name, value]) => `${name}=${shellQuote(value)}`).join('\n')));
   return workspace.exec({ command: `set -a; . ${shellQuote(configPath)}; rm -f ${shellQuote(configPath)}; set +a; ${command}`, cwd, timeoutSeconds: timeoutSec });
 }
