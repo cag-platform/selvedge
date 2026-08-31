@@ -90,6 +90,7 @@ describe('Blaxel Workspace Runtime', () => {
 
     expect(process.exec).toHaveBeenLastCalledWith(expect.objectContaining({
       command: 'npm test', workingDir: '/workspace/project', waitForCompletion: true,
+      onLog: expect.any(Function),
     }));
     expect(fs.writeBinary).toHaveBeenCalledWith('/workspace/project/input.bin', new Uint8Array([7, 8]));
   });

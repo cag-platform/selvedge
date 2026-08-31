@@ -108,6 +108,10 @@ class BlaxelWorkspace implements Workspace {
       // just-finished process can briefly keep reporting `running`, which
       // leaves Selvedge turns stuck even though the worker log is complete.
       waitForCompletion: true,
+      // A callback selects Blaxel's streaming completion endpoint. Its final
+      // event carries the process result, avoiding both the stale status poll
+      // and the non-streaming request that can remain open after completion.
+      onLog: () => undefined,
     });
     let finished = started;
     if (started.status === 'running') {
