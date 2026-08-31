@@ -132,8 +132,8 @@ function AuthedApp() {
       </SignedOut>
       <SignedIn>
         <AutoTimezone />
-        <AgentOnboarding />
         <div className="product-shell min-h-screen" data-theme={resolvedTheme} style={{ colorScheme: resolvedTheme === 'night' ? 'dark' : 'light' }}>
+          <AgentOnboarding />
           <Nav theme={theme} resolvedTheme={resolvedTheme} onThemeChange={setTheme} />
           <main className={workbench || dashboard || health || memory ? '' : 'mx-auto max-w-3xl px-4 py-8'}>
             <ErrorBoundary>
