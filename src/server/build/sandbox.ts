@@ -2,9 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
-import type { CreateWorkspaceInput, Workspace, WorkspaceExecResult } from '../workspace/types.js';
+import type { CreateWorkspaceInput, SecretGrant, Workspace, WorkspaceExecResult } from '../workspace/types.js';
 import { OpenAiWorkspaceApiError, OpenAiWorkspaceClient } from '../workspace/openai/client.js';
 import { OpenAiWorkspaceRuntime } from '../workspace/openai/runtime.js';
+import { BlaxelWorkspaceRuntime } from '../workspace/blaxel/runtime.js';
 import { getPreviewRelay } from '../workspace/relay/factory.js';
 import { closeSandboxRun, openSandboxRun } from './metering.js';
 import { unzipSync } from 'fflate';
@@ -26,7 +27,13 @@ export type DevelopmentWorkspace = {
 
 const active = new Map<string, DevelopmentWorkspace>();
 const secretValues = new Map<string, string>();
-let runtime: OpenAiWorkspaceRuntime | null = null;
+type DevelopmentRuntime = {
+  createWorkspace(input: CreateWorkspaceInput): Promise<Workspace>;
+  reconnectWorkspaceWithContext(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace>;
+  destroyWorkspace(workspaceId: string): Promise<void>;
+};
+
+let runtime: DevelopmentRuntime | null = null;
 
 export function setDevelopmentSecret(grantId: string, value: string | null): void {
   if (value === null) secretValues.delete(grantId);
@@ -165,33 +172,57 @@ export function isSandboxCapacityError(error: unknown): boolean {
   return /total disk limit exceeded|maximum allowed:\s*\d+\s*GiB|free up available storage|capacity|quota/i.test(text);
 }
 
-/** OpenAI uses both 404 and a provider-specific "expired" API error for a gone container. */
+/** Providers report a gone workspace differently; normalize that into one recoverable condition. */
 export function isExpiredWorkspaceError(error: unknown): boolean {
-  if (!(error instanceof OpenAiWorkspaceApiError)) return false;
-  if (error.status === 404) return true;
-  if (error.status !== 400 && error.status !== 409) return false;
-  return /(?:container|workspace).*(?:expired|not found)|(?:expired|not found).*(?:container|workspace)/i.test(
-    `${error.code ?? ''} ${error.message}`,
+  if (error instanceof OpenAiWorkspaceApiError) {
+    if (error.status === 404) return true;
+    if (error.status !== 400 && error.status !== 409) return false;
+    return /(?:container|workspace).*(?:expired|not found)|(?:expired|not found).*(?:container|workspace)/i.test(
+      `${error.code ?? ''} ${error.message}`,
+    );
+  }
+  return /(?:sandbox|workspace).*(?:terminated|expired|not found)|(?:terminated|expired|not found).*(?:sandbox|workspace)/i.test(
+    error instanceof Error ? error.message : String(error),
   );
 }
 
 function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
 
-export function developmentWorkspaceRuntime(): OpenAiWorkspaceRuntime {
+export function developmentWorkspaceRuntime(): DevelopmentRuntime {
   if (runtime) return runtime;
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
   const relay = getPreviewRelay();
-  if (!apiKey) throw new Error('OPENAI_API_KEY is required for Development Workspaces');
   if (!relay) throw new Error('PREVIEW_RELAY_SIGNING_SECRET and PREVIEW_RELAY_PUBLIC_ORIGIN are required for Development Workspaces');
-  runtime = new OpenAiWorkspaceRuntime({
-    client: new OpenAiWorkspaceClient({ apiKey }), model: process.env.WORKSPACE_MODEL?.trim() || 'gpt-5.4', relay: relay.sessions,
-    resolveSecretGrant: async (grant) => {
+  const common = {
+    relay: relay.sessions,
+    resolveSecretGrant: async (grant: SecretGrant) => {
       const value = secretValues.get(grant.id);
       if (!value) throw new Error(`secret grant ${grant.id} is no longer available`);
       return value;
     },
     captureBrowserEvidence: async () => ({ screenshotArtifactIds: [], consoleErrors: [], failedRequests: [] }),
-  });
+  };
+  const provider = process.env.WORKSPACE_PROVIDER?.trim().toLowerCase() || 'openai';
+  if (provider !== 'openai' && provider !== 'blaxel') throw new Error(`unsupported workspace provider: ${provider}`);
+  if (provider === 'blaxel') {
+    if (!process.env.BL_WORKSPACE?.trim() || !process.env.BL_API_KEY?.trim()) {
+      throw new Error('BL_WORKSPACE and BL_API_KEY are required for Blaxel Development Workspaces');
+    }
+    const memory = Number(process.env.BLAXEL_MEMORY_MB ?? 4096);
+    runtime = new BlaxelWorkspaceRuntime({
+      ...common,
+      image: process.env.BLAXEL_IMAGE?.trim() || 'blaxel/ts-app:latest',
+      memoryMb: Number.isFinite(memory) && memory >= 1024 ? memory : 4096,
+      region: process.env.BL_REGION?.trim() || undefined,
+    });
+  } else {
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!apiKey) throw new Error('OPENAI_API_KEY is required for OpenAI Development Workspaces');
+    runtime = new OpenAiWorkspaceRuntime({
+      ...common,
+      client: new OpenAiWorkspaceClient({ apiKey }),
+      model: process.env.WORKSPACE_MODEL?.trim() || 'gpt-5.4',
+    });
+  }
   return runtime;
 }
 

@@ -43,10 +43,14 @@ export type EngineEnv = { workspaceRuntime: true };
  * What's left is what genuinely belongs to the deployment: the sandbox host.
  */
 export function engineEnv(): EngineEnv | null {
-  const openai = process.env.OPENAI_API_KEY?.trim();
+  const provider = process.env.WORKSPACE_PROVIDER?.trim().toLowerCase() || 'openai';
+  if (provider !== 'openai' && provider !== 'blaxel') return null;
+  const providerReady = provider === 'blaxel'
+    ? Boolean(process.env.BL_WORKSPACE?.trim() && process.env.BL_API_KEY?.trim())
+    : Boolean(process.env.OPENAI_API_KEY?.trim());
   const relaySecret = process.env.PREVIEW_RELAY_SIGNING_SECRET?.trim();
   const relayOrigin = process.env.PREVIEW_RELAY_PUBLIC_ORIGIN?.trim();
-  if (!openai || !relaySecret || !relayOrigin) return null;
+  if (!providerReady || !relaySecret || !relayOrigin) return null;
   return { workspaceRuntime: true };
 }
 

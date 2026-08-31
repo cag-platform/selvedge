@@ -32,6 +32,7 @@
     "@anthropic-ai/sdk": "^0.112.3",
     "@aws-sdk/client-s3": "^3.1118.0",
     "@aws-sdk/s3-request-presigner": "^3.1118.0",
+    "@blaxel/core": "^0.3.13",
     "@clerk/clerk-react": "^5.61.9",
     "@clerk/express": "^2.1.43",
     "@fontsource-variable/fraunces": "^5.3.0",
