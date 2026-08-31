@@ -117,12 +117,12 @@ const NOT_WEB: ReadonlyArray<readonly [glob: string, what: string]> = [
   ['Gemfile', 'a Ruby project'],
 ];
 
-async function previewShape(sandbox: DevelopmentWorkspace): Promise<PreviewShape> {
+async function previewShape(sandbox: DevelopmentWorkspace, preferredProjectId: string): Promise<PreviewShape> {
   const devCheck = shellQuote('const s = require("./package.json").scripts || {}; process.exit(s.dev ? 0 : 1)');
   // Replit exports and monorepos often put the runnable app below the archive
   // root (for example artifacts/launchboard). Search a bounded depth and keep
   // the selected directory as data; it is shell-quoted before execution.
-  const devSearch = `find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -print | while IFS= read -r p; do d=$(dirname "$p"); (cd "$d" && node -e ${devCheck}) && { echo "DEV:$d"; break; }; done`;
+  const devSearch = `find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -print | while IFS= read -r p; do d=$(dirname "$p"); (cd "$d" && node -e ${devCheck}) && echo "DEV:$d"; done`;
   const staticChecks = STATIC_DIRS.map((d) => `[ -f ${d}/index.html ] && echo "STATIC:${d}" && exit 0`).join('; ');
   const whatChecks = NOT_WEB.map(([glob, what]) => `ls -d ${glob} >/dev/null 2>&1 && echo "WHAT:${what}" && exit 0`).join('; ');
   const probe = await exec(
@@ -131,7 +131,14 @@ async function previewShape(sandbox: DevelopmentWorkspace): Promise<PreviewShape
     60,
   );
   const out = probe.result ?? '';
-  const devDir = /^DEV:(.+)$/m.exec(out)?.[1]?.trim();
+  const candidates = [...out.matchAll(/^DEV:(.+)$/gm)]
+    .map((match) => match[1]?.trim())
+    .filter((dir): dir is string => Boolean(dir) && !dir!.startsWith('/') && !dir!.split('/').includes('..'));
+  const preferredTokens = preferredProjectId.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 4 && !['clean', 'proof', 'blaxel'].includes(token));
+  const devDir = [...candidates].sort((a, b) => {
+    const score = (dir: string) => preferredTokens.reduce((sum, token) => sum + (dir.toLowerCase().includes(token) ? token.length : 0), 0);
+    return score(b) - score(a) || a.length - b.length || a.localeCompare(b);
+  })[0];
   if (devDir && !devDir.startsWith('/') && !devDir.split('/').includes('..')) return { kind: 'dev', dir: devDir };
   const dir = /STATIC:(\S+)/.exec(out)?.[1];
   if (dir) return { kind: 'static', dir };
@@ -219,7 +226,7 @@ async function ensurePreviewDatabase(sandbox: DevelopmentWorkspace): Promise<boo
   return (made?.result ?? '').includes('READY');
 }
 
-export type StartOptions = { envFile: string | null; wantsDatabase: boolean };
+export type StartOptions = { envFile: string | null; wantsDatabase: boolean; projectId: string };
 
 async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptions): Promise<void> {
   await writeEnvFile(sandbox, options.envFile);
@@ -234,7 +241,7 @@ async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptio
 
   // Decided BEFORE anything is started: a repository with nothing web-shaped
   // in it must not get a file server pointed at its own source tree.
-  const shape = await previewShape(sandbox);
+  const shape = await previewShape(sandbox, options.projectId);
   if (shape.kind === 'none') throw new NothingToPreviewError(shape.what);
   // The environment is SOURCED, not interpolated: nothing from it reaches the
   // command string, so nothing from it reaches a log.
@@ -250,7 +257,7 @@ async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptio
   // index.html, so what answers on :3000 is a page rather than a file listing.
   const inner =
     shape.kind === 'dev'
-      ? `cd ${shellQuote(shape.dir === '.' ? WORKDIR : `${WORKDIR}/${shape.dir.replace(/^\.\//, '')}`)} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 npm run dev`
+      ? `cd ${shellQuote(shape.dir === '.' ? WORKDIR : `${WORKDIR}/${shape.dir.replace(/^\.\//, '')}`)} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 BASE_PATH=/ npm run dev`
       : `cd ${WORKDIR} || exit 1; DIR=${shellQuote(shape.dir)}; (npx -y serve -l tcp://0.0.0.0:${APP_PORT} "$DIR" || python3 -m http.server ${APP_PORT} --bind 0.0.0.0 --directory "$DIR")`;
   const start = `${PATH_PREFIX} nohup bash -c ${shellQuote(inner)} >> ${LOG_FILE} 2>&1 < /dev/null & echo $! > ${PID_FILE}`;
 
@@ -460,6 +467,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
       await startAppServer(sandbox, {
         envFile: await previewEnvFile(db, orgId, projectId).catch(() => null),
         wantsDatabase: wanted.wantsDatabase,
+        projectId,
       });
     }
 
