@@ -42,6 +42,7 @@ const PG_DATA = '/tmp/selvedge-pg';
 const PG_PORT = 5432;
 const READY_TIMEOUT_SEC = 90;
 const TOKEN_TTL_SECONDS = 3600;
+const HTTP_PROBE = `node -e ${shellQuote(`fetch('http://127.0.0.1:${APP_PORT}/', { signal: AbortSignal.timeout(3000) }).then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))`)}`;
 
 export type PreviewStatus = {
   state: 'ready' | 'none' | 'error';
@@ -71,7 +72,7 @@ async function exec(sandbox: DevelopmentWorkspace, command: string, timeoutSec: 
 
 /** True when something is currently answering on :3000. */
 export async function isAppServerUp(sandbox: DevelopmentWorkspace): Promise<boolean> {
-  const probe = await exec(sandbox, `curl -s -o /dev/null -m 3 http://localhost:${APP_PORT} && echo UP || echo DOWN`, 15);
+  const probe = await exec(sandbox, `${HTTP_PROBE} && echo UP || echo DOWN`, 15);
   return (probe.result ?? '').includes('UP');
 }
 
@@ -265,7 +266,7 @@ async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptio
 
   const check = await exec(
     sandbox,
-    `for i in $(seq 1 ${READY_TIMEOUT_SEC}); do curl -s -o /dev/null -m 2 http://localhost:${APP_PORT} && exit 0; sleep 1; done; echo 'did not answer on :${APP_PORT}'; tail -c 2000 ${LOG_FILE} 2>/dev/null; exit 1`,
+    `for i in $(seq 1 ${READY_TIMEOUT_SEC}); do ${HTTP_PROBE} && exit 0; sleep 1; done; echo 'did not answer on :${APP_PORT}'; tail -c 2000 ${LOG_FILE} 2>/dev/null; exit 1`,
     READY_TIMEOUT_SEC + 15,
   );
   if (check.exitCode !== 0) throw new StartFailedError(check.result ?? '');
