@@ -135,7 +135,7 @@ export type GoLiveDeps = {
   makeService?: (token: string, projectId: string, name: string, repo: string, vars: Record<string, string>) => Promise<string>;
   setVars?: (token: string, target: RailwayTarget, vars: Record<string, string>) => Promise<void>;
   domain?: (token: string, target: RailwayTarget) => Promise<string>;
-  awaitDeploy?: (token: string, target: RailwayTarget) => Promise<void>;
+  awaitDeploy?: (token: string, target: RailwayTarget, opts?: { acceptCurrent?: boolean }) => Promise<void>;
   /** Find the service already deploying this repo, if one exists. */
   adopt?: (token: string, repoFullName: string) => Promise<AdoptableService | null>;
   readFile?: (repoFullName: string, path: string, accessToken?: string) => Promise<string | null>;
@@ -209,6 +209,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     //    question itself cannot be answered, nothing is created blind.
     let target = already;
     let adoptedService: AdoptableService | null = null;
+    let createdService = false;
     if (!target) {
       try {
         adoptedService = await adopt(account.token, repo);
@@ -261,6 +262,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
       const host = await hostProject(account.token, hostProjectOptions(account));
       const serviceId = await makeService(account.token, host.projectId, serviceNameFor(projectId), repo, variables);
       target = { projectId: host.projectId, environmentId: host.environmentId, serviceId };
+      createdService = true;
       // Re-asserted for the fallback creation shape, which carries none. Never
       // for an adopted service: overwriting a running app's PORT or
       // DATABASE_URL is exactly the kind of help nobody asked for.
@@ -279,22 +281,29 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
         ...(neonProjectId ? [{ connector: 'neon' as const, resource_id: neonProjectId, role: 'database' as const }] : []),
       ],
     });
-    await updateHumanSections(db, orgId, projectId, {
-      identity: { ...pack.identity, links: { ...pack.identity.links, live_url: url } },
-    });
+    const recordReachableAddress = async () => {
+      await updateHumanSections(db, orgId, projectId, {
+        identity: { ...pack.identity, links: { ...pack.identity.links, live_url: url } },
+      });
+      await watch(db, orgId, projectId, url).catch((err) =>
+        console.error(`could not arm the health watch for ${projectId}:`, err),
+      );
+    };
 
-    // Arm the watch here, alongside the topology write and for the same reason:
-    // if the build times out below, the app is still correctly wired AND still
-    // watched. Recording the address without watching it would make the
-    // "I'm watching it from here" line in the timeout branch untrue.
-    await watch(db, orgId, projectId, url).catch((err) =>
-      console.error(`could not arm the health watch for ${projectId}:`, err),
-    );
+    // Adoption attaches a deployment already owned and operated by the user;
+    // there is no new build to wait for.
+    if (adoptedService) {
+      await recordReachableAddress();
+      const message = `It's online at ${url}, ${whereItLives(account)}. I'm watching it from now on, and shipping a change updates it.`;
+      await say(db, orgId, projectId, message);
+      return { outcome: 'live', url, message };
+    }
 
     try {
-      await awaitDeploy(account.token, target);
+      await awaitDeploy(account.token, target, { acceptCurrent: createdService });
     } catch (err) {
       if (err instanceof DeployTimeoutError) {
+        await recordReachableAddress();
         const message = `It's set up at ${url} and the host is still building it. That can take a few more minutes — the address will start working on its own. I'm watching it from here.`;
         await say(db, orgId, projectId, message);
         return { outcome: 'still_building', url, message };
@@ -302,6 +311,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
       throw err;
     }
 
+    await recordReachableAddress();
     const message = `It's online at ${url}, ${whereItLives(account)}. I'm watching it from now on, and shipping a change updates it.`;
     await say(db, orgId, projectId, message);
     return { outcome: 'live', url, message };

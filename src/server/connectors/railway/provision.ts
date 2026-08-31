@@ -364,13 +364,16 @@ async function latestDeployment(token: string, target: RailwayTarget): Promise<{
 export async function waitForDeploy(
   token: string,
   target: RailwayTarget,
-  opts: { timeoutMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+  opts: { timeoutMs?: number; sleep?: (ms: number) => Promise<void>; now?: () => number; acceptCurrent?: boolean } = {},
 ): Promise<void> {
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const now = opts.now ?? (() => Date.now());
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const priorId = (await latestDeployment(token, target))?.id ?? null;
+  // A service created moments ago has no deployment older than this operation:
+  // its first visible deployment is the one we must judge. Capturing that id
+  // as a "prior" made a fast failure invisible until the five-minute timeout.
+  const priorId = opts.acceptCurrent ? null : ((await latestDeployment(token, target))?.id ?? null);
   const startedAt = now();
   let nudged = false;
 

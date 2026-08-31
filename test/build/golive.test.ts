@@ -129,6 +129,7 @@ describe('goLive — one button, from a repo to a working address', () => {
     const out = await goLive(db, orgId, 'loom', deps({ awaitDeploy: async () => { throw new Error('the host tried to build it and it failed (failed)'); } }));
     expect(out.outcome).toBe('failed');
     expect(out.message).toMatch(/couldn't finish/i);
+    expect((await getPack(db, orgId, 'loom'))?.identity.links?.live_url).toBeUndefined();
     const [msg] = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId)).orderBy(agentMessages.createdAt);
     expect(msg).toBeTruthy();
   });
