@@ -104,6 +104,10 @@ class BlaxelWorkspace implements Workspace {
       workingDir: request.cwd,
       env: await this.environment(request.secretGrants),
       timeout: request.timeoutSeconds,
+      // Ask Blaxel to return the terminal process result directly. Polling a
+      // just-finished process can briefly keep reporting `running`, which
+      // leaves Selvedge turns stuck even though the worker log is complete.
+      waitForCompletion: true,
     });
     let finished = started;
     if (started.status === 'running') {

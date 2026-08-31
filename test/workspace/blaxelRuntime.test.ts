@@ -88,7 +88,9 @@ describe('Blaxel Workspace Runtime', () => {
     await workspace.upload('/workspace/project/input.bin', new Uint8Array([7, 8]));
     await expect(workspace.download('/workspace/project/input.bin')).resolves.toEqual(new Uint8Array([1, 2, 3]));
 
-    expect(process.exec).toHaveBeenLastCalledWith(expect.objectContaining({ command: 'npm test', workingDir: '/workspace/project' }));
+    expect(process.exec).toHaveBeenLastCalledWith(expect.objectContaining({
+      command: 'npm test', workingDir: '/workspace/project', waitForCompletion: true,
+    }));
     expect(fs.writeBinary).toHaveBeenCalledWith('/workspace/project/input.bin', new Uint8Array([7, 8]));
   });
 });
