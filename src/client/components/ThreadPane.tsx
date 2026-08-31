@@ -129,6 +129,17 @@ function MigrationJourneyPanel({ projectId, working }: { projectId: string; work
     }).catch(() => setJourney(null));
   }, [projectId, working]);
   useEffect(() => {
+    if (working) return;
+    // Preview creation is intentionally a durable background operation. Poll
+    // the migration record while this conversation is open so a replacement
+    // preview can clear stale evidence, become ready, and trigger the fresh
+    // verifier without requiring a page reload.
+    const timer = window.setInterval(() => {
+      api.get<MigrationJourney>(`/api/projects/${encodeURIComponent(projectId)}/migration`).then(setJourney).catch(() => undefined);
+    }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [projectId, working]);
+  useEffect(() => {
     if (working) { migrationVerificationAttempted.current = false; return; }
     if (!journey || verifyingMigration || migrationVerificationAttempted.current || journey.verification || journey.preview.state !== 'ready') return;
     migrationVerificationAttempted.current = true;

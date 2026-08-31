@@ -3,8 +3,8 @@ import { getBuild, setBuild } from './store.js';
 import { PREVIEW_TTL_MS } from './metering.js';
 import { ensureSandbox, publishPreviewRef, WORKDIR, PATH_PREFIX, type DevelopmentWorkspace, type SandboxConfig } from './sandbox.js';
 import { RailwayPreviewRuntime } from '../preview/railway.js';
-import { and, isNotNull, lt } from 'drizzle-orm';
-import { projectBuild } from '../db/schema/index.js';
+import { and, eq, isNotNull, lt } from 'drizzle-orm';
+import { migrationJourneys, projectBuild } from '../db/schema/index.js';
 import { resolveRepoToken } from './repoToken.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
 import { previewEnvFile, getPreviewEnvSummary, parseEnvText } from './previewEnv.js';
@@ -404,6 +404,16 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
         variables,
         ttlMinutes: TOKEN_TTL_SECONDS / 60,
       });
+      // Evidence belongs to one exact disposable build. A new service and URL
+      // make every earlier screenshot, request trace, and verdict stale—even
+      // when the source change was only an environment repair. Clear it at the
+      // resource boundary so every caller (migration flow, account bridge, or
+      // the ordinary Preview panel) gets the same honest lifecycle.
+      await db.update(migrationJourneys).set({
+        migrationVerification: null,
+        state: 'copying',
+        updatedAt: new Date(),
+      }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.projectId, projectId)));
       // Persist the quarantined resource before waiting. If its build fails,
       // support can inspect the logs and the ordinary preview sweep still
       // guarantees that both the service and ref disappear automatically.
