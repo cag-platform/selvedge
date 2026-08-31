@@ -163,6 +163,6 @@ export function Landing() {
 
       <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><h2 className="max-w-4xl font-display text-hero font-medium text-ink">Give the project a permanent home.</h2><div className="mt-8"><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></section>
     </main>
-    <footer className="landing-footer border-t border-hairline"><div className="mx-auto max-w-6xl px-4 py-10 sm:px-6"><p className="font-display font-semibold text-ink-dim">Selvedge</p><nav aria-label="Footer"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/status">Status</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/changelog">Changelog</Link><Link to="/sign-in">Sign in</Link></nav></div></footer>
+    <footer className="landing-footer border-t border-hairline"><div className="mx-auto max-w-6xl px-4 py-10 sm:px-6"><p className="font-display font-semibold text-ink-dim">Selvedge</p><nav aria-label="Footer"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/status">Status</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/sign-in">Sign in</Link></nav></div></footer>
   </div>;
 }
