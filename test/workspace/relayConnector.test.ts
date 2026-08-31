@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { previewConnectorSource } from '../../src/server/workspace/relay/connector.js';
 import { PreviewRelayBroker } from '../../src/server/workspace/relay/broker.js';
 import { PreviewRelaySessions } from '../../src/server/workspace/relay/session.js';
-import { connectorCredential, createPreviewRelayWeb } from '../../src/server/workspace/relay/web.js';
+import { connectorCredential, createPreviewRelayWeb, rewritePreviewBody } from '../../src/server/workspace/relay/web.js';
 
 describe('Preview Relay workspace connector', () => {
   it('accepts a short-lived connector capability via WebSocket subprotocol', () => {
@@ -31,6 +31,15 @@ describe('Preview Relay workspace connector', () => {
     expect(source).not.toContain('console.log');
     expect(source).not.toContain("addEventListener('error', () => socket.close())");
     expect(source).not.toContain('new WebSocket');
+  });
+
+  it('keeps root-relative app assets inside the signed preview path', () => {
+    const html = rewritePreviewBody('preview_123', 'text/html', Buffer.from('<script type="module" src="/@vite/client"></script><link href="/src/app.css">'));
+    expect(html.toString()).toContain('src="/workspace-preview/preview_123/@vite/client"');
+    expect(html.toString()).toContain('href="/workspace-preview/preview_123/src/app.css"');
+
+    const js = rewritePreviewBody('preview_123', 'application/javascript', Buffer.from('import "/src/main.tsx";'));
+    expect(js.toString()).toBe('import "/workspace-preview/preview_123/src/main.tsx";');
   });
 
   it('carries a browser request and workspace response over authenticated HTTPS polling', async () => {

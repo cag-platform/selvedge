@@ -9,6 +9,36 @@ import { PreviewRelaySessions } from './session.js';
 const VIEWER_COOKIE = 'selvedge_preview';
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
+function previewPath(previewId: string): string {
+  return `/workspace-preview/${encodeURIComponent(previewId)}`;
+}
+
+/**
+ * Apps commonly emit root-relative asset URLs (for example `/@vite/client`).
+ * A path-mounted relay must keep those requests inside the signed preview
+ * namespace or the browser will request Selvedge's own SPA instead.
+ */
+export function rewritePreviewBody(previewId: string, contentType: string | undefined, body: Buffer): Buffer {
+  if (!body.length || !contentType) return body;
+  const prefix = previewPath(previewId);
+  const isHtml = contentType.includes('text/html');
+  const isCss = contentType.includes('text/css');
+  const isJavaScript = contentType.includes('javascript') || contentType.includes('ecmascript');
+  if (!isHtml && !isCss && !isJavaScript) return body;
+
+  let text = body.toString('utf8');
+  if (isHtml) {
+    text = text.replace(/\b(src|href|action)=(['"])\/(?!\/|workspace-preview\/)/gi, `$1=$2${prefix}/`);
+  }
+  if (isCss) {
+    text = text.replace(/url\(\s*(['"]?)\/(?!\/|workspace-preview\/)/gi, `url($1${prefix}/`);
+  }
+  if (isJavaScript) {
+    text = text.replace(/(['"])\/(?!\/|workspace-preview\/)(?=[@\w.-])/g, `$1${prefix}/`);
+  }
+  return Buffer.from(text);
+}
+
 function bearer(req: IncomingMessage): string | null {
   const value = req.headers.authorization;
   return value?.startsWith('Bearer ') ? value.slice(7).trim() : null;
@@ -197,7 +227,7 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
     try {
       const claims = tokens.verifyViewer(cookie(req, VIEWER_COOKIE) ?? '');
       if (claims.previewId !== previewId) throw new Error('wrong preview');
-      const prefix = `/workspace-preview/${previewId}`;
+      const prefix = previewPath(previewId);
       const path = req.originalUrl.startsWith(prefix) ? req.originalUrl.slice(prefix.length) || '/' : '/';
       const body = await bodyOf(req);
       const forwarded = await broker.forward(previewId, {
@@ -207,8 +237,18 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
         bodyBase64: body.length ? body.toString('base64') : null,
       });
       res.status(forwarded.status);
-      for (const [name, value] of Object.entries(safeRelayHeaders(forwarded.headers))) res.setHeader(name, value);
-      res.send(forwarded.bodyBase64 ? Buffer.from(forwarded.bodyBase64, 'base64') : undefined);
+      const headers = safeRelayHeaders(forwarded.headers);
+      const contentType = typeof headers['content-type'] === 'string' ? headers['content-type'] : undefined;
+      const rawBody = forwarded.bodyBase64 ? Buffer.from(forwarded.bodyBase64, 'base64') : Buffer.alloc(0);
+      const responseBody = rewritePreviewBody(previewId, contentType, rawBody);
+      for (const [name, value] of Object.entries(headers)) {
+        if (name.toLowerCase() !== 'content-length') res.setHeader(name, value);
+      }
+      const location = res.getHeader('location');
+      if (typeof location === 'string' && location.startsWith('/') && !location.startsWith(`${prefix}/`)) {
+        res.setHeader('location', `${prefix}${location}`);
+      }
+      res.send(responseBody.length ? responseBody : undefined);
     } catch (error) {
       if (error instanceof PreviewRelayUnavailableError) {
         // The connector starts asynchronously inside the hosted workspace.
