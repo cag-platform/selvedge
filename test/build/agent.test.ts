@@ -40,7 +40,7 @@ const resultLine = (sessionId: string, cost = 0.05) =>
  * each poll returns the next scripted log snapshot (the last one marked DONE),
  * and git status returns the scripted staged state.
  */
-function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: string) => void }): ExecuteInSandbox {
+function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: string) => void; stateOverride?: 'ALIVE' | 'DONE' }): ExecuteInSandbox {
   let poll = 0;
   return async (command: string) => {
     opts.onCommand?.(command);
@@ -50,7 +50,7 @@ function executor(opts: { polls: string[]; staged?: boolean; onCommand?: (c: str
       const i = Math.min(poll, opts.polls.length - 1);
       poll += 1;
       const last = i === opts.polls.length - 1;
-      return { exitCode: 0, result: `${opts.polls[i]}\n__STATE:${last ? 'DONE' : 'ALIVE'}` };
+      return { exitCode: 0, result: `${opts.polls[i]}\n__STATE:${opts.stateOverride ?? (last ? 'DONE' : 'ALIVE')}` };
     }
     return { exitCode: 0, result: '' }; // start / kill / misc
   };
@@ -132,6 +132,17 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, out.runId));
     expect(run!.changedPaths).toEqual(['src/app.ts']);
     expect((await getBuild(db, orgId, 'loom'))?.claudeSessionId).toBe('sess_1');
+  });
+
+  it('trusts the worker exit record when a detached zombie still reports alive', async () => {
+    const done = [text('The workspace is reachable.'), resultLine('sess_zombie'), '__EXIT:0'].join('\n');
+    const out = await runAgentTurn(db, orgId, 'loom', 'check the workspace', cfg, {}, {
+      execute: executor({ polls: [done], stateOverride: 'ALIVE' }),
+      sleep: noSleep,
+    });
+
+    expect(out.status).toBe('succeeded');
+    expect(out.reply).toBe('The workspace is reachable.');
   });
 
   it('refuses Apple-native work before model fuel or a Linux workspace is touched', async () => {

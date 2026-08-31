@@ -146,7 +146,10 @@ function pollCommand(log: string, pid: string): string {
 function splitPoll(out: string): { log: string; done: boolean } {
   const marker = out.lastIndexOf('__STATE:');
   const log = marker >= 0 ? out.slice(0, marker) : out;
-  const done = marker >= 0 ? out.slice(marker).includes('DONE') : false;
+  // Detached shells can remain as zombies until their parent reaps them, so
+  // `kill -0` may still report ALIVE after the worker has written its explicit
+  // exit record. The exit record is the authoritative completion signal.
+  const done = /__EXIT:\d+/.test(log) || (marker >= 0 && out.slice(marker).includes('DONE'));
   return { log, done };
 }
 

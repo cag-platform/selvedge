@@ -35,6 +35,7 @@ function fixture() {
       if (path.endsWith('.stderr')) return new Blob(['']);
       return new Blob([new Uint8Array([1, 2, 3])]);
     }),
+    rm: vi.fn().mockResolvedValue(undefined),
   };
   const sandbox = {
     metadata: { name: 'selvedge-project-123' },
@@ -115,7 +116,7 @@ describe('Blaxel Workspace Runtime', () => {
   });
 
   it('uses filesystem results when Blaxel process status remains running', async () => {
-    const { runtime, process } = fixture();
+    const { runtime, process, fs } = fixture();
     process.exec.mockResolvedValueOnce({
       pid: 'clone', name: 'clone', status: 'completed', exitCode: 0, stdout: '', stderr: '',
       logs: '', command: '', workingDir: '/workspace/project', startedAt: '', completedAt: '',
@@ -128,6 +129,7 @@ describe('Blaxel Workspace Runtime', () => {
       source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
       ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] }, secrets: [],
     });
+    fs.rm.mockClear();
 
     await expect(workspace.exec({ command: 'echo done', timeoutSeconds: 5 })).resolves.toEqual({
       exitCode: 0, stdout: 'ok\n', stderr: '',
@@ -136,5 +138,6 @@ describe('Blaxel Workspace Runtime', () => {
     expect(wrapped).toMatch(/^\{ echo done; code=\$\?/);
     expect(wrapped).not.toContain('process.get');
     expect(process.get).not.toHaveBeenCalled();
+    expect(fs.rm).toHaveBeenCalledTimes(3);
   });
 });

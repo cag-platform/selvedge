@@ -164,10 +164,15 @@ class BlaxelWorkspace implements Workspace {
       await this.sandbox.process.kill(started.pid || name).catch(() => undefined);
       throw new Error('Process did not finish in time');
     }
+    const stdout = await readResult(stdoutPath).catch(() => '');
+    const stderr = await readResult(stderrPath).catch(() => '');
+    await Promise.all([stdoutPath, stderrPath, exitPath].map((path) =>
+      this.sandbox.fs.rm(path).catch(() => undefined),
+    ));
     return {
       exitCode,
-      stdout: await readResult(stdoutPath).catch(() => ''),
-      stderr: await readResult(stderrPath).catch(() => ''),
+      stdout,
+      stderr,
     };
   }
 
