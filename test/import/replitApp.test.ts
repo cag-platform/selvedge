@@ -18,6 +18,19 @@ describe('reading a Repl out of its zip', () => {
     expect(read.ok && read.files.map((f) => f.path).sort()).toEqual(['index.js', 'src/app.js']);
   });
 
+  it('ignores Finder metadata before unwrapping a Replit folder', () => {
+    const read = readAppZip(zip({
+      'clothier/package.json': enc('{"name":"clothier"}'),
+      'clothier/src/app.ts': enc('export {}'),
+      '__MACOSX/._clothier': enc('finder metadata'),
+      '__MACOSX/clothier/._package.json': enc('appledouble'),
+      '__MACOSX/clothier/src/._app.ts': enc('appledouble'),
+    }));
+    expect(read.ok && read.files.map((f) => f.path).sort()).toEqual(['package.json', 'src/app.ts']);
+    expect(read.ok && read.skipped).toContain('macOS folder metadata');
+    expect(read.ok && read.skippedCount).toBe(3);
+  });
+
   it('leaves the workspace junk behind and names it', () => {
     const read = readAppZip(
       zip({

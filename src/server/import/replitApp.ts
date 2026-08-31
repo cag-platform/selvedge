@@ -57,6 +57,13 @@ function isJunk(path: string): boolean {
   return path.split('/').some((seg) => JUNK_SEGMENTS.has(seg));
 }
 
+/** Finder metadata added when a downloaded Replit folder is zipped on macOS. */
+function isMacArchiveMetadata(path: string): boolean {
+  const segments = path.split('/');
+  const basename = segments.at(-1) ?? '';
+  return segments.includes('__MACOSX') || basename === '.DS_Store' || basename.startsWith('._');
+}
+
 /** Rebuildable diagnostics emitted by JS/CSS bundlers, never app runtime. */
 function isGeneratedSourceMap(path: string): boolean {
   return /\.(?:js|mjs|cjs|css)\.map$/i.test(path);
@@ -85,15 +92,24 @@ export function readAppZip(bytes: Uint8Array): AppZipResult {
   }
   if (raw.length === 0) return { ok: false, error: 'that zip is empty.' };
 
+  // A folder zipped in Finder gains a parallel __MACOSX tree containing one
+  // AppleDouble metadata file for almost every real file. Remove that wrapper
+  // before deciding whether the export has one project root; otherwise the
+  // metadata tree both defeats unwrapping and nearly doubles the file count.
+  const macMetadataCount = raw.filter((file) => isMacArchiveMetadata(file.path)).length;
+  const appRaw = raw.filter((file) => !isMacArchiveMetadata(file.path));
+  if (appRaw.length === 0) return { ok: false, error: 'that zip contains only macOS folder metadata and no app.' };
+
   // Replit wraps the export in one folder named after the Repl — unwrap it so
   // the repo root is the app root, which is where every builder will look.
   const firstSeg = (p: string) => p.slice(0, p.indexOf('/') === -1 ? p.length : p.indexOf('/'));
-  const tops = new Set(raw.map((f) => firstSeg(f.path)));
-  const unwrap = tops.size === 1 && raw.every((f) => f.path.includes('/'));
-  const files0 = unwrap ? raw.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf('/') + 1) })) : raw;
+  const tops = new Set(appRaw.map((f) => firstSeg(f.path)));
+  const unwrap = tops.size === 1 && appRaw.every((f) => f.path.includes('/'));
+  const files0 = unwrap ? appRaw.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf('/') + 1) })) : appRaw;
 
   const skippedDirs = new Set<string>();
-  let skippedCount = 0;
+  let skippedCount = macMetadataCount;
+  if (macMetadataCount > 0) skippedDirs.add('macOS folder metadata');
   const files: AppFile[] = [];
   for (const f of files0) {
     if (isJunk(f.path)) {
