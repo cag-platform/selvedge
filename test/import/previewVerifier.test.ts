@@ -25,6 +25,20 @@ describe('migration preview verifier', () => {
     expect(result.limitations.join(' ')).toContain('Screenshot');
   });
 
+  it('waits through Railway\'s temporary JSON 404 before judging the document', async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const fetcher = async () => {
+      calls += 1;
+      if (calls < 3) return new Response('{"status":"not found"}', { status: 404, headers: { 'content-type': 'application/json' } });
+      return new Response('<html><body>A meaningful application page with enough visible content for deterministic verification.</body></html>', { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    };
+    const result = await verifyMigrationPreview('https://preview.example', new Date(), fetcher as typeof fetch, async (ms) => { waits.push(ms); });
+    expect(result.status).toBe('passed');
+    expect(calls).toBe(3);
+    expect(waits).toEqual([2_000, 2_000]);
+  });
+
   it('requires stored responsive browser evidence before verification passes', async () => {
     const fetcher = async () => new Response('<html><body>A meaningful application page with enough visible content for deterministic verification.</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
     const base = await verifyMigrationPreview('https://preview.example', new Date('2026-08-29T00:00:00Z'), fetcher as typeof fetch);

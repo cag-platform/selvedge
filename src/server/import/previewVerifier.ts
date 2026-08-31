@@ -2,18 +2,34 @@ import type { MigrationVerification } from '../../shared/types/migration.js';
 import type { MigrationBrowserEvidence } from './browserEvidence.js';
 
 type Fetcher = typeof fetch;
+type Waiter = (ms: number) => Promise<void>;
 
-export async function verifyMigrationPreview(url: string, now = new Date(), fetcher: Fetcher = fetch): Promise<MigrationVerification> {
+const wait: Waiter = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function verifyMigrationPreview(url: string, now = new Date(), fetcher: Fetcher = fetch, waiter: Waiter = wait): Promise<MigrationVerification> {
   const checks: MigrationVerification['checks'] = [];
   try {
-    const first = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(20_000) });
-    const cookie = first.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
-    const location = first.headers.get('location');
-    const response = first.status >= 300 && first.status < 400 && location
-      ? await fetcher(new URL(location, url), { headers: cookie ? { Cookie: cookie } : {}, signal: AbortSignal.timeout(20_000) })
-      : first;
-    const body = await response.text();
-    const contentType = response.headers.get('content-type') ?? '';
+    let response: Response | null = null;
+    let body = '';
+    let contentType = '';
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const first = await fetcher(url, { redirect: 'manual', signal: AbortSignal.timeout(20_000) });
+      const cookie = first.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
+      const location = first.headers.get('location');
+      response = first.status >= 300 && first.status < 400 && location
+        ? await fetcher(new URL(location, url), { headers: cookie ? { Cookie: cookie } : {}, signal: AbortSignal.timeout(20_000) })
+        : first;
+      body = await response.text();
+      contentType = response.headers.get('content-type') ?? '';
+      // Railway can report a deployment live just before its public domain
+      // swaps from the platform's JSON 404 to the customer's HTML document.
+      // Browser capture a moment later then succeeds, leaving contradictory
+      // evidence. Give only that narrow warm-up response a bounded retry.
+      const warming = response.status === 404 && !/text\/html/i.test(contentType);
+      if (!warming || attempt === 5) break;
+      await waiter(2_000);
+    }
+    if (!response) throw new Error('The preview returned no response.');
     checks.push({ name: 'Preview responds', status: response.ok ? 'passed' : 'failed', detail: `The preview returned HTTP ${response.status}.` });
     checks.push({ name: 'Browser document delivered', status: /text\/html/i.test(contentType) ? 'passed' : 'failed', detail: /text\/html/i.test(contentType) ? 'The preview delivered an HTML document.' : `The preview returned ${contentType || 'no content type'} instead of HTML.` });
     checks.push({ name: 'Page has meaningful content', status: body.trim().length >= 100 ? 'passed' : 'failed', detail: body.trim().length >= 100 ? `The root document contains ${body.length} characters.` : 'The root document is empty or too small to establish a usable page.' });
