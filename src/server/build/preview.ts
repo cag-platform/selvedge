@@ -93,7 +93,7 @@ export async function isAppServerUp(sandbox: DevelopmentWorkspace): Promise<bool
  * the whole explanation and leaving it out turns a clear answer into a shrug.
  */
 export type PreviewShape =
-  | { kind: 'dev' }
+  | { kind: 'dev'; dir: string }
   | { kind: 'static'; dir: string }
   | { kind: 'none'; what: string | null };
 
@@ -119,15 +119,20 @@ const NOT_WEB: ReadonlyArray<readonly [glob: string, what: string]> = [
 
 async function previewShape(sandbox: DevelopmentWorkspace): Promise<PreviewShape> {
   const devCheck = shellQuote('const s = require("./package.json").scripts || {}; process.exit(s.dev ? 0 : 1)');
+  // Replit exports and monorepos often put the runnable app below the archive
+  // root (for example artifacts/launchboard). Search a bounded depth and keep
+  // the selected directory as data; it is shell-quoted before execution.
+  const devSearch = `find . -maxdepth 4 -name package.json -not -path '*/node_modules/*' -print | while IFS= read -r p; do d=$(dirname "$p"); (cd "$d" && node -e ${devCheck}) && { echo "DEV:$d"; break; }; done`;
   const staticChecks = STATIC_DIRS.map((d) => `[ -f ${d}/index.html ] && echo "STATIC:${d}" && exit 0`).join('; ');
   const whatChecks = NOT_WEB.map(([glob, what]) => `ls -d ${glob} >/dev/null 2>&1 && echo "WHAT:${what}" && exit 0`).join('; ');
   const probe = await exec(
     sandbox,
-    `cd ${WORKDIR} || exit 0; if [ -f package.json ] && node -e ${devCheck}; then echo DEV; exit 0; fi; ${staticChecks}; ${whatChecks}; echo NONE`,
+    `cd ${WORKDIR} || exit 0; ${devSearch}; ${staticChecks}; ${whatChecks}; echo NONE`,
     60,
   );
   const out = probe.result ?? '';
-  if (out.includes('DEV')) return { kind: 'dev' };
+  const devDir = /^DEV:(.+)$/m.exec(out)?.[1]?.trim();
+  if (devDir && !devDir.startsWith('/') && !devDir.split('/').includes('..')) return { kind: 'dev', dir: devDir };
   const dir = /STATIC:(\S+)/.exec(out)?.[1];
   if (dir) return { kind: 'static', dir };
   return { kind: 'none', what: /WHAT:(.+)/.exec(out)?.[1]?.trim() ?? null };
@@ -245,7 +250,7 @@ async function startAppServer(sandbox: DevelopmentWorkspace, options: StartOptio
   // index.html, so what answers on :3000 is a page rather than a file listing.
   const inner =
     shape.kind === 'dev'
-      ? `cd ${WORKDIR} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 npm run dev`
+      ? `cd ${shellQuote(shape.dir === '.' ? WORKDIR : `${WORKDIR}/${shape.dir.replace(/^\.\//, '')}`)} && { [ -d node_modules ] || npm install; } && ${prefix}exec env PORT=${APP_PORT} HOST=0.0.0.0 npm run dev`
       : `cd ${WORKDIR} || exit 1; DIR=${shellQuote(shape.dir)}; (npx -y serve -l tcp://0.0.0.0:${APP_PORT} "$DIR" || python3 -m http.server ${APP_PORT} --bind 0.0.0.0 --directory "$DIR")`;
   const start = `${PATH_PREFIX} nohup bash -c ${shellQuote(inner)} >> ${LOG_FILE} 2>&1 < /dev/null & echo $! > ${PID_FILE}`;
 

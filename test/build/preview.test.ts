@@ -44,7 +44,7 @@ describe('nothing to preview — said plainly, and never dressed as the app', ()
     // dev server into the static branch; a three-way one lets the third case
     // exist, which is the whole bug.
     const shapes: PreviewShape[] = [
-      { kind: 'dev' },
+      { kind: 'dev', dir: '.' },
       { kind: 'static', dir: 'dist' },
       { kind: 'none', what: 'an Xcode project' },
     ];
