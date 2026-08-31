@@ -133,6 +133,9 @@ class BlaxelWorkspace implements Workspace {
       workingDir: request.cwd,
       env: await this.environment(request.secretGrants),
       timeout: request.timeoutSeconds,
+      // Blaxel otherwise keeps the POST open until the command completes,
+      // which prevents Selvedge from reaching its provider-neutral poll loop.
+      waitForCompletion: false,
     });
     if (started.status === 'failed') {
       throw new Error(started.stderr || started.stdout || 'Blaxel could not start the command');
@@ -178,6 +181,7 @@ class BlaxelWorkspace implements Workspace {
       // standby. Do not force active compute merely because a dev server exists.
       keepAlive: false,
       timeout: 0,
+      waitForCompletion: false,
     });
     if (process.status === 'failed') throw new Error(`could not start workspace process: ${process.stderr || process.stdout}`);
     return { id: process.pid || request.name, name: request.name };
