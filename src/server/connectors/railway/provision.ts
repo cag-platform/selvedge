@@ -135,41 +135,46 @@ export type AdoptableService = {
 };
 
 export async function findServiceByRepo(token: string, repoFullName: string): Promise<AdoptableService | null> {
-  type Gql = {
-    projects: {
+  type Project = {
+    id: string;
+    name: string;
+    environments: { edges: Array<{ node: { id: string; name: string } }> };
+    services: {
       edges: Array<{
         node: {
           id: string;
           name: string;
-          environments: { edges: Array<{ node: { id: string; name: string } }> };
-          services: {
-            edges: Array<{
-              node: {
-                id: string;
-                name: string;
-                serviceInstances: { edges: Array<{ node: { environmentId: string; source: { repo: string | null } | null } }> };
-              };
-            }>;
-          };
+          serviceInstances: { edges: Array<{ node: { environmentId: string; source: { repo: string | null } | null } }> };
         };
       }>;
     };
   };
-  const data = await railwayGql<Gql>(
+  // Railway OAuth grants are workspace-scoped and deliberately reject the
+  // account-wide `projects` field. Discover only the workspaces selected by
+  // the owner, then inspect services inside those boundaries. This is the same
+  // consent shape resolveHostProject already uses for creation.
+  const visible = await railwayGql<{ me: { workspaces: Array<{ id: string }> } }>(
     token,
-    `query {
-      projects { edges { node { id name
+    `query { me { workspaces { id } } }`,
+  );
+  const projects: Project[] = [];
+  for (const workspace of visible.me.workspaces) {
+    const data = await railwayGql<{ workspace: { projects: { edges: Array<{ node: Project }> } } }>(
+      token,
+      `query($workspaceId: String!) { workspace(workspaceId: $workspaceId) { projects { edges { node { id name
         environments { edges { node { id name } } }
         services { edges { node { id name
           serviceInstances { edges { node { environmentId source { repo } } } }
         } } }
-      } } }
-    }`,
-  );
+      } } } } }`,
+      { workspaceId: workspace.id },
+    );
+    projects.push(...data.workspace.projects.edges.map((edge) => edge.node));
+  }
 
   const wanted = repoFullName.toLowerCase();
   const matches: Array<AdoptableService & { environmentName: string }> = [];
-  for (const p of data.projects.edges.map((e) => e.node)) {
+  for (const p of projects) {
     const envName = new Map(p.environments.edges.map((e) => [e.node.id, e.node.name] as const));
     for (const svc of p.services.edges.map((e) => e.node)) {
       for (const inst of svc.serviceInstances.edges.map((e) => e.node)) {

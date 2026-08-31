@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeDeployStatus, railwayGql, getDeployState, parseRailwayTarget, serviceExists } from '../../../src/server/connectors/railway/client.js';
-import { configurePreviewService, connectServiceRepository, createEmptyService, deployPreviewCommit, PREVIEW_START_COMMAND } from '../../../src/server/connectors/railway/provision.js';
+import { configurePreviewService, connectServiceRepository, createEmptyService, deployPreviewCommit, findServiceByRepo, PREVIEW_START_COMMAND } from '../../../src/server/connectors/railway/provision.js';
 
 describe('railway/parseRailwayTarget — address a service, or skip it', () => {
   it('parses the three-part compound resource_id', () => {
@@ -67,6 +67,33 @@ describe('railway/railwayGql — carries the passed token, not a global', () => 
       throw new Error('ECONNREFUSED');
     }) as typeof fetch;
     await expect(railwayGql('t', 'query { x }')).rejects.toThrow(/Could not reach the Railway API/);
+  });
+});
+
+describe('railway/findServiceByRepo — stays inside the OAuth workspace grant', () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  it('discovers selected workspaces instead of using the forbidden account-wide projects field', async () => {
+    const queries: string[] = [];
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { query: string };
+      queries.push(body.query);
+      if (body.query.includes('me { workspaces')) {
+        return new Response(JSON.stringify({ data: { me: { workspaces: [{ id: 'ws_1' }] } } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: { workspace: { projects: { edges: [{ node: {
+        id: 'proj_1', name: 'Clothier',
+        environments: { edges: [{ node: { id: 'env_1', name: 'production' } }] },
+        services: { edges: [{ node: { id: 'svc_1', name: 'clothier', serviceInstances: { edges: [{ node: { environmentId: 'env_1', source: { repo: 'cag-platform/clothier-daily-dashboard' } } }] } } }] },
+      } }] } } } }), { status: 200 });
+    }) as typeof fetch;
+
+    expect(await findServiceByRepo('oauth-token', 'cag-platform/clothier-daily-dashboard')).toMatchObject({
+      projectId: 'proj_1', environmentId: 'env_1', serviceId: 'svc_1',
+    });
+    expect(queries[0]).toContain('me { workspaces');
+    expect(queries.some((query) => /^\s*query\s*\{\s*projects/m.test(query))).toBe(false);
   });
 });
 
