@@ -193,6 +193,8 @@ describe('railway preview provisioning — pins the disposable ref and dev comma
     });
     expect(PREVIEW_START_COMMAND).toContain('pkg.devDependencies?.vite');
     expect(PREVIEW_START_COMMAND).toContain('pnpm --dir "$PREVIEW_DIR" run dev');
+    expect(PREVIEW_START_COMMAND).toContain('STATIC_DIR');
+    expect(PREVIEW_START_COMMAND).toContain('npx -y serve');
   });
 
   it('deploys the exact disposable commit SHA', async () => {

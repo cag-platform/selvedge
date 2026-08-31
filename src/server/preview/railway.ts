@@ -15,7 +15,7 @@ function decode(id: string): DurableId { return JSON.parse(Buffer.from(id, 'base
 // Railpack runs this override in a shell, so keep all common JS managers local
 // to the temporary service instead of teaching Selvedge a project-specific
 // package-manager preference.
-export const PREVIEW_INSTALL_COMMAND = "if [ -f pnpm-lock.yaml ]; then pnpm install --no-frozen-lockfile --prefer-offline; elif [ -f yarn.lock ]; then yarn install --no-immutable; else npm install; fi";
+export const PREVIEW_INSTALL_COMMAND = "if [ -f pnpm-lock.yaml ]; then pnpm install --no-frozen-lockfile --prefer-offline; elif [ -f yarn.lock ]; then yarn install --no-immutable; else npm install; fi; mkdir -p node_modules";
 
 function previewVariables(projectId: string, input: Record<string, string>): Record<string, string> {
   return { NODE_ENV: 'development', PORT: '3000', BASE_PATH: '/', ...input, RAILPACK_INSTALL_CMD: PREVIEW_INSTALL_COMMAND, SELVEDGE_PROJECT_ID: projectId };
