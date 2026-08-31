@@ -184,6 +184,38 @@ function ProductProofs() {
   </>;
 }
 
+type DemoView = 'request' | 'work' | 'decision' | 'preview';
+
+const DEMO_VIEWS: Array<{ id: DemoView; label: string }> = [
+  { id: 'request', label: 'Request' },
+  { id: 'work', label: 'Actions' },
+  { id: 'decision', label: 'Decision' },
+  { id: 'preview', label: 'Live app' },
+];
+
+function WorkingProjectDemo() {
+  const [view, setView] = useState<DemoView>('request');
+
+  return <section className="landing-working-demo mx-auto max-w-6xl px-4 sm:px-6" aria-labelledby="working-demo-title">
+    <div className="landing-working-copy"><p className={eyebrowCls}>A real Selvedge project</p><h2 id="working-demo-title">See the work, not a promise.</h2><p>Relay is a seeded project inside Selvedge. Follow the request, the agent’s actions, the decision, and the running app.</p><p className="landing-working-note">Sanitized project record. No private reasoning or customer data.</p></div>
+    <div className="landing-working-frame">
+      <div className="landing-working-bar"><div><span>Northstar Studio</span><strong>Relay · Restore the health check</strong></div><span className="landing-working-status">Project online</span></div>
+      <div className="landing-working-tabs" role="tablist" aria-label="Relay project walkthrough">{DEMO_VIEWS.map((item) => <button key={item.id} type="button" role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)}>{item.label}</button>)}</div>
+      <div className="landing-working-surface">
+        <div className="landing-working-trace">
+          {view === 'request' && <div className="landing-working-entry"><span>OWNER</span><p>Why is Relay showing down if crews can still use it?</p><small>Claude Code picked up the project with its existing context.</small></div>}
+          {view === 'work' && <div className="landing-action-list"><p><span>01</span><b>Checked old health route</b><small>GET /health · 404 Not Found</small></p><p><span>02</span><b>Checked current API route</b><small>GET /api/health · healthy</small></p><p><span>03</span><b>Read deploy configuration</b><small>Monitoring still uses the old address</small></p></div>}
+          {view === 'decision' && <div className="landing-working-entry"><span>CLAUDE CODE</span><p>Crews are fine. The app moved its check, but monitoring still calls the old address.</p><small>Recommended: keep the current route, add a compatible alias, and update monitoring.</small></div>}
+          {view === 'preview' && <div className="landing-working-entry"><span>LIVE PREVIEW</span><p>The same seeded Relay app, running inside Selvedge.</p><small>The preview is isolated from any customer system.</small></div>}
+        </div>
+        <div className="landing-working-result">
+          {view === 'preview' ? <iframe src="/demo-apps/relay" title="Live Relay seeded project" loading="lazy" /> : <div className="landing-working-plan"><p className={eyebrowCls}>Proposed work</p><h3>Restore a reliable all-clear.</h3><ul><li><span className={view !== 'request' ? 'done' : ''} />Keep /api/health as the source of truth</li><li><span className={view === 'decision' ? 'done' : ''} />Add a small /health alias</li><li><span />Update monitoring after approval</li></ul><button type="button" onClick={() => setView(view === 'request' ? 'work' : view === 'work' ? 'decision' : 'preview')}>{view === 'request' ? 'Watch the checks' : view === 'work' ? 'See the decision' : 'Open the live app'} →</button></div>}
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
 export function Landing() {
   const [visitorSystem, setVisitorSystem] = useState<VisitorSystem>(() => detectVisitorSystem());
   const [arrivalSource] = useState<ArrivalSource>(() => detectArrivalSource());
@@ -196,7 +228,9 @@ export function Landing() {
   return <div className="landing-site overflow-hidden">
     <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#how" className={btnGhost}>See how it works</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
+      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
+
+      <div id="working-demo"><WorkingProjectDemo /></div>
 
       <ProductProofs />
 
