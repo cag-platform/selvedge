@@ -103,14 +103,23 @@ export async function publishPreviewRef(
   const sandbox = await ensureSandbox(db, orgId, projectId, cfg);
   const ref = `selvedge-preview/${projectId}-${Date.now().toString(36)}`;
   const archivePath = '/tmp/selvedge-preview-source.zip';
-  const script = `import os, zipfile\nroot=${JSON.stringify(WORKDIR)}\nout=${JSON.stringify(archivePath)}\nskip={'.git','node_modules','.env','.env.local','.env.development.local','.env.production.local','.env.test.local'}\nwith zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:\n for base,dirs,names in os.walk(root):\n  dirs[:]=[d for d in dirs if d not in skip]\n  for name in names:\n   path=os.path.join(base,name)\n   rel=os.path.relpath(path,root)\n   if rel not in skip and not os.path.islink(path): z.write(path,rel)\n`;
-  // Hosted container file attachments can disappear between the upload call
-  // and the next model-backed shell turn. The fixed script contains no user
-  // input beyond JSON-escaped paths, so carry it inline as base64 and avoid
-  // relying on that transient attachment boundary.
-  const encodedScript = Buffer.from(script).toString('base64');
+  const indexPath = `/tmp/selvedge-preview-index-${randomBytes(8).toString('hex')}`;
+  // Build a disposable Git tree with a separate index. This captures tracked,
+  // modified and new source without touching the developer's real index, and
+  // uses only Git (available in every workspace image) rather than assuming
+  // Python or a zip utility is installed.
   const packed = await sandbox.process.executeCommand(
-    `python3 -c ${shellQuote(`import base64;exec(base64.b64decode(${JSON.stringify(encodedScript)}))`)}`,
+    [
+      'set -e',
+      `cd ${WORKDIR}`,
+      `rm -f ${shellQuote(indexPath)} ${shellQuote(archivePath)}`,
+      `GIT_INDEX_FILE=${shellQuote(indexPath)} git read-tree HEAD`,
+      `GIT_INDEX_FILE=${shellQuote(indexPath)} git add -A -- .`,
+      `GIT_INDEX_FILE=${shellQuote(indexPath)} git rm -r --cached --ignore-unmatch -- node_modules .env .env.local .env.development.local .env.production.local .env.test.local >/dev/null`,
+      `tree=$(GIT_INDEX_FILE=${shellQuote(indexPath)} git write-tree)`,
+      `git archive --format=zip --output=${shellQuote(archivePath)} "$tree"`,
+      `rm -f ${shellQuote(indexPath)}`,
+    ].join(' && '),
     undefined,
     undefined,
     180,
