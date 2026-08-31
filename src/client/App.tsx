@@ -36,6 +36,9 @@ const Styleguide = lazy(() => import('./pages/Styleguide.js').then((m) => ({ def
 const Docs = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Docs })));
 const Security = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Security })));
 const Changelog = lazy(() => import('./pages/Docs.js').then((m) => ({ default: m.Changelog })));
+const Privacy = lazy(() => import('./pages/PublicInfo.js').then((m) => ({ default: m.Privacy })));
+const Terms = lazy(() => import('./pages/PublicInfo.js').then((m) => ({ default: m.Terms })));
+const Status = lazy(() => import('./pages/PublicInfo.js').then((m) => ({ default: m.Status })));
 const DemoLoginTransfer = lazy(() =>
   import('./pages/DemoLoginTransfer.js').then((m) => ({ default: m.DemoLoginTransfer })),
 );
@@ -245,6 +248,9 @@ export default function App() {
       <Route path="/docs/:page" element={<Suspense fallback={null}><Docs /></Suspense>} />
       <Route path="/security" element={<Suspense fallback={null}><Security /></Suspense>} />
       <Route path="/changelog" element={<Suspense fallback={null}><Changelog /></Suspense>} />
+      <Route path="/privacy" element={<Suspense fallback={null}><Privacy /></Suspense>} />
+      <Route path="/terms" element={<Suspense fallback={null}><Terms /></Suspense>} />
+      <Route path="/status" element={<Suspense fallback={null}><Status /></Suspense>} />
       <Route
         path="/operator/demo-login"
         element={
