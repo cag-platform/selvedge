@@ -24,7 +24,7 @@ function fixture() {
       stdout: 'ok\n', stderr: '', logs: 'ok\n', command: '', workingDir: '/workspace/project',
       startedAt: '', completedAt: '',
     }),
-    wait: vi.fn(), kill: vi.fn(), stop: vi.fn(), list: vi.fn().mockResolvedValue([]),
+    wait: vi.fn(), get: vi.fn(), kill: vi.fn(), stop: vi.fn(), list: vi.fn().mockResolvedValue([]),
   };
   const fs = {
     mkdir: vi.fn().mockResolvedValue(undefined),
@@ -89,8 +89,7 @@ describe('Blaxel Workspace Runtime', () => {
     await expect(workspace.download('/workspace/project/input.bin')).resolves.toEqual(new Uint8Array([1, 2, 3]));
 
     expect(process.exec).toHaveBeenLastCalledWith(expect.objectContaining({
-      command: 'npm test', workingDir: '/workspace/project', waitForCompletion: true,
-      onLog: expect.any(Function),
+      command: expect.stringContaining('npm test'), workingDir: '/workspace/project',
     }));
     expect(fs.writeBinary).toHaveBeenCalledWith('/workspace/project/input.bin', new Uint8Array([7, 8]));
   });
@@ -106,5 +105,34 @@ describe('Blaxel Workspace Runtime', () => {
 
     await expect(workspace.upload('/workspace/project/input.bin', new Uint8Array([7, 8]))).resolves.toBeUndefined();
     expect(fs.writeBinary).toHaveBeenCalledTimes(2);
+  });
+
+  it('recognizes its own completion marker when Blaxel status remains running', async () => {
+    const { runtime, process } = fixture();
+    process.exec.mockResolvedValueOnce({
+      pid: 'clone', name: 'clone', status: 'completed', exitCode: 0, stdout: '', stderr: '',
+      logs: '', command: '', workingDir: '/workspace/project', startedAt: '', completedAt: '',
+    }).mockResolvedValueOnce({
+      pid: 'pid-2', name: 'command', status: 'running', exitCode: 0, stdout: '', stderr: '',
+      logs: '', command: '', workingDir: '/workspace/project', startedAt: '', completedAt: '',
+    });
+    process.get.mockImplementation(async () => {
+      const command = process.exec.mock.calls.at(-1)?.[0]?.command as string;
+      const marker = /(__SELVEDGE_EXIT_[a-f0-9]+__)/.exec(command)?.[1];
+      return {
+        pid: 'pid-2', name: 'command', status: 'running', exitCode: 0,
+        stdout: `done\n${marker}0\n`, stderr: '', logs: '', command: '',
+        workingDir: '/workspace/project', startedAt: '', completedAt: '',
+      };
+    });
+    const workspace = await runtime.createWorkspace({
+      orgId: 'org_1', projectId: 'project_1', purpose: 'development',
+      source: { kind: 'git', repository: 'https://github.com/customer/app.git', ref: 'main' },
+      ttlMinutes: 60, idleStopMinutes: 15, network: { default: 'deny', allowedHosts: [] }, secrets: [],
+    });
+
+    await expect(workspace.exec({ command: 'echo done', timeoutSeconds: 5 })).resolves.toEqual({
+      exitCode: 0, stdout: 'done', stderr: '',
+    });
   });
 });

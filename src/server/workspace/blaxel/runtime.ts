@@ -116,31 +116,42 @@ class BlaxelWorkspace implements Workspace {
 
   async exec(request: WorkspaceExecRequest): Promise<WorkspaceExecResult> {
     const name = `selvedge-exec-${randomBytes(8).toString('hex')}`;
+    const marker = `__SELVEDGE_EXIT_${randomBytes(12).toString('hex')}__`;
     const started = await this.sandbox.process.exec({
       name,
-      command: request.command,
+      // Blaxel's process status and wait-for-completion endpoints can remain
+      // open after a command has exited. Emit our own unambiguous terminal
+      // marker and observe stdout instead, so completion is Selvedge-owned.
+      command: `( ${request.command} ); code=$?; printf '\n${marker}%s\n' "$code"; exit "$code"`,
       workingDir: request.cwd,
       env: await this.environment(request.secretGrants),
       timeout: request.timeoutSeconds,
-      // Ask Blaxel to return the terminal process result directly. Polling a
-      // just-finished process can briefly keep reporting `running`, which
-      // leaves Selvedge turns stuck even though the worker log is complete.
-      waitForCompletion: true,
-      // A callback selects Blaxel's streaming completion endpoint. Its final
-      // event carries the process result, avoiding both the stale status poll
-      // and the non-streaming request that can remain open after completion.
-      onLog: () => undefined,
     });
     let finished = started;
     if (started.status === 'running') {
+      const identifier = started.pid || name;
+      const deadline = Date.now() + request.timeoutSeconds * 1_000;
       try {
-        finished = await this.sandbox.process.wait(started.pid || name, { maxWait: request.timeoutSeconds * 1_000, interval: 500 });
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          try { finished = await this.sandbox.process.get(identifier); }
+          catch { continue; }
+          if ((finished.stdout ?? '').includes(marker) || finished.status !== 'running') break;
+        }
+        if (!(finished.stdout ?? '').includes(marker) && finished.status === 'running') {
+          throw new Error('Process did not finish in time');
+        }
       } catch (error) {
-        await this.sandbox.process.kill(started.pid || name).catch(() => undefined);
+        await this.sandbox.process.kill(identifier).catch(() => undefined);
         throw error;
       }
     }
-    return { exitCode: finished.exitCode, stdout: finished.stdout ?? '', stderr: finished.stderr ?? '' };
+    const markerMatch = new RegExp(`\\n?${marker}(\\d+)\\n?`).exec(finished.stdout ?? '');
+    return {
+      exitCode: markerMatch ? Number(markerMatch[1]) : finished.exitCode,
+      stdout: (finished.stdout ?? '').replace(new RegExp(`\\n?${marker}\\d+\\n?`), ''),
+      stderr: finished.stderr ?? '',
+    };
   }
 
   async startProcess(request: WorkspaceProcessRequest): Promise<WorkspaceProcess> {
