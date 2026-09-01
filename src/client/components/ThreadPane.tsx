@@ -766,6 +766,10 @@ export function ThreadPane({
 }) {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [autoRoute, setAutoRoute] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('selvedge.auto-route') !== 'off';
+  });
   // Plain model chat has no sandbox run, so `data.working` remains false while
   // the provider answers. Keep the accepted turn live until its reply lands.
   const [awaitingReply, setAwaitingReply] = useState(false);
@@ -1019,6 +1023,7 @@ export function ThreadPane({
     try {
       const res = await api.post<{ started: boolean; warming: boolean; consulted?: string[] }>(`/api/threads/${data.thread.id}/message`, {
         text: body,
+        ...(autoRoute ? { auto_route: true } : {}),
         ...(images.length ? { images: images.map((i) => ({ mime: i.mime, dataBase64: i.dataBase64 })) } : {}),
         ...(files.length ? { files: files.map((f) => ({ id: f.id })) } : {}),
         ...(documents.length ? { documents } : {}),
@@ -1480,6 +1485,20 @@ export function ThreadPane({
             onPick={pickAgent}
             onDismiss={() => setText((current) => current.replace(/(?:^|[^A-Za-z0-9_])@([A-Za-z0-9_-]*)$/, (whole, typed: string) => whole.slice(0, whole.length - typed.length - 1)))}
           />
+          <button
+            type="button"
+            aria-pressed={autoRoute}
+            disabled={sending}
+            onClick={() => {
+              const next = !autoRoute;
+              setAutoRoute(next);
+              window.localStorage.setItem('selvedge.auto-route', next ? 'on' : 'off');
+            }}
+            title="Let Selvedge choose an available agent for each turn"
+            className={`rounded-inset border px-2.5 py-2 font-mono text-tech focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50 ${autoRoute ? 'border-action bg-panel-soft text-action-bright' : 'border-hairline bg-panel text-ink-quiet'}`}
+          >
+            Auto
+          </button>
           <button
             type="button"
             disabled={sending}

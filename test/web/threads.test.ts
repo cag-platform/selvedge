@@ -305,6 +305,25 @@ describe('web/routes/threads — the Inbox surface', () => {
     expect((await request(appWithOrg('org_2', createThreadsRouter(db))).get(`/api/threads/${thread.id}/handoffs`)).status).toBe(404);
   });
 
+  it('Auto uses org preferences, switches visibly, and records why', async () => {
+    const thread = await ensureWorkshopThread(db, orgId, 'loom');
+    await db.update(orgs).set({ preferredAgents: ['gpt'] }).where(eq(orgs.orgId, orgId));
+    const roster: ThreadsDeps['roster'] = async () => [
+      { id: 'gpt', name: 'GPT', chip: 'GPT', changes_files: false, does: 'Talks it through.', cost_note: 'low', answering_now: false, available: true, unavailable_note: null, blocked_by: null, handoff: null, models: [], selected_model: 'gpt-5.6-terra', readiness: { state: 'available', checked_at: null, code: null, note: null } },
+      { id: 'claude-code', name: 'Claude Code', chip: 'CC', changes_files: true, does: 'Changes files.', cost_note: 'build', answering_now: true, available: true, unavailable_note: null, blocked_by: null, handoff: null, models: [], selected_model: 'claude-sonnet-5', readiness: { state: 'unknown', checked_at: null, code: null, note: null } },
+    ];
+    const chatTurn: ThreadsDeps['chatTurn'] = async () => ({ messageId: 'reply', usage: { inputTokens: 1, outputTokens: 1 }, costCents: 0 });
+
+    await request(app({ roster, chatTurn }))
+      .post(`/api/threads/${thread.id}/message`)
+      .send({ text: 'Explain what is causing this failure', auto_route: true })
+      .expect(202);
+
+    expect((await getThread(db, orgId, thread.id))?.agent).toBe('gpt');
+    const messages = await db.select().from(agentMessages).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.threadId, thread.id)));
+    expect(messages.some((message) => message.role === 'switch' && message.content.includes('Auto chose GPT'))).toBe(true);
+  });
+
   it('a workshop message starts a build turn, carrying the thread and any parked handoff', async () => {
     const thread = await ensureWorkshopThread(db, orgId, 'loom');
     await setBuild(db, orgId, 'loom', { sandboxId: 'sbx_1' });

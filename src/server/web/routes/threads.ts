@@ -63,6 +63,7 @@ import { executionModeFor, isShipRequest, type ExecutionMode } from '../../../sh
 import { consultationStatuses } from '../../consultations/status.js';
 import { compileTaskContext, type CompileContextInput } from '../../context/compiler.js';
 import { deleteSandbox, inspectSandboxWorktree, isSandboxCapacityError, type SandboxExecutionSnapshot } from '../../build/sandbox.js';
+import { chooseAutoAgent, type AutoRouteDecision } from '../../threads/autoRoute.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -118,6 +119,7 @@ export type ThreadsDeps = {
   /** The single server-side compilation seam; injected so route tests can freeze it. */
   compileContext?: (db: Db, input: CompileContextInput) => ReturnType<typeof compileTaskContext>;
   captureExecutionState?: (db: Db, orgId: string, projectId: string) => Promise<SandboxExecutionSnapshot | null>;
+  roster?: typeof agentRoster;
 };
 
 export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
@@ -135,6 +137,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
   const visualStore = deps.visualStore === undefined ? visualObjectStore() : deps.visualStore;
   const compileContext = deps.compileContext ?? compileTaskContext;
   const captureExecutionState = deps.captureExecutionState ?? (process.env.NODE_ENV === 'test' ? async () => null : inspectSandboxWorktree);
+  const roster = deps.roster ?? agentRoster;
 
   router.post(
     '/api/projects/:projectId/checkout/preflight',
@@ -376,7 +379,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      res.json({ answering: thread.agent, agents: await agentRoster(db, orgId, thread, env) });
+      res.json({ answering: thread.agent, agents: await roster(db, orgId, thread, env) });
     }),
   );
 
@@ -1174,7 +1177,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(404).json({ error: 'no such thread' });
         return;
       }
-      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown; raise_cap?: unknown; acknowledge_stale?: unknown; search_everywhere?: unknown };
+      const body = (req.body ?? {}) as { text?: unknown; mode?: unknown; documents?: unknown; images?: unknown; files?: unknown; checkout_resolution?: unknown; raise_cap?: unknown; acknowledge_stale?: unknown; search_everywhere?: unknown; auto_route?: unknown };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
@@ -1250,6 +1253,58 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if ('error' in fileRefs) {
         res.status(400).json({ error: fileRefs.error });
         return;
+      }
+
+      /**
+       * AUTO IS A POLICY, NOT A HIDDEN DEFAULT AGENT. It runs only when the
+       * owner has the visible Auto control on and did not name an agent. The
+       * roster supplies real credential/model availability; onboarding
+       * preferences supply familiarity; recent failed build runs are avoided.
+       * The decision is written onto the conversation whenever it changes who
+       * is answering, so "Auto" never disguises provider bias.
+       */
+      let autoDecision: AutoRouteDecision | null = null;
+      if (body.auto_route === true && intent.kind === 'continue') {
+        const [offers, [org], recentFailures] = await Promise.all([
+          roster(db, orgId, thread, env),
+          db.select({ preferredAgents: orgs.preferredAgents }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1),
+          db.select({ agent: agentRuns.agent }).from(agentRuns).where(and(
+            eq(agentRuns.orgId, orgId),
+            eq(agentRuns.status, 'failed'),
+            gte(agentRuns.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+          )).orderBy(desc(agentRuns.createdAt)).limit(20),
+        ]);
+        const failed = new Set(recentFailures.map((row) => row.agent).filter(isAgentId));
+        const preferred = Array.isArray(org?.preferredAgents) ? org.preferredAgents.filter(isAgentId) : [];
+        autoDecision = chooseAutoAgent({
+          text,
+          hasProject: Boolean(thread.projectId),
+          hasAttachments: images.images.length > 0 || fileRefs.ids.length > 0,
+          current: thread.agent as AgentId,
+          preferred,
+          candidates: offers,
+          recentlyFailed: failed,
+        });
+        if (!autoDecision) {
+          res.status(409).json({
+            error: 'Auto could not find an available agent for this turn. Connect one under Connections or choose an agent directly.',
+            code: 'auto_route_unavailable',
+          });
+          return;
+        }
+        if (autoDecision.agent !== thread.agent) {
+          const switched = await switchThreadAgent(db, orgId, thread.id, autoDecision.agent);
+          if (!switched.ok) {
+            res.status(400).json({ error: switched.message });
+            return;
+          }
+          thread = switched.thread;
+          await db.insert(agentMessages).values({
+            id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id, role: 'switch',
+            content: `Auto chose ${agentById(autoDecision.agent)?.name ?? autoDecision.agent} — ${autoDecision.reason}`,
+            meta: { auto_route: autoDecision },
+          });
+        }
       }
 
       /**
