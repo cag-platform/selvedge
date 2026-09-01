@@ -46,7 +46,7 @@ describe('every builder runs on the org’s own account', () => {
   describe('Claude Code — the one that was still on the platform’s subscription', () => {
     it("runs on the org's own connected Anthropic key", async () => {
       await connectCredential(db, orgId, 'anthropic', 'sk-ant-owner', { kind: 'api_key' });
-      const got = await resolveBuilderAuth(db, orgId, 'claude-code', { env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token' } });
+      const got = await resolveBuilderAuth(db, orgId, 'claude-code', { env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token', MANAGED_FUEL: 'on' } });
       expect(got.ok).toBe(true);
       if (!got.ok) return;
       expect(got.auth.secret).toBe('sk-ant-owner');
@@ -120,7 +120,7 @@ describe('every builder runs on the org’s own account', () => {
 
   describe('the platform’s own account is a fallback, and a switchable one', () => {
     it('covers an org that has connected nothing, and says so in `source`', async () => {
-      const got = await resolveBuilderAuth(db, orgId, 'claude-code', { env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token' } });
+      const got = await resolveBuilderAuth(db, orgId, 'claude-code', { env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token', MANAGED_FUEL: 'on' } });
       expect(got.ok && got.auth.source).toBe('managed');
       expect(got.ok && got.auth.secret).toBe('platform-token');
     });
@@ -128,7 +128,7 @@ describe('every builder runs on the org’s own account', () => {
     /** A subscription seat already paid for beats metered tokens. */
     it('prefers the deployment’s subscription over its API key when it holds both', async () => {
       const got = await resolveBuilderAuth(db, orgId, 'claude-code', {
-        env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token', ANTHROPIC_API_KEY: 'sk-platform' },
+        env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token', ANTHROPIC_API_KEY: 'sk-platform', MANAGED_FUEL: 'on' },
       });
       expect(got.ok && got.auth.envVar).toBe('CLAUDE_CODE_OAUTH_TOKEN');
     });
@@ -139,12 +139,13 @@ describe('every builder runs on the org’s own account', () => {
      * it needs one. Default stays ON, because a deploy is the wrong moment to
      * discover a policy change.
      */
-    it('MANAGED_FUEL=off stops the deployment covering anybody', async () => {
-      expect(managedFuelAllowed({})).toBe(true);
+    it('managed fuel is off unless the deployment deliberately enables it', async () => {
+      expect(managedFuelAllowed({})).toBe(false);
       expect(managedFuelAllowed({ MANAGED_FUEL: 'off' })).toBe(false);
+      expect(managedFuelAllowed({ MANAGED_FUEL: 'on' })).toBe(true);
 
       const got = await resolveBuilderAuth(db, orgId, 'claude-code', {
-        env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token', MANAGED_FUEL: 'off' },
+        env: { CLAUDE_CODE_OAUTH_TOKEN: 'platform-token' },
       });
       expect(got.ok).toBe(false);
     });

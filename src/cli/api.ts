@@ -134,4 +134,30 @@ export class CompanionApi {
       return { ok: false, error: error instanceof Error ? error.message : 'workspace upload failed' };
     }
   }
+
+  connectAgentRuntime(input: { name: string; capabilities: { codex: boolean; claudeCode: boolean } }) {
+    return this.call<{ connected: true; host_id: string; heartbeat_seconds: number }>('/api/companion/runtime/agents/connect', { method: 'POST', body: JSON.stringify(input) });
+  }
+  heartbeatAgentRuntime() { return this.call<{ connected: true }>('/api/companion/runtime/agents/heartbeat', { method: 'POST' }); }
+  disconnectAgentRuntime() { return this.call<{ disconnected: true }>('/api/companion/runtime/agents', { method: 'DELETE' }); }
+  claimAgentRuntimeJob() { return this.call<{ job: null | { id: string; projectId: string; agent: 'codex' | 'claude-code'; kind: 'chat_turn'; request: Record<string, unknown> } }>('/api/companion/runtime/agents/jobs/claim', { method: 'POST' }); }
+  finishAgentRuntimeJob(jobId: string, result: { ok: boolean; detail?: string; narrative?: string; changedPaths?: string[] }) {
+    return this.call<{ recorded: true }>(`/api/companion/runtime/agents/jobs/${encodeURIComponent(jobId)}/complete`, { method: 'POST', body: JSON.stringify(result) });
+  }
+  async downloadAgentRuntimeSource(jobId: string): Promise<ApiResult<{ bytes: Uint8Array; layout: 'github' | 'workspace' | 'empty' }>> {
+    if (!this.config.token) return { ok: false, error: 'no key' };
+    try {
+      const res = await this.fetchImpl(`${this.config.api}/api/companion/runtime/agents/jobs/${encodeURIComponent(jobId)}/source`, { headers: { Authorization: `Bearer ${this.config.token}` } });
+      if (!res.ok && res.status !== 204) { const body = await res.json().catch(() => ({})) as { error?: string }; return { ok: false, error: body.error ?? `${res.status} ${res.statusText}` }; }
+      return { ok: true, value: { bytes: res.status === 204 ? new Uint8Array() : new Uint8Array(await res.arrayBuffer()), layout: (res.headers.get('x-selvedge-archive-layout') ?? 'empty') as 'github' | 'workspace' | 'empty' } };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'source download failed' }; }
+  }
+  async uploadAgentRuntimeArchive(jobId: string, bytes: Uint8Array): Promise<ApiResult<{ stored: true; bytes: number }>> {
+    if (!this.config.token) return { ok: false, error: 'no key' };
+    try {
+      const res = await this.fetchImpl(`${this.config.api}/api/companion/runtime/agents/jobs/${encodeURIComponent(jobId)}/archive`, { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/octet-stream' }, body: Buffer.from(bytes) });
+      const body = await res.json().catch(() => ({})) as { stored?: true; bytes?: number; error?: string };
+      return res.ok ? { ok: true, value: body as { stored: true; bytes: number } } : { ok: false, error: body.error ?? `${res.status} ${res.statusText}` };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'workspace upload failed' }; }
+  }
 }

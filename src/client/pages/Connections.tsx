@@ -39,16 +39,17 @@ export function Connections() {
       <div>
         <h1 className="text-display font-display font-medium text-ink">Connections</h1>
         <p className="mt-2 max-w-xl text-body text-ink-dim">
-          Connect your own AI model key to turn on the voice. Selvedge charges for the layer (the watching, the
-          explaining, the caps and checkpoints), not for the model. The key is yours, checked before it’s saved, and you
-          can remove it any time.
+          Connect your computer to use Codex and Claude Code subscriptions you already pay for. API keys below are
+          optional and are billed separately by their provider.
         </p>
       </div>
 
+      <CompanionKeys />
+
       <section>
-        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Connected</p>
+        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Optional API accounts</p>
         {state.connected.length === 0 ? (
-          <p className="text-body text-ink-quiet">Nothing connected yet. Add a key below and the brief gains its voice.</p>
+          <p className="text-body text-ink-quiet">No API accounts connected. That is fine when your computer is connected below.</p>
         ) : (
           <div className="space-y-2">
             {state.connected.map((c) => (
@@ -68,7 +69,6 @@ export function Connections() {
 
       <Hosts />
 
-      <CompanionKeys />
     </div>
   );
 }
@@ -278,7 +278,7 @@ function ConnectedRow({ row, onRemoved }: { row: Connected; onRemoved: () => voi
  * the result on the machine it ran on. Offering the choice where it can't work
  * would be offering a path that ends in an auth error on a metered minute.
  */
-const SUBSCRIPTION_PROVIDERS = new Set(['anthropic']);
+const SUBSCRIPTION_PROVIDERS = new Set<string>();
 
 function ConnectForm({ providers, onConnected }: { providers: string[]; onConnected: () => void }) {
   const [provider, setProvider] = useState(providers[0] ?? '');

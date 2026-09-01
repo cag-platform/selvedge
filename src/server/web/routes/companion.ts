@@ -17,6 +17,11 @@ import {
 } from '../../companion/appleRuntime.js';
 import { resolveRepoToken } from '../../build/repoToken.js';
 import { companionPairingStatus, revokeCompanionToken, startCompanionPairing } from '../../companion/tokens.js';
+import {
+  AGENT_RUNTIME_HEARTBEAT_MS, assignedAgentRuntimeJob, checkAgentRuntimeRegistration,
+  claimAgentRuntimeJob, connectAgentRuntime, disconnectAgentRuntime, finishAgentRuntimeJob,
+  heartbeatAgentRuntime, type AgentRuntimeRequest,
+} from '../../companion/agentRuntime.js';
 
 /**
  * THE LOOP'S DOOR — the one surface a program on the owner's machine talks to.
@@ -108,6 +113,61 @@ export function createCompanionRouter(db: Db) {
       res.json({ ok: true, projects: await listContextProjects(db, orgId) });
     }),
   );
+
+  router.post('/api/companion/runtime/agents/connect', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest;
+    const checked = checkAgentRuntimeRegistration(req.body);
+    if (!checked) { res.status(400).json({ error: 'Sign in to Codex or Claude Code on this computer first.' }); return; }
+    const host = await connectAgentRuntime(db, owner.orgId, owner.tokenId, checked);
+    res.status(201).json({ connected: true, host_id: host.id, heartbeat_seconds: AGENT_RUNTIME_HEARTBEAT_MS / 1000 });
+  }));
+  router.post('/api/companion/runtime/agents/heartbeat', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest;
+    if (!await heartbeatAgentRuntime(db, owner.orgId, owner.tokenId)) { res.status(409).json({ error: 'Reconnect this computer.' }); return; }
+    res.json({ connected: true });
+  }));
+  router.delete('/api/companion/runtime/agents', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest; await disconnectAgentRuntime(db, owner.orgId, owner.tokenId); res.json({ disconnected: true });
+  }));
+  router.post('/api/companion/runtime/agents/jobs/claim', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest; const job = await claimAgentRuntimeJob(db, owner.orgId, owner.tokenId);
+    res.json({ job: job ? { id: job.id, projectId: job.projectId, agent: job.agent, kind: 'chat_turn', request: job.request } : null });
+  }));
+  router.get('/api/companion/runtime/agents/jobs/:jobId/source', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest;
+    const job = await assignedAgentRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '');
+    if (!job) { res.status(404).json({ error: 'No assigned project source for this computer.' }); return; }
+    const request = job.request as AgentRuntimeRequest;
+    const checkpoint = await appleWorkspaceCheckpoint(db, owner.orgId, job.projectId);
+    if (checkpoint) { res.setHeader('x-selvedge-archive-layout', 'workspace'); res.type('application/gzip').send(checkpoint); return; }
+    if (request.emptyRepo) { res.setHeader('x-selvedge-archive-layout', 'empty'); res.status(204).end(); return; }
+    const token = await resolveRepoToken(db, owner.orgId, request.repoFullName);
+    if (!token.ok) { res.status(409).json({ error: token.reason }); return; }
+    const source = await fetch(`https://api.github.com/repos/${request.repoFullName}/tarball/${encodeURIComponent(request.branch)}`, { headers: { Authorization: `Bearer ${token.token}`, Accept: 'application/vnd.github+json', 'User-Agent': 'Selvedge Local Runtime' } });
+    if (!source.ok) { res.status(502).json({ error: `GitHub could not prepare this project (${source.status}).` }); return; }
+    const bytes = Buffer.from(await source.arrayBuffer());
+    if (bytes.byteLength > 100 * 1024 * 1024) { res.status(413).json({ error: 'This project is larger than 100 MB.' }); return; }
+    res.setHeader('x-selvedge-archive-layout', 'github'); res.type('application/gzip').send(bytes);
+  }));
+  router.post('/api/companion/runtime/agents/jobs/:jobId/archive', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest;
+    const job = await assignedAgentRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '');
+    if (!job || !Buffer.isBuffer(req.body)) { res.status(409).json({ error: 'That upload is not assigned to this computer.' }); return; }
+    const request = job.request as AgentRuntimeRequest;
+    await storeAppleWorkspaceCheckpoint(db, owner.orgId, job.projectId, request.runId, request.threadId, request.agent, req.body);
+    res.json({ stored: true, bytes: req.body.byteLength });
+  }));
+  router.post('/api/companion/runtime/agents/jobs/:jobId/complete', asyncHandler(async (req, res) => {
+    const owner = req as CompanionRequest; const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.ok !== 'boolean') { res.status(400).json({ error: 'A result is required.' }); return; }
+    const job = await finishAgentRuntimeJob(db, owner.orgId, owner.tokenId, req.params.jobId ?? '', {
+      ok: body.ok, detail: typeof body.detail === 'string' ? body.detail.slice(0, 2000) : undefined,
+      narrative: typeof body.narrative === 'string' ? body.narrative.slice(0, 12000) : undefined,
+      changedPaths: Array.isArray(body.changedPaths) ? body.changedPaths.filter((x): x is string => typeof x === 'string').slice(0, 200) : undefined,
+    });
+    if (!job) { res.status(409).json({ error: 'That job is not assigned here.' }); return; }
+    res.json({ recorded: true });
+  }));
 
   router.post(
     '/api/companion/runtime/apple/connect',

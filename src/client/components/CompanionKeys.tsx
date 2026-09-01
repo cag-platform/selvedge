@@ -13,6 +13,7 @@ import { btnPrimary, EmptyState } from './ui.js';
 
 type Key = { id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null };
 type AppleRuntime = { id: string; name: string; xcodeVersion: string; macosVersion: string; lastSeenAt: string; online: boolean };
+type AgentRuntime = { id: string; name: string; capabilities: { codex: boolean; claudeCode: boolean }; lastSeenAt: string; online: boolean };
 
 function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
@@ -154,6 +155,7 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
 export function CompanionKeys() {
   const [keys, setKeys] = useState<Key[] | null>(null);
   const [appleRuntimes, setAppleRuntimes] = useState<AppleRuntime[]>([]);
+  const [agentRuntimes, setAgentRuntimes] = useState<AgentRuntime[]>([]);
   const [name, setName] = useState('');
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,8 +164,8 @@ export function CompanionKeys() {
 
   const load = useCallback(() => {
     api
-      .get<{ keys: Key[]; apple_runtimes: AppleRuntime[] }>('/api/companion-keys')
-      .then((r) => { setKeys(r.keys); setAppleRuntimes(r.apple_runtimes ?? []); })
+      .get<{ keys: Key[]; apple_runtimes: AppleRuntime[]; agent_runtimes: AgentRuntime[] }>('/api/companion-keys')
+      .then((r) => { setKeys(r.keys); setAppleRuntimes(r.apple_runtimes ?? []); setAgentRuntimes(r.agent_runtimes ?? []); })
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -238,11 +240,41 @@ export function CompanionKeys() {
             <li>Changed file paths</li>
             <li>Result, commit, and cost</li>
           </ul>
-          <p className="text-ink">Never shared: conversations, code, or diffs.</p>
+          <p className="text-ink">Session watching never shares conversations, code, or diffs.</p>
+          <p>When you ask a local agent to build, Selvedge privately sends that project workspace to this computer and receives the changed workspace back.</p>
+          <p className="text-ink">Provider logins and subscription credentials never leave this computer.</p>
         </div>
       </details>
 
       {keys && <AppleRuntimeGuide keys={keys} runtimes={appleRuntimes} />}
+
+      {keys && (() => {
+        const runtime = agentRuntimes.find((row) => row.online);
+        return (
+          <section className={`rounded-card border px-5 py-4 ${runtime ? 'border-action/40 bg-action-soft/40' : 'border-hairline bg-panel'}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-label uppercase tracking-widest text-ink-quiet">Your coding subscriptions</p>
+                <h3 className="mt-1 text-headline font-medium text-ink">Codex and Claude Code</h3>
+                <p className="mt-1 text-body text-ink-dim">Selvedge uses the accounts already signed in on your computer.</p>
+              </div>
+              <span className={`rounded-full px-3 py-1.5 text-meta font-medium ${runtime ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>{runtime ? 'Connected' : 'Not connected'}</span>
+            </div>
+            {runtime ? (
+              <div className="mt-4 border-t border-hairline pt-3 text-body text-ink">
+                <strong>{runtime.name}</strong> · {[runtime.capabilities.codex ? 'Codex' : '', runtime.capabilities.claudeCode ? 'Claude Code' : ''].filter(Boolean).join(' + ')}
+                <p className="mt-1 text-meta text-ink-dim">Usage is charged to your subscriptions. Login credentials stay on this computer.</p>
+              </div>
+            ) : (
+              <ol className="mt-4 border-t border-hairline pt-3">
+                <SetupStep number={1} title="Sign in to your agents" complete={false}><p>Run <code className="font-mono text-tech">codex login</code> and open <code className="font-mono text-tech">claude</code> once to sign in.</p></SetupStep>
+                <SetupStep number={2} title="Connect them to Selvedge" complete={false}><CopyCommand command="$HOME/.local/bin/selvedge runtime agents" /><p className="mt-2">Keep that window open while Selvedge works.</p></SetupStep>
+              </ol>
+            )}
+            <div className="mt-4 border-t border-hairline pt-3 text-meta text-ink-dim">No automatic API fallback. If this computer is offline, Selvedge stops and tells you.</div>
+          </section>
+        );
+      })()}
 
       {issued && (
         <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-action-bright bg-panel px-4 py-3">
@@ -253,6 +285,7 @@ export function CompanionKeys() {
             <p>$HOME/.local/bin/selvedge login --token {issued.slice(0, 8)}…</p>
             <p>$HOME/.local/bin/selvedge watch</p>
             <p>$HOME/.local/bin/selvedge runtime apple</p>
+            <p>$HOME/.local/bin/selvedge runtime agents</p>
           </div>
           <details className="text-meta text-ink-quiet">
             <summary className="cursor-pointer">Advanced setup</summary>

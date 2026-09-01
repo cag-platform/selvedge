@@ -9,6 +9,7 @@ import { execFile } from 'node:child_process';
 import { hostname } from 'node:os';
 import { promisify } from 'node:util';
 import { executeAppleChatJob } from './appleRuntime.js';
+import { detectLocalAgents, executeAgentJob } from './agentRuntime.js';
 
 /**
  * `selvedge` — the companion. Two jobs, one binary:
@@ -33,6 +34,7 @@ const HELP = `selvedge — the local companion for Selvedge
   selvedge watch --dry-run                   print what WOULD be sent, send nothing
   selvedge context                           run the MCP server (stdio) for agents
   selvedge runtime apple                     connect this Mac's Xcode + iPhone Simulator
+  selvedge runtime agents                    use your signed-in Codex and Claude Code
   selvedge import cursor [--dry-run]         bring this machine's Cursor chats into Selvedge
 
 What leaves this machine: for each finished session, its tool and id, when it
@@ -40,8 +42,10 @@ ran, the directory and repo, the first thing you asked for (bounded), the file
 paths it touched, the tool names it ran and how often, how it ended, the commit
 that landed while it was open, and what the tool said it cost.
 
-What never leaves: the conversation, the code, the diffs. \`--dry-run\` prints
-the payloads so you can check that for yourself.`;
+Session watching never sends the conversation, code, or diffs. A runtime job
+does transfer that project's workspace through Selvedge so the signed-in local
+agent can change it and return it. Provider credentials never leave this
+computer. \`--dry-run\` prints session-summary payloads for inspection.`;
 
 function flag(argv: string[], name: string): string | undefined {
   const at = argv.indexOf(`--${name}`);
@@ -96,13 +100,33 @@ async function main(): Promise<number> {
   }
 
   if (command === 'runtime') {
-    if (argv[0] !== 'apple') {
-      console.error('The runtime available here is: apple');
+    if (argv[0] !== 'apple' && argv[0] !== 'agents') {
+      console.error('Available runtimes: agents, apple');
       return 1;
     }
     if (!config.token) {
       console.error('No key yet — run `selvedge login --token slv_…` first.');
       return 1;
+    }
+    if (argv[0] === 'agents') {
+      const api = new CompanionApi(config);
+      const capabilities = await detectLocalAgents();
+      if (!capabilities.codex && !capabilities.claudeCode) {
+        console.error('No signed-in coding agent found. Run `codex login` or open `claude` and sign in, then retry.');
+        return 1;
+      }
+      const connected = await api.connectAgentRuntime({ name: flag(argv, 'name') ?? hostname(), capabilities });
+      if (!connected.ok) { console.error(`Could not connect coding agents: ${connected.error}`); return 1; }
+      console.log(`Connected: ${[capabilities.codex ? 'Codex' : '', capabilities.claudeCode ? 'Claude Code' : ''].filter(Boolean).join(' + ')}`);
+      console.log('Usage belongs to your signed-in subscriptions. Provider credentials stay on this computer.');
+      console.log('Keep this running while Selvedge builds. Ctrl-C disconnects.');
+      let stopping = false, checking = false;
+      const stop = async () => { if (stopping) return; stopping = true; await api.disconnectAgentRuntime(); process.exit(0); };
+      process.once('SIGINT', () => void stop()); process.once('SIGTERM', () => void stop());
+      const check = async () => { if (checking || stopping) return; checking = true; try { const claimed = await api.claimAgentRuntimeJob(); if (!claimed.ok) { console.error(`Check-in failed: ${claimed.error}`); return; } if (claimed.value.job) { console.log(`${claimed.value.job.agent === 'codex' ? 'Codex' : 'Claude Code'} is working…`); await executeAgentJob(api, claimed.value.job); console.log('Result returned to Selvedge.'); } } finally { checking = false; } };
+      setInterval(() => void check(), 2_000);
+      setInterval(async () => { const beat = await api.heartbeatAgentRuntime(); if (!beat.ok) console.error(`Connection heartbeat failed: ${beat.error}`); }, connected.value.heartbeat_seconds * 1000);
+      void check(); return new Promise<number>(() => undefined);
     }
     if (process.platform !== 'darwin') {
       console.error('The Apple runtime must run on a Mac with Xcode and an iPhone Simulator.');

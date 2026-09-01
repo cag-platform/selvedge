@@ -139,3 +139,40 @@ export const appleRuntimeJobs = pgTable(
   },
   (t) => [index('apple_runtime_jobs_org_state_idx').on(t.orgId, t.state, t.createdAt)],
 );
+
+/** A customer machine offering already-paid Codex/Claude Code sessions. */
+export const agentRuntimeHosts = pgTable(
+  'agent_runtime_hosts',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    tokenId: text('token_id').notNull().unique(),
+    name: text('name').notNull(),
+    status: text('status').notNull().default('online'),
+    capabilities: jsonb('capabilities').notNull(),
+    connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
+  },
+  (t) => [index('agent_runtime_hosts_org_seen_idx').on(t.orgId, t.lastSeenAt)],
+);
+
+/** Bounded coding work. Provider credentials never enter this table. */
+export const agentRuntimeJobs = pgTable(
+  'agent_runtime_jobs',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id').notNull(),
+    projectId: text('project_id').notNull(),
+    hostId: text('host_id'),
+    agent: text('agent').notNull(),
+    state: text('state').notNull().default('queued'),
+    request: jsonb('request').notNull(),
+    result: jsonb('result'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('agent_runtime_jobs_org_state_idx').on(t.orgId, t.state, t.createdAt)],
+);

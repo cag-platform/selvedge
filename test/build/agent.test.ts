@@ -6,6 +6,7 @@ import { runAgentTurn, startCommand, type ExecuteInSandbox, type UploadToSandbox
 import { getBuild, setBuild } from '../../src/server/build/store.js';
 import { createThread, ensureWorkshopThread, listThreads } from '../../src/server/threads/store.js';
 import { claimAppleRuntimeJob, connectAppleRuntime, finishAppleRuntimeJob } from '../../src/server/companion/appleRuntime.js';
+import { claimAgentRuntimeJob, connectAgentRuntime, finishAgentRuntimeJob } from '../../src/server/companion/agentRuntime.js';
 
 const cfg = { githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 
@@ -23,10 +24,14 @@ const cfg = { githubToken: 'g', repoFullName: 'acme/loom', branch: 'main' };
 function managedFuel() {
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'platform-claude-token';
   process.env.OPENAI_API_KEY = 'sk-platform';
+  process.env.MANAGED_FUEL = 'on';
+  process.env.LOCAL_AGENT_RUNTIME_REQUIRED = 'off';
 }
 function noFuel() {
   delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
   delete process.env.OPENAI_API_KEY;
+  delete process.env.MANAGED_FUEL;
+  delete process.env.LOCAL_AGENT_RUNTIME_REQUIRED;
 }
 
 const toolUse = (name: string, input: Record<string, unknown>) =>
@@ -194,6 +199,25 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(out.reply).toContain('Verified with Xcode using iPhone 18.');
     const rows = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
     expect(rows.map((row) => row.role)).toEqual(['owner', 'activity', 'agent']);
+  });
+
+  it('uses the owner’s signed-in Codex subscription before cloud credentials', async () => {
+    const tokenId = 'token_local_codex';
+    await db.insert(companionTokens).values({ id: tokenId, orgId, name: 'Local Mac', tokenHash: 'local-codex-hash' });
+    await connectAgentRuntime(db, orgId, tokenId, { name: 'Local Mac', capabilities: { codex: true, claudeCode: false } });
+    let completed = false;
+    const sleep = async () => {
+      if (completed) return;
+      const job = await claimAgentRuntimeJob(db, orgId, tokenId);
+      if (!job) return;
+      completed = true;
+      expect(job).toMatchObject({ agent: 'codex', request: { prompt: expect.stringContaining('darken the header') } });
+      await finishAgentRuntimeJob(db, orgId, tokenId, job.id, { ok: true, narrative: 'I darkened the header.', changedPaths: ['src/App.tsx'] });
+    };
+    const out = await runAgentTurn(db, orgId, 'loom', 'darken the header', { ...cfg, agent: 'codex' }, {}, { sleep });
+    expect(out).toMatchObject({ status: 'succeeded', costCents: 0, stagedChangesReady: true });
+    const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, out.runId));
+    expect(run?.billingSource).toBe('customer_subscription');
   });
 
   it('the second turn resumes the saved session — iteration, not starting over', async () => {

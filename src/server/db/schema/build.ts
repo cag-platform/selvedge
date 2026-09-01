@@ -134,6 +134,8 @@ export const agentRuns = pgTable(
     status: text('status').notNull().default('queued'), // queued | running | succeeded | failed | cancelled
     /** What the run cost, in whole US cents (Selvedge's money convention). */
     costCents: integer('cost_cents'),
+    /** Who paid: customer_subscription | customer_api | selvedge_credit | none. */
+    billingSource: text('billing_source'),
     commitSha: text('commit_sha'),
     /** The five-value verdict when the run was verified; null otherwise. */
     verdict: text('verdict'),

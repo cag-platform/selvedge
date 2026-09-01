@@ -17,6 +17,7 @@ import type { TaskContextCapsule } from '../../shared/types/contextCapsule.js';
 import { getPack } from '../packs/store.js';
 import { appleWorkspaceUnavailableLine, workspaceRequirementsFor } from '../workspace/requirements.js';
 import { getAppleRuntimeJob, queueAppleChatTurn, type AppleRuntimeJobResult } from '../companion/appleRuntime.js';
+import { getAgentRuntimeJob, queueAgentRuntimeTurn, type AgentRuntimeResult } from '../companion/agentRuntime.js';
 
 /**
  * One workshop turn: the owner says what they want in plain English, the agent
@@ -391,7 +392,7 @@ export async function runAgentTurn(
       return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
     }
     if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
-    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'running', startedAt: new Date() });
+    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'running', costCents: 0, billingSource: 'customer_subscription', startedAt: new Date() });
     const activityId = ulid();
     await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content: 'Waiting for the connected Mac…', runId });
     const started = now();
@@ -421,6 +422,49 @@ export async function runAgentTurn(
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
       ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: succeeded ? 'succeeded' : 'failed', failure_code: succeeded ? null : 'apple_runtime_failed', retryable: true } } } : {}) });
     return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents: 0, reply, stagedChangesReady: changedPaths.length > 0 };
+  }
+
+  // Prefer the owner's signed-in local subscription. Credentials stay on the
+  // machine and the run costs Selvedge no model API spend. API-backed cloud
+  // execution remains an explicit fallback only.
+  const localAgent: AgentId = cfg.agent ?? 'claude-code';
+  if (options.mode !== 'plan' && (localAgent === 'codex' || localAgent === 'claude-code')) {
+    const model = cfg.model ?? (localAgent === 'codex' ? 'gpt-5.6-terra' : 'sonnet');
+    const context = [
+      'Repository boundary: do not commit, push, merge, deploy, or publish. Prepare changes only.',
+      options.contextCapsule ? renderTaskContextCapsule(options.contextCapsule) : null,
+      options.handoff, renderDocuments(options.documents ?? []), ownerText,
+    ].filter(Boolean).join('\n\n---\n\n');
+    const job = await queueAgentRuntimeTurn(db, orgId, projectId, {
+      version: 1, runId, threadId, repoFullName: cfg.repoFullName, branch: cfg.branch,
+      emptyRepo: cfg.emptyRepo ?? false, agent: localAgent, model, prompt: context,
+    });
+    if (job) {
+      if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent: localAgent, model, prompt: ownerText, status: 'running', costCents: 0, billingSource: 'customer_subscription', startedAt: new Date() });
+      const activityId = ulid();
+      await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content: `Waiting for your ${agentById(localAgent)?.name ?? localAgent}…`, runId });
+      const started = now(); let completed: Awaited<ReturnType<typeof getAgentRuntimeJob>> = null; let lastState = '';
+      while (now() - started < TURN_TIMEOUT_MS) {
+        await sleep(POLL_MS); completed = await getAgentRuntimeJob(db, orgId, job.id); if (!completed) break;
+        if (completed.state !== lastState) { lastState = completed.state; const content = completed.state === 'running' ? `${agentById(localAgent)?.name ?? localAgent} is working on your computer` : completed.state === 'queued' ? 'Waiting for your connected computer…' : 'Local workspace returned to Selvedge'; await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId))).catch(() => undefined); }
+        if (completed.state === 'succeeded' || completed.state === 'failed') break;
+      }
+      const result = (completed?.result ?? null) as AgentRuntimeResult | null;
+      const succeeded = completed?.state === 'succeeded' && result?.ok === true;
+      const changedPaths = result?.changedPaths ?? [];
+      const reply = succeeded ? (result?.narrative || 'The local coding agent finished.') : `${result?.detail || completed?.error || 'The local coding agent stopped before finishing.'} Nothing was shipped.`;
+      await db.update(agentRuns).set({ status: succeeded ? 'succeeded' : 'failed', costCents: 0, changedPaths, finishedAt: new Date() }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+      await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
+      return { runId, agent: localAgent, status: succeeded ? 'succeeded' : 'failed', costCents: 0, reply, stagedChangesReady: changedPaths.length > 0 };
+    }
+    if ((process.env.LOCAL_AGENT_RUNTIME_REQUIRED ?? 'on').trim().toLowerCase() !== 'off') {
+      const reply = `Your ${agentById(localAgent)?.name ?? localAgent} connection is offline. Open Selvedge on your computer and try again. No API account was used and nothing was charged or changed.`;
+      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent: localAgent, model, prompt: ownerText, status: 'failed', costCents: 0, billingSource: 'none', startedAt: new Date(), finishedAt: new Date() });
+      if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
+      await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
+      return { runId, agent: localAgent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
+    }
   }
 
   // Which builder is running this turn, and can it run here at all? An agent
@@ -501,7 +545,7 @@ export async function runAgentTurn(
   // "ship: …"); a plan turn is tagged the same way so the workshop can tell
   // thinking apart from building without another column.
   const runPrompt = options.mode === 'plan' ? `plan: ${ownerText}` : ownerText;
-  await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: runPrompt, model, status: 'running', startedAt: new Date() });
+  await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: runPrompt, model, status: 'running', billingSource: resolved.ok ? (resolved.auth.source === 'byo' ? 'customer_api' : 'selvedge_credit') : 'none', startedAt: new Date() });
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.

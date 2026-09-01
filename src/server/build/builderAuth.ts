@@ -139,14 +139,12 @@ export function isBuilderAgent(agent: AgentId): agent is BuilderAgentId {
 /**
  * Does this deployment cover builds for orgs that haven't connected anything?
  *
- * Default ON, because that is what was running before this module existed and
- * a deploy is the wrong moment to discover a policy change. `MANAGED_FUEL=off`
- * turns it off, which is the switch to reach for the day BYO is the promise
- * rather than the default — every org then builds on its own account or is told
- * plainly that it needs to connect one.
+ * Default OFF. Selvedge must never spend platform money merely because a
+ * customer login is unavailable. Managed credits are a separate product and
+ * have to be enabled deliberately.
  */
 export function managedFuelAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.MANAGED_FUEL ?? '').trim().toLowerCase() !== 'off';
+  return ['on', 'true', '1'].includes((env.MANAGED_FUEL ?? '').trim().toLowerCase());
 }
 
 export type BuilderAuthDeps = {

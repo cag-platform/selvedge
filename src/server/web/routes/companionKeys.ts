@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { approveCompanionPairing, issueCompanionToken, listCompanionTokens, revokeCompanionToken } from '../../companion/tokens.js';
 import { getAppleRuntimeJob, listAppleRuntimes, queueAppleRuntimeTest } from '../../companion/appleRuntime.js';
+import { listAgentRuntimes } from '../../companion/agentRuntime.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -21,7 +22,7 @@ export function createCompanionKeysRouter(db: Db) {
     '/api/companion-keys',
     asyncHandler(async (req, res) => {
       const orgId = orgIdOf(req);
-      res.json({ keys: await listCompanionTokens(db, orgId), apple_runtimes: await listAppleRuntimes(db, orgId) });
+      res.json({ keys: await listCompanionTokens(db, orgId), apple_runtimes: await listAppleRuntimes(db, orgId), agent_runtimes: await listAgentRuntimes(db, orgId) });
     }),
   );
 
