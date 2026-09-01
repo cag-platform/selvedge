@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ClerkLoaded, SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Landing } from './pages/Landing.js';
+import { DemoAppPreview } from './pages/DemoAppPreview.js';
+import { ProductTour } from './pages/ProductTour.js';
 
 /**
  * WHAT A STRANGER DOWNLOADS.
@@ -42,8 +44,6 @@ const Status = lazy(() => import('./pages/PublicInfo.js').then((m) => ({ default
 const DemoLoginTransfer = lazy(() =>
   import('./pages/DemoLoginTransfer.js').then((m) => ({ default: m.DemoLoginTransfer })),
 );
-const DemoAppPreview = lazy(() => import('./pages/DemoAppPreview.js').then((m) => ({ default: m.DemoAppPreview })));
-const ProductTour = lazy(() => import('./pages/ProductTour.js').then((m) => ({ default: m.ProductTour })));
 import { SelvedgeLockup } from './components/Logo.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { api } from './lib/api.js';
@@ -264,8 +264,8 @@ export default function App() {
       />
       {/* The isolated marketing seed's live app. Public because it contains no
           customer data and must render inside the signed preview relay. */}
-      <Route path="/demo-apps/relay" element={<Suspense fallback={null}><DemoAppPreview /></Suspense>} />
-      <Route path="/product-tour" element={<Suspense fallback={null}><ProductTour /></Suspense>} />
+      <Route path="/demo-apps/relay" element={<DemoAppPreview />} />
+      <Route path="/product-tour" element={<ProductTour />} />
       <Route path="*" element={<AuthedApp />} />
     </Routes>
   );

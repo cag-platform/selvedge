@@ -39,9 +39,25 @@ export function DemoLoginTransfer() {
     // can preserve it. No sessionId means Clerk clears every active session on
     // this browser, eliminating the wrong-tenant ambiguity.
     window.history.replaceState(null, '', DEMO_WEB_TRANSFER_PATH);
+
+    // A clean browser has nothing to clear. Some extension-controlled browser
+    // profiles never settle Clerk's no-session signOut promise, which used to
+    // leave this screen spinning until the one-use ticket expired.
+    if (!clerk.session) {
+      window.location.assign(accountPortalUrl);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setProblem('This browser could not sign out. Open a fresh browser profile, mint a new link, and try again.');
+    }, 8_000);
+
     void clerk.signOut({ redirectUrl: accountPortalUrl }).catch(() => {
-      setProblem('Selvedge could not clear this browser session. Mint a new operator link and try again.');
+      window.clearTimeout(timeout);
+      setProblem('This browser could not sign out. Open a fresh browser profile, mint a new link, and try again.');
     });
+
+    return () => window.clearTimeout(timeout);
   }, [clerk]);
 
   return (
