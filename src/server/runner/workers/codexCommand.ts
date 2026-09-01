@@ -50,12 +50,19 @@ export function codexCommand(
 ): string {
   const mode = opts.mode ?? 'build';
   const promptFile = '/tmp/selvedge-codex-prompt';
+  // Keep sessions across turns, but never inherit a baked or stale login from
+  // the workspace image. Current Codex CLI releases authenticate API-key use
+  // through `codex login --with-api-key`; OPENAI_API_KEY alone is not a
+  // complete login contract. Re-create auth.json for this command, then remove
+  // it while leaving the session files available for `resume` next turn.
+  const codexHome = '/tmp/selvedge-codex-home';
   const transportedPrompt = Buffer.from(`${agentRules(mode)}\n\n---\n\n${prompt}`, 'utf8').toString('base64');
   const args = [
     'codex',
     'exec',
     ...(opts.resumeSessionId ? ['resume', shellQuote(opts.resumeSessionId)] : []),
     '--json',
+    '--ignore-user-config',
     '--model',
     shellQuote(opts.model ?? codexModel()),
     // Plan mode reads and reasons but changes nothing — the same promise the
@@ -67,14 +74,20 @@ export function codexCommand(
     // owner's prompt and Selvedge's rules to be executed as commands.
     '-',
   ];
-  // OPENAI_API_KEY is injected command-scoped by the Workspace Runtime. Putting
-  // it here would expose it to the hosted-shell model prompt and flight record.
+  // OPENAI_API_KEY is injected command-scoped by the Workspace Runtime. The
+  // command references the variable but never contains its value, so it cannot
+  // enter the hosted-shell model prompt or flight record.
   return [
+    `export CODEX_HOME=${codexHome}`,
+    `mkdir -p ${codexHome} && chmod 0700 ${codexHome}`,
+    `${PATH_PREFIX} printf '%s' "$OPENAI_API_KEY" | codex login --with-api-key >/dev/null`,
+    'login_status=$?',
+    `if [ "$login_status" -ne 0 ]; then rm -f ${codexHome}/auth.json; exit "$login_status"; fi`,
     `printf %s ${transportedPrompt} | base64 -d > ${promptFile}`,
     `chmod 0400 ${promptFile}`,
     `${PATH_PREFIX} cd ${WORKDIR} && ${args.join(' ')} < ${promptFile}`,
     'status=$?',
-    `rm -f ${promptFile}`,
+    `rm -f ${promptFile} ${codexHome}/auth.json`,
     'exit $status',
   ].join('; ');
 }
