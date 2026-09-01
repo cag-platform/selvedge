@@ -99,7 +99,7 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
     handleProtocols: (protocols) => protocols.has('selvedge-preview') ? 'selvedge-preview' : false,
   });
 
-  sockets.on('connection', (ws: WebSocket, req: IncomingMessage, previewId: string) => {
+  sockets.on('connection', (ws: WebSocket, _req: IncomingMessage, previewId: string) => {
     const detach = broker.attach(previewId, {
       send: (message) => ws.send(message),
       close: (code, reason) => ws.close(code, reason),

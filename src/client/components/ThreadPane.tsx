@@ -13,7 +13,7 @@ import { AgentChip } from './AgentChip.js';
 import { AgentMenu } from './AgentMenu.js';
 import { ReferenceMenu } from './ReferenceMenu.js';
 import { completeMention, mentionQuery, sendNote, type AgentOffer, type RosterResponse } from '../lib/agents.js';
-import { PendingChips, AttachButtons, pastedImageFiles, addImages, addDocs, type PendingImage, type PendingFile } from './WorkshopAttach.js';
+import { PendingChips, AttachButtons, pastedImageFiles, addImages, type PendingImage, type PendingFile } from './WorkshopAttach.js';
 import { DecisionCard } from './DecisionCard.js';
 import { staleRefusalOf, type StaleRefusal } from '../lib/decision.js';
 import { ceilingRefusalOf, money, raiseLabel, type CeilingRefusal } from '../lib/ceiling.js';

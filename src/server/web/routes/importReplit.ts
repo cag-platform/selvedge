@@ -285,7 +285,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       current.migrationPlan ?? buildMigrationPlan(current.projectMap, current.destinations as Record<string, string>),
       prepared.ok ? { ok: true } : { ok: false, reason: prepared.error },
     );
-    const [updated] = await db.update(migrationJourneys).set({ migrationPlan, state: prepared.ok ? 'copying' : 'mapped', updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id))).returning();
+    await db.update(migrationJourneys).set({ migrationPlan, state: prepared.ok ? 'copying' : 'mapped', updatedAt: new Date() }).where(and(eq(migrationJourneys.orgId, orgId), eq(migrationJourneys.id, current.id)));
     if (!prepared.ok) { res.status(prepared.status).json({ error: prepared.error, migration_plan: migrationPlan }); return; }
     const preview = await startPreview(orgId, projectId);
     const previewPlan = recordPreviewPreparation(migrationPlan, preview);

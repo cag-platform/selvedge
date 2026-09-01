@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentRuns, cards } from '../db/schema/index.js';
-import type { CardAct, CardVerdict } from '../cards/types.js';
+import type { CardAct } from '../cards/types.js';
 import type { RunRecord, ToolEvent } from '../../shared/types/toolEvent.js';
 import type { DeepLinkDestination } from '../../shared/types/continuation.js';
 import type { EvidenceCheck, EvidenceOutcome, EvidenceSheet } from '../../shared/types/evidenceSheet.js';

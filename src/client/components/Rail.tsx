@@ -40,7 +40,6 @@ export function Rail({
   activeThreadId,
   activeProjectId,
   onOpen,
-  onOpenProject,
   onNewThread,
   onNewSubjectThread,
   onNewSubject,
@@ -51,7 +50,6 @@ export function Rail({
   activeThreadId: string | null;
   activeProjectId: string | null;
   onOpen: (thread: ThreadRow) => void;
-  onOpenProject: (projectId: string) => void;
   onNewThread: (projectId: string) => void;
   onNewSubjectThread: (subjectId: string) => void;
   onNewSubject: () => void;

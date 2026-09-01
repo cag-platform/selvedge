@@ -164,14 +164,6 @@ export class NothingToPreviewError extends Error {
   }
 }
 
-async function killAppServer(sandbox: DevelopmentWorkspace): Promise<void> {
-  await exec(
-    sandbox,
-    [`kill -TERM $(cat ${PID_FILE} 2>/dev/null) 2>/dev/null`, `fuser -k -TERM ${APP_PORT}/tcp 2>/dev/null`, 'sleep 1', `fuser -k -KILL ${APP_PORT}/tcp 2>/dev/null`, 'true'].join('; '),
-    30,
-  ).catch(() => undefined);
-}
-
 /**
  * Start the app on :3000, detached: `npm run dev` when the repo has one
  * (PORT/HOST hints for servers that honour them), else a static file server

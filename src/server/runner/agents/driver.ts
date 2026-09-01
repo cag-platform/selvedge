@@ -48,7 +48,7 @@ export type AgentDriver = {
   events(log: string): { tools: ToolEvent[]; truncated: boolean };
 };
 
-function claudeDriver(auth: BuilderAuth): AgentDriver {
+function claudeDriver(): AgentDriver {
   return {
     id: 'claude-code',
     setupCommand: claudeInstallCommand(),
@@ -67,7 +67,7 @@ function claudeDriver(auth: BuilderAuth): AgentDriver {
   };
 }
 
-function codexDriver(auth: BuilderAuth): AgentDriver {
+function codexDriver(): AgentDriver {
   return {
     id: 'codex',
     setupCommand: codexInstallCommand(),
@@ -106,7 +106,7 @@ function compatibleDriver(id: CompatibleWorker): AgentDriver {
 }
 
 function deepSeekDriver(): AgentDriver {
-  const base = claudeDriver({} as BuilderAuth);
+  const base = claudeDriver();
   return {
     ...base,
     id: 'deepseek-build',
@@ -122,8 +122,8 @@ function deepSeekDriver(): AgentDriver {
  */
 export function driverFor(agent: AgentId, auth: BuilderAuth | null): AgentDriver | null {
   if (!auth) return null;
-  if (agent === 'claude-code' && auth.agent === 'claude-code') return claudeDriver(auth);
-  if (agent === 'codex' && auth.agent === 'codex') return codexDriver(auth);
+  if (agent === 'claude-code' && auth.agent === 'claude-code') return claudeDriver();
+  if (agent === 'codex' && auth.agent === 'codex') return codexDriver();
   if (agent === 'kimi-code' && auth.agent === 'kimi-code') return compatibleDriver('kimi-code');
   if (agent === 'grok-build' && auth.agent === 'grok-build') return compatibleDriver('grok-build');
   if (agent === 'deepseek-build' && auth.agent === 'deepseek-build') return deepSeekDriver();

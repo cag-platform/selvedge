@@ -21,11 +21,9 @@ import { resolveFuelFor } from '../../connectors/fuel/resolve.js';
 import {
   createSubjectThread,
   createThread,
-  ensureWorkshopThread,
   fileThread,
   getThread,
   isDefaultTitle,
-  listThreads,
   renameThread,
   setThreadArchived,
   titleFromFirstMessage,

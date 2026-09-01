@@ -2,7 +2,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { threads } from '../db/schema/index.js';
-import { agentById, DEFAULT_AGENT, isAgentId, startingAgentFor, type AgentId } from '../../shared/agents.js';
+import { DEFAULT_AGENT, isAgentId, startingAgentFor, type AgentId } from '../../shared/agents.js';
 import { DEFAULT_GENERAL_TITLE, DEFAULT_WORKSHOP_TITLE, type ThreadKind } from '../../shared/types/thread.js';
 
 /**

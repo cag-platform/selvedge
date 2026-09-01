@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { narrations, narrationLibrary, packs } from '../db/schema/index.js';
 import { projectTimeline } from '../timeline/store.js';

@@ -1,9 +1,8 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { createPack, deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
+import { deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
-import { scaffoldPack, slugifyProjectId, type NewProjectInput } from '../../packs/scaffold.js';
-import { GithubError } from '../../connectors/github/newRepo.js';
+import type { NewProjectInput } from '../../packs/scaffold.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createProject } from '../../packs/create.js';
 import { refuse } from '../middleware/limit.js';

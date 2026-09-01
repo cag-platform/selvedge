@@ -90,7 +90,7 @@ export function sayMoney(usd: number): string {
   return `about $${usd.toFixed(2)}`;
 }
 
-export function switchLine(from: AgentId, to: AgentId, tokens: number, costUsdValue: number | null): string {
+export function switchLine(_from: AgentId, to: AgentId, tokens: number, costUsdValue: number | null): string {
   const name = agentById(to)?.name ?? to;
   if (tokens === 0) return `⇄ continued with ${name} — the conversation so far carries over as it is.`;
   const cost = costUsdValue === null ? '' : `, ${sayMoney(costUsdValue)}`;

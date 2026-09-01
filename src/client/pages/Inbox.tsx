@@ -457,7 +457,6 @@ export function Inbox() {
             activeThreadId={threadId ?? null}
             activeProjectId={projectId ?? null}
             onOpen={(t) => open(t.id)}
-            onOpenProject={openProject}
             onNewThread={(id) => void createThread(id)}
             onNewSubjectThread={(id) => void createSubjectThread(id)}
             onNewSubject={() => void createSubject()}

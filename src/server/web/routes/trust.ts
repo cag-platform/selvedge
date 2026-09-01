@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { trustIncidents } from '../../db/schema/index.js';
 import { trackRecord } from '../../trust/trackRecord.js';
