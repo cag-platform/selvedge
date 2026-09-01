@@ -9,6 +9,10 @@ import { resolveRepoToken } from './repoToken.js';
 import { diagnoseStartFailure, previewFailureMessage } from './previewDiagnosis.js';
 import { previewEnvFile, getPreviewEnvSummary, parseEnvText } from './previewEnv.js';
 import { deletePreviewRefWithToken } from '../connectors/github/pushFiles.js';
+import { ulid } from 'ulid';
+import { captureMigrationBrowserEvidence, type MigrationBrowserEvidence } from '../import/browserEvidence.js';
+import { previewEvidenceStorageKey, visualObjectStore, type VisualObjectStore } from '../visuals/storage.js';
+import type { PreviewEvidence } from '../../shared/types/previewEvidence.js';
 
 /**
  * The live preview — see the app running in the project's sandbox, in an
@@ -282,6 +286,51 @@ export class StartFailedError extends Error {
 /** One in-flight ensure per (org, project): concurrent wakes must not race two app-server restarts. */
 const inflight = new Map<string, Promise<PreviewStatus>>();
 
+export async function verifyWorkshopPreview(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  url: string,
+  deps: { capture?: (url: string) => Promise<MigrationBrowserEvidence>; store?: VisualObjectStore | null } = {},
+): Promise<PreviewEvidence> {
+  const previous = (await getBuild(db, orgId, projectId))?.previewEvidence;
+  const observed = await (deps.capture ?? captureMigrationBrowserEvidence)(url);
+  const store = deps.store === undefined ? visualObjectStore() : deps.store;
+  const ids: string[] = [];
+  try {
+    if (store) {
+      for (const screenshot of observed.screenshots) {
+        const id = `${ulid()}-${screenshot.id}`;
+        await store.put(previewEvidenceStorageKey(orgId, projectId, id), screenshot.bytes, screenshot.mime);
+        ids.push(id);
+      }
+    }
+  } catch (error) {
+    if (store) {
+      await Promise.all(ids.map((id) => store.delete(previewEvidenceStorageKey(orgId, projectId, id)).catch(() => undefined)));
+    }
+    throw error;
+  }
+  const failed = observed.consoleErrors.length > 0 || observed.failedRequests.length > 0;
+  const evidence: PreviewEvidence = {
+    status: observed.error ? 'unavailable' : failed ? 'failed' : 'passed',
+    screenshot_artifact_ids: ids,
+    screenshots: ids.map((id, index) => ({ id, route: observed.screenshots[index]?.route ?? '/', viewport: observed.screenshots[index]?.id.startsWith('mobile') ? 'mobile' : 'desktop' })),
+    console_errors: observed.consoleErrors,
+    failed_requests: observed.failedRequests,
+    routes_checked: observed.routesChecked,
+    limitation: observed.error ?? (!store && observed.screenshots.length ? 'Screenshot storage is not configured.' : null),
+    captured_at: new Date().toISOString(),
+  };
+  await setBuild(db, orgId, projectId, { previewEvidence: evidence });
+  if (store && previous) {
+    await Promise.all(previous.screenshot_artifact_ids.filter((id) => !ids.includes(id)).map((id) =>
+      store.delete(previewEvidenceStorageKey(orgId, projectId, id)).catch(() => undefined),
+    ));
+  }
+  return evidence;
+}
+
 /** Delete expired Railway preview services and their temporary Git refs. Safe to retry each minute. */
 export async function sweepHostedPreviews(db: Db, now = new Date()): Promise<number> {
   const rows = await db.select().from(projectBuild).where(and(isNotNull(projectBuild.previewRuntimeId), lt(projectBuild.previewActiveUntil, now)));
@@ -355,6 +404,7 @@ export async function invalidatePreview(db: Db, orgId: string, projectId: string
     previewOperationStatus: 'none',
     previewOperationMessage: null,
     previewOperationStartedAt: null,
+    previewEvidence: null,
   });
 }
 

@@ -10,6 +10,7 @@ import type { ContextPack } from '../../shared/types/pack.js';
 import { PreviewEnv } from './PreviewEnv.js';
 import { AgentChip } from './AgentChip.js';
 import { WorkspacePreview } from './MigrationPreview.js';
+import type { PreviewEvidence } from '../../shared/types/previewEvidence.js';
 
 /**
  * THE CONTEXT PANEL — what is true about the project this thread belongs to,
@@ -81,6 +82,7 @@ type Preview = {
   state: 'ready' | 'starting' | 'none' | 'error';
   url: string | null;
   message: string | null;
+  evidence?: PreviewEvidence | null;
   /**
    * Something the owner could turn on that would plausibly fix this. Set only
    * when the failure actually points at it, so the offer arrives at the moment
@@ -88,6 +90,10 @@ type Preview = {
    */
   offer?: 'database' | 'env';
 };
+
+function PreviewEvidencePanel({ projectId, evidence }: { projectId: string; evidence: PreviewEvidence }) {
+  return <div className="border-t border-hairline p-work"><div className="flex items-center justify-between gap-3"><strong className="text-body text-ink">Independent browser check</strong><span className={`font-mono text-tech ${evidence.status === 'passed' ? 'text-healthy' : evidence.status === 'failed' ? 'text-thread' : 'text-ink-quiet'}`}>{evidence.status}</span></div>{evidence.screenshots.length > 0 && <div className="mt-3 grid gap-2 sm:grid-cols-2">{evidence.screenshots.map((shot) => <figure key={shot.id} className="overflow-hidden rounded-inset border border-hairline"><img src={`/api/projects/${encodeURIComponent(projectId)}/workshop/preview/screenshots/${encodeURIComponent(shot.id)}`} alt={`${shot.viewport} preview verification for ${shot.route}`} className="aspect-video w-full object-cover object-top" loading="lazy" /><figcaption className="px-2 py-1 font-mono text-tech text-ink-quiet">{shot.viewport} · {shot.route}</figcaption></figure>)}</div>}{evidence.console_errors.map((error) => <p key={error} className="mt-2 text-meta text-thread">Console: {error}</p>)}{evidence.failed_requests.map((failure) => <p key={`${failure.url}-${failure.status}`} className="mt-2 text-meta text-thread">Request: {failure.status ?? 'failed'} · {failure.url}</p>)}{evidence.limitation && <p className="mt-2 text-meta text-ink-quiet">Not checked: {evidence.limitation}</p>}</div>;
+}
 type GoLiveOperation = {
   status: 'idle' | 'running' | 'building' | 'succeeded' | 'failed';
   message: string | null;
@@ -230,13 +236,13 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
           )}
         </div>
         {preview?.state === 'ready' && preview.url ? (
-          <WorkspacePreview
+          <><WorkspacePreview
             url={preview.url}
             title={data.staged_changes_ready ? 'Latest agent work · live preview' : 'Current app · live preview'}
             safetyLine={data.staged_changes_ready ? 'development copy · nothing ships without your approval' : 'current project baseline'}
             onReload={() => void load()}
             reloading={busy}
-          />
+          />{preview.evidence && <PreviewEvidencePanel projectId={data.project.id} evidence={preview.evidence} />}</>
         ) : (
           <div className="p-work">
             {!busy && (preview === null || preview.state === 'error') && (

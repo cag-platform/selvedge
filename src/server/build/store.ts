@@ -72,6 +72,7 @@ export async function clearSandbox(db: Db, orgId: string, projectId: string, pre
     previewOperationStatus: null,
     previewOperationMessage: null,
     previewOperationStartedAt: null,
+    previewEvidence: null,
     goLiveStatus: null,
     goLiveMessage: null,
     goLiveStartedAt: null,

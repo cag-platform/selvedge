@@ -35,7 +35,12 @@ describe('web/routes/workshop — the workshop surface', () => {
   });
   afterEach(async () => close());
 
-  const app = (deps: WorkshopDeps = {}) => appWithOrg(orgId, createWorkshopRouter(db, { lookup: stubRepoLookup, env: engineOn, ...deps }));
+  const app = (deps: WorkshopDeps = {}) => appWithOrg(orgId, createWorkshopRouter(db, {
+    lookup: stubRepoLookup,
+    env: engineOn,
+    verifyPreview: async () => ({ status: 'passed', screenshot_artifact_ids: [], screenshots: [], console_errors: [], failed_requests: [], routes_checked: ['/'], limitation: null, captured_at: new Date().toISOString() }),
+    ...deps,
+  }));
 
   it('serves the page data: project, engine state, empty thread, zero cost', async () => {
     const res = await request(app()).get('/api/projects/loom/workshop');

@@ -1,4 +1,5 @@
 import { pgTable, text, integer, boolean, timestamp, jsonb, primaryKey, index } from 'drizzle-orm/pg-core';
+import type { PreviewEvidence } from '../../../shared/types/previewEvidence.js';
 
 /**
  * The builder's state (Toile integration, Phase A). This is the workshop half of
@@ -39,6 +40,8 @@ export const projectBuild = pgTable(
     previewOperationStatus: text('preview_operation_status'),
     previewOperationMessage: text('preview_operation_message'),
     previewOperationStartedAt: timestamp('preview_operation_started_at', { withTimezone: true }),
+    /** Independent browser capture for the exact development preview currently shown. */
+    previewEvidence: jsonb('preview_evidence').$type<PreviewEvidence>(),
     /** Durable production-publish progress. */
     goLiveStatus: text('go_live_status'),
     goLiveMessage: text('go_live_message'),

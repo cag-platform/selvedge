@@ -38,3 +38,7 @@ export function visualStorageKey(orgId: string, visualId: string, mime: string):
 export function migrationEvidenceStorageKey(orgId: string, artifactId: string): string {
   return `migration-evidence/${encodeURIComponent(orgId)}/${encodeURIComponent(artifactId)}.png`;
 }
+
+export function previewEvidenceStorageKey(orgId: string, projectId: string, artifactId: string): string {
+  return `preview-evidence/${encodeURIComponent(orgId)}/${encodeURIComponent(projectId)}/${encodeURIComponent(artifactId)}.png`;
+}

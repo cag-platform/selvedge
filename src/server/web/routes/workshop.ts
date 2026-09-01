@@ -16,7 +16,7 @@ import { configFor as resolveEngineConfig, engineEnv, type EngineEnv } from '../
 import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
 import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
-import { ensurePreview, type PreviewStatus } from '../../build/preview.js';
+import { ensurePreview, verifyWorkshopPreview, type PreviewStatus } from '../../build/preview.js';
 import { getPreviewEnvSummary, setPreviewEnv, setPreviewDatabase } from '../../build/previewEnv.js';
 import { canStartBuild } from '../../billing/entitlements.js';
 import { refuse } from '../middleware/limit.js';
@@ -26,6 +26,7 @@ import { goLive } from '../../build/golive.js';
 import { canResolveCheckout, inspectCheckout } from '../../build/checkoutGuard.js';
 import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
 import { RailwayPreviewRuntime } from '../../preview/railway.js';
+import { previewEvidenceStorageKey, visualObjectStore } from '../../visuals/storage.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -70,6 +71,7 @@ export type WorkshopDeps = {
   /** Injected for tests; defaults to the real provisioning flow. */
   goLive?: typeof goLive;
   preview?: (db: Db, orgId: string, projectId: string, cfg: SandboxConfig) => Promise<PreviewStatus>;
+  verifyPreview?: typeof verifyWorkshopPreview;
   env?: () => EngineEnv | null;
   /** How the repo's default branch is looked up; injected for tests. */
   lookup?: LookupRepoInfo;
@@ -80,6 +82,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
   const router = Router();
   const runTurn = deps.runTurn ?? runAgentTurn;
   const preview = deps.preview ?? ensurePreview;
+  const verifyPreview = deps.verifyPreview ?? verifyWorkshopPreview;
   const env = deps.env ?? engineEnv;
   const checkoutGuardEnabled = deps.checkoutGuardEnabled ?? false;
 
@@ -424,7 +427,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         }
       }
       if (build?.previewUrl) {
-        res.json({ state: 'ready', url: build.previewUrl, message: build.previewOperationMessage });
+        res.json({ state: 'ready', url: build.previewUrl, message: build.previewOperationMessage, evidence: build.previewEvidence });
         return;
       }
       res.json({ state: 'none', url: null, message: null });
@@ -470,6 +473,12 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         previewOperationStartedAt: new Date(),
       });
       void preview(db, orgId, projectId, cfg).then(async (result) => {
+        if (result.state === 'ready' && result.url) {
+          await verifyPreview(db, orgId, projectId, result.url).catch((error) => {
+            console.error(`preview verification failed for ${orgId}/${projectId}:`, error);
+            return setBuild(db, orgId, projectId, { previewEvidence: null });
+          });
+        }
         await setBuild(db, orgId, projectId, {
           previewOperationStatus: result.state === 'ready' ? 'ready' : result.state === 'none' ? 'none' : 'error',
           previewOperationMessage: result.message,
@@ -484,6 +493,17 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       res.status(202).json({ state: 'starting', url: null, message: 'Preparing the development preview.' });
     }),
   );
+
+  router.get('/api/projects/:projectId/workshop/preview/screenshots/:artifactId', asyncHandler(async (req, res) => {
+    const orgId = orgIdOf(req);
+    const projectId = req.params.projectId ?? '';
+    const artifactId = req.params.artifactId ?? '';
+    const build = await getBuild(db, orgId, projectId);
+    if (!build?.previewEvidence?.screenshot_artifact_ids.includes(artifactId)) { res.status(404).json({ error: 'No such preview screenshot.' }); return; }
+    const store = visualObjectStore();
+    if (!store) { res.status(503).json({ error: 'Preview evidence storage is not configured.' }); return; }
+    res.redirect(302, await store.signedGet(previewEvidenceStorageKey(orgId, projectId, artifactId)));
+  }));
 
   /**
    * THE PREVIEW'S ENVIRONMENT — what is set, never what it is set to.
