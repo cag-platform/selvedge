@@ -28,7 +28,7 @@ const landingPreview = import.meta.env.DEV && window.location.pathname === '/lan
  * that loaded but whose "Start free" button did nothing would be worse than
  * the honest configuration notice below.
  */
-const PUBLIC_WITHOUT_AUTH = ['/styleguide', '/docs', '/security', '/changelog'];
+const PUBLIC_WITHOUT_AUTH = ['/styleguide', '/docs', '/security', '/changelog', '/product-tour'];
 
 if (landingPreview) {
   ReactDOM.createRoot(document.getElementById('root')!).render(

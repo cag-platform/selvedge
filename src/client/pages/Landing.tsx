@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SelvedgeLockup } from '../components/Logo.js';
 import { AgentChip } from '../components/AgentChip.js';
 import { btnGhost, btnPrimary, eyebrowCls } from '../components/ui.js';
 import { BYO_KEYS_LINE, FOUNDING_MEMBER_BADGE, PLAN_TAGLINE, planBullets, priceLine, yearlySavingLine } from '../../shared/plans.js';
-import migratePreview from '../assets/landing/migrate.png';
-import agentsPreview from '../assets/landing/agents.png';
 import workspacePreview from '../assets/landing/preview.png';
+import { ProductTour } from './ProductTour.js';
 
 function Message({ who, agent, children, muted = false }: { who: string; agent?: string; children: React.ReactNode; muted?: boolean }) {
   return <div className={`landing-message ${muted ? 'landing-message-muted' : ''}`}><div className="flex items-center gap-2">{agent && <AgentChip agent={agent} />}<p className={eyebrowCls}>{who}</p></div><div className="mt-2 text-body-lg text-ink">{children}</div></div>;
@@ -115,12 +114,6 @@ function PricingFaq() {
   );
 }
 
-const PRODUCT_PROOFS = [
-  { eyebrow: 'Bring anything in', title: 'Move without starting over.', image: migratePreview, alt: 'Selvedge migration screen showing sources including Replit, Lovable, GitHub, Codex, Claude Code, and Cursor', className: '' },
-  { eyebrow: 'Use any agent', title: 'Pick the best worker for the job.', image: agentsPreview, alt: 'Selvedge agent chooser showing Claude Code, Codex, Claude, and GPT working from the same project context', className: 'landing-proof-image-agents' },
-  { eyebrow: 'See it working', title: 'Preview, verify, and put it online.', image: workspacePreview, alt: 'Selvedge workspace with a private app preview and a put it online action beside the project conversation', className: 'landing-proof-image-preview' },
-] as const;
-
 type VisitorSystem = 'mac' | 'windows' | 'linux' | 'mobile' | 'web';
 type ArrivalSource = 'replit' | 'lovable' | 'cursor' | null;
 
@@ -160,62 +153,6 @@ function detectArrivalSource(): ArrivalSource {
   return null;
 }
 
-function ProductProofs() {
-  const [open, setOpen] = useState<number | null>(null);
-  const selected = open === null ? null : PRODUCT_PROOFS[open];
-
-  useEffect(() => {
-    if (open === null) return;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(null); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [open]);
-
-  return <>
-    <section aria-label="Selvedge in action" className="landing-proof mx-auto max-w-6xl px-4 sm:px-6">
-      {PRODUCT_PROOFS.map((proof, index) => <article key={proof.eyebrow}>
-        <button type="button" className={`landing-proof-image ${proof.className ?? ''}`} onClick={() => setOpen(index)} aria-label={`Enlarge: ${proof.title}`}><img src={proof.image} alt={proof.alt} /><span>View larger ↗</span></button>
-        <p className={eyebrowCls}>{proof.eyebrow}</p><h2>{proof.title}</h2>
-      </article>)}
-    </section>
-    {selected && <div className="landing-lightbox" role="dialog" aria-modal="true" aria-label={selected.title} onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(null); }}>
-      <div className="landing-lightbox-panel"><div><p className={eyebrowCls}>{selected.eyebrow}</p><h2>{selected.title}</h2><button type="button" onClick={() => setOpen(null)} aria-label="Close enlarged preview">Close ×</button></div><img src={selected.image} alt={selected.alt} /></div>
-    </div>}
-  </>;
-}
-
-type DemoView = 'request' | 'work' | 'decision' | 'preview';
-
-const DEMO_VIEWS: Array<{ id: DemoView; label: string }> = [
-  { id: 'request', label: 'Request' },
-  { id: 'work', label: 'Actions' },
-  { id: 'decision', label: 'Decision' },
-  { id: 'preview', label: 'Live app' },
-];
-
-function WorkingProjectDemo() {
-  const [view, setView] = useState<DemoView>('request');
-
-  return <section className="landing-working-demo mx-auto max-w-6xl px-4 sm:px-6" aria-labelledby="working-demo-title">
-    <div className="landing-working-copy"><p className={eyebrowCls}>A real Selvedge project</p><h2 id="working-demo-title">See the work, not a promise.</h2><p>Relay is a seeded project inside Selvedge. Follow the request, the agent’s actions, the decision, and the running app.</p><p className="landing-working-note">Sanitized project record. No private reasoning or customer data.</p></div>
-    <div className="landing-working-frame">
-      <div className="landing-working-bar"><div><span>Northstar Studio</span><strong>Relay · Restore the health check</strong></div><span className="landing-working-status">Project online</span></div>
-      <div className="landing-working-tabs" role="tablist" aria-label="Relay project walkthrough">{DEMO_VIEWS.map((item) => <button key={item.id} type="button" role="tab" aria-selected={view === item.id} onClick={() => setView(item.id)}>{item.label}</button>)}</div>
-      <div className="landing-working-surface">
-        <div className="landing-working-trace">
-          {view === 'request' && <div className="landing-working-entry"><span>OWNER</span><p>Why is Relay showing down if crews can still use it?</p><small>Claude Code picked up the project with its existing context.</small></div>}
-          {view === 'work' && <div className="landing-action-list"><p><span>01</span><b>Checked old health route</b><small>GET /health · 404 Not Found</small></p><p><span>02</span><b>Checked current API route</b><small>GET /api/health · healthy</small></p><p><span>03</span><b>Read deploy configuration</b><small>Monitoring still uses the old address</small></p></div>}
-          {view === 'decision' && <div className="landing-working-entry"><span>CLAUDE CODE</span><p>Crews are fine. The app moved its check, but monitoring still calls the old address.</p><small>Recommended: keep the current route, add a compatible alias, and update monitoring.</small></div>}
-          {view === 'preview' && <div className="landing-working-entry"><span>LIVE PREVIEW</span><p>The same seeded Relay app, running inside Selvedge.</p><small>The preview is isolated from any customer system.</small></div>}
-        </div>
-        <div className="landing-working-result">
-          {view === 'preview' ? <iframe src="/demo-apps/relay" title="Live Relay seeded project" loading="lazy" /> : <div className="landing-working-plan"><p className={eyebrowCls}>Proposed work</p><h3>Restore a reliable all-clear.</h3><ul><li><span className={view !== 'request' ? 'done' : ''} />Keep /api/health as the source of truth</li><li><span className={view === 'decision' ? 'done' : ''} />Add a small /health alias</li><li><span />Update monitoring after approval</li></ul><button type="button" onClick={() => setView(view === 'request' ? 'work' : view === 'work' ? 'decision' : 'preview')}>{view === 'request' ? 'Watch the checks' : view === 'work' ? 'See the decision' : 'Open the live app'} →</button></div>}
-        </div>
-      </div>
-    </div>
-  </section>;
-}
-
 export function Landing() {
   const [visitorSystem, setVisitorSystem] = useState<VisitorSystem>(() => detectVisitorSystem());
   const [arrivalSource] = useState<ArrivalSource>(() => detectArrivalSource());
@@ -230,9 +167,7 @@ export function Landing() {
     <main>
       <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><figure id="product" className="landing-product-stage landing-real-preview"><img src={workspacePreview} alt="Selvedge workspace showing a project conversation beside its live private preview" /><figcaption><span>Real workspace</span><span>Private preview</span><span>Owner approval</span></figcaption></figure></div></section>
 
-      <div id="working-demo"><WorkingProjectDemo /></div>
-
-      <ProductProofs />
+      <section id="working-demo" className="landing-product-tour mx-auto max-w-7xl px-4 sm:px-6" aria-labelledby="product-tour-heading"><div className="landing-product-tour-copy"><p className={eyebrowCls}>Inside Selvedge</p><h2 id="product-tour-heading">One project. Three moments that matter.</h2><p>Move it, decide with the best agents, and catch production trouble early.</p></div><ProductTour embedded /></section>
 
       <section id="how" aria-label="How Selvedge works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>How it works</p><h2 className="mt-4 font-display text-section font-medium text-ink">Bring it in. Build safely. Ship when ready.</h2></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Bring the project</strong><p>From a builder, repository, or a new idea.</p></li><li><span>02</span><strong>Work with any agent</strong><p>Shared context. Private workspace. Live preview.</p></li><li><span>03</span><strong>Keep control</strong><p>Your infrastructure. Your approval. Your project.</p></li></ol></section>
 
