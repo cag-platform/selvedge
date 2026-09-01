@@ -293,4 +293,8 @@ export class OpenAiWorkspaceRuntime implements WorkspaceRuntime {
     await this.options.client.deleteContainer(workspaceId);
     this.metadata.delete(workspaceId);
   }
+
+  async stopWorkspace(workspaceId: string): Promise<void> {
+    await this.destroyWorkspace(workspaceId);
+  }
 }

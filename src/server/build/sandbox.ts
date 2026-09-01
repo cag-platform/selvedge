@@ -31,6 +31,8 @@ type DevelopmentRuntime = {
   createWorkspace(input: CreateWorkspaceInput): Promise<Workspace>;
   reconnectWorkspaceWithContext(workspaceId: string, input: CreateWorkspaceInput): Promise<Workspace>;
   destroyWorkspace(workspaceId: string): Promise<void>;
+  listWorkspaceIds?(): Promise<string[]>;
+  stopWorkspace?(workspaceId: string): Promise<void>;
 };
 
 let runtime: DevelopmentRuntime | null = null;
@@ -40,12 +42,19 @@ export function setDevelopmentSecret(grantId: string, value: string | null): voi
   else secretValues.set(grantId, value);
 }
 
-export function activeDevelopmentWorkspaceIds(): string[] { return [...active.keys()]; }
+export async function activeDevelopmentWorkspaceIds(): Promise<string[]> {
+  const provider = developmentWorkspaceRuntime();
+  return provider.listWorkspaceIds ? provider.listWorkspaceIds() : [...active.keys()];
+}
 
 export async function stopDevelopmentWorkspaceById(id: string): Promise<void> {
   const sandbox = active.get(id);
-  if (!sandbox) return;
-  await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
+  if (sandbox) {
+    await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
+    await sandbox.workspace.stop().catch(() => undefined);
+    return;
+  }
+  await developmentWorkspaceRuntime().stopWorkspace?.(id);
 }
 
 export type SandboxExecutionSnapshot = { observedAt: Date; changedFiles: string[]; diffSummary: string | null };
@@ -365,8 +374,9 @@ export async function stopSandbox(db: Db, orgId: string, projectId: string): Pro
 export async function deleteSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
   const build = await getBuild(db, orgId, projectId);
   if (build?.sandboxId) {
-    const sandbox = active.get(build.sandboxId);
-    if (sandbox) await sandbox.workspace.destroy().catch(() => undefined);
+    await developmentWorkspaceRuntime().destroyWorkspace(build.sandboxId).catch((error) => {
+      if (!isExpiredWorkspaceError(error)) throw error;
+    });
     active.delete(build.sandboxId);
     await closeSandboxRun(db, build.sandboxId, 'completed').catch(() => null);
   }

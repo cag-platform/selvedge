@@ -243,7 +243,7 @@ export type ReapResult = { closed: Array<{ sandboxId: string; reason: EndReason;
  * window as every other use. That makes the machine observable and allows a
  * preview request arriving just after a build to take over the lease.
  *
- * A stop that fails at Daytona still closes and meters the segment. Refusing to
+ * A stop that fails at the provider still closes and meters the segment. Refusing to
  * record it would mean the one case where we know least about a sandbox is also
  * the case where the owner is charged nothing — and the money left the account
  * regardless.
@@ -288,16 +288,16 @@ export async function reapSandboxes(db: Db, deps: ReaperDeps): Promise<ReapResul
 }
 
 export type Reconciliation = {
-  /** Sandboxes Daytona says are running that we have no open segment for. */
+  /** Sandboxes the provider says exist that we have no open segment for. */
   strays: string[];
   /** Open segments whose sandbox Daytona no longer has. Closed here. */
   ghosts: string[];
 };
 
 /**
- * THE NO-SILENT-LEAK CHECK, run daily against Daytona's own list.
+ * THE NO-SILENT-LEAK CHECK, run daily against the provider's own list.
  *
- * Everything above trusts our record over Daytona's, which is right for
+ * Everything above trusts our record over the provider's, which is right for
  * deciding what to stop and wrong as a way of never being surprised. This is
  * the other direction: anything Daytona is running that we have no row for is
  * money leaving with nothing to attribute it to, and it is stopped and logged
@@ -317,13 +317,13 @@ export async function reconcileSandboxes(
 
   const strays = [...running].filter((id) => !known.has(id));
   for (const id of strays) {
-    console.error(`reconciliation: Daytona is running sandbox ${id}, which Selvedge has no open segment for — stopping it`);
+    console.error(`reconciliation: the workspace provider has sandbox ${id}, which Selvedge has no open segment for — stopping it`);
     await deps.stop(id).catch((err) => console.error(`reconciliation could not stop ${id}:`, err));
   }
 
   const ghosts = open.filter((s) => !running.has(s.sandboxId)).map((s) => s.sandboxId);
   for (const id of ghosts) {
-    // Daytona stopped it without us seeing. Metered to the last moment we knew
+    // The provider stopped it without us seeing. Metered to the last moment we knew
     // it was alive, which is the same rule the reaper uses.
     const segment = open.find((s) => s.sandboxId === id)!;
     await closeSandboxRun(db, id, 'reaper', segment.lastAliveAt);

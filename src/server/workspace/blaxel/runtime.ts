@@ -345,4 +345,24 @@ export class BlaxelWorkspaceRuntime implements WorkspaceRuntime {
     await SandboxInstance.delete(workspaceId);
     this.metadata.delete(workspaceId);
   }
+
+  /** List only sandboxes created by Selvedge, including ones from an earlier API process. */
+  async listWorkspaceIds(): Promise<string[]> {
+    const page = await SandboxInstance.list({ limit: 100, sort: 'createdAt:desc' });
+    const ids: string[] = [];
+    for await (const sandbox of page) {
+      const labels = sandbox.metadata.labels ?? {};
+      if (labels.orgId && labels.projectId && labels.purpose === 'development') ids.push(sandbox.metadata.name);
+    }
+    return ids;
+  }
+
+  /** Put a sandbox into standby even when this Selvedge process did not create its local handle. */
+  async stopWorkspace(workspaceId: string): Promise<void> {
+    const sandbox = await SandboxInstance.get(workspaceId);
+    const processes = await sandbox.process.list();
+    await Promise.all(processes.filter((process) => process.status === 'running').map((process) =>
+      sandbox.process.stop(process.pid).catch(() => undefined),
+    ));
+  }
 }

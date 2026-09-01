@@ -9,8 +9,7 @@ import { activeDevelopmentWorkspaceIds, stopDevelopmentWorkspaceById } from './s
  *
  * `metering.ts` holds the rules and takes its two facts — "is this project
  * working?" and "stop this" — as arguments, so all of it can be tested without
- * a Daytona account. This file is the half that cannot be: the queries and the
- * API calls.
+ * a workspace-provider account. This file owns the queries and provider calls.
  */
 
 /** The same staleness cutoff the routes use: a run this old still marked running is a crashed process. */
@@ -64,7 +63,7 @@ export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapRes
 }
 
 /**
- * The daily no-silent-leak check. Asks Daytona what it is actually running and
+ * The daily no-silent-leak check. Asks the workspace provider what it is running and
  * compares it with what we think — in both directions, because each direction
  * fails differently and only one of them is expensive.
  */

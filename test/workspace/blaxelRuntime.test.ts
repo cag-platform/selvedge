@@ -4,6 +4,7 @@ import { PreviewRelaySessions } from '../../src/server/workspace/relay/session.j
 const sdk = vi.hoisted(() => ({
   create: vi.fn(),
   get: vi.fn(),
+  list: vi.fn(),
   remove: vi.fn(),
 }));
 
@@ -11,6 +12,7 @@ vi.mock('@blaxel/core', () => ({
   SandboxInstance: {
     create: sdk.create,
     get: sdk.get,
+    list: sdk.list,
     delete: sdk.remove,
   },
 }));
@@ -24,7 +26,7 @@ function fixture() {
       stdout: 'ok\n', stderr: '', logs: 'ok\n', command: '', workingDir: '/workspace/project',
       startedAt: '', completedAt: '',
     }),
-    wait: vi.fn(), get: vi.fn(), kill: vi.fn(), stop: vi.fn(), list: vi.fn().mockResolvedValue([]),
+    wait: vi.fn(), get: vi.fn(), kill: vi.fn(), stop: vi.fn().mockResolvedValue(undefined), list: vi.fn().mockResolvedValue([]),
   };
   const fs = {
     mkdir: vi.fn().mockResolvedValue(undefined),
@@ -45,6 +47,9 @@ function fixture() {
   };
   sdk.create.mockResolvedValue(sandbox);
   sdk.get.mockResolvedValue(sandbox);
+  sdk.list.mockResolvedValue({
+    async *[Symbol.asyncIterator]() { yield sandbox; },
+  });
   const runtime = new BlaxelWorkspaceRuntime({
     relay: new PreviewRelaySessions('this-test-secret-is-long-enough-for-hmac', 'https://preview.selvedge.test'),
     region: 'us-pdx-1',
@@ -139,5 +144,18 @@ describe('Blaxel Workspace Runtime', () => {
     expect(wrapped).not.toContain('process.get');
     expect(process.get).not.toHaveBeenCalled();
     expect(fs.rm).toHaveBeenCalledTimes(3);
+  });
+
+  it('finds and stops Selvedge sandboxes after an API restart', async () => {
+    const { runtime, sandbox, process } = fixture();
+    sandbox.metadata.labels = { orgId: 'org_1', projectId: 'project_1', purpose: 'development' };
+    process.list.mockResolvedValue([{ pid: 'running-1', status: 'running' }, { pid: 'done-1', status: 'completed' }]);
+
+    await expect(runtime.listWorkspaceIds()).resolves.toEqual(['selvedge-project-123']);
+    await runtime.stopWorkspace('selvedge-project-123');
+
+    expect(sdk.get).toHaveBeenCalledWith('selvedge-project-123');
+    expect(process.stop).toHaveBeenCalledWith('running-1');
+    expect(process.stop).not.toHaveBeenCalledWith('done-1');
   });
 });

@@ -17,7 +17,7 @@ import { buildMinutesThisMonth, monthStartUtc } from '../../src/server/billing/e
 /**
  * WHAT A SANDBOX COST.
  *
- * Daytona bills wall-clock time and is most of what this product costs to run,
+ * Workspace providers bill active compute and are most of what this product costs to run,
  * so the two properties worth testing hardest are the two that lose money
  * quietly: a segment must meter EXACTLY ONCE however many things try to close
  * it, and a sandbox we started must be impossible to lose track of.
@@ -167,7 +167,7 @@ describe('metering a sandbox', () => {
     });
 
     /**
-     * THE DIFFERENCE BETWEEN THIS AND DAYTONA'S OWN TIMER. A long compile is
+     * THE DIFFERENCE BETWEEN THIS AND A PROVIDER'S OWN TIMER. A long compile is
      * quiet and busy at the same time; only a sweep that can see the run knows
      * which.
      */
@@ -231,8 +231,8 @@ describe('metering a sandbox', () => {
     });
 
     /**
-     * A stop that fails at Daytona still closes and meters. The money left the
-     * account whether or not Daytona took our word for it, and recording
+     * A stop that fails at the provider still closes and meters. The money left the
+     * account whether or not the provider took our word for it, and recording
      * nothing would mean the case we know least about is the case the owner is
      * charged nothing for.
      */
@@ -240,7 +240,7 @@ describe('metering a sandbox', () => {
       await openSandboxRun(db, orgId, projectId, 'sb_1', new Date(Date.now() - 6 * minute));
       await reapSandboxes(db, {
         stop: async () => {
-          throw new Error('Daytona said no');
+          throw new Error('provider said no');
         },
         isWorking: async () => false,
       });
@@ -295,12 +295,12 @@ describe('metering a sandbox', () => {
   });
 
   /**
-   * THE NO-SILENT-LEAK CHECK. Everything else trusts our record over Daytona's,
+   * THE NO-SILENT-LEAK CHECK. Everything else trusts our record over the provider's,
    * which is right for deciding what to stop and useless as a way of never
    * being surprised.
    */
-  describe('reconciling against Daytona', () => {
-    it('stops a sandbox Daytona is running that we have no row for', async () => {
+  describe('reconciling against the workspace provider', () => {
+    it('stops a sandbox the provider has that we have no row for', async () => {
       const stopped: string[] = [];
       const result = await reconcileSandboxes(db, {
         listRunning: async () => ['sb_stray'],
@@ -312,7 +312,7 @@ describe('metering a sandbox', () => {
     });
 
     /** The cheaper direction, and still a leak: minutes that never reach the ledger. */
-    it('closes and meters a segment whose sandbox Daytona has never heard of', async () => {
+    it('closes and meters a segment whose sandbox the provider no longer has', async () => {
       const started = new Date(Date.now() - 30 * minute);
       await openSandboxRun(db, orgId, projectId, 'sb_ghost', started);
       await touchSandboxRun(db, 'sb_ghost', new Date(started.getTime() + 7 * minute));
