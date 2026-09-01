@@ -218,7 +218,7 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         </div>
       ) : (
         <div className="space-y-work-tight">
-          <p className="text-body text-ink-dim">The preview below is private. Deploy only when you want a separate public production app.</p>
+          <p className="text-body text-ink-dim">Private preview</p>
           <button disabled={busy || goLiveOperation?.status === 'running' || goLiveOperation?.status === 'building'} onClick={() => void goLive()} className={btnPrimary}>
             {busy || goLiveOperation?.status === 'running' ? 'Creating production app…' : goLiveOperation?.status === 'building' ? 'Production host is building…' : 'Deploy to production hosting'}
           </button>

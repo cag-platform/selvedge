@@ -164,5 +164,5 @@ export function referenceLine(
     }
   }
 
-  return `⇄ ${parts.join(' ')} — nothing there was changed.`;
+  return `⇄ ${parts.join(' ')}`;
 }

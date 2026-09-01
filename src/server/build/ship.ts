@@ -87,12 +87,12 @@ export function shipReach(pack: ContextPack | null): ShipReach {
 /** The line the owner reads on the thread — true for each of the three cases. */
 export function shipMessageFor(reach: ShipReach): string {
   if (reach === 'watched') {
-    return "Shipped — your host is taking it live now, and I'm watching it land. If anything looks wrong you'll hear from me, and you can undo this ship from here.";
+    return "Shipped. Production is updating.";
   }
   if (reach === 'host_only') {
-    return "Shipped — your host should pick it up from here. I don't have a live web address for this project, so I can't watch it land; add one on the project page and I'll keep an eye on the next one. You can undo this ship from here.";
+    return "Pushed. Add the production URL to verify it.";
   }
-  return "Saved and pushed to GitHub — but nothing is set up to put this project online yet, so it is NOT live. The work is safely stored and you can undo this ship from here.";
+  return "Pushed to GitHub. Not deployed.";
 }
 
 export async function shipChanges(
@@ -311,7 +311,7 @@ export async function rollbackShip(
     300,
   );
   if (res.exitCode !== 0) {
-    return { ok: false, message: `I couldn't cleanly undo that — ${(res.result ?? '').trim().slice(-200)}. Nothing was force-pushed; your history is untouched.` };
+    return { ok: false, message: 'Undo failed. Your Git history was not changed.' };
   }
 
   // An undo is a decision too — it gets a run row like the ship it reverses,

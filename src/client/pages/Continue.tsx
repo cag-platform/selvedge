@@ -196,7 +196,7 @@ function CheckoutReview({ guard, busy, onStart, onReview }: { guard: CheckoutGua
         {guard.choices.filter((choice) => choice.available && choice.id === 'review_existing').map((choice) => <button type="button" key={choice.id} className="rounded-full border border-hairline px-3 py-2 text-meta text-ink-dim" onClick={onReview}>{choice.label}</button>)}
         {guard.choices.filter((choice) => choice.available && choice.id === 'wait').map((choice) => <span key={choice.id} className="rounded-full border border-hairline px-3 py-2 text-meta text-ink-dim">{choice.label}: {choice.effect}</span>)}
       </div>}
-    {!guard.fresh_isolated_checkout.supported && <p className="mt-3 text-meta text-ink-quiet">Fresh isolated checkout unavailable: {guard.fresh_isolated_checkout.reason}</p>}
+    {!guard.fresh_isolated_checkout.supported && <p className="mt-3 text-meta text-ink-quiet">A private copy is unavailable.</p>}
   </section>;
 }
 

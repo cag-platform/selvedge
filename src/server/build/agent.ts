@@ -192,13 +192,13 @@ function exitCodeOf(log: string): number | null {
 export function buildFailureLine(name: string, setupFailure: string | null, log: string | null, exitCode: number | null): string {
   // The install first: everything downstream of a failed install fails with a
   // symptom rather than a cause.
-  if (setupFailure) return `${name} couldn't be installed in the workshop, so the turn never started — ${setupFailure}. Nothing was shipped.`;
+  if (setupFailure) return `${name} could not start. Reconnect it and retry.`;
   const said = log === null ? null : tailOf(log);
-  if (said) return `${name} stopped without finishing — ${said}. Nothing was shipped.`;
+  if (said) return `${name} stopped. Retry or view technical details.`;
   if (exitCode !== null && exitCode !== 0) {
-    return `${name} exited with code ${exitCode} and said nothing about why. Nothing was shipped — ask me again, and if it repeats it is worth looking at the workshop itself.`;
+    return `${name} stopped unexpectedly. Retry.`;
   }
-  return "I hit a problem and couldn't finish that. Nothing was shipped — try rephrasing, or ask me again.";
+  return "That did not finish. Retry.";
 }
 
 /** Screenshots live outside the project so they never land in a checkpoint or ship. */

@@ -408,7 +408,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         return;
       }
       if (build?.previewOperationStatus === 'error') {
-        res.json({ state: 'error', url: null, message: build.previewOperationMessage ?? "I couldn't bring the preview up." });
+        res.json({ state: 'error', url: null, message: build.previewOperationMessage ?? 'Preview failed. Retry or view details.' });
         return;
       }
       if (process.env.PREVIEW_RUNTIME === 'railway' && build?.previewRuntimeId && build.previewUrl) {
@@ -487,7 +487,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         console.error(`background preview failed for ${orgId}/${projectId}:`, error);
         await setBuild(db, orgId, projectId, {
           previewOperationStatus: 'error',
-          previewOperationMessage: "I couldn't bring the preview up. The reason is in the record — nothing was changed.",
+          previewOperationMessage: 'Preview failed. Retry or view details.',
         }).catch(() => undefined);
       });
       res.status(202).json({ state: 'starting', url: null, message: 'Preparing the development preview.' });

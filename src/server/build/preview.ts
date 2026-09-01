@@ -577,7 +577,7 @@ async function ensurePreviewUncached(db: Db, orgId: string, projectId: string, c
     return {
       state: 'error',
       url: null,
-      message: "I couldn't bring the preview up. The reason is in the record — nothing was changed.",
+      message: "Preview failed. Retry or view details.",
     };
   }
 }

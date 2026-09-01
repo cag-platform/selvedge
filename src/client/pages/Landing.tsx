@@ -24,8 +24,8 @@ export function SampleThread({ short = false, caption = true }: { short?: boolea
   </div>{!short && <div className="border-t border-hairline px-4 py-3 sm:px-6"><div className="flex items-center gap-2 font-mono text-tech text-ink-dim"><AgentChip agent="codex" /><span className="text-healthy">✓</span> updated onboarding · 4 files · preview ready</div></div>}</div>{caption && <p className="mt-2 text-meta text-ink-quiet">A sample project conversation.</p>}</div>;
 }
 
-function SectionIntro({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
-  return <div className="landing-section-intro"><p className="font-mono text-tech text-action-bright">{number}</p><h2 className="mt-3 font-display text-section font-medium text-ink">{title}</h2><p className="mt-4 max-w-md text-body-lg text-ink-dim">{children}</p></div>;
+function SectionIntro({ number, title, children }: { number: string; title: string; children?: React.ReactNode }) {
+  return <div className="landing-section-intro"><p className="font-mono text-tech text-action-bright">{number}</p><h2 className="mt-3 font-display text-section font-medium text-ink">{title}</h2>{children && <p className="mt-4 max-w-md text-body-lg text-ink-dim">{children}</p>}</div>;
 }
 
 
@@ -125,12 +125,12 @@ const SYSTEM_LABELS: Array<{ id: VisitorSystem; label: string }> = [
   { id: 'web', label: 'Web' },
 ];
 
-const SYSTEM_COPY: Record<VisitorSystem, { eyebrow: string; detail: string; cta: string }> = {
-  mac: { eyebrow: 'Built for this Mac—and wherever the project runs', detail: 'Connect local tools, Xcode, and Apple previews when you need them.', cta: 'Start on this Mac' },
-  windows: { eyebrow: 'Built for Windows and the web', detail: 'Use a private cloud workspace while Selvedge keeps the project together.', cta: 'Start on Windows' },
-  linux: { eyebrow: 'Built for Linux and the web', detail: 'Bring your repository and tools. Selvedge handles the shared workspace.', cta: 'Start on Linux' },
-  mobile: { eyebrow: 'Start here. Continue on your computer.', detail: 'Create the project now, then connect local tools when you are back at your desk.', cta: 'Create my workspace' },
-  web: { eyebrow: 'One workspace, from any system', detail: 'Start in the browser. Connect local tools only when the project needs them.', cta: 'Start in the browser' },
+const SYSTEM_COPY: Record<VisitorSystem, { eyebrow: string; cta: string }> = {
+  mac: { eyebrow: 'Built for this Mac—and wherever the project runs', cta: 'Start on this Mac' },
+  windows: { eyebrow: 'Built for Windows and the web', cta: 'Start on Windows' },
+  linux: { eyebrow: 'Built for Linux and the web', cta: 'Start on Linux' },
+  mobile: { eyebrow: 'Start here. Continue on your computer.', cta: 'Create my workspace' },
+  web: { eyebrow: 'One workspace, from any system', cta: 'Start in the browser' },
 };
 
 function detectVisitorSystem(): VisitorSystem {
@@ -163,21 +163,19 @@ export function Landing() {
   const signUpHref = `/sign-up?system=${visitorSystem}${arrivalSource ? `&from=${arrivalSource}` : ''}`;
 
   return <div className="landing-site overflow-hidden">
-    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
+    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">Keep the code, context, agents, previews, and production state together.</p><p className="landing-system-detail">{systemCopy.detail}</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><HeroHarness/></div></section>
+      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">One place to build, preview, and ship.</p><p className="landing-system-detail">Build here. Run anywhere.</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><HeroHarness/></div></section>
 
       <section id="working-demo" className="landing-product-tour mx-auto max-w-7xl px-4 sm:px-6" aria-labelledby="product-tour-heading"><div className="landing-product-tour-copy"><p className={eyebrowCls}>Inside Selvedge</p><h2 id="product-tour-heading">One project. Three moments that matter.</h2><p>Move it, decide with the best agents, and catch production trouble early.</p></div><ProductTour embedded /></section>
 
-      <section id="how" aria-label="How Selvedge works" className="landing-continuity mx-auto max-w-6xl px-4 sm:px-6"><div className="landing-continuity-copy"><p className={eyebrowCls}>How it works</p><h2 className="mt-4 font-display text-section font-medium text-ink">Bring it in. Build safely. Ship when ready.</h2></div><ol className="landing-continuity-steps"><li><span>01</span><strong>Bring the project</strong><p>From a builder, repository, or a new idea.</p></li><li><span>02</span><strong>Work with any agent</strong><p>Shared context. Private workspace. Live preview.</p></li><li><span>03</span><strong>Keep control</strong><p>Your infrastructure. Your approval. Your project.</p></li></ol></section>
+      <section aria-label="Why Selvedge" className="landing-outcomes mx-auto max-w-6xl px-4 sm:px-6"><article><h2>The project remembers.</h2></article><article><h2>Use any agent.</h2></article><article><h2>Your stack stays yours.</h2></article></section>
 
-      <section aria-label="Why Selvedge" className="landing-outcomes mx-auto max-w-6xl px-4 sm:px-6"><article><h2>The project remembers.</h2><p>Decisions and history stay with the work.</p></article><article><h2>Agents stay interchangeable.</h2><p>Use Claude, Codex, GPT, or what comes next.</p></article><article><h2>Production stays yours.</h2><p>Selvedge manages the work, not your lock-in.</p></article></section>
+      <section aria-label="Safety and control" className="landing-trust mx-auto max-w-6xl px-4 sm:px-6"><p>Private workspaces</p><p>Protected secrets</p><p>Independent checks</p><p>Approval required</p></section>
 
-      <section aria-label="Safety and control" className="landing-trust mx-auto max-w-6xl px-4 sm:px-6"><p>Isolated workspaces</p><p>Scoped secrets</p><p>Independent checks</p><p>Nothing ships without approval</p></section>
+      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PRICING" title="Start free." /><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
 
-      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PRICING" title="Start free.">Pay for Selvedge when the project becomes operational.</SectionIntro><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
-
-      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><h2 className="max-w-4xl font-display text-hero font-medium text-ink">Give the project a permanent home.</h2><div className="mt-8"><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></section>
+      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><h2 className="max-w-4xl font-display text-hero font-medium text-ink">Bring your project home.</h2><div className="mt-8"><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></section>
     </main>
     <footer className="landing-footer border-t border-hairline"><div className="mx-auto max-w-6xl px-4 py-10 sm:px-6"><p className="font-display font-semibold text-ink-dim">Selvedge</p><nav aria-label="Footer"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/status">Status</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/sign-in">Sign in</Link></nav></div></footer>
   </div>;

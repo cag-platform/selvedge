@@ -141,16 +141,14 @@ describe('what pressing send is about to cost', () => {
     expect(sendNote('@codex build it', roster)).toMatch(/OpenAI key/i);
   });
 
-  it('counts the turns a consultation will take, and promises no building', () => {
+  it('names the agents in a consultation', () => {
     const note = sendNote('@codex @claudecode your takes?', roster);
-    expect(note).toContain('Codex and Claude Code');
-    expect(note).toContain('2 turns');
-    expect(note).toContain('nothing gets built');
+    expect(note).toBe('Asking Codex and Claude Code…');
   });
 
-  it('says out loud when more were named than will be asked', () => {
+  it('keeps an oversized consultation message short', () => {
     const note = sendNote('@claude @gpt @codex @claudecode everyone', roster);
-    expect(note).toContain('1 more named than I’ll ask at once'.replace('’', "'"));
+    expect(note).toBe('Asking Claude, GPT and Codex…');
   });
 });
 

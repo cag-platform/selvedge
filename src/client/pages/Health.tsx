@@ -33,7 +33,7 @@ export function Health() {
         <div>
           <p className="text-label font-semibold uppercase tracking-widest text-action-bright">Health center</p>
           <h1 className="mt-3 font-display text-[clamp(2.25rem,5vw,4rem)] font-normal leading-[1.04] tracking-[-0.045em] text-ink">Your projects, looked after.</h1>
-          <p className="mt-4 max-w-2xl text-body-lg leading-relaxed text-ink-dim">Production, builds, releases, and the signals Selvedge can actually see—without pretending silence means healthy.</p>
+          <p className="mt-4 max-w-2xl text-body-lg leading-relaxed text-ink-dim">No issues detected.</p>
         </div>
         <Link to="/admin/connections" className="shrink-0 text-body font-medium text-action-bright hover:underline">Manage connections →</Link>
       </header>

@@ -295,16 +295,13 @@ describe('runAgentTurn — streamed, costed, resumable', () => {
     expect(rows[0]!.content.indexOf('Reading c.ts')).toBeLessThan(rows[0]!.content.indexOf('Editing d.ts'));
   });
 
-  it('a failed turn is honest on the thread and recorded as failed — never a silent shrug', async () => {
+  it('a failed turn is concise on the thread and recorded as failed', async () => {
     const out = await runAgentTurn(db, orgId, 'loom', 'do the thing', cfg, {}, {
       execute: executor({ polls: ['boom\n__EXIT:1'] }),
       sleep: noSleep,
     });
     expect(out.status).toBe('failed');
-    // The agent's own words, not a shrug: "boom" is what the CLI said, and it
-    // is the only thing anybody can act on.
-    expect(out.reply).toContain('boom');
-    expect(out.reply).toMatch(/[Nn]othing was shipped/);
+    expect(out.reply).toBe('Claude Code stopped. Retry or view technical details.');
     const [run] = await db.select().from(agentRuns).where(eq(agentRuns.orgId, orgId));
     expect(run!.status).toBe('failed');
   });

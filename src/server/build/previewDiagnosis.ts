@@ -177,7 +177,7 @@ export function previewFailureMessage(log: string): string {
   if (found.kind === 'unknown') {
     // The honest version of "I don't know", which is a real answer and not a
     // failure to have one.
-    return "I couldn't bring the preview up, and I couldn't tell why from what the app printed. The full output is in the record.";
+    return "Preview failed. No cause was detected.";
   }
   return found.hint ? `${found.line} ${found.hint}` : found.line;
 }

@@ -243,7 +243,7 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     // wrote it. The reference stays, because it is the one technical detail
     // that earns its place: it turns a screenshot into a log line.
     res.status(500).json({
-      error: `The server hit a problem handling that. It's been logged as ${ref}; nothing you did was wrong.`,
+      error: `Something went wrong. Reference: ${ref}.`,
     });
   };
   app.use(onError);

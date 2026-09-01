@@ -194,7 +194,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     if (live >= limit) {
       return {
         outcome: 'not_possible',
-        message: `You already have ${live} app${live === 1 ? '' : 's'} online, which is the limit on your plan. Take one offline, or move up a plan, and I'll put this one up.`,
+        message: 'Online app limit reached. Take one offline or upgrade.',
       };
     }
   }
@@ -216,7 +216,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
       } catch (err) {
         return {
           outcome: 'failed',
-          message: `I couldn't check whether this app already has a deployment on that Railway account, so I didn't create anything: ${err instanceof Error ? err.message : String(err)}. Try again in a moment.`,
+          message: 'Could not check Railway. Retry.',
         };
       }
       if (adoptedService) {

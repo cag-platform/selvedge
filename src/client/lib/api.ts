@@ -58,13 +58,13 @@ export class ApiError extends Error {
  * `status === 0` is our own marker for "the request never arrived anywhere".
  */
 export function sayFailure(status: number): string {
-  if (status === 0) return "I couldn't reach the server just now. Your connection may be down; nothing was sent.";
+  if (status === 0) return "Connection lost. Retry.";
   if (status === 401 || status === 403) return 'Your session has expired. Sign in again and this will work.';
   if (status === 404) return "That isn't here any more — it may have been renamed or removed.";
   if (status === 413) return "That's larger than this can take in one go.";
   if (status === 429) return 'That went too fast for the service behind it. Give it a moment and try again.';
   if (status === 503) return 'Selvedge is starting up or briefly down. Try again in a minute — nothing was lost.';
-  if (status >= 500) return "The server hit a problem handling that. It's been logged; nothing you did was wrong.";
+  if (status >= 500) return "Something went wrong. Retry.";
   return "That didn't go through.";
 }
 

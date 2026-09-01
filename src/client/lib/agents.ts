@@ -106,11 +106,9 @@ export function sendNote(text: string, agents: AgentOffer[]): string | null {
   // Several is a consultation: everyone answers, nobody takes it over, and
   // the count is what costs — so the count is what gets said.
   const asked = offers.slice(0, MAX_CONSULTED);
-  const dropped = offers.length - asked.length;
   const names = asked.map((a) => a.name);
   const list = names.length === 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  const tail = dropped > 0 ? ` (${dropped} more named than I'll ask at once)` : '';
-  return `Asking ${list} for a take — ${asked.length} turns, and nothing gets built${tail}`;
+  return `Asking ${list}…`;
 }
 
 /** Whoever is currently answering, for the chip beside the composer. */

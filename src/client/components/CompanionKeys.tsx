@@ -83,10 +83,7 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
         <div className="max-w-2xl">
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Apple apps</p>
           <h3 className="mt-1 text-headline font-medium text-ink">Connect your Mac</h3>
-          <p className="mt-1 text-body text-ink-dim">
-            This lets Codex or Claude Code take an Apple request directly from Selvedge chat, work in a private project folder on your Mac,
-            and return the checked result using the real Xcode and iPhone Simulator. You only set it up once.
-          </p>
+          <p className="mt-1 text-body text-ink-dim">Build and test Apple apps on this Mac.</p>
         </div>
         <span className={`rounded-full px-3 py-1.5 text-meta font-medium ${onlineRuntime ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>
           {onlineRuntime ? 'Mac connected' : 'Not connected yet'}
@@ -96,10 +93,7 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
       {onlineRuntime ? (
         <div className="border-t border-hairline px-5 py-4">
           <p className="text-body text-ink"><strong>{onlineRuntime.name}</strong> is ready for Apple work.</p>
-          <p className="mt-1 text-meta text-ink-dim">
-            macOS {onlineRuntime.macosVersion} · {onlineRuntime.xcodeVersion.split('\n')[0]}. Choose Codex or Claude Code in a project chat and ask normally.
-            Keep the Terminal window running while the agent builds or checks the app.
-          </p>
+          <p className="mt-1 text-meta text-ink-dim">{onlineRuntime.xcodeVersion.split('\n')[0]} ready · Keep Selvedge for Mac open.</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => void testConnection()} disabled={test?.state === 'queued' || test?.state === 'running'} className={btnPrimary}>
               {test?.state === 'queued' || test?.state === 'running' ? 'Testing…' : 'Test connection'}
@@ -117,11 +111,7 @@ function AppleRuntimeGuide({ keys, runtimes }: { keys: Key[]; runtimes: AppleRun
         </div>
       )}
 
-      <div className="border-t border-hairline bg-panel-soft px-5 py-3 text-meta text-ink-dim">
-        <strong className="text-ink">Stays on your Mac:</strong> Apple ID, signing certificates, provisioning profiles and Keychain secrets.
-        Selvedge transfers that project’s source and saved workspace through your authenticated connection so the selected agent can continue it,
-        then stores the returned project checkpoint and verification result. Signing material is never included.
-      </div>
+      <div className="border-t border-hairline bg-panel-soft px-5 py-3 text-meta text-ink-dim">Signing credentials stay on your Mac.</div>
     </section>
   );
 }
@@ -131,8 +121,7 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
     <>
       <ol>
         <SetupStep number={1} title="Prepare Xcode" complete={connected}>
-          <p>Install Xcode from the Mac App Store, open it once, accept the license, and let it finish installing components.</p>
-          <p className="mt-1">In Xcode, open <strong>Settings → Components</strong> and make sure at least one iOS Simulator runtime is installed.</p>
+          <p>Open Xcode once and install an iOS Simulator.</p>
         </SetupStep>
         <SetupStep number={2} title="Install the Selvedge companion" complete={companionSeen}>
           <p>Open Terminal on the Mac and install the small connection program.</p>
@@ -140,11 +129,11 @@ function AppleSetupSteps({ activeKey, companionSeen, connected }: { activeKey: b
         </SetupStep>
         <SetupStep number={3} title="Connect this Mac to your Selvedge account" complete={activeKey}>
           {activeKey
-            ? <p>Your account has an active machine key. If this is a new Mac, make a new key below and use the command shown once.</p>
+            ? <p>This Mac needs its own connection.</p>
             : <p>Use <strong>Make a key</strong> below. Name it something recognizable, such as “Greg’s MacBook,” then copy the login command shown once.</p>}
         </SetupStep>
         <SetupStep number={4} title="Turn on the Apple runtime" complete={connected}>
-          <p>Run this in Terminal and leave that window open while Selvedge works on an Apple app.</p>
+          <p>Open Selvedge for Mac and keep it running.</p>
           <CopyCommand command="$HOME/.local/bin/selvedge runtime apple" />
           {!connected && <p className="mt-2">This page will change to <strong>Mac connected</strong> automatically when Xcode and Simulator are ready.</p>}
         </SetupStep>
@@ -223,7 +212,7 @@ export function CompanionKeys() {
         <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4">
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge for Mac</p>
           <h2 className="mt-1 text-headline font-medium text-ink">Allow this Mac?</h2>
-          <p className="mt-1 text-body text-ink-dim">Pairing code <strong className="font-mono text-ink">{pairCode}</strong>. Approve only if the Selvedge app on your Mac opened this page.</p>
+          <p className="mt-1 text-body text-ink-dim">Approve only if you started this on your Mac.</p>
           <button type="button" onClick={() => void approveMac()} disabled={pairState === 'approving'} className={`${btnPrimary} mt-3`}>
             {pairState === 'approving' ? 'Connecting…' : 'Allow this Mac'}
           </button>
@@ -231,29 +220,25 @@ export function CompanionKeys() {
       )}
       {pairState === 'approved' && (
         <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4 text-body text-ink">
-          <strong>Mac approved.</strong> You can return to Selvedge for Mac; it will finish connecting automatically.
+          <strong>Mac connected.</strong>
         </div>
       )}
       <div>
         <h2 className="text-headline font-medium text-ink">Your machines</h2>
-        <p className="mt-1 max-w-xl text-body text-ink-dim">
-          Selvedge can read the coding sessions you run in your own terminal, and hand your project’s context back to any
-          agent you use. Both go through one small program on your machine, with a key you make here.
-        </p>
+        <p className="mt-1 max-w-xl text-body text-ink-dim">Connect this computer to Selvedge.</p>
       </div>
 
       <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
         <summary className="cursor-pointer text-body text-ink">What actually leaves your machine</summary>
         <div className="mt-2 space-y-2 text-body text-ink-dim">
-          <p>
-            For each finished session: which tool ran it and its id, when it ran, the folder and repo, the first thing you
-            asked for, the file paths it touched, the tool names it ran and how often, how it ended, the commit that landed
-            while it was open, and what the tool said it cost.
-          </p>
-          <p className="text-ink">
-            Never: the conversation, your code, or any diff. Run <span className="font-mono text-tech">selvedge watch --dry-run</span> and it prints
-            exactly what it would send, so you can check rather than take our word.
-          </p>
+          <p>Shared:</p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Tool and session ID</li>
+            <li>Time and project</li>
+            <li>Changed file paths</li>
+            <li>Result, commit, and cost</li>
+          </ul>
+          <p className="text-ink">Never shared: conversations, code, or diffs.</p>
         </div>
       </details>
 
@@ -269,10 +254,10 @@ export function CompanionKeys() {
             <p>$HOME/.local/bin/selvedge watch</p>
             <p>$HOME/.local/bin/selvedge runtime apple</p>
           </div>
-          <p className="text-meta text-ink-quiet">
-            To give your agents this project's context, mount the same program as an MCP server:{' '}
-            <span className="font-mono text-tech">claude mcp add selvedge-context -- selvedge context</span>
-          </p>
+          <details className="text-meta text-ink-quiet">
+            <summary className="cursor-pointer">Advanced setup</summary>
+            <p className="mt-2 font-mono text-tech">claude mcp add selvedge-context -- selvedge context</p>
+          </details>
         </div>
       )}
 

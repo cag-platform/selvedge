@@ -61,7 +61,6 @@ export function AgentMenu({
     >
       <div className="mb-work-tight border-b border-hairline px-work-tight pb-work-tight">
         <p className="text-body font-medium text-ink">Use the right agent for this turn.</p>
-        <p className="mt-0.5 text-meta text-ink-dim">Selvedge stays neutral. Your project, decisions, evidence, and history remain here when the worker changes.</p>
       </div>
       {shown.map((offer) => (
         <button

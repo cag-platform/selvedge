@@ -63,20 +63,19 @@ describe('shipReach — never promise a deploy nobody set up', () => {
     ).toBe('watched');
   });
 
-  it('with a host connected but no address, it is honest about not being able to watch', () => {
+  it('with a host connected but no address, it asks for the production URL', () => {
     const reach = shipReach(
       pack({ topology: { sources: [{ connector: 'railway', resource_id: 'p/e/s', role: 'production_host' }] } }),
     );
     expect(reach).toBe('host_only');
-    expect(shipMessageFor(reach)).toMatch(/can't watch it land/i);
+    expect(shipMessageFor(reach)).toBe('Pushed. Add the production URL to verify it.');
   });
 
-  it('with nothing wired at all, it says plainly that the app is NOT live', () => {
+  it('with nothing wired at all, it says plainly that the app is not deployed', () => {
     const reach = shipReach(pack({ topology: { sources: [{ connector: 'github', resource_id: 'acme/loom', role: 'source_of_truth' }] } }));
     expect(reach).toBe('pushed_only');
     const line = shipMessageFor(reach);
-    expect(line).toMatch(/not live/i);
-    expect(line).not.toMatch(/taking it live/i);
+    expect(line).toBe('Pushed to GitHub. Not deployed.');
   });
 
   it('a missing pack is treated as nothing wired — never as a deploy', () => {
@@ -137,16 +136,15 @@ describe('shipChanges — build freely, gate at ship', () => {
     expect(out.outcome).toBe('shipped');
   });
 
-  it('on a project with no host wired, the thread says plainly that it is NOT live', async () => {
+  it('on a project with no host wired, the thread says plainly that it is not deployed', async () => {
     // No pack exists for 'loom' in this suite — the "nobody wired anything" case.
     const out = await shipChanges(db, orgId, 'loom', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
     expect(out.outcome).toBe('shipped');
     const [msg] = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId));
-    expect(msg!.content).toMatch(/not live/i);
-    expect(msg!.content).not.toMatch(/taking it live/i);
+    expect(msg!.content).toBe('Pushed to GitHub. Not deployed.');
   });
 
-  it('on a project with a live address, it says it is watching — the old promise, now earned', async () => {
+  it('on a project with a live address, it says production is updating', async () => {
     await createPack(
       db,
       orgId,
@@ -158,7 +156,7 @@ describe('shipChanges — build freely, gate at ship', () => {
     const out = await shipChanges(db, orgId, 'hosted', cfg, {}, { execute: executor({ paths: ['src/app.tsx'] }) });
     expect(out.outcome).toBe('shipped');
     if (out.outcome !== 'shipped') return;
-    expect(out.message).toMatch(/watching it land/i);
+    expect(out.message).toBe('Shipped. Production is updating.');
   });
 
   it('a sensitive diff cannot ship without a confirmed backup — and nothing is pushed', async () => {
@@ -294,7 +292,7 @@ describe('rollbackShip — a real revert, never a force-push', () => {
     expect((await rollbackShip(db, 'org_1', 'loom', cfg, 'not-a-sha', {})).ok).toBe(false);
     const out = await rollbackShip(db, 'org_1', 'loom', cfg, 'abcdef1', { execute: async () => ({ exitCode: 1, result: 'CONFLICT' }) });
     expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/history is untouched/i);
+    expect(out.message).toBe('Undo failed. Your Git history was not changed.');
   });
 });
 

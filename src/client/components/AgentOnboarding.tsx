@@ -68,7 +68,7 @@ export function AgentOnboarding() {
       <section className="my-auto w-full max-w-3xl rounded-pane border border-hairline bg-paper p-6 shadow-2xl sm:p-8">
         <p className="font-mono text-tech uppercase tracking-wider text-action">Make Selvedge yours</p>
         <h1 id="agent-onboarding-title" className="mt-2 font-display text-[clamp(2rem,5vw,3.6rem)] leading-[1.05] tracking-[-.035em] text-ink">What chat and coding agents do you use?</h1>
-        <p className="mt-2 max-w-2xl text-body text-ink-dim">Choose every familiar tool. Selvedge will put them first and guide their connections, but every agent stays available and your project remains neutral.</p>
+        <p className="mt-2 max-w-2xl text-body text-ink-dim">Pick the agents you use. You can change this later.</p>
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <div><h2 className="mb-3 text-body font-medium text-ink">Chat and thinking</h2><div className="grid gap-2">{groups.chat.map((agent) => <AgentChoice key={agent.id} id={agent.id} />)}</div></div>
           <div><h2 className="mb-3 text-body font-medium text-ink">Coding and building</h2><div className="grid gap-2">{groups.coding.map((agent) => <AgentChoice key={agent.id} id={agent.id} />)}</div></div>
