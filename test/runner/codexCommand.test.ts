@@ -27,6 +27,9 @@ describe('the Codex command', () => {
     expect(cmd).toContain('codex exec');
     expect(cmd).toContain('--json');
     expect(cmd).toContain("--model 'gpt-5.6-terra'");
+    expect(cmd).toContain('codex login --with-api-key');
+    expect(cmd).toContain('CODEX_HOME=/tmp/selvedge-codex-home');
+    expect(cmd).toContain('rm -f /tmp/selvedge-codex-prompt /tmp/selvedge-codex-home/auth.json');
   });
 
   it('carries the standing rules in the prompt, because this CLI has no system-prompt flag', () => {
