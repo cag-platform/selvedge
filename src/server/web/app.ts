@@ -51,7 +51,6 @@ import { buildBuildEngine } from '../runner/native/factory.js';
 import { driveCard } from '../cards/drive.js';
 import { getPreviewRelay } from '../workspace/relay/factory.js';
 import { companionInstaller } from '../companion/installer.js';
-import { createShowcaseRouter } from './routes/showcase.js';
 
 export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/client')) {
   const app = express();
@@ -65,9 +64,6 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
     const configured = process.env.PUBLIC_ORIGIN?.trim() || `${req.protocol}://${req.get('host')}`;
     res.type('text/x-shellscript').send(companionInstaller(configured));
   });
-  // Public, read-only, and pinned to the isolated Northstar seed. This powers
-  // the landing-page harness with real persisted Selvedge state.
-  app.use(createShowcaseRouter(db));
 
   // Selvedge-native workspace previews. The customer app connects OUT to this
   // relay; browsers never receive a provider URL or workspace credential.
