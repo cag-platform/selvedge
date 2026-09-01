@@ -59,7 +59,7 @@ function PricingCards() {
         <p className="landing-plan-note font-mono text-tech">Free forever, not free for now</p>
         <p className="mt-2 text-body-lg text-ink-dim">{PLAN_TAGLINE.free}</p>
         <ul className="landing-plan-list">{planBullets('free').map((line) => <li key={line}>{line}</li>)}</ul>
-        <Link to="/sign-up" className="landing-plan-cta landing-plan-cta-quiet">Start free</Link>
+        <Link to="/request-invite" className="landing-plan-cta landing-plan-cta-quiet">Request an invite</Link>
         <p className="mt-3 font-mono text-tech text-ink-quiet">No card. No trial timer.</p>
       </div>
 
@@ -84,7 +84,7 @@ function PricingCards() {
         <p className="landing-plan-badge font-mono text-tech">{FOUNDING_MEMBER_BADGE}</p>
         <p className="mt-2 text-body-lg text-ink-dim">{PLAN_TAGLINE.pro}</p>
         <ul className="landing-plan-list">{planBullets('pro').map((line) => <li key={line}>{line}</li>)}</ul>
-        <Link to="/sign-up" className={`${btnPrimary} landing-plan-cta`}>Go Pro</Link>
+        <Link to="/request-invite" className={`${btnPrimary} landing-plan-cta`}>Request an invite</Link>
       </div>
     </div>
   );
@@ -160,12 +160,12 @@ export function Landing() {
   const eyebrow = arrivalSource
     ? `Leaving ${arrivalSource === 'cursor' ? 'Cursor' : arrivalSource[0]!.toUpperCase() + arrivalSource.slice(1)}? Bring the project with you.`
     : systemCopy.eyebrow;
-  const signUpHref = `/sign-up?system=${visitorSystem}${arrivalSource ? `&from=${arrivalSource}` : ''}`;
+  const inviteHref = `/request-invite?system=${visitorSystem}${arrivalSource ? `&from=${arrivalSource}` : ''}`;
 
   return <div className="landing-site overflow-hidden">
-    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></div></header>
+    <header className="landing-nav sticky top-0 z-20 border-b border-hairline"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /><nav aria-label="Public navigation" className="landing-public-links"><a href="#product">Product</a><a href="#pricing">Pricing</a></nav><div className="flex items-center gap-1 sm:gap-2"><Link to="/sign-in" className={btnGhost}>Sign in</Link><Link to="/request-invite" className={btnPrimary}>Request an invite</Link></div></div></header>
     <main>
-      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">One place to build, preview, and ship.</p><p className="landing-system-detail">Build here. Run anywhere.</p><div className="mt-7 flex flex-wrap gap-3"><Link to={signUpHref} className={btnPrimary}>{systemCopy.cta}</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><HeroHarness/></div></section>
+      <section className="landing-hero mx-auto max-w-7xl px-4 pt-10 sm:px-6 sm:pt-14 lg:pt-16"><div className="landing-hero-layout"><div className="landing-hero-copy"><p className={eyebrowCls}>{eyebrow}</p><h1 className="landing-hero-title mt-4 font-display font-medium text-ink">Selvedge keeps your work from unraveling.</h1><p className="mt-5 max-w-xl text-body-lg text-ink-dim">One place to build, preview, and ship.</p><p className="landing-system-detail">Build here. Run anywhere.</p><div className="mt-7 flex flex-wrap gap-3"><Link to={inviteHref} className={btnPrimary}>Request an invite</Link><a href="#working-demo" className={btnGhost}>See a project work</a></div><div className="landing-system-picker"><span>Not your setup?</span>{SYSTEM_LABELS.map((system) => <button key={system.id} type="button" aria-pressed={visitorSystem === system.id} onClick={() => setVisitorSystem(system.id)}>{system.label}</button>)}</div></div><HeroHarness/></div></section>
 
       <section id="working-demo" className="landing-product-tour mx-auto max-w-7xl px-4 sm:px-6" aria-labelledby="product-tour-heading"><div className="landing-product-tour-copy"><p className={eyebrowCls}>Inside Selvedge</p><h2 id="product-tour-heading">One project. Three moments that matter.</h2><p>Move it, decide with the best agents, and catch production trouble early.</p></div><ProductTour embedded /></section>
 
@@ -173,9 +173,9 @@ export function Landing() {
 
       <section aria-label="Safety and control" className="landing-trust mx-auto max-w-6xl px-4 sm:px-6"><p>Private workspaces</p><p>Protected secrets</p><p>Independent checks</p><p>Approval required</p></section>
 
-      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PRICING" title="Start free." /><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
+      <section id="pricing" aria-label="Pricing" className="landing-section landing-pricing mx-auto max-w-6xl px-4 sm:px-6"><SectionIntro number="PRICING" title="Private beta." /><div><PricingCards /><p className="landing-plans-note text-body text-ink-dim">{BYO_KEYS_LINE}</p><PricingFaq /></div></section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><h2 className="max-w-4xl font-display text-hero font-medium text-ink">Bring your project home.</h2><div className="mt-8"><Link to="/sign-up" className={btnPrimary}>Start free</Link></div></section>
+      <section className="mx-auto max-w-6xl px-4 pb-24 pt-10 sm:px-6 sm:pb-32"><h2 className="max-w-4xl font-display text-hero font-medium text-ink">Bring your project home.</h2><div className="mt-8"><Link to="/request-invite" className={btnPrimary}>Request an invite</Link></div></section>
     </main>
     <footer className="landing-footer border-t border-hairline"><div className="mx-auto max-w-6xl px-4 py-10 sm:px-6"><p className="font-display font-semibold text-ink-dim">Selvedge</p><nav aria-label="Footer"><Link to="/docs">Docs</Link><Link to="/security">Security</Link><Link to="/status">Status</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/sign-in">Sign in</Link></nav></div></footer>
   </div>;

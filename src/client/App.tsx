@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { ClerkLoaded, SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
+import { ClerkLoaded, SignedIn, SignedOut, SignIn, Waitlist } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Landing } from './pages/Landing.js';
 import { DemoAppPreview } from './pages/DemoAppPreview.js';
@@ -113,24 +113,23 @@ function AuthedApp() {
                     Every project&rsquo;s conversations, agents, and record, in one window.
                   </p>
                 </div>
-                <SignIn signUpUrl="/sign-up" />
+                <SignIn signUpUrl="/request-invite" />
               </div>
             }
           />
           <Route
-            path="/sign-up"
+            path="/request-invite"
             element={
               <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
-                  <p className="max-w-sm text-body text-ink-dim">
-                    Bring a repo, a ChatGPT export, or just a question. The walkthrough takes it from there.
-                  </p>
+                  <p className="max-w-sm text-body text-ink-dim">Selvedge is opening access carefully.</p>
                 </div>
-                <SignUp signInUrl="/sign-in" />
+                <Waitlist signInUrl="/sign-in" />
               </div>
             }
           />
+          <Route path="/sign-up" element={<Navigate to="/request-invite" replace />} />
           <Route path="*" element={<Landing />} />
         </Routes>
       </SignedOut>
@@ -151,6 +150,7 @@ function AuthedApp() {
               {/* The moment sign-in/up completes, these paths are the app's. */}
               <Route path="/sign-in" element={<Navigate to="/" replace />} />
               <Route path="/sign-up" element={<Navigate to="/" replace />} />
+              <Route path="/request-invite" element={<Navigate to="/" replace />} />
               <Route path="/inbox" element={<Inbox />} />
               {/* Static segment first: a project's history is not a thread id. */}
               <Route path="/inbox/project/:projectId" element={<Inbox />} />

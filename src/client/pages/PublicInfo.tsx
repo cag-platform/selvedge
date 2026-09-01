@@ -23,7 +23,7 @@ const terms: Section[] = [
 
 function PublicShell({ title, intro, children }: { title: string; intro: string; children: React.ReactNode }) {
   return <div className="public-info">
-    <header><div><Link to="/"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /></Link><Link to="/sign-up">Start free</Link></div></header>
+    <header><div><Link to="/"><SelvedgeLockup tone="chalk" className="h-7 w-auto" /></Link><Link to="/request-invite">Request an invite</Link></div></header>
     <main><p className="public-info-label">Selvedge</p><h1>{title}</h1><p className="public-info-intro">{intro}</p>{children}<p className="public-info-updated">Updated August 31, 2026</p></main>
     <footer><Link to="/">Home</Link><Link to="/security">Security</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link><Link to="/status">Status</Link></footer>
   </div>;

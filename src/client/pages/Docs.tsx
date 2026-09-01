@@ -59,8 +59,8 @@ function Shell({ page }: { page: Page }) {
           <Link to="/">
             <SelvedgeLockup tone="chalk" className="h-7 w-auto" />
           </Link>
-          <Link to="/sign-up" className="text-meta text-action-bright hover:underline">
-            Start free
+          <Link to="/request-invite" className="text-meta text-action-bright hover:underline">
+            Request an invite
           </Link>
         </div>
       </header>
