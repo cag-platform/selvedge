@@ -20,7 +20,15 @@ if (!report.ok) {
 }
 
 const app = createApp(db);
-startCronJobs(db);
+// Cost-safe development mode keeps the web app available without waking the
+// database every minute. Background monitoring and cleanup are opt-in again by
+// setting BACKGROUND_JOBS_ENABLED=true when Selvedge is ready for continuous
+// production operation.
+if (process.env.BACKGROUND_JOBS_ENABLED === 'true') {
+  startCronJobs(db);
+} else {
+  console.log('Background jobs are off (set BACKGROUND_JOBS_ENABLED=true to enable them).');
+}
 
 const port = Number(process.env.PORT ?? 3000);
 const server = app.listen(port, () => {
