@@ -31,18 +31,24 @@ export function startCronJobs(db: Db): void {
     runDigestSchedule(db, new Date(), (orgId) => buildComposeDeps(db, orgId), pushSender).catch((err) => console.error('digest schedule failed:', err));
   });
 
-  // The health monitor. State is held across ticks (in-process, single-process
-  // tradeoff); each check still only runs when its own interval has elapsed.
-  const monitorState = newMonitorState();
+  // Public-page probes wake serverless applications and their databases. That
+  // makes an "idle" customer app consume compute merely because Selvedge is
+  // watching it. Keep continuous runtime monitoring opt-in; deploy events and
+  // explicit verification still provide health evidence without background
+  // traffic. Set APP_HEALTH_MONITOR_ENABLED=true only for installations that
+  // deliberately accept the cost of synthetic traffic.
   const pollerIngest = makePollerIngest(db);
-  cron.schedule('* * * * *', () => {
-    pollHealth({
-      db,
-      state: monitorState,
-      listChecks: () => listHealthChecksToPoll(db),
-      ingest: pollerIngest,
-    }).catch((err) => console.error('health poll failed:', err));
-  });
+  if (process.env.APP_HEALTH_MONITOR_ENABLED === 'true') {
+    const monitorState = newMonitorState();
+    cron.schedule('* * * * *', () => {
+      pollHealth({
+        db,
+        state: monitorState,
+        listChecks: () => listHealthChecksToPoll(db),
+        ingest: pollerIngest,
+      }).catch((err) => console.error('health poll failed:', err));
+    });
+  }
 
   // The Railway deploy poller, sharing the same ingest sink. Its last-known
   // state per service is held across ticks here (in-process, single-process
