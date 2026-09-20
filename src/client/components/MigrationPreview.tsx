@@ -53,7 +53,7 @@ export function WorkspacePreview({
     <div className="mt-3 overflow-hidden rounded-card border border-hairline bg-panel">
       <div className="flex items-center justify-between gap-3 border-b border-hairline px-3 py-2"><span className="text-meta font-medium text-ink">{title}</span><button type="button" onClick={() => setOpen(true)} className="text-meta text-action-bright hover:underline">Open full preview →</button></div>
       <button type="button" onClick={() => setOpen(true)} className="group relative block h-52 w-full overflow-hidden bg-white text-left" aria-label="Open the live project preview">
-        <iframe src={url} title="Project preview thumbnail" className="pointer-events-none h-[420px] w-[200%] origin-top-left scale-50 bg-white" />
+        <iframe src={url} title="Project preview thumbnail" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-pointer-lock" className="pointer-events-none h-[420px] w-[200%] origin-top-left scale-50 bg-white" />
         <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-4 pb-3 pt-10 text-body font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">Open and interact with the running app</span>
       </button>
     </div>
@@ -74,7 +74,10 @@ export function WorkspacePreview({
         </header>
         <div className="min-h-0 flex-1 overflow-auto bg-[#dfe3df] p-3 md:p-5">
           <div className="mx-auto h-full min-h-[520px] overflow-hidden rounded-inset border border-black/15 bg-white shadow-lg transition-[max-width] duration-200" style={{ maxWidth: `${devices[device].width}px` }}>
-            <iframe key={`${url}:${reload}`} src={url} title="Project live interactive preview" className="h-full min-h-[520px] w-full bg-white" />
+            {/* No allow-same-origin: a previewed app is agent-written code
+                and must not script the product origin. The relay also forces
+                a CSP sandbox server-side; this is defense in depth. */}
+            <iframe key={`${url}:${reload}`} src={url} title="Project live interactive preview" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-pointer-lock" className="h-full min-h-[520px] w-full bg-white" />
           </div>
         </div>
         <footer className="flex items-center justify-between gap-3 border-t border-hairline bg-panel px-4 py-2 text-meta text-ink-dim"><span>Interact here while the Selvedge conversation remains open behind this panel.</span><span className="font-mono text-tech text-ink-quiet">Esc to close</span></footer>

@@ -3,7 +3,7 @@ import type { Duplex } from 'node:stream';
 import { Router, type Request } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { PreviewRelayBroker, PreviewRelayTimeoutError, PreviewRelayUnavailableError } from './broker.js';
-import { safeRelayHeaders } from './protocol.js';
+import { safeRelayHeaders, allowlistPreviewResponseHeaders, previewSecurityHeaders } from './protocol.js';
 import { PreviewRelaySessions } from './session.js';
 
 const VIEWER_COOKIE = 'selvedge_preview';
@@ -237,17 +237,22 @@ export function createPreviewRelayWeb(tokens: PreviewRelaySessions, broker: Prev
         bodyBase64: body.length ? body.toString('base64') : null,
       });
       res.status(forwarded.status);
-      const headers = safeRelayHeaders(forwarded.headers);
+      // Only presentational headers from the app survive; everything else it
+      // tried to set on the product origin is dropped (see protocol.ts).
+      const headers = allowlistPreviewResponseHeaders(safeRelayHeaders(forwarded.headers));
       const contentType = typeof headers['content-type'] === 'string' ? headers['content-type'] : undefined;
       const rawBody = forwarded.bodyBase64 ? Buffer.from(forwarded.bodyBase64, 'base64') : Buffer.alloc(0);
       const responseBody = rewritePreviewBody(previewId, contentType, rawBody);
       for (const [name, value] of Object.entries(headers)) {
-        if (name.toLowerCase() !== 'content-length') res.setHeader(name, value);
+        if (name !== 'content-length') res.setHeader(name, value);
       }
       const location = res.getHeader('location');
       if (typeof location === 'string' && location.startsWith('/') && !location.startsWith(`${prefix}/`)) {
         res.setHeader('location', `${prefix}${location}`);
       }
+      // Forced last so an app can never override the sandbox that keeps its
+      // scripts out of the product origin.
+      for (const [name, value] of Object.entries(previewSecurityHeaders())) res.setHeader(name, value);
       res.send(responseBody.length ? responseBody : undefined);
     } catch (error) {
       if (error instanceof PreviewRelayUnavailableError) {

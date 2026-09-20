@@ -1,8 +1,11 @@
 node_modules/
 dist/
 dist-server/
+# All dotenv files (incl. Vite's .env.production / .env.development / .env.*.local),
+# but keep the committed template.
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 coverage/
 .build/

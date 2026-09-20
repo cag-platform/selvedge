@@ -155,8 +155,12 @@ export function claudeCommand(
     // written into the repo, so the rules never reach the customer's code.
     '--append-system-prompt',
     `"$(cat ${rulesFile})"`,
+    // Quoted like every other builder's model arg. Held safe today by the
+    // modelBelongsToAgent allowlist upstream, but this string is fed to `sh -lc`,
+    // so an unquoted value one deleted check away from a shell metacharacter is
+    // one deleted check away from RCE in the sandbox. Don't rely on the allowlist.
     '--model',
-    model,
+    shellQuote(model),
   ];
   // Iteration: --resume continues the same conversation, so "now make it
   // darker" builds on the last change instead of starting from scratch.

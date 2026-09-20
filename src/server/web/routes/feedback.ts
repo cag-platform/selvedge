@@ -35,6 +35,10 @@ export function createFeedbackRouter(db: Db) {
         res.status(400).json({ error: 'narration_id and kind (didnt_help | explain_differently) are required' });
         return;
       }
+      if (note != null && (typeof note !== 'string' || note.length > 4_000)) {
+        res.status(400).json({ error: 'note must be text under 4000 characters' });
+        return;
+      }
 
       const [narration] = await db
         .select()

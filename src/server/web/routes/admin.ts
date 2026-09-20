@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import { digests, llmUsage, narrations, orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { operatorOnly } from '../middleware/operatorOnly.js';
 import { dailyLlmBudgetUsd, PLAN_DAILY_LLM_BUDGET_USD } from '../../llm/budget.js';
 import { validateEnv } from '../../config/env.js';
 
@@ -36,6 +37,9 @@ export function createAdminRouter(db: Db) {
   // which are still off, without shell access to the deploy.
   router.get(
     '/api/admin/config',
+    // Deployment-wide feature/env matrix — reconnaissance for a tenant, so it
+    // is operator-only (fails closed), unlike the org-scoped metrics below.
+    operatorOnly(),
     asyncHandler(async (_req, res) => {
       const report = validateEnv();
       res.json({

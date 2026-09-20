@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm';
 import { createPack, getPack } from '../../src/server/packs/store.js';
 import { createMemoryRouter } from '../../src/server/web/routes/memory.js';
 import { createPortabilityRouter } from '../../src/server/web/routes/portability.js';
-import { appWithOrg } from './helpers.js';
+import { appWithOrg, appWithOrgUser } from './helpers.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 
 describe('web/routes/memory', () => {
@@ -22,7 +22,7 @@ describe('web/routes/memory', () => {
     await db.insert(orgs).values({ orgId });
     await createPack(db, orgId, makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'orders' } }));
   });
-  afterEach(async () => close());
+  afterEach(async () => { delete process.env.SELVEDGE_OPERATOR_USER_IDS; await close(); });
 
   it('serves the stack roll-up and a per-project memory', async () => {
     await db.insert(narrationLibrary).values({ id: ulid(), fingerprint: 'fp1', phrasing: { fragment: '{project} flaky check' }, status: 'graduated' });
@@ -67,7 +67,7 @@ describe('web/routes/portability', () => {
     await db.insert(orgs).values({ orgId });
     await createPack(db, orgId, makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'orders' } }));
   });
-  afterEach(async () => close());
+  afterEach(async () => { delete process.env.SELVEDGE_OPERATOR_USER_IDS; await close(); });
 
   it('exports a bundle that re-imports into another org (round-trip)', async () => {
     const exportApp = appWithOrg(orgId, createPortabilityRouter(db));
@@ -78,7 +78,9 @@ describe('web/routes/portability', () => {
 
     // Import into a fresh org — the pack is restored there.
     await db.insert(orgs).values({ orgId: 'org_2' });
-    const importApp = appWithOrg('org_2', createPortabilityRouter(db));
+    // Restore is operator-only now; run it as one.
+    process.env.SELVEDGE_OPERATOR_USER_IDS = 'op_1';
+    const importApp = appWithOrgUser('org_2', 'op_1', createPortabilityRouter(db));
     const imported = await request(importApp).post('/api/context/restore').send(exported.body);
     expect(imported.status).toBe(200);
     expect(imported.body.restored).toBe(1);
@@ -116,13 +118,15 @@ describe('web/routes/portability', () => {
     // another org — importing a past would be manufacturing one.
     expect(exported.body.selvedge_export_version).toBe('1');
     await db.insert(orgs).values({ orgId: 'org_3' });
-    const imported = await request(appWithOrg('org_3', createPortabilityRouter(db))).post('/api/context/restore').send(exported.body);
+    process.env.SELVEDGE_OPERATOR_USER_IDS = 'op_1';
+    const imported = await request(appWithOrgUser('org_3', 'op_1', createPortabilityRouter(db))).post('/api/context/restore').send(exported.body);
     expect(imported.status).toBe(200);
     expect(await db.select().from(cards).where(eq(cards.orgId, 'org_3'))).toEqual([]);
   });
 
   it('400s on a body that is not a bundle', async () => {
-    const app = appWithOrg(orgId, createPortabilityRouter(db));
+    process.env.SELVEDGE_OPERATOR_USER_IDS = 'op_1';
+    const app = appWithOrgUser(orgId, 'op_1', createPortabilityRouter(db));
     expect((await request(app).post('/api/context/restore').send({ nope: true })).status).toBe(400);
   });
 });

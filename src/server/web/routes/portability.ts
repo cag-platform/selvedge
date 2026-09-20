@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
 import { exportBundle, importBundle, type ExportBundle } from '../../memory/portability.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { operatorOnly } from '../middleware/operatorOnly.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -38,8 +39,12 @@ export function createPortabilityRouter(db: Db) {
     }),
   );
 
+  // Restore merges a supplied bundle into a live account. Its own header called
+  // it an operator endpoint; now it actually is one (fails closed on an empty
+  // operator allowlist), so a member can't silently graft fabricated history in.
   router.post(
     '/api/context/restore',
+    operatorOnly(),
     asyncHandler(async (req, res) => {
       const bundle = req.body as ExportBundle;
       if (!bundle || typeof bundle !== 'object' || !Array.isArray(bundle.packs)) {
@@ -50,7 +55,11 @@ export function createPortabilityRouter(db: Db) {
         const result = await importBundle(db, orgIdOf(req), bundle);
         res.json(result);
       } catch (err) {
-        res.status(422).json({ error: err instanceof Error ? err.message : 'import failed' });
+        // The input is attacker-controlled, so a raw Drizzle/Postgres error
+        // here would disclose table/column/constraint names. Log the detail
+        // server-side; hand the caller a fixed line.
+        console.error('[context/restore] import failed:', err);
+        res.status(422).json({ error: 'that import could not be applied — check the bundle and try again' });
       }
     }),
   );

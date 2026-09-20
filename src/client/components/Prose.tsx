@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safeUrl.js';
 import type { ReactNode } from 'react';
 
 /**
@@ -60,7 +61,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
       out.push(
         <a
           key={key}
-          href={href}
+          href={safeHref(href)}
           {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
           className="text-action-bright hover:underline"
         >

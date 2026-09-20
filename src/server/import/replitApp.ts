@@ -71,62 +71,72 @@ function isGeneratedSourceMap(path: string): boolean {
 
 export function readAppZip(bytes: Uint8Array): AppZipResult {
   let entries: Record<string, Uint8Array>;
+  // DECOMPRESS DEFENSIVELY. unzipSync with no filter inflates every entry into
+  // memory before any cap runs, so a 200 MB archive of zeros can expand to tens
+  // of GB and OOM the process before the size checks below are ever reached.
+  // The filter runs against each entry's DECLARED size first: junk (node_modules
+  // and friends) and macOS metadata are never inflated at all, and an entry or
+  // archive that declares more than the caps is refused before decompression.
+  // A dishonestly-declared bomb still can't get far — the running total is
+  // enforced here, the upload itself is capped upstream, and the route is rate
+  // limited. This mirrors consumer/read.ts, which already reads exports this way.
+  // The filter decides, from each entry's DECLARED size and name, what to even
+  // decompress. Junk (node_modules and friends), macOS metadata, and generated
+  // source maps are categorized and dropped here so they are never inflated,
+  // and the running declared total of the files we DO keep is capped — so an
+  // archive that declares tens of GB of real files is refused before its bytes
+  // are ever expanded into memory, rather than after (which OOMs first).
+  const skippedDirs = new Set<string>();
+  let skippedCount = 0;
+  let macCount = 0;
+  let junkCount = 0;
+  let declaredKeptTotal = 0;
+  let bombError: string | null = null;
   try {
-    entries = unzipSync(bytes);
+    entries = unzipSync(bytes, {
+      filter: (file) => {
+        const path = file.name.replace(/\\/g, '/');
+        if (path.endsWith('/')) return false; // directory row, uncounted
+        if (isMacArchiveMetadata(path)) { skippedCount += 1; macCount += 1; skippedDirs.add('macOS folder metadata'); return false; }
+        if (isJunk(path)) { skippedCount += 1; junkCount += 1; skippedDirs.add(path.split('/').find((seg) => JUNK_SEGMENTS.has(seg))!); return false; }
+        if (isGeneratedSourceMap(path)) { skippedCount += 1; junkCount += 1; skippedDirs.add('generated source maps'); return false; }
+        declaredKeptTotal += file.originalSize;
+        if (declaredKeptTotal > MAX_TOTAL_BYTES) {
+          bombError = `that export declares more than ${MAX_TOTAL_BYTES / 1024 / 1024}MB of app files — large assets belong in storage, not git. Remove them from the export and try again.`;
+          return false;
+        }
+        return true;
+      },
+    });
   } catch {
     return { ok: false, error: "that file isn't a zip I can open — download the Repl as a zip and upload that." };
   }
+  if (bombError) return { ok: false, error: bombError };
 
-  // Normalize: forward slashes, no directory rows, no path games. A zip entry
-  // trying to climb out of its own tree is refused whole — these bytes go into
-  // a git tree under the owner's name, and a crafted path must not decide
+  // Kept (real) files only — junk/metadata were dropped above. A real entry
+  // trying to climb out of its own tree is still refused whole: these bytes go
+  // into a git tree under the owner's name, and a crafted path must not decide
   // where.
-  const raw: Array<{ path: string; bytes: Uint8Array }> = [];
+  const appRaw: Array<{ path: string; bytes: Uint8Array }> = [];
   for (const [name, data] of Object.entries(entries)) {
     const path = name.replace(/\\/g, '/');
-    if (path.endsWith('/')) continue; // a directory row, not a file
     if (path.startsWith('/') || path.split('/').some((seg) => seg === '..' || seg === '')) {
       return { ok: false, error: 'that zip contains paths I refuse to write (absolute or escaping) — it does not look like a Repl export.' };
     }
-    raw.push({ path, bytes: data });
+    appRaw.push({ path, bytes: data });
   }
-  if (raw.length === 0) return { ok: false, error: 'that zip is empty.' };
-
-  // A folder zipped in Finder gains a parallel __MACOSX tree containing one
-  // AppleDouble metadata file for almost every real file. Remove that wrapper
-  // before deciding whether the export has one project root; otherwise the
-  // metadata tree both defeats unwrapping and nearly doubles the file count.
-  const macMetadataCount = raw.filter((file) => isMacArchiveMetadata(file.path)).length;
-  const appRaw = raw.filter((file) => !isMacArchiveMetadata(file.path));
-  if (appRaw.length === 0) return { ok: false, error: 'that zip contains only macOS folder metadata and no app.' };
+  if (appRaw.length === 0) {
+    if (macCount === 0 && junkCount === 0) return { ok: false, error: 'that zip is empty.' };
+    if (junkCount === 0) return { ok: false, error: 'that zip contains only macOS folder metadata and no app.' };
+    return { ok: false, error: 'after leaving out the workspace junk (node_modules and friends), nothing was left — that zip holds no app.' };
+  }
 
   // Replit wraps the export in one folder named after the Repl — unwrap it so
   // the repo root is the app root, which is where every builder will look.
   const firstSeg = (p: string) => p.slice(0, p.indexOf('/') === -1 ? p.length : p.indexOf('/'));
   const tops = new Set(appRaw.map((f) => firstSeg(f.path)));
   const unwrap = tops.size === 1 && appRaw.every((f) => f.path.includes('/'));
-  const files0 = unwrap ? appRaw.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf('/') + 1) })) : appRaw;
-
-  const skippedDirs = new Set<string>();
-  let skippedCount = macMetadataCount;
-  if (macMetadataCount > 0) skippedDirs.add('macOS folder metadata');
-  const files: AppFile[] = [];
-  for (const f of files0) {
-    if (isJunk(f.path)) {
-      skippedCount += 1;
-      skippedDirs.add(f.path.split('/').find((seg) => JUNK_SEGMENTS.has(seg))!);
-      continue;
-    }
-    if (isGeneratedSourceMap(f.path)) {
-      skippedCount += 1;
-      skippedDirs.add('generated source maps');
-      continue;
-    }
-    files.push(f);
-  }
-  if (files.length === 0) {
-    return { ok: false, error: 'after leaving out the workspace junk (node_modules and friends), nothing was left — that zip holds no app.' };
-  }
+  const files: AppFile[] = unwrap ? appRaw.map((f) => ({ ...f, path: f.path.slice(f.path.indexOf('/') + 1) })) : appRaw;
 
   const over = files.filter((f) => f.bytes.length > MAX_FILE_BYTES);
   if (over.length > 0) {

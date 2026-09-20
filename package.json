@@ -44,6 +44,7 @@
     "ajv-formats": "^3.0.1",
     "drizzle-orm": "^0.45.2",
     "express": "^4.22.3",
+    "express-rate-limit": "^8.7.0",
     "fflate": "^0.8.3",
     "http-proxy": "^1.18.1",
     "multer": "^2.4.0",

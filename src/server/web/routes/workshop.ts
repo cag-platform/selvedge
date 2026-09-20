@@ -18,6 +18,7 @@ import { failActiveRun } from '../../build/stopRun.js';
 import { stageUpload, consumeStagedUpload } from '../../build/uploads.js';
 import { ensurePreview, verifyWorkshopPreview, type PreviewStatus } from '../../build/preview.js';
 import { getPreviewEnvSummary, setPreviewEnv, setPreviewDatabase } from '../../build/previewEnv.js';
+import { vaultConfigured } from '../../connectors/credentials/crypto.js';
 import { canStartBuild } from '../../billing/entitlements.js';
 import { refuse } from '../middleware/limit.js';
 import { deleteSandbox, stopSandbox, type SandboxConfig } from '../../build/sandbox.js';
@@ -222,6 +223,10 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       const text = typeof body?.text === 'string' ? body.text.trim() : '';
       if (text === '') {
         res.status(400).json({ error: 'say what you want changed' });
+        return;
+      }
+      if (text.length > 100_000) {
+        res.status(400).json({ error: 'that message is too long — trim it or attach the detail as a file' });
         return;
       }
       // 'plan' runs the turn read-only: think it through, change nothing.
@@ -529,12 +534,19 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(400).json({ error: 'env must be the text of a .env file' });
         return;
       }
+      // The one safe-to-surface failure is the deployment having no vault key —
+      // a config hint with no schema or secret in it — so it is a precheck with
+      // its own clear message. Anything the store then throws (a DB error) is
+      // generic out and detailed only to the log, so it can't disclose schema.
+      if (!vaultConfigured()) {
+        res.status(503).json({ error: 'This deployment has no credentials key set, so preview secrets cannot be stored safely.' });
+        return;
+      }
       try {
         res.json(await setPreviewEnv(db, orgIdOf(req), req.params.projectId ?? '', text));
       } catch (err) {
-        // An unconfigured vault is a deployment problem said plainly, not a
-        // reason to store somebody's secrets in the clear.
-        res.status(503).json({ error: err instanceof Error ? err.message : 'preview secrets cannot be stored right now' });
+        console.error('[preview-env] could not store secrets:', err);
+        res.status(503).json({ error: 'preview secrets cannot be stored right now' });
       }
     }),
   );

@@ -1252,6 +1252,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(400).json({ error: 'say what you want' });
         return;
       }
+      // Bound the one unbounded field on a 100 MB parser: a message is text, not
+      // a file (attachments have their own caps). 100k chars is a very long ask.
+      if (text.length > 100_000) {
+        res.status(400).json({ error: 'that message is too long — trim it or attach the detail as a file' });
+        return;
+      }
       const requestId = req.get('Idempotency-Key');
       if (requestId && requestId.length > 200) { res.status(400).json({ error: 'Request identifier is too long.' }); return; }
       if (requestId && thread.projectId) {

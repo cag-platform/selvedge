@@ -47,19 +47,23 @@
           "properties": {
             "live_url": {
               "type": "string",
-              "format": "uri"
+              "format": "uri",
+              "pattern": "^https?://"
             },
             "repo_url": {
               "type": "string",
-              "format": "uri"
+              "format": "uri",
+              "pattern": "^https?://"
             },
             "host_dashboard_url": {
               "type": "string",
-              "format": "uri"
+              "format": "uri",
+              "pattern": "^https?://"
             },
             "store_listing_url": {
               "type": "string",
-              "format": "uri"
+              "format": "uri",
+              "pattern": "^https?://"
             }
           }
         }

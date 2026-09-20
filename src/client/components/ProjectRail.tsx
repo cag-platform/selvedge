@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safeUrl.js';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
@@ -144,7 +145,7 @@ export function ProjectCard({ project }: { project: ProjectCardData }) {
               {(project.console_links ?? []).map((door) => (
                 <a
                   key={door.url}
-                  href={door.url}
+                  href={safeHref(door.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}

@@ -13,10 +13,10 @@ import {
  * deploys get watched) fails loudly instead. Deliberate changes update both.
  */
 describe('connectors/registry — one table, four derived surfaces', () => {
-  it('fuel: seven declared, anthropic first (BYO resolution order), every one live', () => {
+  it('fuel: eight declared, anthropic first (BYO resolution order), every one live', () => {
     // Declaration order is resolution order for BYO, so anthropic staying
     // first is not cosmetic: it is which key answers when an org has several.
-    expect(FUEL_PROVIDERS).toEqual(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral']);
+    expect(FUEL_PROVIDERS).toEqual(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral', 'zai']);
     // Nothing is declared-but-unbuildable any more. That gap used to be the
     // roadmap surface; now every row reaches a real endpoint through the one
     // OpenAI-compatible seam, and the connect screen has nothing to apologise

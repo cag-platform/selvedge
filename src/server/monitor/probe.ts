@@ -1,4 +1,5 @@
 import net from 'node:net';
+import { assertPublicUrl, guardedFetch, SsrfError } from './ssrfGuard.js';
 
 /**
  * One health probe. Ported from toile's monitor/probe.ts — the network shape
@@ -61,7 +62,9 @@ async function probeHttp(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
+    // Owner-supplied URL: resolve and reject private/loopback/link-local targets
+    // before any connection, and re-check at every redirect hop.
+    const res = await guardedFetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'Selvedge/1.0 HealthMonitor' },
     });
@@ -80,26 +83,36 @@ async function probeHttp(
       detail: ok ? null : `the page returned ${res.status}${expectedStatus ? ` (expected ${expectedStatus})` : ''}`,
     };
   } catch (err) {
+    // A blocked-target refusal must not become a reconnaissance oracle: report
+    // a fixed line, never which internal address was probed or why it failed.
+    if (err instanceof SsrfError) return { up: false, latencyMs: now() - start, detail: 'that address cannot be checked' };
     return { up: false, latencyMs: now() - start, detail: err instanceof Error ? err.message : String(err) };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function probeTcp(url: string, now: () => number): Promise<ProbeResult> {
+async function probeTcp(url: string, now: () => number): Promise<ProbeResult> {
   const start = now();
-  return new Promise((resolve) => {
-    let host: string;
-    let port: number;
-    try {
-      const parsed = new URL(url.includes('://') ? url : `tcp://${url}`);
-      host = parsed.hostname;
-      port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
-    } catch {
-      resolve({ up: false, latencyMs: 0, detail: `couldn't read a host and port from "${url}"` });
-      return;
-    }
+  let host: string;
+  let port: number;
+  try {
+    const parsed = new URL(url.includes('://') ? url : `tcp://${url}`);
+    host = parsed.hostname;
+    port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+  } catch {
+    return { up: false, latencyMs: 0, detail: `couldn't read a host and port from "${url}"` };
+  }
 
+  // Same SSRF fence as the HTTP path: refuse a private/loopback/link-local
+  // target so this can't become an internal port scanner.
+  try {
+    await assertPublicUrl(`http://${host}:${port}`);
+  } catch {
+    return { up: false, latencyMs: now() - start, detail: 'that address cannot be checked' };
+  }
+
+  return new Promise((resolve) => {
     const socket = net.createConnection({ host, port, timeout: TIMEOUT_MS });
     socket.on('connect', () => {
       socket.end();

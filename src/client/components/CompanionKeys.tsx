@@ -159,7 +159,13 @@ export function CompanionKeys() {
   const [name, setName] = useState('');
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pairCode] = useState(() => new URLSearchParams(window.location.search).get('pair'));
+  // A pairing arriving via ?pair= only tells us to SHOW the approval box — the
+  // code is never taken from the URL, because a one-click link is exactly the
+  // phishing vector (a crafted ?pair= would bind an attacker's Mac to this org).
+  // The owner types the code shown on their own Mac's terminal instead.
+  const [pairPrompted] = useState(() => new URLSearchParams(window.location.search).has('pair'));
+  const [pairInput, setPairInput] = useState('');
+  const [pairOpen, setPairOpen] = useState(() => pairPrompted);
   const [pairState, setPairState] = useState<'idle' | 'approving' | 'approved' | 'failed'>('idle');
 
   const load = useCallback(() => {
@@ -194,31 +200,53 @@ export function CompanionKeys() {
   }
 
   async function approveMac() {
-    if (!pairCode) return;
+    const code = pairInput.trim().toUpperCase();
+    if (!code) return;
     setPairState('approving');
     setError(null);
     try {
-      await api.post(`/api/companion-pairings/${encodeURIComponent(pairCode)}/approve`, {});
+      await api.post(`/api/companion-pairings/${encodeURIComponent(code)}/approve`, {});
       setPairState('approved');
+      setPairInput('');
       window.history.replaceState({}, '', window.location.pathname);
       load();
     } catch (err) {
       setPairState('failed');
-      setError(err instanceof Error ? err.message : 'That Mac could not be approved.');
+      setError(err instanceof Error ? err.message : 'That code did not match a waiting Mac — check the code on your Mac and try again.');
     }
   }
 
   return (
     <section className="space-y-3">
-      {pairCode && pairState !== 'approved' && (
-        <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4">
+      {pairOpen && pairState !== 'approved' && (
+        <form
+          onSubmit={(e) => { e.preventDefault(); void approveMac(); }}
+          className="rounded-card border border-action/40 bg-action-soft px-5 py-4"
+        >
           <p className="text-label font-body uppercase tracking-widest text-ink-quiet">Selvedge for Mac</p>
-          <h2 className="mt-1 text-headline font-medium text-ink">Allow this Mac?</h2>
-          <p className="mt-1 text-body text-ink-dim">Approve only if you started this on your Mac.</p>
-          <button type="button" onClick={() => void approveMac()} disabled={pairState === 'approving'} className={`${btnPrimary} mt-3`}>
-            {pairState === 'approving' ? 'Connecting…' : 'Allow this Mac'}
-          </button>
-        </div>
+          <h2 className="mt-1 text-headline font-medium text-ink">Connect your Mac</h2>
+          <p className="mt-1 text-body text-ink-dim">
+            Type the code shown in the Terminal window on your Mac. Only approve a code you can see on your own screen — never one
+            from a link someone sent you.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              value={pairInput}
+              onChange={(e) => setPairInput(e.target.value)}
+              placeholder="code from your Mac"
+              autoComplete="off"
+              className="w-40 rounded-inset border border-hairline bg-panel px-3 py-1.5 font-mono text-tech uppercase tracking-widest text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
+            />
+            <button type="submit" disabled={pairState === 'approving' || pairInput.trim().length < 4} className={btnPrimary}>
+              {pairState === 'approving' ? 'Connecting…' : 'Connect this Mac'}
+            </button>
+          </div>
+        </form>
+      )}
+      {!pairOpen && pairState !== 'approved' && (
+        <button type="button" onClick={() => setPairOpen(true)} className="text-meta text-action hover:text-action-bright">
+          Have a code from your Mac? Enter it →
+        </button>
       )}
       {pairState === 'approved' && (
         <div className="rounded-card border border-action/40 bg-action-soft px-5 py-4 text-body text-ink">

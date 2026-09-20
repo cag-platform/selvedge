@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
+import { isSafeRepoFullName } from '../../connectors/github/repoName.js';
 import { archiveAllPacks, deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
 import type { NewProjectInput } from '../../packs/scaffold.js';
@@ -32,7 +33,7 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
         res.status(400).json({ error: 'name, repo, and a valid tier are required' });
         return;
       }
-      if (!createRepo && !/^[^/\s]+\/[^/\s]+$/.test(body.repo!.trim())) {
+      if (!createRepo && !isSafeRepoFullName(body.repo!.trim())) {
         res.status(400).json({ error: 'repo must be a GitHub full name like "owner/repo"' });
         return;
       }

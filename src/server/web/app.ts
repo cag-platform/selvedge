@@ -12,6 +12,9 @@ import { createNewRepo } from '../connectors/github/newRepo.js';
 import { buildComposeDeps, buildNarrationDeps } from '../llm/factory.js';
 import { buildPushSender } from '../push/factory.js';
 import { ensureOrg } from './middleware/ensureOrg.js';
+import { securityHeaders } from './middleware/securityHeaders.js';
+import { sameOriginGuard } from './middleware/sameOrigin.js';
+import { publicLimiter, pairingLimiter, sensitiveLimiter, uploadLimiter } from './middleware/rateLimit.js';
 import { createPacksRouter } from './routes/packs.js';
 import { createProjectsRouter } from './routes/projects.js';
 import { createBillingRouter } from './routes/billing.js';
@@ -61,8 +64,20 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.set('trust proxy', 1);
 
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true }));
-  app.get('/install-companion', (req, res) => {
-    const configured = process.env.PUBLIC_ORIGIN?.trim() || `${req.protocol}://${req.get('host')}`;
+  // The installer script embeds the origin the CLI then curls a binary from.
+  // Deriving it from the Host header lets an attacker point a victim's install
+  // at their own domain — over the product's own TLS — so in production the
+  // origin MUST come from PUBLIC_ORIGIN. Dev (localhost) still falls back.
+  app.get('/install-companion', publicLimiter(), (req, res) => {
+    const configured = process.env.PUBLIC_ORIGIN?.trim();
+    if (!configured) {
+      if (process.env.NODE_ENV === 'production') {
+        res.status(503).type('text/plain').send('# Installer unavailable: PUBLIC_ORIGIN is not configured on the server.\n');
+        return;
+      }
+      res.type('text/x-shellscript').send(companionInstaller(`${req.protocol}://${req.get('host')}`));
+      return;
+    }
     res.type('text/x-shellscript').send(companionInstaller(configured));
   });
 
@@ -70,8 +85,13 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // relay; browsers never receive a provider URL or workspace credential.
   // Mounted before Clerk/body parsing because the signed viewer capability and
   // connector capability are the authentication for these two narrow paths.
+  // It sets its OWN (stricter, sandboxed) headers per response, so it is mounted
+  // ahead of the product security-header middleware and never inherits it.
   const workspaceRelay = getPreviewRelay();
   if (workspaceRelay) app.use(workspaceRelay.web.router);
+
+  // Every non-preview response carries the product security headers.
+  app.use(securityHeaders());
 
   // Phase 2 voice: present only when an API key is configured; without it
   // ingestion runs the Phase 1 template path unchanged.
@@ -101,19 +121,8 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   // it's mounted before Clerk alongside the GitHub webhook. It shares the same
   // (event, projectId) ingest sink the pollers use.
   const beaconIngest = makePollerIngest(db);
+  app.use('/beacons', publicLimiter());
   app.use(createErrorBeaconRouter({ db, ingest: beaconIngest }));
-
-  // Workshop messages can carry attached screenshots/files (base64 in the JSON
-  // body), which don't fit the default 100kb body limit. A dedicated parser on
-  // just this path, mounted before the general one below, covers that; the
-  // general parser sees the body already set and skips re-parsing it.
-  app.use('/api/projects/:projectId/workshop/message', express.json({ limit: '100mb' }));
-  // The Inbox message route carries the same inline base64 images now.
-  app.use('/api/threads/:threadId/message', express.json({ limit: '100mb' }));
-  // A batch of imported conversations is bigger than a chat message and
-  // smaller than an export zip; the CLI chunks to 200 conversations per call.
-  app.use('/api/companion/import/conversations', express.json({ limit: '25mb' }));
-  app.use('/api/companion/runtime/apple/jobs/:jobId/archive', express.raw({ type: 'application/octet-stream', limit: '25mb' }));
 
   // STRIPE'S WEBHOOK, MOUNTED HERE AND NOWHERE ELSE.
   //
@@ -133,6 +142,21 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   if (clerkConfigured) {
     app.use(clerkMiddleware());
   }
+
+  // LARGE-BODY PARSERS SIT BEHIND CLERK AND A RATE LIMIT.
+  //
+  // These used to run ahead of clerkMiddleware, so an anonymous client could
+  // make the process buffer and parse up to 100 MB before its 401. Now Clerk
+  // has populated the session first, the per-org limiter bounds how often even
+  // an authed caller can push a big body, and each parser still precedes the
+  // general 100 kb one below (which then sees the body set and skips it).
+  // Workshop/Inbox messages carry inline base64 screenshots; the companion
+  // import batches conversations; the apple archive is a raw upload.
+  app.use('/api/projects/:projectId/workshop/message', sensitiveLimiter(), express.json({ limit: '100mb' }));
+  app.use('/api/threads/:threadId/message', sensitiveLimiter(), express.json({ limit: '100mb' }));
+  app.use('/api/companion/import/conversations', sensitiveLimiter(), express.json({ limit: '25mb' }));
+  app.use('/api/companion/runtime/apple/jobs/:jobId/archive', sensitiveLimiter(), express.raw({ type: 'application/octet-stream', limit: '25mb' }));
+
   app.use(express.json());
 
   if (!clerkConfigured) {
@@ -150,9 +174,15 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
 
   // The companion's door — a bearer key issued to one machine, not a person
   // with a session, so it is mounted ahead of the Clerk org guard and does its
-  // own scoping.
+  // own scoping. Pairing CREATION is unauthenticated, so bound it (the polled
+  // status GET passes through untouched).
+  app.use('/api/companion/pairings', pairingLimiter());
   app.use(createCompanionRouter(db));
 
+  // CSRF defense in depth: refuse a mutating /api call that carries a
+  // cross-site Origin. Placed after the companion router (bearer-auth, no
+  // Origin) so the CLI is unaffected.
+  app.use('/api', sameOriginGuard());
   app.use('/api', ensureOrg(db));
   app.use(
     createPacksRouter(db, {
@@ -170,6 +200,9 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createDistributionOpsRouter(db));
   app.use(createOrgRouter(db));
   app.use(createDevicesRouter(db));
+  // Provider-key verification pings an external API with a pasted key — an
+  // abuse/oracle vector — so bound the POST (the connect UI's status GET polls).
+  app.use('/api/fuel', sensitiveLimiter());
   app.use(createFuelRouter(db));
   app.use(createAgentConnectionsRouter(db));
   app.use(createHostsRouter(db));
@@ -207,11 +240,14 @@ export function createApp(db: Db, clientDir = path.resolve(process.cwd(), 'dist/
   app.use(createTimelineRouter(db, { evidenceEnabled: continuationWedgeEnabled }));
   app.use(createSubjectsRouter(db));
   app.use(createDecisionsRouter(db));
+  app.use('/api/import', uploadLimiter());
   app.use(createImportHistoryRouter(db));
   // Migration repositories use each customer's GitHub App installation and a
   // short-lived credential inside the route. Never inject the deployment PAT.
   app.use(createImportReplitRouter(db));
   app.use(createGithubArrivalRouter());
+  // Minting a non-expiring bearer key is credential creation — bound the POST.
+  app.use('/api/companion-keys', sensitiveLimiter());
   app.use(createCompanionKeysRouter(db));
   if (continuationWedgeEnabled) app.use(createContinuationsRouter(db, { ...(pushSender ? { pushSender } : {}) }));
 

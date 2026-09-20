@@ -32,7 +32,7 @@ describe('claudeCommand — one stream-json turn', () => {
     expect(cmd).toContain('claude -p');
     expect(cmd).toContain('runuser -u nobody');
     expect(cmd).toContain('--output-format stream-json');
-    expect(cmd).toContain('--model sonnet');
+    expect(cmd).toContain('sonnet');
     expect(cmd).toContain('ZG8gYSB0aGluZw==');
     expect(cmd).toContain('$(cat /tmp/selvedge-claude-prompt)');
     expect(cmd).not.toContain('--resume'); // no session yet → fresh conversation

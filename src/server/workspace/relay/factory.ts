@@ -19,6 +19,17 @@ export function getPreviewRelay(): PreviewRelayService | null {
     shared = null;
     return shared;
   }
+  // Previews carry a server-forced CSP sandbox that opaques their origin, so
+  // co-hosting with the product is safe by default. A distinct origin is still
+  // preferable defense in depth; warn (don't fail) when they share a host.
+  const productOrigin = process.env.PUBLIC_ORIGIN?.trim();
+  if (productOrigin) {
+    try {
+      if (new URL(origin).host === new URL(productOrigin).host) {
+        console.warn('[preview-relay] PREVIEW_RELAY_PUBLIC_ORIGIN shares a host with PUBLIC_ORIGIN. Previews are sandboxed server-side, but a separate origin is recommended.');
+      }
+    } catch { /* malformed origin is a config problem surfaced elsewhere */ }
+  }
   const sessions = new PreviewRelaySessions(secret, origin);
   const broker = new PreviewRelayBroker();
   shared = { sessions, broker, web: createPreviewRelayWeb(sessions, broker) };

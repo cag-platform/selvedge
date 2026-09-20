@@ -1,3 +1,4 @@
+import { safeHref } from '../lib/safeUrl.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
@@ -209,11 +210,11 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
         <div className="flex flex-wrap items-center justify-between gap-work-tight">
           <p className="text-body text-ink">
             Online at{' '}
-            <a href={data.live_url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
+            <a href={safeHref(data.live_url)} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
               {data.live_url.replace(/^https:\/\//, '')}
             </a>
           </p>
-          <a href={data.live_url} target="_blank" rel="noopener noreferrer" className={btnPrimary}>
+          <a href={safeHref(data.live_url)} target="_blank" rel="noopener noreferrer" className={btnPrimary}>
             Open live app ↗
           </a>
         </div>
@@ -391,7 +392,7 @@ function PackTab({ projectId, doors }: { projectId: string; doors: ConsoleLink[]
           {doors.map((door) => (
             <li key={door.url}>
               <a
-                href={door.url}
+                href={safeHref(door.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-body text-action-bright hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
@@ -486,7 +487,7 @@ export function ContextPanel({
               data.live_url && (
                 <p className="text-body text-ink">
                   Online at{' '}
-                  <a href={data.live_url} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
+                  <a href={safeHref(data.live_url)} target="_blank" rel="noopener noreferrer" className="text-action-bright hover:underline">
                     {data.live_url.replace(/^https:\/\//, '')}
                   </a>
                 </p>

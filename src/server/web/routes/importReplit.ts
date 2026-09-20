@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import type { Db } from '../../db/client.js';
+import { isSafeRepoFullName } from '../../connectors/github/repoName.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { readAppZip } from '../../import/replitApp.js';
 import { createProject, type CreateDeps } from '../../packs/create.js';
@@ -93,7 +94,8 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
       const workspace = await ensureSandbox(db, orgId, projectId, config.cfg);
       return { ok: true as const, workspaceId: workspace.id };
     } catch (error) {
-      return { ok: false as const, status: 503, error: error instanceof Error ? error.message : 'The workspace could not be prepared.' };
+      console.error('[import/replit] workspace prep failed:', error);
+      return { ok: false as const, status: 503, error: 'The workspace could not be prepared.' };
     }
   });
   const startPreview = deps.startPreview ?? (async (orgId: string, projectId: string) => {
@@ -135,10 +137,10 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     const repo = typeof body.repo === 'string' ? body.repo.trim() : '';
     const source = body.source;
     const allowedSources = new Set(['github', 'codex', 'claude-code', 'cursor', 'lovable']);
-    if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || typeof source !== 'string' || !allowedSources.has(source)) { res.status(400).json({ error: 'Choose an installed repository and say where the project is coming from.' }); return; }
+    if (!isSafeRepoFullName(repo) || typeof source !== 'string' || !allowedSources.has(source)) { res.status(400).json({ error: 'Choose an installed repository and say where the project is coming from.' }); return; }
     let inspected: GithubProjectFiles;
     try { inspected = await (deps.inspectGithubRepo ? deps.inspectGithubRepo(orgId, repo) : readGithubProjectFiles(db, orgId, repo)); }
-    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : 'Selvedge could not inspect that repository.' }); return; }
+    catch (error) { console.error('[import/replit] inspect failed:', error); res.status(409).json({ error: 'Selvedge could not inspect that repository.' }); return; }
     let projectId = await resolveProjectId(db, orgId, 'github', repo);
     if (projectId && !(await getPack(db, orgId, projectId))) { res.status(409).json({ error: 'This repository belonged to a project you removed. Restore that project before starting a migration from it.' }); return; }
     if (!projectId) {
@@ -235,7 +237,7 @@ export function createImportReplitRouter(db: Db, deps: ImportReplitDeps = {}) {
     if (req.body?.production === true) { res.status(400).json({ error: 'Production credentials cannot be used in a migration preview test.' }); return; }
     const values = req.body?.values && typeof req.body.values === 'object' && !Array.isArray(req.body.values) ? req.body.values as Record<string, string> : {};
     try { await storeMigrationTestInputs(db, orgId, projectId, current.id, step, values); }
-    catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : 'Temporary test values could not be stored safely.' }); return; }
+    catch (error) { console.error('[import/replit] test-values store failed:', error); res.status(400).json({ error: 'Temporary test values could not be stored safely.' }); return; }
     res.json(await migrationResponse(current));
   }));
 
