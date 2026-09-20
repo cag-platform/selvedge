@@ -32,6 +32,8 @@ const PROVIDER_AGENTS: Record<string, AgentId[]> = {
   openai: ['gpt', 'codex'],
   anthropic: ['claude', 'claude-code'],
   gemini: ['gemini'],
+  zai: ['glm-build'],
+  kimi: ['kimi', 'kimi-code'],
 };
 
 export function AgentOnboarding() {

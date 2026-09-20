@@ -41,7 +41,7 @@ import { agentById, type AgentId, type AgentProvider } from '../../shared/agents
  *      builder that can't run is a fact the owner can act on, not an error.
  */
 
-export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex' | 'kimi-code' | 'grok-build' | 'deepseek-build'>;
+export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex' | 'kimi-code' | 'grok-build' | 'deepseek-build' | 'glm-build'>;
 
 export type BuilderAuth = {
   agent: BuilderAgentId;
@@ -123,10 +123,37 @@ const BUILDER_WIRING: Record<BuilderAgentId, BuilderWiring> = {
     wrongKindNote:
       'Codex can’t use a pasted subscription token in a fresh sandbox. Use your ChatGPT plan through the computer bridge, or connect an OpenAI API key, under Connections.',
   },
+  /**
+   * TWO KEY POPULATIONS, ONE PROVIDER. A metered Moonshot API key drives the
+   * native Kimi CLI against api.moonshot.ai. A Kimi Code MEMBERSHIP key (their
+   * flat coding plan, stored as kind 'subscription') authenticates only on
+   * their Anthropic-compatible coding endpoint — their own docs wire Claude
+   * Code to it — so that kind builds through the Claude Code CLI instead.
+   * The env var decides the channel, which is why commandEnv branches on it.
+   */
   'kimi-code': {
-    provider: 'kimi', envVarByKind: { api_key: 'KIMI_API_KEY' }, platform: [{ envVar: 'KIMI_API_KEY', kind: 'api_key' }],
-    connectNote: 'Kimi Code builds on a Moonshot API key. Add one under Connections and it can build here.', wrongKindNote: '',
-    commandEnv: (secret) => ({ KIMI_API_KEY: secret, KIMI_MODEL_NAME: 'kimi-for-coding', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_API_KEY: secret, KIMI_MODEL_BASE_URL: 'https://api.moonshot.ai/v1', KIMI_MODEL_MAX_CONTEXT_SIZE: '262144' }),
+    provider: 'kimi',
+    envVarByKind: { api_key: 'KIMI_API_KEY', subscription: 'ANTHROPIC_API_KEY' },
+    platform: [{ envVar: 'KIMI_API_KEY', kind: 'api_key' }],
+    connectNote: 'Kimi Code builds on your own Moonshot account. Connect a Kimi Code membership key or a Moonshot API key under Connections.',
+    wrongKindNote: '',
+    commandEnv: (secret, envVar): Record<string, string> => envVar === 'ANTHROPIC_API_KEY'
+      ? { ANTHROPIC_API_KEY: secret, ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: 'https://api.kimi.ai/coding/', ANTHROPIC_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_OPUS_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_SONNET_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-for-coding' }
+      : { KIMI_API_KEY: secret, KIMI_MODEL_NAME: 'kimi-for-coding', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_API_KEY: secret, KIMI_MODEL_BASE_URL: 'https://api.moonshot.ai/v1', KIMI_MODEL_MAX_CONTEXT_SIZE: '262144' },
+  },
+  /**
+   * GLM runs the way Z.ai's own docs wire Claude Code to their Coding Plan:
+   * the plan's key in ANTHROPIC_AUTH_TOKEN against their Anthropic-compatible
+   * endpoint, glm-5.3 in the model seats. Subscription kind only — the plan
+   * is the product, and no metered Z.ai path is offered anywhere.
+   */
+  'glm-build': {
+    provider: 'zai',
+    envVarByKind: { subscription: 'ANTHROPIC_AUTH_TOKEN' },
+    platform: [{ envVar: 'ZAI_API_KEY', kind: 'subscription' }],
+    connectNote: 'GLM builds on your GLM Coding Plan. Connect your Z.ai key under Connections and it can build here.',
+    wrongKindNote: 'GLM builds on a GLM Coding Plan key, connected as a subscription. Reconnect it under Connections and it can build here.',
+    commandEnv: (secret) => ({ ANTHROPIC_AUTH_TOKEN: secret, ANTHROPIC_API_KEY: '', ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic', ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.3', ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.3', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-5.3-flash' }),
   },
   'grok-build': {
     provider: 'xai', envVarByKind: { api_key: 'XAI_API_KEY' }, platform: [{ envVar: 'XAI_API_KEY', kind: 'api_key' }],

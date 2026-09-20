@@ -37,6 +37,7 @@ export type AgentId =
   | 'kimi-code'
   | 'grok-build'
   | 'deepseek-build'
+  | 'glm-build'
   | 'claude'
   | 'gpt'
   | 'gemini'
@@ -60,7 +61,7 @@ export type AgentId =
  * more than one agent, which is exactly the relationship between `openai` and
  * both GPT and Codex.
  */
-export type AgentProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
+export type AgentProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral' | 'zai';
 
 export type AgentDescriptor = {
   id: AgentId;
@@ -124,7 +125,7 @@ const AGENT_TABLE = {
   },
   'kimi-code': {
     id: 'kimi-code', chip: 'KC', name: 'Kimi Code', changesFiles: true, provider: 'kimi', pricingModel: 'kimi-k2',
-    costNote: "builds in your project's sandbox on your own Moonshot key; its CLI does not yet report a dependable dollar total",
+    costNote: "builds in your project's sandbox on your Kimi Code membership (flat plan) or a metered Moonshot key",
     live: true,
   },
   'grok-build': {
@@ -135,6 +136,11 @@ const AGENT_TABLE = {
   'deepseek-build': {
     id: 'deepseek-build', chip: 'DB', name: 'DeepSeek Build', changesFiles: true, provider: 'deepseek', pricingModel: 'deepseek-chat',
     costNote: "builds in your project's sandbox on your own DeepSeek key through a compatible coding harness",
+    live: true,
+  },
+  'glm-build': {
+    id: 'glm-build', chip: 'GL', name: 'GLM', changesFiles: true, provider: 'zai', pricingModel: 'glm-5.3',
+    costNote: 'builds on your GLM Coding Plan — a flat monthly plan, no per-turn charge',
     live: true,
   },
   claude: {

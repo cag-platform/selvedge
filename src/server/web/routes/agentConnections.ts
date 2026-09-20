@@ -61,22 +61,27 @@ export function createAgentConnectionsRouter(db: Db) {
           machine: null,
         };
       };
-      // Gemini has no local bridge and no subscription path — an API key is
-      // the whole story, so its state is the credential row and nothing else.
-      const geminiKey = credential('gemini', 'api_key');
-      const gemini: ConnectionState = {
-        connected: Boolean(geminiKey),
-        kind: geminiKey ? 'api_key' : null,
-        label: geminiKey?.label ?? null,
-        last4: geminiKey?.last4 ?? null,
-        machine: null,
+      // Providers with no local bridge: the credential row is the whole
+      // story. Gemini connects with an API key; GLM and Kimi memberships are
+      // coding-plan keys stored as subscriptions (kind carries the channel).
+      const credentialOnly = (provider: string): ConnectionState => {
+        const row = credential(provider);
+        return {
+          connected: Boolean(row),
+          kind: row ? (row.kind as 'subscription' | 'api_key') : null,
+          label: row?.label ?? null,
+          last4: row?.last4 ?? null,
+          machine: null,
+        };
       };
 
       res.json({
         agents: {
           codex: state('codex'),
           claude_code: state('claude-code'),
-          gemini,
+          gemini: credentialOnly('gemini'),
+          glm: credentialOnly('zai'),
+          kimi: credentialOnly('kimi'),
         },
         local: local
           ? {

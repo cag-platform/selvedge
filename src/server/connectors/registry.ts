@@ -50,6 +50,10 @@ const PROVIDERS = {
   xai: { fuel: true, fuelLive: true },
   deepseek: { fuel: true, fuelLive: true },
   mistral: { fuel: true, fuelLive: true },
+  // Z.ai sells GLM as a flat-monthly Coding Plan whose key speaks the
+  // Anthropic-compatible protocol at api.z.ai — builds only, no chat agent.
+  // The provider id is encryption-bound (AES-GCM AAD); never rename it.
+  zai: { fuel: true, fuelLive: true },
   railway: { hostCredential: true, hostTopology: true },
   vercel: { hostCredential: true, hostTopology: true },
   supabase: { hostCredential: true },
@@ -63,7 +67,7 @@ function withFlag(flag: keyof ProviderFlags): ProviderId[] {
 }
 
 /** All declared model providers — the fuel seam's roadmap surface. */
-export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
+export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral' | 'zai';
 export const FUEL_PROVIDERS: readonly FuelProvider[] = withFlag('fuel') as FuelProvider[];
 
 /** Fuel providers with a working client — the only ones connect/advertise offers. */

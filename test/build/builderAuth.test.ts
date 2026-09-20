@@ -292,3 +292,73 @@ describe('a subscription arms the builder without breaking chat', () => {
     expect(got.ok && got.auth.envVar).toBe('ANTHROPIC_API_KEY');
   });
 });
+
+/**
+ * CODING PLANS — flat-monthly subscriptions SOLD for third-party tools, the
+ * opposite of Anthropic's. The key each plan issues answers only on that
+ * provider's Anthropic-compatible coding endpoint, so the kind picks the whole
+ * channel: which env var, which base URL, which CLI drives the turn.
+ */
+describe('coding-plan subscriptions pick the coding channel', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'mine';
+
+  beforeEach(async () => {
+    process.env.CREDENTIALS_KEY = 'x'.repeat(48);
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => {
+    delete process.env.CREDENTIALS_KEY;
+    await close();
+  });
+
+  it('a GLM Coding Plan key builds through the Claude harness against Z.ai', async () => {
+    await connectCredential(db, orgId, 'zai', 'zai-coding-plan-key', { kind: 'subscription' });
+    const got = await resolveBuilderAuth(db, orgId, 'glm-build', { env: {} });
+    expect(got.ok).toBe(true);
+    if (!got.ok) return;
+    expect(got.auth.environment.ANTHROPIC_AUTH_TOKEN).toBe('zai-coding-plan-key');
+    expect(got.auth.environment.ANTHROPIC_BASE_URL).toBe('https://api.z.ai/api/anthropic');
+    // The driver is the Claude CLI carrying the GLM model, and a flat plan
+    // reports zero marginal dollars rather than Anthropic's price list.
+    const driver = driverFor('glm-build', got.auth);
+    expect(driver).not.toBeNull();
+    expect(driver!.command('hi', { mode: 'build' })).toContain('glm-5.3');
+    const result = driver!.result('{"type":"result","session_id":"s1","is_error":false,"total_cost_usd":9.99}');
+    expect(result.costUsd).toBe(0);
+    expect(result.costReported).toBe(true);
+  });
+
+  it('a Kimi Code membership key builds through the Claude harness against api.kimi.ai', async () => {
+    await connectCredential(db, orgId, 'kimi', 'kimi-membership-key', { kind: 'subscription' });
+    const got = await resolveBuilderAuth(db, orgId, 'kimi-code', { env: {} });
+    expect(got.ok).toBe(true);
+    if (!got.ok) return;
+    expect(got.auth.environment.ANTHROPIC_API_KEY).toBe('kimi-membership-key');
+    expect(got.auth.environment.ANTHROPIC_BASE_URL).toBe('https://api.kimi.ai/coding/');
+    const driver = driverFor('kimi-code', got.auth);
+    expect(driver!.command('hi', { mode: 'build' })).toContain('kimi-for-coding');
+  });
+
+  it('a metered Moonshot key keeps the native Kimi CLI channel', async () => {
+    await connectCredential(db, orgId, 'kimi', 'sk-moonshot-metered', { kind: 'api_key' });
+    const got = await resolveBuilderAuth(db, orgId, 'kimi-code', { env: {} });
+    expect(got.ok).toBe(true);
+    if (!got.ok) return;
+    expect(got.auth.environment.KIMI_API_KEY).toBe('sk-moonshot-metered');
+    expect(got.auth.environment.ANTHROPIC_BASE_URL).toBeUndefined();
+    const driver = driverFor('kimi-code', got.auth);
+    expect(driver!.command('hi', { mode: 'build' })).toContain('kimi ');
+  });
+
+  it('a coding-plan key never reaches the chat client', async () => {
+    await connectCredential(db, orgId, 'zai', 'zai-coding-plan-key', { kind: 'subscription' });
+    await connectCredential(db, orgId, 'kimi', 'kimi-membership-key', { kind: 'subscription' });
+    expect(await resolveFuelFor(db, orgId, 'zai')).toBeNull();
+    expect(await resolveFuelFor(db, orgId, 'kimi')).toBeNull();
+  });
+});

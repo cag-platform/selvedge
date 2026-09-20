@@ -46,4 +46,16 @@ describe('web/routes/agentConnections', () => {
     expect(response.body.agents.gemini).toMatchObject({ connected: true, kind: 'api_key' });
     expect(JSON.stringify(response.body)).not.toContain('gemini-api-key-value');
   });
+
+  it('reports coding-plan subscriptions (GLM, Kimi) with their kind', async () => {
+    await connectCredential(db, 'org_1', 'zai', 'zai-coding-plan-key', { kind: 'subscription' });
+    await connectCredential(db, 'org_1', 'kimi', 'kimi-membership-key', { kind: 'subscription' });
+
+    const response = await request(appWithOrg('org_1', createAgentConnectionsRouter(db))).get('/api/agent-connections');
+
+    expect(response.status).toBe(200);
+    expect(response.body.agents.glm).toMatchObject({ connected: true, kind: 'subscription' });
+    expect(response.body.agents.kimi).toMatchObject({ connected: true, kind: 'subscription' });
+    expect(JSON.stringify(response.body)).not.toContain('coding-plan-key');
+  });
 });

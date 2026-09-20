@@ -152,3 +152,57 @@ describe('web/routes/fuel — the BYO connect experience', () => {
     expect((await request(app).post('/api/fuel').send({ provider: 'anthropic', key: 'short' })).status).toBe(400);
   });
 });
+
+/**
+ * CODING-PLAN KEYS — subscriptions that CAN be checked. Kimi and Z.ai sell
+ * flat plans whose keys answer on their own coding endpoints, so unlike an
+ * Anthropic subscription token these are pinged before they're stored, and a
+ * bad one is refused at the paste instead of inside a metered sandbox.
+ */
+describe('web/routes/fuel — coding-plan subscriptions', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_1';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    process.env.CREDENTIALS_KEY = 'x'.repeat(48);
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => {
+    delete process.env.CREDENTIALS_KEY;
+    await close();
+  });
+
+  it('verifies and stores a GLM Coding Plan key as a subscription', async () => {
+    const seen: Array<{ provider: string; kind: string }> = [];
+    const spy: FuelVerifier = async (provider, _key, kind) => { seen.push({ provider, kind }); return true; };
+    const app = appWithOrg(orgId, createFuelRouter(db, spy));
+    const res = await request(app).post('/api/fuel').send({ provider: 'zai', key: 'zai-coding-plan-key', kind: 'subscription' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.verified).toBe(true);
+    expect(res.body.connected.kind).toBe('subscription');
+    // Pinged as what it is, so the verifier can pick the coding endpoint.
+    expect(seen).toEqual([{ provider: 'zai', kind: 'subscription' }]);
+  });
+
+  it('refuses a Kimi membership key that fails its coding-endpoint ping', async () => {
+    const app = appWithOrg(orgId, createFuelRouter(db, neverLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'kimi', key: 'kimi-membership-bad', kind: 'subscription' });
+
+    expect(res.status).toBe(422);
+    expect(await listConnected(db, orgId)).toEqual([]);
+  });
+
+  it('a verified Kimi membership key does not carry the unchecked note', async () => {
+    const app = appWithOrg(orgId, createFuelRouter(db, alwaysLive));
+    const res = await request(app).post('/api/fuel').send({ provider: 'kimi', key: 'kimi-membership-key', kind: 'subscription' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.verified).toBe(true);
+    expect(res.body.note).toBeUndefined();
+  });
+});

@@ -91,6 +91,7 @@ describe('the agent registry', () => {
       'kimi-code',
       'grok-build',
       'deepseek-build',
+      'glm-build',
       'claude',
       'gpt',
       'gemini',
@@ -108,7 +109,7 @@ describe('the agent registry', () => {
    * together here rather than by a type.
    */
   it('every live agent names a provider the fuel seam can actually reach', () => {
-    const wired = new Set(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral']);
+    const wired = new Set(['anthropic', 'openai', 'gemini', 'kimi', 'xai', 'deepseek', 'mistral', 'zai']);
     for (const agent of AGENTS) {
       if (!agent.live) continue;
       expect(wired.has(agent.provider), `${agent.id} → ${agent.provider}`).toBe(true);
@@ -126,6 +127,6 @@ describe('the agent registry', () => {
     // install command, an exec command, and three parsers that read what it
     // did, what it said, and whether it worked. So a talker is a row and a
     // builder is not, and this is the line that says so.
-    expect(AGENTS.filter((a) => a.changesFiles && a.live).map((a) => a.id)).toEqual(['claude-code', 'codex', 'kimi-code', 'grok-build', 'deepseek-build']);
+    expect(AGENTS.filter((a) => a.changesFiles && a.live).map((a) => a.id)).toEqual(['claude-code', 'codex', 'kimi-code', 'grok-build', 'deepseek-build', 'glm-build']);
   });
 });

@@ -17,7 +17,7 @@ type Connected = { provider: string; kind: string; label: string | null; last4: 
 type FuelState = { connected: Connected[]; available: string[]; coming_soon: string[] };
 
 /** The providers whose cards live above — the generic key form covers the rest. */
-const CARDED_PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
+const CARDED_PROVIDERS = new Set(['openai', 'anthropic', 'gemini', 'zai']);
 
 export function Connections() {
   const [state, setState] = useState<FuelState | null>(null);

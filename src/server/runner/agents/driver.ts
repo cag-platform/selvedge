@@ -115,6 +115,24 @@ function deepSeekDriver(): AgentDriver {
 }
 
 /**
+ * A CODING-PLAN builder: the Claude Code CLI as the harness, pointed at a
+ * provider's Anthropic-compatible endpoint by builderAuth's command env, on a
+ * key whose plan is FLAT-MONTHLY. That last fact is why the cost is overridden
+ * rather than inherited: the CLI computes dollars from Anthropic's price list,
+ * which is a number nobody is being charged. Zero, reported, is the truth —
+ * the plan's quota is spent, the ledger's dollars are not.
+ */
+function codingPlanDriver(id: 'glm-build' | 'kimi-code', model: string): AgentDriver {
+  const base = claudeDriver();
+  return {
+    ...base,
+    id,
+    command: (prompt, opts) => claudeCommand(prompt, opts.model ?? model, opts.resumeSessionId, opts.mode),
+    result: (log) => ({ ...base.result(log), costUsd: 0, costReported: true }),
+  };
+}
+
+/**
  * The driver for an agent, or null when it can't run — which now means exactly
  * one thing for every builder: nobody has given it an account to run on. The
  * caller has the resolver's own sentence for that and says it, rather than
@@ -124,9 +142,16 @@ export function driverFor(agent: AgentId, auth: BuilderAuth | null): AgentDriver
   if (!auth) return null;
   if (agent === 'claude-code' && auth.agent === 'claude-code') return claudeDriver();
   if (agent === 'codex' && auth.agent === 'codex') return codexDriver();
-  if (agent === 'kimi-code' && auth.agent === 'kimi-code') return compatibleDriver('kimi-code');
+  // Kimi's KIND picks the harness: a membership key only answers on their
+  // Anthropic-compatible coding endpoint (Claude CLI as the harness), a
+  // metered Moonshot key drives the native Kimi CLI. builderAuth resolved the
+  // kind and set the matching environment; this must agree with it.
+  if (agent === 'kimi-code' && auth.agent === 'kimi-code') {
+    return auth.kind === 'subscription' ? codingPlanDriver('kimi-code', 'kimi-for-coding') : compatibleDriver('kimi-code');
+  }
   if (agent === 'grok-build' && auth.agent === 'grok-build') return compatibleDriver('grok-build');
   if (agent === 'deepseek-build' && auth.agent === 'deepseek-build') return deepSeekDriver();
+  if (agent === 'glm-build' && auth.agent === 'glm-build') return codingPlanDriver('glm-build', 'glm-5.3');
   // Chat agents don't run in a sandbox at all — chat/turn.ts is their path.
   return null;
 }

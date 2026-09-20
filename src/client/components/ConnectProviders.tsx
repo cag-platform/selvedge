@@ -37,7 +37,7 @@ type ConnectionState = {
 };
 
 type AgentConnectionState = {
-  agents: { codex: ConnectionState; claude_code: ConnectionState; gemini: ConnectionState };
+  agents: { codex: ConnectionState; claude_code: ConnectionState; gemini: ConnectionState; glm: ConnectionState; kimi: ConnectionState };
   local: { connected: boolean; name: string | null; codex: boolean; claude_code: boolean };
 };
 
@@ -48,6 +48,8 @@ export function connectedProvidersOf(state: AgentConnectionState | null): string
   if (state.agents.codex.connected) list.push('openai');
   if (state.agents.claude_code.connected) list.push('anthropic');
   if (state.agents.gemini.connected) list.push('gemini');
+  if (state.agents.glm.connected) list.push('zai');
+  if (state.agents.kimi.connected) list.push('kimi');
   return list;
 }
 
@@ -58,7 +60,7 @@ function statusLine(connection: ConnectionState): string {
   return `API key${connection.last4 ? ` ····${connection.last4}` : ''} connected`;
 }
 
-function KeyForm({ provider, placeholder, onConnected }: { provider: string; placeholder: string; onConnected: () => void }) {
+function KeyForm({ provider, placeholder, kind = 'api_key', hint, onConnected }: { provider: string; placeholder: string; kind?: 'api_key' | 'subscription'; hint?: string; onConnected: () => void }) {
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,7 @@ function KeyForm({ provider, placeholder, onConnected }: { provider: string; pla
         setBusy(true);
         setError(null);
         try {
-          await api.post('/api/fuel', { provider, key: key.trim(), kind: 'api_key' });
+          await api.post('/api/fuel', { provider, key: key.trim(), kind });
           setKey('');
           onConnected();
         } catch (err) {
@@ -97,8 +99,9 @@ function KeyForm({ provider, placeholder, onConnected }: { provider: string; pla
           {busy ? 'Checking…' : 'Connect'}
         </button>
       </div>
-      {/* The key is pinged before it's stored, so this promise is true. */}
-      {keyHint(provider) && <p className="text-meta text-ink-quiet">Get one {keyHint(provider)}. It’s checked before it’s saved.</p>}
+      {/* The key is pinged before it's stored, so this promise is true —
+          coding-plan keys included, on their own endpoints. */}
+      {(hint ?? keyHint(provider)) && <p className="text-meta text-ink-quiet">{hint ?? `Get one ${keyHint(provider)}. It’s checked before it’s saved.`}</p>}
       {error && <p role="alert" className="text-meta text-thread">{error}</p>}
     </form>
   );
@@ -207,7 +210,7 @@ export function ConnectProviders({ onStateChange }: { onStateChange?: (providers
   }, [load]);
 
   const empty: ConnectionState = { connected: false, kind: null, label: null, last4: null, machine: null };
-  const agents = state?.agents ?? { codex: empty, claude_code: empty, gemini: empty };
+  const agents = state?.agents ?? { codex: empty, claude_code: empty, gemini: empty, glm: empty, kimi: empty };
 
   return (
     <div className="grid gap-3">
@@ -239,6 +242,25 @@ export function ConnectProviders({ onStateChange }: { onStateChange?: (providers
       <ProviderCard title="Gemini" tagline="Chat with Gemini." connection={agents.gemini}>
         <KeyForm provider="gemini" placeholder="paste your Gemini API key" onConnected={() => void load()} />
       </ProviderCard>
+
+      {/* CODING PLANS people already pay for. Kimi and Z.ai sell flat-monthly
+          coding subscriptions whose keys are made for third-party tools like
+          this one — the opposite of the Claude situation, and worth its own
+          shelf so a subscriber recognizes their plan by name. */}
+      <details className="rounded-card border border-hairline bg-panel p-4">
+        <summary className="cursor-pointer text-body font-medium text-ink">
+          Have a coding subscription? GLM Coding Plan and Kimi Code work here
+          {(agents.glm.connected || agents.kimi.connected) && <span className="ml-2 rounded-full bg-action px-2 py-0.5 text-meta font-medium text-white">Connected</span>}
+        </summary>
+        <div className="mt-3 grid gap-3">
+          <ProviderCard title="GLM Coding Plan" tagline="Z.ai’s flat monthly plan builds here — no per-turn charge." connection={agents.glm}>
+            <KeyForm provider="zai" kind="subscription" placeholder="paste your Z.ai key" hint="From z.ai → API Keys. Your plan covers the usage; the key is checked before it’s saved." onConnected={() => void load()} />
+          </ProviderCard>
+          <ProviderCard title="Kimi Code membership" tagline="Moonshot’s coding plan builds here on your membership." connection={agents.kimi}>
+            <KeyForm provider="kimi" kind="subscription" placeholder="paste your Kimi Code API key" hint="From the Kimi Code Console (Andante plan or above). Checked before it’s saved." onConnected={() => void load()} />
+          </ProviderCard>
+        </div>
+      </details>
     </div>
   );
 }

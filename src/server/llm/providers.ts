@@ -110,6 +110,19 @@ export const PROVIDER_WIRING: Record<FuelProvider, ProviderWiring> = {
     chatModelEnv: 'CHAT_MODEL_MISTRAL',
     structured: 'json_object',
   },
+  // Coding Plan keys authenticate on Z.ai's ANTHROPIC-compatible endpoint,
+  // not this OpenAI-compatible one, so the fuel verifier pings them there
+  // (routes/fuel.ts) and no chat agent runs on this row. It exists because
+  // the wiring table is total over FuelProvider — a metered Z.ai key would
+  // speak here, but nothing offers that path today.
+  zai: {
+    label: 'Z.ai GLM',
+    baseUrl: 'https://api.z.ai/api/paas/v4',
+    envVar: 'ZAI_API_KEY',
+    chatModel: 'glm-5.3',
+    chatModelEnv: 'CHAT_MODEL_ZAI',
+    structured: 'json_object',
+  },
 };
 
 export function wiringFor(provider: FuelProvider): ProviderWiring {

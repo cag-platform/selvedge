@@ -90,6 +90,12 @@
       "output_per_mtok": 6.0,
       "estimated": true
     },
+    "glm-5.3": {
+      "provider": "zai",
+      "input_per_mtok": 1.4,
+      "output_per_mtok": 4.4,
+      "estimated": true
+    },
     "grok-4": {
       "provider": "xai",
       "input_per_mtok": 5.0,

@@ -23,9 +23,15 @@ const PROVIDER = 'anthropic';
 export class AnthropicLlmClient implements LlmClient {
   private client: Anthropic;
 
-  constructor(apiKey?: string) {
+  /**
+   * `baseURL` points this client at an Anthropic-COMPATIBLE endpoint (Z.ai's
+   * and Kimi's coding-plan APIs speak this protocol). Only the fuel verifier
+   * uses it — chat and grading always run against Anthropic itself.
+   */
+  constructor(apiKey?: string, opts: { baseURL?: string } = {}) {
     this.client = new Anthropic({
       ...(apiKey ? { apiKey } : {}),
+      ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
       timeout: TIMEOUT_MS,
       maxRetries: 1,
     });

@@ -5,7 +5,7 @@
  * they'd know, not the internal provider ids.
  */
 
-export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral';
+export type FuelProvider = 'anthropic' | 'openai' | 'gemini' | 'kimi' | 'xai' | 'deepseek' | 'mistral' | 'zai';
 
 const LABEL: Record<string, string> = {
   anthropic: 'Claude',
@@ -15,6 +15,7 @@ const LABEL: Record<string, string> = {
   xai: 'Grok (xAI)',
   deepseek: 'DeepSeek',
   mistral: 'Mistral',
+  zai: 'GLM (Z.ai)',
 };
 
 export function fuelLabel(provider: string): string {
@@ -30,6 +31,7 @@ const KEY_HINT: Record<string, string> = {
   xai: 'from console.x.ai → API keys',
   deepseek: 'from platform.deepseek.com → API keys',
   mistral: 'from console.mistral.ai → API keys',
+  zai: 'from z.ai → API Keys (a GLM Coding Plan covers it)',
 };
 
 export function keyHint(provider: string): string | null {
