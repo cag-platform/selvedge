@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
 import {
   createPack,
+  archiveAllPacks,
   deletePack,
   getPack,
   listPacks,
@@ -12,7 +13,7 @@ import {
 import { resolveProjectId } from '../../src/server/resolution/resolveProject.js';
 import { gatherPacks } from '../../src/server/digest/gather.js';
 import { makeTestPack } from '../fixtures/testPack.js';
-import { orgs, narrations, events } from '../../src/server/db/schema/index.js';
+import { orgs, narrations, events, threads, healthChecks } from '../../src/server/db/schema/index.js';
 
 describe('packs/store — permanent delete (archive tombstone)', () => {
   let db: TestDb;
@@ -87,6 +88,39 @@ describe('packs/store — permanent delete (archive tombstone)', () => {
     expect(await deletePack(db, orgId, pack.identity.project_id)).toBe(true);
     // Second delete: already archived → false (the route maps this to a 404).
     expect(await deletePack(db, orgId, pack.identity.project_id)).toBe(false);
+  });
+});
+
+describe('packs/store — start over', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'org_a';
+
+  beforeEach(async () => {
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => close());
+
+  it('archives every project, its threads and checks, then permits a deliberate fresh project', async () => {
+    const first = makeTestPack({ identity: { project_id: 'first', name: 'First', owner_description: 'old' } });
+    const second = makeTestPack({ identity: { project_id: 'second', name: 'Second', owner_description: 'old' } });
+    await createPack(db, orgId, first);
+    await createPack(db, orgId, second);
+    await db.insert(threads).values({ id: 'thread-1', orgId, projectId: 'first', kind: 'general', title: 'Old', agent: 'gpt' });
+    await db.insert(healthChecks).values({ id: 'check-1', orgId, projectId: 'first', kind: 'http', url: 'https://example.com', intervalSec: 60 });
+
+    expect(await archiveAllPacks(db, orgId)).toBe(2);
+    expect(await listPacks(db, orgId)).toHaveLength(0);
+    expect((await db.select().from(threads))[0]?.archivedAt).not.toBeNull();
+    expect((await db.select().from(healthChecks))[0]?.enabled).toBe(false);
+
+    const fresh = makeTestPack({ identity: { project_id: 'first', name: 'First again', owner_description: 'fresh' } });
+    await createPack(db, orgId, fresh);
+    expect((await getPack(db, orgId, 'first'))?.identity.name).toBe('First again');
+    expect((await db.select().from(threads))[0]?.archivedAt).not.toBeNull();
   });
 });
 

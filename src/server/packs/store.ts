@@ -1,6 +1,6 @@
-import { and, eq, isNull, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { packs, events, narrations } from '../db/schema/index.js';
+import { packs, events, narrations, threads, healthChecks } from '../db/schema/index.js';
 import type { ContextPack } from '../../shared/types/pack.js';
 import { assertValidPack } from './validate.js';
 import { applyHumanPatch, applyMachinePatch, type HumanPatch, type MachinePatch } from './ownership.js';
@@ -89,7 +89,16 @@ export async function setPackMuted(db: Db, orgId: string, projectId: string, mut
 /** Full-pack create, used by onboarding and the worked-examples seed script. */
 export async function createPack(db: Db, orgId: string, pack: ContextPack): Promise<ContextPack> {
   assertValidPack(pack);
-  await db.insert(packs).values({ orgId, projectId: pack.identity.project_id, pack });
+  // An archived pack is a connector-sync tombstone, not a ban on the owner
+  // deliberately starting over. Explicit creation replaces that tombstone;
+  // its old conversations remain archived and do not reappear.
+  await db
+    .insert(packs)
+    .values({ orgId, projectId: pack.identity.project_id, pack })
+    .onConflictDoUpdate({
+      target: [packs.orgId, packs.projectId],
+      set: { pack, archivedAt: null, mutedAt: null, updatedAt: new Date() },
+    });
   return pack;
 }
 
@@ -128,6 +137,39 @@ export async function deletePack(db: Db, orgId: string, projectId: string): Prom
       .set({ archivedAt: new Date(), mutedAt: null, updatedAt: new Date() })
       .where(and(eq(packs.orgId, orgId), eq(packs.projectId, projectId)));
     return true;
+  });
+}
+
+/**
+ * Give an organization a clean slate without destroying its historical data.
+ * External repos, deployments and databases are never touched. Packs remain
+ * as tombstones so connector sync cannot immediately recreate them; explicit
+ * future creation may replace one through createPack(). Project conversations
+ * are archived and background checks disabled so neither returns by surprise.
+ */
+export async function archiveAllPacks(db: Db, orgId: string): Promise<number> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ projectId: packs.projectId })
+      .from(packs)
+      .where(and(eq(packs.orgId, orgId), isNull(packs.archivedAt)));
+    const projectIds = rows.map((row) => row.projectId);
+    if (projectIds.length === 0) return 0;
+
+    const now = new Date();
+    await tx
+      .update(threads)
+      .set({ archivedAt: now })
+      .where(and(eq(threads.orgId, orgId), inArray(threads.projectId, projectIds)));
+    await tx
+      .update(healthChecks)
+      .set({ enabled: false, updatedAt: now })
+      .where(and(eq(healthChecks.orgId, orgId), inArray(healthChecks.projectId, projectIds)));
+    await tx
+      .update(packs)
+      .set({ archivedAt: now, mutedAt: null, updatedAt: now })
+      .where(and(eq(packs.orgId, orgId), inArray(packs.projectId, projectIds)));
+    return projectIds.length;
   });
 }
 

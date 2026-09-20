@@ -34,6 +34,22 @@ describe('web/routes/packs', () => {
     expect(res.body[0].identity.project_id).toBe('p1');
   });
 
+  it('start-over requires the typed phrase and archives only the requesting org projects', async () => {
+    await createPack(db, 'org_a', makeTestPack({ identity: { project_id: 'p1', name: 'P1', owner_description: 'x' } }));
+    await createPack(db, 'org_a', makeTestPack({ identity: { project_id: 'p2', name: 'P2', owner_description: 'x' } }));
+    await createPack(db, 'org_b', makeTestPack({ identity: { project_id: 'other', name: 'Other', owner_description: 'x' } }));
+    const appA = appWithOrg('org_a', createPacksRouter(db));
+
+    expect((await request(appA).post('/api/packs/start-over').send({ confirmation: 'start over' })).status).toBe(400);
+    const cleared = await request(appA).post('/api/packs/start-over').send({ confirmation: 'START OVER' });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual({ ok: true, archived: 2 });
+    expect((await request(appA).get('/api/packs')).body).toEqual([]);
+
+    const appB = appWithOrg('org_b', createPacksRouter(db));
+    expect((await request(appB).get('/api/packs')).body).toHaveLength(1);
+  });
+
   it('404s for a pack in another org', async () => {
     await createPack(db, 'org_b', makeTestPack({ identity: { project_id: 'p2', name: 'P2', owner_description: 'x' } }));
     const app = appWithOrg('org_a', createPacksRouter(db));

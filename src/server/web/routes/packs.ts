@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import type { Db } from '../../db/client.js';
-import { deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
+import { archiveAllPacks, deletePack, getPack, listPacks, setPackMuted, updateHumanSections } from '../../packs/store.js';
 import { PackValidationError } from '../../packs/validate.js';
 import type { NewProjectInput } from '../../packs/scaffold.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -77,6 +77,21 @@ export function createPacksRouter(db: Db, deps: PacksRouterDeps = {}) {
     '/api/packs',
     asyncHandler(async (req, res) => {
       res.json(await listPacks(db, orgIdOf(req)));
+    }),
+  );
+
+  // A clean Selvedge slate, not an infrastructure teardown. The typed phrase
+  // prevents an accidental click or stale client from clearing the workspace.
+  router.post(
+    '/api/packs/start-over',
+    asyncHandler(async (req, res) => {
+      const { confirmation } = req.body as { confirmation?: unknown };
+      if (confirmation !== 'START OVER') {
+        res.status(400).json({ error: 'Type START OVER to confirm.' });
+        return;
+      }
+      const archived = await archiveAllPacks(db, orgIdOf(req));
+      res.json({ ok: true, archived });
     }),
   );
 

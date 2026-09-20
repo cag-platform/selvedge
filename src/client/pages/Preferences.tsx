@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import type { TechnicalDetail } from '../../shared/technicalDetail.js';
+import { btnDanger, inputCls } from '../components/ui.js';
 
 type OrgSettings = {
   timezone: string;
@@ -88,6 +89,9 @@ export function Preferences() {
   const [settings, setSettings] = useState<OrgSettings | null>(null);
   const [saving, setSaving] = useState<TechnicalDetail | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [resetConfirmation, setResetConfirmation] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetStatus, setResetStatus] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<OrgSettings>('/api/org').then(setSettings).catch((error: Error) => setStatus(error.message));
@@ -108,6 +112,20 @@ export function Preferences() {
       setStatus(error instanceof Error ? error.message : "That setting didn't save.");
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function startOver() {
+    if (resetConfirmation !== 'START OVER' || resetting) return;
+    setResetting(true);
+    setResetStatus(null);
+    try {
+      const result = await api.post<{ archived: number }>('/api/packs/start-over', { confirmation: resetConfirmation });
+      setResetStatus(`${result.archived} project${result.archived === 1 ? '' : 's'} cleared. Taking you to your fresh workspace…`);
+      window.setTimeout(() => window.location.assign('/'), 500);
+    } catch (error) {
+      setResetStatus(error instanceof Error ? error.message : "That didn't go through.");
+      setResetting(false);
     }
   }
 
@@ -143,6 +161,35 @@ export function Preferences() {
           Agent answers remain exactly as written. This preference only organizes build activity, handoffs, commands, paths, and run metadata.
         </p>
         {status && <p className="mt-3 text-body text-ink-dim" role="status" aria-live="polite">{status}</p>}
+      </section>
+
+      <section className="border-t border-hairline pt-8" aria-labelledby="start-over-heading">
+        <div className="max-w-2xl">
+          <p className="section-label mb-2">Clean slate</p>
+          <h2 id="start-over-heading" className="text-headline font-semibold text-ink">Start over in Selvedge</h2>
+          <p className="mt-2 text-body text-ink-dim">
+            Clear every project and project conversation from your workspace. Your GitHub repositories, deployed apps, Railway services, and databases are not changed. Selvedge retains the old record as archived data rather than permanently erasing it.
+          </p>
+          <label className="mt-5 block max-w-sm text-body text-ink-dim">
+            Type <strong className="font-semibold text-ink">START OVER</strong> to confirm
+            <input
+              className={inputCls}
+              value={resetConfirmation}
+              onChange={(event) => setResetConfirmation(event.target.value)}
+              disabled={resetting}
+              autoComplete="off"
+            />
+          </label>
+          <button
+            type="button"
+            className={`${btnDanger} mt-4`}
+            disabled={resetConfirmation !== 'START OVER' || resetting}
+            onClick={() => void startOver()}
+          >
+            {resetting ? 'Clearing projects…' : 'Clear all projects and start over'}
+          </button>
+          {resetStatus && <p className="mt-3 text-body text-ink-dim" role="status" aria-live="polite">{resetStatus}</p>}
+        </div>
       </section>
     </div>
   );
