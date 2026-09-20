@@ -14,6 +14,27 @@ async function snap(root: string) { const out = new Map<string,string>(); for (c
 function run(command: string, args: string[], cwd: string, input: string) { return new Promise<{code:number;output:string}>((resolve,reject) => { const child=spawn(command,args,{cwd,stdio:['pipe','pipe','pipe'],env:process.env}); let output=''; const add=(b:Buffer)=>{output=(output+b.toString()).slice(-MAX_OUTPUT)}; child.stdout.on('data',add); child.stderr.on('data',add); child.on('error',reject); const timer=setTimeout(()=>child.kill('SIGTERM'),25*60_000); child.on('close',(code)=>{clearTimeout(timer);resolve({code:code??1,output})}); child.stdin.end(input); }); }
 function narrative(output:string){return output.split('\n').map(x=>x.trim()).filter(Boolean).slice(-30).join('\n').slice(-12000)||'The coding agent finished.'}
 export async function detectLocalAgents() { const exists=async(command:string,args:string[])=>runFile(command,args,{timeout:15000,maxBuffer:MAX_OUTPUT}).then(()=>true).catch(()=>false); return { codex: await exists('codex',['login','status']), claudeCode: await exists('claude',['auth','status']) }; }
+function signIn(command: string, args: string[]) {
+  return new Promise<boolean>((resolve) => {
+    const child = spawn(command, args, { stdio: 'inherit', env: process.env });
+    child.once('error', () => resolve(false));
+    child.once('close', (code) => resolve(code === 0));
+  });
+}
+
+/** Open the official provider sign-in flows from the one Selvedge command. */
+export async function signInLocalAgents() {
+  const before = await detectLocalAgents();
+  if (!before.codex) {
+    console.log('Opening Codex sign-in…');
+    await signIn('codex', ['login']);
+  }
+  if (!before.claudeCode) {
+    console.log('Opening Claude Code sign-in…');
+    await signIn('claude', ['auth', 'login']);
+  }
+  return detectLocalAgents();
+}
 export async function executeAgentJob(api: CompanionApi, raw:{id:string;kind:string;request:Record<string,unknown>}) {
   if(!valid(raw)){await api.finishAgentRuntimeJob(raw.id,{ok:false,detail:'Unsupported local agent job.'});return;}
   const root=path.join(homedir(),'.selvedge','agent-workspaces',raw.id), archive=`${root}.tgz`; await fs.rm(root,{recursive:true,force:true}); await fs.mkdir(root,{recursive:true,mode:0o700});

@@ -12,9 +12,9 @@ import { SelvedgeLockup, SelvedgeMark } from './Logo.js';
  * to go, and it made the first question on every visit "which of these did I
  * want?" rather than "what needs me?".
  *
- * So: the workbench, the things it works on, and everything else. Record,
- * Connections and Billing live inside Admin now — their addresses still work,
- * because a bookmark should not die for a navigation decision.
+ * So: the workbench, the things it works on, and everything else. Record and
+ * Billing still live inside Admin, while Connections is visible on roomy
+ * screens because it is part of the normal first-run path.
  *
  * IT IS ALSO WHY THE APP WORKED ON A PHONE FOR THE FIRST TIME. Six links plus
  * a logo, an org switcher and an avatar in one rigid row measured about 700px,
@@ -90,6 +90,9 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
             <Link to="/inbox" className={linkClass({ isActive: workspaceActive })} aria-current={workspaceActive ? 'page' : undefined}>Workspace</Link>
             <NavLink to="/health" className={linkClass}>
               Health
+            </NavLink>
+            <NavLink to="/admin/connections" className={(state) => `${linkClass(state)} hidden lg:inline-flex`}>
+              Connections
             </NavLink>
           </nav>
         </div>

@@ -9,7 +9,7 @@ import { execFile } from 'node:child_process';
 import { hostname } from 'node:os';
 import { promisify } from 'node:util';
 import { executeAppleChatJob } from './appleRuntime.js';
-import { detectLocalAgents, executeAgentJob } from './agentRuntime.js';
+import { detectLocalAgents, executeAgentJob, signInLocalAgents } from './agentRuntime.js';
 
 /**
  * `selvedge` — the companion. Two jobs, one binary:
@@ -34,7 +34,7 @@ const HELP = `selvedge — the local companion for Selvedge
   selvedge watch --dry-run                   print what WOULD be sent, send nothing
   selvedge context                           run the MCP server (stdio) for agents
   selvedge runtime apple                     connect this Mac's Xcode + iPhone Simulator
-  selvedge runtime agents                    use your signed-in Codex and Claude Code
+  selvedge runtime agents [--login]          use your signed-in Codex and Claude Code
   selvedge import cursor [--dry-run]         bring this machine's Cursor chats into Selvedge
 
 What leaves this machine: for each finished session, its tool and id, when it
@@ -110,7 +110,7 @@ async function main(): Promise<number> {
     }
     if (argv[0] === 'agents') {
       const api = new CompanionApi(config);
-      const capabilities = await detectLocalAgents();
+      const capabilities = has(argv, 'login') ? await signInLocalAgents() : await detectLocalAgents();
       if (!capabilities.codex && !capabilities.claudeCode) {
         console.error('No signed-in coding agent found. Run `codex login` or open `claude` and sign in, then retry.');
         return 1;

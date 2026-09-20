@@ -5,14 +5,105 @@ import { AGENTS } from '../../shared/agents.js';
 import { CompanionKeys } from '../components/CompanionKeys.js';
 
 /**
- * Connections — where the owner turns on the voice by connecting their own
- * model key (BYO fuel). Selvedge charges for the layer, not the compute: the
- * key is the customer's, verified live before it's stored, and revocable. The
- * secret is never shown back — only the last four characters and a status.
+ * Connections — one place to turn on every agent. Subscription-backed coding
+ * agents can stay on a connected computer; model API keys are verified before
+ * they are stored. Secrets are never shown back — only a last-four hint and a
+ * status.
  */
 
-type Connected = { provider: string; last4: string | null; status: string };
+type Connected = { provider: string; kind: string; label: string | null; last4: string | null; status: string };
 type FuelState = { connected: Connected[]; available: string[]; coming_soon: string[] };
+type AgentConnection = {
+  connected: boolean;
+  kind: 'subscription' | 'api_key' | 'local' | null;
+  label: string | null;
+  last4: string | null;
+  machine: string | null;
+};
+type AgentConnectionState = {
+  agents: { codex: AgentConnection; claude_code: AgentConnection };
+  local: { connected: boolean; name: string | null; codex: boolean; claude_code: boolean };
+};
+
+function ConnectionCard({
+  title,
+  subtitle,
+  connection,
+  localLabel,
+  apiLabel,
+  subscriptionLabel,
+  primaryAction,
+  primaryHref,
+  secondaryAction,
+  secondaryHref,
+}: {
+  title: string;
+  subtitle: string;
+  connection: AgentConnection;
+  localLabel: string;
+  apiLabel: string;
+  subscriptionLabel: string;
+  primaryAction: string;
+  primaryHref: string;
+  secondaryAction: string;
+  secondaryHref: string;
+}) {
+  const connectedLabel = connection.kind === 'local'
+    ? `Connected on ${connection.machine ?? 'your computer'}`
+    : connection.kind === 'subscription'
+      ? subscriptionLabel
+      : connection.kind === 'api_key'
+        ? `${apiLabel}${connection.last4 ? ` ····${connection.last4}` : ''}`
+        : 'Not connected yet';
+  return (
+    <div className={`rounded-card border p-4 ${connection.connected ? 'border-action/40 bg-action-soft/30' : 'border-hairline bg-panel'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-body font-medium text-ink">{title}</p>
+          <p className="mt-1 text-meta text-ink-dim">{subtitle}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-meta font-medium ${connection.connected ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>
+          {connection.connected ? (connection.kind === 'subscription' ? 'Saved · not verified' : 'Connected') : 'Needs setup'}
+        </span>
+      </div>
+      <p className="mt-4 text-meta text-ink">{connectedLabel}</p>
+      {!connection.connected && <p className="mt-1 text-meta text-ink-quiet">{localLabel}</p>}
+      {!connection.connected && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <a href={primaryHref} className="rounded-inset bg-action px-3 py-2 text-meta font-medium text-white hover:bg-action-bright">{primaryAction}</a>
+          <a href={secondaryHref} className="text-meta font-medium text-action hover:text-action-bright">{secondaryAction} ↓</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentConnections() {
+  const [state, setState] = useState<AgentConnectionState | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.get<AgentConnectionState>('/api/agent-connections').then((value) => { if (alive) setState(value); }).catch(() => undefined);
+    void load();
+    const timer = window.setInterval(load, 10_000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, []);
+
+  const empty: AgentConnection = { connected: false, kind: null, label: null, last4: null, machine: null };
+  return (
+    <section className="space-y-3">
+      <div>
+        <p className="mb-1 text-label font-body uppercase tracking-widest text-ink-quiet">Your AI agents</p>
+        <p className="max-w-2xl text-body text-ink-dim">Choose one way to connect. You can change it later, and your project context stays the same.</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <ConnectionCard title="Codex / GPT" subtitle="Build with Codex or talk with GPT." connection={state?.agents.codex ?? empty} localLabel="Your ChatGPT subscription connects through Codex on your computer." apiLabel="OpenAI API key" subscriptionLabel="ChatGPT subscription on your computer" primaryAction="Connect this computer" primaryHref="#local-agents" secondaryAction="Use an API key" secondaryHref="#agent-keys" />
+        <ConnectionCard title="Claude / Claude Code" subtitle="Build with Claude Code or talk with Claude." connection={state?.agents.claude_code ?? empty} localLabel="Use Claude Code on your computer, or connect Claude here with a subscription token." apiLabel="Anthropic API key" subscriptionLabel="Claude Code subscription" primaryAction="Connect Claude" primaryHref="#agent-keys" secondaryAction="Use this computer" secondaryHref="#local-agents" />
+      </div>
+      <p className="text-meta text-ink-quiet">{state?.local.connected ? `Local agents are connected on ${state.local.name ?? 'your computer'}.` : 'Subscriptions stay with the provider. Selvedge only receives the work result and project state it needs.'}</p>
+    </section>
+  );
+}
 
 export function Connections() {
   const [state, setState] = useState<FuelState | null>(null);
@@ -37,19 +128,20 @@ export function Connections() {
   return (
     <div className="animate-settle space-y-8">
       <div>
-        <h1 className="text-display font-display font-medium text-ink">Connections</h1>
-        <p className="mt-2 max-w-xl text-body text-ink-dim">
-          Connect your computer to use Codex and Claude Code subscriptions you already pay for. API keys below are
-          optional and are billed separately by their provider.
-        </p>
+        <h1 className="text-display font-display font-medium text-ink">Connect your AI agents</h1>
+        <p className="mt-2 max-w-xl text-body text-ink-dim">One place to connect the agents you already use. Subscription access stays with that provider; API keys are always optional.</p>
       </div>
 
-      <CompanionKeys />
+      <AgentConnections />
 
-      <section>
-        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Optional API accounts</p>
+      <div id="local-agents">
+        <CompanionKeys />
+      </div>
+
+      <section id="agent-keys">
+        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">API keys, when you want them</p>
         {state.connected.length === 0 ? (
-          <p className="text-body text-ink-quiet">No API accounts connected. That is fine when your computer is connected below.</p>
+          <p className="text-body text-ink-quiet">No API accounts connected. That is fine when a subscription or local computer is connected above.</p>
         ) : (
           <div className="space-y-2">
             {state.connected.map((c) => (
@@ -246,7 +338,9 @@ function ConnectedRow({ row, onRemoved }: { row: Connected; onRemoved: () => voi
       <div>
         <p className="text-body text-ink">{fuelLabel(row.provider)}</p>
         <p className="text-meta text-ink-quiet">
-          {row.last4 ? `key ending ${row.last4}` : 'key stored'}
+          {row.kind === 'subscription'
+            ? 'Claude Code subscription token'
+            : row.last4 ? `API key ending ${row.last4}` : 'API key stored'}
           {invalid && <span className="ml-2 text-thread">— stopped working, reconnect</span>}
         </p>
       </div>
@@ -272,15 +366,13 @@ function ConnectedRow({ row, onRemoved }: { row: Connected; onRemoved: () => voi
 /**
  * Providers where a SUBSCRIPTION is an alternative to an API key.
  *
- * Anthropic alone, and the server refuses the rest, because the Claude Code CLI
- * reads a subscription token from an environment variable — a thing a pasted
- * secret can be — while Codex signs in through its own browser flow and writes
- * the result on the machine it ran on. Offering the choice where it can't work
- * would be offering a path that ends in an auth error on a metered minute.
+ * Claude Code can use a subscription token created by its official
+ * `claude setup-token` flow. Codex/ChatGPT subscriptions stay on the local
+ * Codex installation and are connected through the computer card above.
  */
-const SUBSCRIPTION_PROVIDERS = new Set<string>();
+const SUBSCRIPTION_PROVIDERS = new Set<string>(['anthropic']);
 
-function ConnectForm({ providers, onConnected }: { providers: string[]; onConnected: () => void }) {
+export function ConnectForm({ providers, onConnected }: { providers: string[]; onConnected: () => void }) {
   const [provider, setProvider] = useState(providers[0] ?? '');
   const [key, setKey] = useState('');
   const [kind, setKind] = useState<'api_key' | 'subscription'>('api_key');
@@ -309,7 +401,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
 
   return (
     <section>
-      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Add a key</p>
+      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Connect an API key or Claude subscription</p>
       <form onSubmit={submit} className="max-w-xl space-y-3 rounded-card border border-hairline bg-panel p-4">
         <div className="flex flex-wrap gap-3">
           <select
@@ -374,7 +466,7 @@ function ConnectForm({ providers, onConnected }: { providers: string[]; onConnec
             disabled={state === 'checking' || key.trim().length < 8}
             className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
-            {state === 'checking' ? 'Checking…' : 'Connect'}
+            {state === 'checking' ? (effectiveKind === 'subscription' ? 'Saving…' : 'Checking…') : 'Connect'}
           </button>
           {error && <span className="text-meta text-thread">{error}</span>}
         </div>

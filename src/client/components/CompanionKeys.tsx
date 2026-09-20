@@ -226,8 +226,8 @@ export function CompanionKeys() {
         </div>
       )}
       <div>
-        <h2 className="text-headline font-medium text-ink">Your machines</h2>
-        <p className="mt-1 max-w-xl text-body text-ink-dim">Connect this computer to Selvedge.</p>
+        <h2 className="text-headline font-medium text-ink">Use subscriptions on this computer</h2>
+        <p className="mt-1 max-w-xl text-body text-ink-dim">Optional: let Selvedge hand work to the Codex or Claude Code subscription already signed in here. Your provider login and project files stay on this computer.</p>
       </div>
 
       <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
@@ -246,7 +246,12 @@ export function CompanionKeys() {
         </div>
       </details>
 
-      {keys && <AppleRuntimeGuide keys={keys} runtimes={appleRuntimes} />}
+      {keys && (
+        <details className="rounded-card border border-hairline bg-panel-soft px-4 py-3">
+          <summary className="cursor-pointer text-body font-medium text-ink">Advanced: build Apple apps on this Mac</summary>
+          <div className="mt-4"><AppleRuntimeGuide keys={keys} runtimes={appleRuntimes} /></div>
+        </details>
+      )}
 
       {keys && (() => {
         const runtime = agentRuntimes.find((row) => row.online);
@@ -254,9 +259,9 @@ export function CompanionKeys() {
           <section className={`rounded-card border px-5 py-4 ${runtime ? 'border-action/40 bg-action-soft/40' : 'border-hairline bg-panel'}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-label uppercase tracking-widest text-ink-quiet">Your coding subscriptions</p>
+                <p className="text-label uppercase tracking-widest text-ink-quiet">Local subscription bridge</p>
                 <h3 className="mt-1 text-headline font-medium text-ink">Codex and Claude Code</h3>
-                <p className="mt-1 text-body text-ink-dim">Selvedge uses the accounts already signed in on your computer.</p>
+                <p className="mt-1 text-body text-ink-dim">Selvedge uses whichever of those accounts is signed in on your computer.</p>
               </div>
               <span className={`rounded-full px-3 py-1.5 text-meta font-medium ${runtime ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>{runtime ? 'Connected' : 'Not connected'}</span>
             </div>
@@ -267,11 +272,15 @@ export function CompanionKeys() {
               </div>
             ) : (
               <ol className="mt-4 border-t border-hairline pt-3">
-                <SetupStep number={1} title="Sign in to your agents" complete={false}><p>Run <code className="font-mono text-tech">codex login</code> and open <code className="font-mono text-tech">claude</code> once to sign in.</p></SetupStep>
-                <SetupStep number={2} title="Connect them to Selvedge" complete={false}><CopyCommand command="$HOME/.local/bin/selvedge runtime agents" /><p className="mt-2">Keep that window open while Selvedge works.</p></SetupStep>
+                <SetupStep number={1} title="Have your provider account ready" complete={false}><p>Keep ChatGPT/Codex or Claude Code signed in on this computer. If it is not, the bridge command will open the official sign-in flow.</p></SetupStep>
+                <SetupStep number={2} title="Make a connection key" complete={false}><p>Use <a href="#make-computer-key" className="font-medium text-action hover:text-action-bright">Make a key ↓</a> below, name this computer, and copy the one-time command.</p></SetupStep>
+                <SetupStep number={3} title="Run the bridge command" complete={false}><CopyCommand command="$HOME/.local/bin/selvedge runtime agents --login" /><p className="mt-2">Keep that Terminal window open while Selvedge works.</p></SetupStep>
               </ol>
             )}
-            <div className="mt-4 border-t border-hairline pt-3 text-meta text-ink-dim">No automatic API fallback. If this computer is offline, Selvedge stops and tells you.</div>
+            <details className="mt-4 border-t border-hairline pt-3 text-meta text-ink-dim">
+              <summary className="cursor-pointer text-ink">How the local bridge behaves</summary>
+              <p className="mt-2">There is no automatic API fallback. If this computer is offline, Selvedge stops and tells you.</p>
+            </details>
           </section>
         );
       })()}
@@ -280,12 +289,11 @@ export function CompanionKeys() {
         <div className="space-y-2 rounded-card border border-hairline border-l-2 border-l-action-bright bg-panel px-4 py-3">
           <p className="text-body text-ink">Copy this now; it’s shown only once.</p>
           <p className="select-all break-all font-mono text-tech text-ink">{issued}</p>
+          <p className="text-meta text-ink-dim">Fastest setup: paste this one line into Terminal on that computer.</p>
+          <CopyCommand command={`curl -fsSL https://tryselvedge.com/install-companion | sh && $HOME/.local/bin/selvedge login --token ${issued} && $HOME/.local/bin/selvedge runtime agents --login`} />
           <div className="space-y-1 font-mono text-tech text-ink-quiet">
-            <p>curl -fsSL https://tryselvedge.com/install-companion | sh</p>
-            <p>$HOME/.local/bin/selvedge login --token {issued.slice(0, 8)}…</p>
-            <p>$HOME/.local/bin/selvedge watch</p>
-            <p>$HOME/.local/bin/selvedge runtime apple</p>
-            <p>$HOME/.local/bin/selvedge runtime agents</p>
+            <p>Optional: $HOME/.local/bin/selvedge watch</p>
+            <p>Optional for iOS: $HOME/.local/bin/selvedge runtime apple</p>
           </div>
           <details className="text-meta text-ink-quiet">
             <summary className="cursor-pointer">Advanced setup</summary>
@@ -294,7 +302,7 @@ export function CompanionKeys() {
         </div>
       )}
 
-      <form onSubmit={mint} className="flex flex-wrap items-center gap-3">
+      <form id="make-computer-key" onSubmit={mint} className="scroll-mt-24 flex flex-wrap items-center gap-3">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}

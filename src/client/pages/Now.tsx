@@ -25,14 +25,18 @@ export function Now() {
   // string is a real, user-selected value: start a new idea with no project.
   // Keeping those states distinct prevents the default-project effect from
   // immediately undoing a deliberate "New idea" selection.
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('new') === '1' ? '' : null);
   const [starting, setStarting] = useState(false);
   const [continuationAvailable, setContinuationAvailable] = useState(false);
+  const [agentReady, setAgentReady] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<InboxData>('/api/inbox').then(setData).catch((e: Error) => setError(e.message));
     api.get<{ available: boolean }>('/api/continuations/availability').then((v) => setContinuationAvailable(v.available)).catch(() => setContinuationAvailable(false));
+    api.get<{ agents: { codex: { connected: boolean }; claude_code: { connected: boolean } } }>('/api/agent-connections')
+      .then((value) => setAgentReady(value.agents.codex.connected || value.agents.claude_code.connected))
+      .catch(() => setAgentReady(null));
   }, []);
 
   const places = useMemo(() => railPlaces(data?.projects ?? [], data?.subjects ?? []).filter((place) => !place.putAway), [data]);
@@ -93,6 +97,17 @@ export function Now() {
           Which project are you working on today{firstName ? `, ${firstName}` : ''}?
         </h1>
       </header>
+
+      {agentReady === false && (
+        <section className="mt-7 flex flex-col gap-4 rounded-pane border border-action/30 bg-sage p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6" aria-label="Finish setting up Selvedge">
+          <div>
+            <p className="text-meta font-semibold text-action-bright">Finish setup</p>
+            <h2 className="mt-1 font-display text-2xl font-normal text-ink">Connect the AI agents you already use.</h2>
+            <p className="mt-1 max-w-2xl text-body text-ink-dim">Use a ChatGPT or Claude subscription from your computer, or add an API key. You only need to do this once.</p>
+          </div>
+          <button type="button" onClick={() => window.dispatchEvent(new Event('selvedge:setup'))} className="shrink-0 self-start rounded-full bg-action px-5 py-2.5 text-body font-medium text-white sm:self-auto">Finish setup →</button>
+        </section>
+      )}
 
       <main className="mt-9 grid items-start gap-8 lg:grid-cols-[minmax(0,.82fr)_minmax(0,1.18fr)] xl:gap-10">
         <div className="space-y-5 lg:sticky lg:top-8">
