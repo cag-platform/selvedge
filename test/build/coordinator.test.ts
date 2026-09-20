@@ -58,7 +58,12 @@ describe('Working Center coordination against PostgreSQL', () => {
     await expect(recordRunEvent(db, 'org', run.id, { key: 'forged', kind: 'verification_passed', source: 'agent' })).rejects.toThrow('Only verification');
     await recordRunEvent(db, 'org', run.id, { key: 'cancel', kind: 'cancelled', source: 'owner' });
     await expect(recordRunEvent(db, 'org', run.id, { key: 'late', kind: 'ready', source: 'agent' })).rejects.toThrow('Invalid run transition');
-    await expect(db.delete(agentRunEvents).where(eq(agentRunEvents.runId, run.id))).rejects.toThrow('append-only');
+    // Drizzle 0.45 wraps driver errors with the SQL statement while preserving
+    // the trigger message on `cause`; assert on the database invariant rather
+    // than the wrapper's presentation text.
+    await expect(db.delete(agentRunEvents).where(eq(agentRunEvents.runId, run.id))).rejects.toMatchObject({
+      cause: expect.objectContaining({ message: expect.stringContaining('append-only') }),
+    });
   });
   it('scopes state and event access to the organization', async () => {
     const run = await working();

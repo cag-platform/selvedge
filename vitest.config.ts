@@ -1,9 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // The automatic JSX runtime, so a component test needs no React import and
-  // reads the same as the component it renders.
-  esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
     // Runs before any test file: clears every ambient credential and pins the
