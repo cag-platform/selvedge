@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { ClerkLoaded, SignedIn, SignedOut, SignIn, Waitlist } from '@clerk/clerk-react';
+import { ClerkLoaded, SignedIn, SignedOut, SignIn, SignUp } from '@clerk/clerk-react';
 import { Nav } from './components/Nav.js';
 import { Landing } from './pages/Landing.js';
 import { DemoAppPreview } from './pages/DemoAppPreview.js';
@@ -113,23 +113,27 @@ function AuthedApp() {
                     Every project&rsquo;s conversations, agents, and record, in one window.
                   </p>
                 </div>
-                <SignIn signUpUrl="/request-invite" />
+                <SignIn signUpUrl="/sign-up" />
               </div>
             }
           />
           <Route
-            path="/request-invite"
+            path="/sign-up"
             element={
               <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-4">
                 <div className="flex flex-col items-center gap-3 text-center">
                   <SelvedgeLockup tone="chalk" className="h-11 w-auto" />
-                  <p className="max-w-sm text-body text-ink-dim">Selvedge is opening access carefully.</p>
+                  <p className="max-w-sm text-body text-ink-dim">
+                    Bring a repo, a ChatGPT export, or just a question. The walkthrough takes it from there.
+                  </p>
                 </div>
-                <Waitlist signInUrl="/sign-in" />
+                <SignUp signInUrl="/sign-in" />
               </div>
             }
           />
-          <Route path="/sign-up" element={<Navigate to="/request-invite" replace />} />
+          {/* The waitlist era left /request-invite links in inboxes and chats.
+              Anyone can sign up now, so the old address lands on sign-up. */}
+          <Route path="/request-invite" element={<Navigate to="/sign-up" replace />} />
           <Route path="*" element={<Landing />} />
         </Routes>
       </SignedOut>
