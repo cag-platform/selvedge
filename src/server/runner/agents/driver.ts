@@ -5,6 +5,7 @@ import { codexCommand, codexInstallCommand, codexModel, parseCodexEvents, parseC
 import { costUsd } from '../../llm/pricing.js';
 import type { BuilderAuth } from '../../build/builderAuth.js';
 import { compatibleCodeCommand, compatibleInstallCommand, parseCompatible, type CompatibleWorker } from '../workers/compatibleCodeCommand.js';
+import { geminiCommand, geminiInstallCommand, geminiModel, parseGeminiEvents, parseGeminiResult, parseGeminiText } from '../workers/geminiCommand.js';
 
 /**
  * ONE SHAPE FOR "A BUILDER". The workshop turn (build/agent.ts) is a long,
@@ -114,6 +115,31 @@ function deepSeekDriver(): AgentDriver {
   };
 }
 
+function geminiDriver(): AgentDriver {
+  return {
+    id: 'gemini-build',
+    setupCommand: geminiInstallCommand(),
+    // Stateless on purpose: headless Gemini doesn't reliably hand back a
+    // session id yet (see the worker's header), so resumeSessionId is unused
+    // and every turn carries its own context.
+    command: (prompt, opts) => geminiCommand(prompt, { model: opts.model ?? geminiModel(), mode: opts.mode }),
+    result: (log) => {
+      const parsed = parseGeminiResult(log);
+      return {
+        sessionId: parsed.sessionId,
+        isError: parsed.isError,
+        // Tokens, not dollars, same as Codex: priced at the model's published
+        // rate, and an unpriced model prices at the table's fallback — the
+        // overstating direction, which is the safe one.
+        costUsd: parsed.usageReported ? costUsd(geminiModel(), parsed.tokensIn, parsed.tokensOut) : 0,
+        costReported: parsed.usageReported,
+      };
+    },
+    text: parseGeminiText,
+    events: parseGeminiEvents,
+  };
+}
+
 /**
  * A CODING-PLAN builder: the Claude Code CLI as the harness, pointed at a
  * provider's Anthropic-compatible endpoint by builderAuth's command env, on a
@@ -152,6 +178,7 @@ export function driverFor(agent: AgentId, auth: BuilderAuth | null): AgentDriver
   if (agent === 'grok-build' && auth.agent === 'grok-build') return compatibleDriver('grok-build');
   if (agent === 'deepseek-build' && auth.agent === 'deepseek-build') return deepSeekDriver();
   if (agent === 'glm-build' && auth.agent === 'glm-build') return codingPlanDriver('glm-build', 'glm-5.3');
+  if (agent === 'gemini-build' && auth.agent === 'gemini-build') return geminiDriver();
   // Chat agents don't run in a sandbox at all — chat/turn.ts is their path.
   return null;
 }

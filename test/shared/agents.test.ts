@@ -92,6 +92,7 @@ describe('the agent registry', () => {
       'grok-build',
       'deepseek-build',
       'glm-build',
+      'gemini-build',
       'claude',
       'gpt',
       'gemini',
@@ -127,6 +128,6 @@ describe('the agent registry', () => {
     // install command, an exec command, and three parsers that read what it
     // did, what it said, and whether it worked. So a talker is a row and a
     // builder is not, and this is the line that says so.
-    expect(AGENTS.filter((a) => a.changesFiles && a.live).map((a) => a.id)).toEqual(['claude-code', 'codex', 'kimi-code', 'grok-build', 'deepseek-build', 'glm-build']);
+    expect(AGENTS.filter((a) => a.changesFiles && a.live).map((a) => a.id)).toEqual(['claude-code', 'codex', 'kimi-code', 'grok-build', 'deepseek-build', 'glm-build', 'gemini-build']);
   });
 });

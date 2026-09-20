@@ -362,3 +362,37 @@ describe('coding-plan subscriptions pick the coding channel', () => {
     expect(await resolveFuelFor(db, orgId, 'kimi')).toBeNull();
   });
 });
+
+describe('Gemini builds on the key that chats', () => {
+  let db: TestDb;
+  let close: () => Promise<void>;
+  const orgId = 'mine';
+
+  beforeEach(async () => {
+    process.env.CREDENTIALS_KEY = 'x'.repeat(48);
+    const t = await createTestDb();
+    db = t.db;
+    close = t.close;
+    await db.insert(orgs).values({ orgId });
+  });
+  afterEach(async () => {
+    delete process.env.CREDENTIALS_KEY;
+    await close();
+  });
+
+  it('one Gemini API key arms both the chat client and the builder', async () => {
+    await connectCredential(db, orgId, 'gemini', 'AIza-owner-key', { kind: 'api_key' });
+    expect(await resolveFuelFor(db, orgId, 'gemini')).not.toBeNull();
+    const got = await resolveBuilderAuth(db, orgId, 'gemini-build', { env: {} });
+    expect(got.ok && got.auth.envVar).toBe('GEMINI_API_KEY');
+    expect(got.ok && driverFor('gemini-build', got.ok ? got.auth : null)).not.toBeNull();
+  });
+
+  it('says what to connect when nothing is, without offering the unsanctioned OAuth tier', async () => {
+    const got = await resolveBuilderAuth(db, orgId, 'gemini-build', { env: {} });
+    expect(got.ok).toBe(false);
+    if (got.ok) return;
+    expect(got.note).toMatch(/AI Studio key/i);
+    expect(got.note).not.toMatch(/subscription/i);
+  });
+});

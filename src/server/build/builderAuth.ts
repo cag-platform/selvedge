@@ -41,7 +41,7 @@ import { agentById, type AgentId, type AgentProvider } from '../../shared/agents
  *      builder that can't run is a fact the owner can act on, not an error.
  */
 
-export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex' | 'kimi-code' | 'grok-build' | 'deepseek-build' | 'glm-build'>;
+export type BuilderAgentId = Extract<AgentId, 'claude-code' | 'codex' | 'kimi-code' | 'grok-build' | 'deepseek-build' | 'glm-build' | 'gemini-build'>;
 
 export type BuilderAuth = {
   agent: BuilderAgentId;
@@ -140,6 +140,16 @@ const BUILDER_WIRING: Record<BuilderAgentId, BuilderWiring> = {
     commandEnv: (secret, envVar): Record<string, string> => envVar === 'ANTHROPIC_API_KEY'
       ? { ANTHROPIC_API_KEY: secret, ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: 'https://api.kimi.ai/coding/', ANTHROPIC_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_OPUS_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_SONNET_MODEL: 'kimi-for-coding', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'kimi-for-coding' }
       : { KIMI_API_KEY: secret, KIMI_MODEL_NAME: 'kimi-for-coding', KIMI_MODEL_PROVIDER_TYPE: 'kimi', KIMI_MODEL_API_KEY: secret, KIMI_MODEL_BASE_URL: 'https://api.moonshot.ai/v1', KIMI_MODEL_MAX_CONTEXT_SIZE: '262144' },
+  },
+  'gemini-build': {
+    provider: 'gemini',
+    envVarByKind: { api_key: 'GEMINI_API_KEY' },
+    platform: [{ envVar: 'GEMINI_API_KEY', kind: 'api_key' }],
+    // API key only, on purpose: Google's OAuth free tier and AI Pro/Ultra
+    // subscriptions are licensed to Google's own tooling, with no public
+    // blessing for third-party harnesses — the Claude setup-token lesson.
+    connectNote: 'Gemini builds on your own Google AI Studio key — the same one that powers Gemini chat. Add it under Connections and it can build here.',
+    wrongKindNote: '',
   },
   /**
    * GLM runs the way Z.ai's own docs wire Claude Code to their Coding Plan:

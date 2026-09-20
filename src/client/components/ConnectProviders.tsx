@@ -239,7 +239,7 @@ export function ConnectProviders({ onStateChange }: { onStateChange?: (providers
         <p className="mt-2 text-meta text-ink-quiet">Anthropic allows Claude subscriptions only in its own apps, so Claude connects here with an API key.</p>
       </ProviderCard>
 
-      <ProviderCard title="Gemini" tagline="Chat with Gemini." connection={agents.gemini}>
+      <ProviderCard title="Gemini" tagline="Chat with Gemini and build with Gemini CLI — one key." connection={agents.gemini}>
         <KeyForm provider="gemini" placeholder="paste your Gemini API key" onConnected={() => void load()} />
       </ProviderCard>
 

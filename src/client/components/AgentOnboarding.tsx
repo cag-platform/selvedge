@@ -31,7 +31,7 @@ type OrgAgentPreferences = {
 const PROVIDER_AGENTS: Record<string, AgentId[]> = {
   openai: ['gpt', 'codex'],
   anthropic: ['claude', 'claude-code'],
-  gemini: ['gemini'],
+  gemini: ['gemini', 'gemini-build'],
   zai: ['glm-build'],
   kimi: ['kimi', 'kimi-code'],
 };

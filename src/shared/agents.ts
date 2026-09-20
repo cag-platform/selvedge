@@ -38,6 +38,7 @@ export type AgentId =
   | 'grok-build'
   | 'deepseek-build'
   | 'glm-build'
+  | 'gemini-build'
   | 'claude'
   | 'gpt'
   | 'gemini'
@@ -141,6 +142,11 @@ const AGENT_TABLE = {
   'glm-build': {
     id: 'glm-build', chip: 'GL', name: 'GLM', changesFiles: true, provider: 'zai', pricingModel: 'glm-5.3',
     costNote: 'builds on your GLM Coding Plan — a flat monthly plan, no per-turn charge',
+    live: true,
+  },
+  'gemini-build': {
+    id: 'gemini-build', chip: 'GC', name: 'Gemini CLI', changesFiles: true, provider: 'gemini', pricingModel: 'gemini-2.5-pro',
+    costNote: "builds in your project's sandbox on the same Gemini key that chats — about $0.05–0.30 a turn",
     live: true,
   },
   claude: {
