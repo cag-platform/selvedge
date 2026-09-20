@@ -107,7 +107,8 @@ export const agentMessageAttachments = pgTable(
   {
     id: text('id').primaryKey(), // ulid
     orgId: text('org_id').notNull(),
-    projectId: text('project_id').notNull(),
+    /** Null when the attached image belongs to an idea/subject thread. */
+    projectId: text('project_id'),
     agentMessageId: text('agent_message_id').notNull(),
     mime: text('mime').notNull(),
     dataBase64: text('data_base64').notNull(),

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { LlmClient, LlmRequest, LlmResult } from './types.js';
+import type { MessageCreateParamsNonStreaming } from '@anthropic-ai/sdk/resources/messages/messages.js';
 
 const TIMEOUT_MS = 60_000;
 /** Stamped on every result so spend attributes to a provider, not just a model id. */
@@ -43,12 +44,24 @@ export class AnthropicLlmClient implements LlmClient {
   async complete(req: LlmRequest): Promise<LlmResult> {
     try {
       const useFallbacks = req.model === 'claude-fable-5';
+      const content: MessageCreateParamsNonStreaming['messages'][number]['content'] = [
+        { type: 'text', text: req.userContent },
+        ...(req.attachments ?? []).map((attachment) => {
+          if (attachment.kind === 'image') {
+            return { type: 'image' as const, source: { type: 'base64' as const, media_type: attachment.mime, data: attachment.dataBase64 } };
+          }
+          if (attachment.mime === 'application/pdf') {
+            return { type: 'document' as const, title: attachment.name, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: attachment.dataBase64 } };
+          }
+          return { type: 'document' as const, title: attachment.name, source: { type: 'text' as const, media_type: 'text/plain' as const, data: Buffer.from(attachment.dataBase64, 'base64').toString('utf8') } };
+        }),
+      ];
       const input = {
         model: req.model,
         max_tokens: req.maxTokens,
         system: req.system,
         output_config: { format: { type: 'json_schema' as const, schema: req.schema } },
-        messages: [{ role: 'user' as const, content: req.userContent }],
+        messages: [{ role: 'user' as const, content }],
       };
       const response = req.onTextDelta && !useFallbacks
         ? await (async () => {
@@ -64,7 +77,7 @@ export class AnthropicLlmClient implements LlmClient {
             fallbacks: [{ model: 'claude-opus-4-8' }],
             system: req.system,
             output_config: { format: { type: 'json_schema', schema: req.schema } },
-            messages: [{ role: 'user', content: req.userContent }],
+            messages: [{ role: 'user', content }],
           })
         : await this.client.messages.create(input);
 

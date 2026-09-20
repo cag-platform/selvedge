@@ -213,8 +213,8 @@ export function AttachButtons({
   onImagesChange: (v: PendingImage[]) => void;
   files: PendingFile[];
   onFilesChange: (v: PendingFile[]) => void;
-  /** Where a picked file is staged — `/api/projects/:id/workshop/uploads`. */
-  uploadUrl: string;
+  /** Where a picked file is staged for this conversation. */
+  uploadUrl?: string;
   /** True while a file is mid-upload — the composer disables sending so a not-yet-issued id can't be referenced. */
   uploading: boolean;
   onUploadingChange: (v: boolean) => void;
@@ -245,7 +245,7 @@ export function AttachButtons({
         onChange={(e) => {
           const picked = e.target.files;
           e.target.value = '';
-          if (!picked) return;
+          if (!picked || !uploadUrl) return;
           onUploadingChange(true);
           void addDocs(picked, files, onFilesChange, onError, uploadUrl).finally(() => onUploadingChange(false));
         }}

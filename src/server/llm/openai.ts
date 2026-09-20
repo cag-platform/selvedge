@@ -86,6 +86,14 @@ export class OpenAiLlmClient implements LlmClient {
       // it runs either way, so this degrades to "checked one step later" rather
       // than to "unchecked".
       const schemaInPrompt = this.structured === 'json_object';
+      const userContent = req.attachments?.length
+        ? [
+            { type: 'text' as const, text: req.userContent },
+            ...req.attachments.map((attachment) => attachment.kind === 'image'
+              ? { type: 'image_url' as const, image_url: { url: `data:${attachment.mime};base64,${attachment.dataBase64}` } }
+              : { type: 'file' as const, file: { filename: attachment.name, file_data: `data:${attachment.mime};base64,${attachment.dataBase64}` } }),
+          ]
+        : req.userContent;
       const input: ChatCompletionCreateParamsNonStreaming = {
         model: req.model,
         // Newer models reject max_tokens; max_completion_tokens is the
@@ -98,7 +106,7 @@ export class OpenAiLlmClient implements LlmClient {
               ? `${req.system}\n\nReply with JSON only, matching this schema exactly. No prose, no code fence:\n${JSON.stringify(req.schema)}`
               : req.system,
           },
-          { role: 'user', content: req.userContent },
+          { role: 'user', content: userContent },
         ],
         response_format: schemaInPrompt
           ? { type: 'json_object' }

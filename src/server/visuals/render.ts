@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { ulid } from 'ulid';
 import type { Db } from '../db/client.js';
 import { agentMessages } from '../db/schema/index.js';
-import type { LlmClient } from '../llm/types.js';
+import type { LlmAttachment, LlmClient } from '../llm/types.js';
 import { recordUsage } from '../llm/metering.js';
 import { completeVisual, failVisual, queueVisual } from './store.js';
 import { visualStorageKey, type VisualObjectStore } from './storage.js';
@@ -48,6 +48,7 @@ export async function runVisualJob(db: Db, orgId: string, input: {
   renderer: VisualRenderer;
   objectStore: VisualObjectStore;
   contextCapsule?: TaskContextCapsule;
+  attachments?: LlmAttachment[];
 }) {
   const visual = await queueVisual(db, orgId, {
     threadId: input.threadId,
@@ -69,6 +70,7 @@ export async function runVisualJob(db: Db, orgId: string, input: {
       maxTokens: 700,
       system: 'Interpret the visual request in your own design voice. Return a short explanation for the owner and a precise standalone image-generation prompt. Do not claim you rendered the pixels.',
       userContent: input.contextCapsule ? `${renderTaskContextCapsule(input.contextCapsule)}\n\n---\n\n${input.request}` : input.request,
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
       schema: DIRECTION_SCHEMA,
     });
     const directionMs = Date.now() - directionStarted;

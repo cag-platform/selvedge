@@ -525,18 +525,55 @@ describe('attachments on the Inbox message route', () => {
     }
   });
 
-  it('refuses an attachment to a talker with the way through, before the send', async () => {
+  it('carries an image into an ordinary talker turn', async () => {
     const t = await createTestDb();
     try {
       await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
       await createPack(t.db, 'org_1', makeTestPack({ identity: { project_id: 'loom', name: 'Loom', owner_description: 'x' } }));
       const thread = await createThread(t.db, 'org_1', 'loom', { kind: 'general', title: 'x', agent: 'claude' });
-      const app = appWithOrg('org_1', createThreadsRouter(t.db, { lookup: stubRepoLookup }));
+      let seen: unknown;
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, {
+        lookup: stubRepoLookup,
+        chatTurn: (async (_db, _org, _thread, _text, deps) => {
+          seen = deps.attachments;
+          return { ok: true, reply: 'seen', model: 'claude-sonnet-5', costed: true };
+        }) as ThreadsDeps['chatTurn'],
+      }));
       const res = await request(app)
         .post(`/api/threads/${thread.id}/message`)
         .send({ text: 'see attached', images: [{ mime: 'image/png', dataBase64: png }] });
-      expect(res.status).toBe(400);
-      expect(res.body.error).toContain('@claudecode');
+      expect(res.status).toBe(202);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(seen).toEqual([{ kind: 'image', mime: 'image/png', dataBase64: png }]);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('stages a file against any conversation and carries it into a talker turn', async () => {
+    const t = await createTestDb();
+    try {
+      await t.db.insert(orgs).values({ orgId: 'org_1', plan: 'studio' });
+      const subject = await createSubject(t.db, 'org_1', 'Ideas');
+      const thread = await createSubjectThread(t.db, 'org_1', subject.id, { title: 'Notes', agent: 'claude' });
+      let seen: unknown;
+      const app = appWithOrg('org_1', createThreadsRouter(t.db, {
+        lookup: stubRepoLookup,
+        chatTurn: (async (_db, _org, _thread, _text, deps) => {
+          seen = deps.attachments;
+          return { ok: true, reply: 'seen', model: 'claude-sonnet-5', costed: true };
+        }) as ThreadsDeps['chatTurn'],
+      }));
+      const staged = await request(app)
+        .post(`/api/threads/${thread.id}/uploads`)
+        .attach('file', Buffer.from('important context'), 'notes.txt');
+      expect(staged.status).toBe(201);
+      const sent = await request(app)
+        .post(`/api/threads/${thread.id}/message`)
+        .send({ text: 'read this', files: [{ id: staged.body.id }] });
+      expect(sent.status).toBe(202);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(seen).toEqual([{ kind: 'file', name: 'notes.txt', mime: 'text/plain', dataBase64: Buffer.from('important context').toString('base64') }]);
     } finally {
       await t.close();
     }

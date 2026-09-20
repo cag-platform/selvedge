@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import { createTestDb, type TestDb } from '../helpers/testDb.js';
-import { agentMessages, llmUsage, orgs } from '../../src/server/db/schema/index.js';
+import { agentMessageAttachments, agentMessages, llmUsage, orgs } from '../../src/server/db/schema/index.js';
 import { createPack } from '../../src/server/packs/store.js';
 import { makeTestPack } from '../fixtures/testPack.js';
 import { createThread } from '../../src/server/threads/store.js';
@@ -52,6 +52,17 @@ describe('a general thread turn', () => {
     const messages = await db.select().from(agentMessages).where(eq(agentMessages.orgId, orgId)).orderBy(agentMessages.createdAt);
     expect(messages.map((m) => m.role)).toEqual(['owner', 'agent']);
     expect(messages.every((m) => m.threadId === thread.id)).toBe(true);
+  });
+
+  it('passes pictures to the model and keeps them on the conversation record', async () => {
+    const thread = await chatThread();
+    const client = replying('I can see it.');
+    const picture = { kind: 'image' as const, mime: 'image/png' as const, dataBase64: Buffer.from('picture').toString('base64') };
+    await runChatTurn(db, orgId, thread, 'what is wrong here?', { client, attachments: [picture] });
+    expect(client.requests[0]!.attachments).toEqual([picture]);
+    const messages = await db.select().from(agentMessages).where(eq(agentMessages.threadId, thread.id));
+    const attachments = await db.select().from(agentMessageAttachments).where(eq(agentMessageAttachments.agentMessageId, messages[0]!.id));
+    expect(attachments).toMatchObject([{ projectId: 'loom', mime: 'image/png', dataBase64: picture.dataBase64 }]);
   });
 
   it('records the consultation and prompt identity on a parallel answer', async () => {

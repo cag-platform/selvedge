@@ -1,7 +1,7 @@
 import { ulid } from 'ulid';
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { agentMessages } from '../db/schema/index.js';
+import { agentMessageAttachments, agentMessages } from '../db/schema/index.js';
 import { getPack } from '../packs/store.js';
 import { healthLine } from '../packs/healthLine.js';
 import { renderReferences, resolveReferences } from '../references/resolve.js';
@@ -9,7 +9,7 @@ import { renderDocuments, type PastedDocument } from '../../shared/documents.js'
 import { checkThinkingBudget } from '../llm/budget.js';
 import { chatModel } from '../llm/config.js';
 import { recordUsage } from '../llm/metering.js';
-import type { LlmClient } from '../llm/types.js';
+import type { LlmAttachment, LlmClient } from '../llm/types.js';
 import { agentById, type AgentId, type AgentProvider } from '../../shared/agents.js';
 import type { Thread } from '../threads/store.js';
 import { publishLiveChat } from './live.js';
@@ -188,6 +188,8 @@ export type ChatDeps = {
    * cannot crowd out the sentence explaining what to do with it.
    */
   documents?: PastedDocument[];
+  /** Images and chat-readable files carried to the selected model. */
+  attachments?: LlmAttachment[];
   /**
    * A take, not a turn: the agent has been asked what it thinks, and is
    * answering over its model without the sandbox. This is the only way a
@@ -291,8 +293,9 @@ export async function runChatTurn(
   // so the caller writes the owner's message itself and every answer hangs off
   // that one line rather than each turn re-asking it.
   if (deps.recordOwnerMessage !== false) {
+    const ownerMessageId = ulid();
     await db.insert(agentMessages).values({
-      id: ulid(),
+      id: ownerMessageId,
       orgId,
       projectId: thread.projectId,
       threadId: thread.id,
@@ -304,6 +307,13 @@ export async function runChatTurn(
       // carries the name and the size; the text is fetched when opened.
       ...(deps.documents?.length ? { meta: { documents: deps.documents } } : {}),
     });
+    const images = (deps.attachments ?? []).filter((attachment) => attachment.kind === 'image');
+    if (images.length) {
+      await db.insert(agentMessageAttachments).values(images.map((image) => ({
+        id: ulid(), orgId, projectId: thread.projectId, agentMessageId: ownerMessageId,
+        mime: image.mime, dataBase64: image.dataBase64,
+      }))).catch((error) => console.error(`could not persist chat attachments for ${orgId}/${thread.id}:`, error));
+    }
     // Directly beneath the ask that pulled it in — written here rather than by
     // the caller so it can never land above the message it belongs to.
     if (deps.referenceNote) {
@@ -398,6 +408,7 @@ export async function runChatTurn(
       ...(attached ? [attached, ''] : []),
       `The conversation so far (the last message is what you are answering):\n\n${conversation}`,
     ].join('\n'),
+    ...(deps.attachments?.length ? { attachments: deps.attachments } : {}),
     maxTokens: MAX_REPLY_TOKENS,
     schema: CHAT_SCHEMA as unknown as Record<string, unknown>,
     onTextDelta: (delta) => {

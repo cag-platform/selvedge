@@ -9,10 +9,12 @@ import { edgeStatus, hasHealthSignal, healthLine } from '../../packs/healthLine.
 import { getBuild } from '../../build/store.js';
 import { configFor, engineEnv, type EngineEnv } from '../../build/engineConfig.js';
 import { lookupRepoInfo, type LookupRepoInfo } from '../../build/repoInfo.js';
-import { validateFileRefs, validateImages } from '../attachments.js';
-import { consumeStagedUpload } from '../../build/uploads.js';
+import { MAX_STAGED_FILE_BYTES, validateFileRefs, validateImages } from '../attachments.js';
+import { consumeStagedUpload, stageUpload } from '../../build/uploads.js';
 import type { AgentTurnConfig, AttachedFile } from '../../build/agent.js';
 import { promises as fsp } from 'node:fs';
+import os from 'node:os';
+import multer from 'multer';
 import { runAgentTurn } from '../../build/agent.js';
 import { failActiveRun, stopActiveRun } from '../../build/stopRun.js';
 import { runChatTurn, chatProviderFor } from '../../chat/turn.js';
@@ -64,6 +66,7 @@ import { consultationStatuses } from '../../consultations/status.js';
 import { compileTaskContext, type CompileContextInput } from '../../context/compiler.js';
 import { deleteSandbox, inspectSandboxWorktree, isSandboxCapacityError, type SandboxExecutionSnapshot } from '../../build/sandbox.js';
 import { chooseAutoAgent, type AutoRouteDecision } from '../../threads/autoRoute.js';
+import type { LlmAttachment } from '../../llm/types.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
@@ -75,6 +78,26 @@ function surfaceOf(req: Request): ProductSurface {
 }
 
 const SANDBOX_CAPACITY_MESSAGE = 'This organization’s active development workspace allowance is full. Close an inactive workspace or raise the allowance, then retry. Nothing was changed.';
+const MAX_CHAT_FILE_BYTES = 20 * 1024 * 1024;
+const TEXT_FILE_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'xml', 'html', 'css', 'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'java', 'swift', 'sql', 'yaml', 'yml', 'toml', 'ini', 'log']);
+type LocalAttachedFile = Extract<AttachedFile, { localPath: string }>;
+
+function chatReadableFile(file: LocalAttachedFile): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return file.mime === 'application/pdf' || file.mime?.startsWith('text/') === true || TEXT_FILE_EXTENSIONS.has(ext);
+}
+
+async function llmAttachmentsForFiles(files: LocalAttachedFile[]): Promise<{ attachments: LlmAttachment[] } | { error: string }> {
+  const attachments: LlmAttachment[] = [];
+  for (const file of files) {
+    if (!chatReadableFile(file)) return { error: `${file.name} isn't a chat-readable file yet. Attach a PDF, text, code, CSV, JSON, or Markdown file; builders can also take archives and binaries.` };
+    const stat = await fsp.stat(file.localPath).catch(() => null);
+    if (!stat) return { error: `${file.name} could not be read — attach it again.` };
+    if (stat.size > MAX_CHAT_FILE_BYTES) return { error: `${file.name} is over 20MB. Large files can still ride with @claudecode or @codex.` };
+    attachments.push({ kind: 'file', name: file.name, mime: file.mime || 'text/plain', dataBase64: (await fsp.readFile(file.localPath)).toString('base64') });
+  }
+  return { attachments };
+}
 
 /**
  * THE INBOX'S SURFACE — the rail, a thread, and the two things you do to a
@@ -1029,6 +1052,28 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     }),
   );
 
+  router.get(
+    '/api/threads/:threadId/attachments/:attachmentId',
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const [row] = await db
+        .select({ mime: agentMessageAttachments.mime, data: agentMessageAttachments.dataBase64 })
+        .from(agentMessageAttachments)
+        .innerJoin(agentMessages, eq(agentMessages.id, agentMessageAttachments.agentMessageId))
+        .where(and(
+          eq(agentMessageAttachments.id, req.params.attachmentId ?? ''),
+          eq(agentMessageAttachments.orgId, orgId),
+          eq(agentMessages.orgId, orgId),
+          eq(agentMessages.threadId, req.params.threadId ?? ''),
+        ))
+        .limit(1);
+      if (!row) { res.status(404).json({ error: 'not found' }); return; }
+      res.setHeader('Content-Type', row.mime);
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.send(Buffer.from(row.data, 'base64'));
+    }),
+  );
+
   /**
    * Everything that can be put after a `#`. One call, because the picker opens
    * on a keystroke and a list that arrives in pieces is a list that flickers.
@@ -1168,6 +1213,31 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
     }),
   );
 
+  const stageThreadFile = multer({ dest: os.tmpdir(), limits: { fileSize: MAX_STAGED_FILE_BYTES, files: 1 } }).single('file');
+  router.post(
+    '/api/threads/:threadId/uploads',
+    (req, res, next) => stageThreadFile(req, res, (error: unknown) => {
+      if (!error) { next(); return; }
+      if ((error as { code?: string })?.code === 'LIMIT_FILE_SIZE') {
+        res.status(400).json({ error: `that file is over ${Math.round(MAX_STAGED_FILE_BYTES / (1024 * 1024))}MB` });
+        return;
+      }
+      res.status(400).json({ error: 'could not read that file' });
+    }),
+    asyncHandler(async (req, res) => {
+      const orgId = orgIdOf(req);
+      const thread = await getThread(db, orgId, req.params.threadId ?? '');
+      const file = (req as Request & { file?: Express.Multer.File }).file;
+      if (!thread || !file) {
+        if (file) await fsp.unlink(file.path).catch(() => undefined);
+        res.status(thread ? 400 : 404).json({ error: thread ? 'no file was sent' : 'no such thread' });
+        return;
+      }
+      const staged = await stageUpload(orgId, `thread:${thread.id}`, file.originalname, file.mimetype || 'application/octet-stream', file.path, file.size);
+      res.status(201).json({ id: staged.id, name: staged.name, size: staged.size });
+    }),
+  );
+
   router.post(
     '/api/threads/:threadId/message',
     asyncHandler(async (req, res) => {
@@ -1254,6 +1324,9 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         res.status(400).json({ error: fileRefs.error });
         return;
       }
+      const chatImages: LlmAttachment[] = images.images.map((image) => ({
+        kind: 'image', mime: image.mime as Extract<LlmAttachment, { kind: 'image' }>['mime'], dataBase64: image.dataBase64,
+      }));
 
       /**
        * AUTO IS A POLICY, NOT A HIDDEN DEFAULT AGENT. It runs only when the
@@ -1509,7 +1582,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           const consumed: Array<{ path: string }> = [];
           const files: AttachedFile[] = [];
           for (const id of fileRefs.ids) {
-            const staged = consumeStagedUpload(orgId, projectId, id);
+            const staged = consumeStagedUpload(orgId, `thread:${thread.id}`, id) ?? consumeStagedUpload(orgId, projectId, id);
             if (!staged) {
               await Promise.all(consumed.map((file) => fsp.unlink(file.path).catch(() => undefined)));
               res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
@@ -1529,6 +1602,29 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             mode,
           };
         }
+        let consultationFiles = (mixedBuild?.files ?? []) as LocalAttachedFile[];
+        const chatOnlyFiles: LocalAttachedFile[] = [];
+        if (!mixedBuild && fileRefs.ids.length) {
+          for (const id of fileRefs.ids) {
+            const staged = consumeStagedUpload(orgId, `thread:${thread.id}`, id)
+              ?? (thread.projectId ? consumeStagedUpload(orgId, thread.projectId, id) : null);
+            if (!staged) {
+              await Promise.all(chatOnlyFiles.map((file) => fsp.unlink(file.localPath).catch(() => undefined)));
+              res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
+              return;
+            }
+            chatOnlyFiles.push({ name: staged.name, mime: staged.mime, localPath: staged.path });
+          }
+          consultationFiles = chatOnlyFiles;
+        }
+        const fileInput = await llmAttachmentsForFiles(consultationFiles);
+        if ('error' in fileInput) {
+          await Promise.all(chatOnlyFiles.map((file) => fsp.unlink(file.localPath).catch(() => undefined)));
+          res.status(400).json({ error: fileInput.error });
+          return;
+        }
+        await Promise.all(chatOnlyFiles.map((file) => fsp.unlink(file.localPath).catch(() => undefined)));
+        const consultationAttachments = [...chatImages, ...fileInput.attachments];
         const ownerMessageId = ulid();
         const consultationId = ulid();
         // Compile ONCE before fan-out. Every consulted model receives these
@@ -1595,6 +1691,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
               }]
             : []),
         ]);
+        if (images.images.length) {
+          await db.insert(agentMessageAttachments).values(images.images.map((image) => ({
+            id: ulid(), orgId, projectId: thread!.projectId, agentMessageId: ownerMessageId,
+            mime: image.mime, dataBase64: image.dataBase64,
+          })));
+        }
 
         const consulted = thread;
         if (mixedBuild?.paired?.freshness.state === 'stale' && body.acknowledge_stale === true) {
@@ -1613,12 +1715,14 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
               directingAgent: agent, directingModel: defaultChatModelFor(agent), request: text,
               director: fuel.client, renderer: new OpenAIVisualRenderer(imageKey), objectStore: visualStore,
               contextCapsule,
+              ...(consultationAttachments.length ? { attachments: consultationAttachments } : {}),
             });
           } else {
             void chatTurn(db, orgId, consulted, text, {
               client: fuel?.client ?? null,
               recordOwnerMessage: false,
               ...(documents.length ? { documents } : {}),
+              ...(consultationAttachments.length ? { attachments: consultationAttachments } : {}),
               answeringAs: agent,
               asTake: true,
               consultation: { id: consultationId, promptId: ownerMessageId },
@@ -1720,16 +1824,21 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
        * a second conversation.
        */
       if (!changesFiles(thread.agent)) {
-        // A talker has no sandbox to put a file in and no eyes for an image
-        // yet — said now, before the send, with the way through. Refusing
-        // beats accepting-and-ignoring: an attachment that silently vanishes
-        // reads as "it saw the screenshot and had nothing to say".
-        if (images.images.length > 0 || fileRefs.ids.length > 0) {
-          res.status(400).json({
-            error: `${agentById(thread.agent as AgentId)?.name ?? 'This agent'} can't take attachments yet — a builder can. Name @claudecode or @codex and the files ride along.`,
-          });
-          return;
+        const chatFiles: LocalAttachedFile[] = [];
+        for (const id of fileRefs.ids) {
+          const staged = consumeStagedUpload(orgId, `thread:${thread.id}`, id)
+            ?? (thread.projectId ? consumeStagedUpload(orgId, thread.projectId, id) : null);
+          if (!staged) {
+            await Promise.all(chatFiles.map((file) => fsp.unlink(file.localPath).catch(() => undefined)));
+            res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });
+            return;
+          }
+          chatFiles.push({ name: staged.name, mime: staged.mime, localPath: staged.path });
         }
+        const fileInput = await llmAttachmentsForFiles(chatFiles);
+        await Promise.all(chatFiles.map((file) => fsp.unlink(file.localPath).catch(() => undefined)));
+        if ('error' in fileInput) { res.status(400).json({ error: fileInput.error }); return; }
+        const chatAttachments = [...chatImages, ...fileInput.attachments];
         const provider = chatProviderFor(thread.agent as AgentId);
         const fuel = provider ? await resolveFuelFor(db, orgId, provider).catch(() => null) : null;
         if (wantsVisual(text)) {
@@ -1743,6 +1852,12 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             id: promptId, orgId, projectId: thread.projectId, threadId: thread.id,
             role: 'owner', content: text, meta: { ...(documents.length ? { documents } : {}) },
           });
+          if (images.images.length) {
+            await db.insert(agentMessageAttachments).values(images.images.map((image) => ({
+              id: ulid(), orgId, projectId: thread.projectId, agentMessageId: promptId,
+              mime: image.mime, dataBase64: image.dataBase64,
+            })));
+          }
           if (referenceNote) {
             await db.insert(agentMessages).values({
               id: ulid(), orgId, projectId: thread.projectId, threadId: thread.id,
@@ -1754,6 +1869,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
             threadId: thread.id, promptId, directingAgent,
             directingModel: defaultChatModelFor(directingAgent), request: text,
             director: fuel.client, renderer: new OpenAIVisualRenderer(imageKey), objectStore: visualStore,
+            ...(chatAttachments.length ? { attachments: chatAttachments } : {}),
           });
           res.status(202).json({ started: true, visual: true, warming: false });
           return;
@@ -1765,6 +1881,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
           client: fuel?.client ?? null,
           ...(referenceNote ? { referenceNote } : {}),
           ...(documents.length ? { documents } : {}),
+          ...(chatAttachments.length ? { attachments: chatAttachments } : {}),
         }).catch((err) => {
           console.error(`chat turn failed for ${orgId}/${talking.id}:`, err);
         });
@@ -1920,7 +2037,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const consumed: Array<{ path: string }> = [];
       const attachedFiles: AttachedFile[] = [];
       for (const id of fileRefs.ids) {
-        const staged = consumeStagedUpload(orgId, buildIn, id);
+        const staged = consumeStagedUpload(orgId, `thread:${thread.id}`, id) ?? consumeStagedUpload(orgId, buildIn, id);
         if (!staged) {
           await Promise.all(consumed.map((f) => fsp.unlink(f.path).catch(() => undefined)));
           res.status(400).json({ error: "one of those files wasn't found — try attaching it again" });

@@ -554,9 +554,9 @@ function Message({ message, data }: { message: ThreadMessage; data: ThreadData }
       {message.attachments.length > 0 && (
         <div className="mt-work-tight flex flex-wrap gap-work-tight">
           {message.attachments.map((a) => (
-            <a key={a.id} href={`/api/projects/${data.project?.id}/workshop/attachments/${a.id}`} target="_blank" rel="noopener noreferrer">
+            <a key={a.id} href={`/api/threads/${data.thread.id}/attachments/${a.id}`} target="_blank" rel="noopener noreferrer">
               <img
-                src={`/api/projects/${data.project?.id}/workshop/attachments/${a.id}`}
+                src={`/api/threads/${data.thread.id}/attachments/${a.id}`}
                 alt="attached"
                 className="h-16 w-16 rounded-inset border border-hairline object-cover"
               />
@@ -1160,7 +1160,7 @@ export function ThreadPane({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-3">
           <TechnicalDetailControl data={data} onDone={onReload} />
-          {workshop && data.project && (
+          {(
             <button
               type="button"
               onClick={onShowPreview}
@@ -1570,7 +1570,7 @@ export function ThreadPane({
               onImagesChange={setImages}
               files={files}
               onFilesChange={setFiles}
-              uploadUrl={`/api/projects/${data.project.id}/workshop/uploads`}
+              uploadUrl={`/api/threads/${data.thread.id}/uploads`}
               uploading={uploading}
               onUploadingChange={setUploading}
               disabled={sending}

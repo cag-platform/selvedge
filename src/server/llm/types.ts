@@ -18,10 +18,16 @@
  */
 export type LlmPurpose = 'fragment' | 'compose' | 'gist' | 'sketch' | 'grade' | 'chat';
 
+export type LlmAttachment =
+  | { kind: 'image'; mime: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'; dataBase64: string }
+  | { kind: 'file'; name: string; mime: string; dataBase64: string };
+
 export type LlmRequest = {
   model: string;
   system: string;
   userContent: string;
+  /** Binary context carried beside the words for multimodal chat turns. */
+  attachments?: LlmAttachment[];
   maxTokens: number;
   /** JSON Schema the response must conform to (structured outputs). */
   schema: Record<string, unknown>;
