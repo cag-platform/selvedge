@@ -33,6 +33,17 @@ describe('web/routes/agentConnections', () => {
     expect(response.status).toBe(200);
     expect(response.body.agents.codex).toMatchObject({ connected: true, kind: 'local', machine: 'Greg’s Mac' });
     expect(response.body.agents.claude_code).toMatchObject({ connected: true, kind: 'subscription' });
+    expect(response.body.agents.gemini).toMatchObject({ connected: false, kind: null });
     expect(JSON.stringify(response.body)).not.toContain('claude-subscription-token');
+  });
+
+  it('reports a Gemini API key like any other credential', async () => {
+    await connectCredential(db, 'org_1', 'gemini', 'gemini-api-key-value', { kind: 'api_key' });
+
+    const response = await request(appWithOrg('org_1', createAgentConnectionsRouter(db))).get('/api/agent-connections');
+
+    expect(response.status).toBe(200);
+    expect(response.body.agents.gemini).toMatchObject({ connected: true, kind: 'api_key' });
+    expect(JSON.stringify(response.body)).not.toContain('gemini-api-key-value');
   });
 });

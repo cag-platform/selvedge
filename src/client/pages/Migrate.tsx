@@ -1,34 +1,95 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { ImportReplit } from '../components/ImportReplit.js';
 import { Pane } from '../components/ui.js';
-import type { MigrationSource } from '../../shared/types/migration.js';
 import { ImportGithub } from '../components/ImportGithub.js';
 
-const sources: Array<{ id: MigrationSource; name: string; group: 'hosted' | 'repo'; state: 'ready' | 'connect' | 'planned'; note: string; guide?: string[] }> = [
-  { id: 'replit', name: 'Replit', group: 'hosted', state: 'ready', note: 'Bring the app export. Selvedge inspects it, creates the repo and project map, and opens the workspace.' },
-  { id: 'lovable', name: 'Lovable', group: 'hosted', state: 'connect', note: 'Sync or export the Lovable project to GitHub, then choose that repository here. Selvedge takes over from the repository without requiring Lovable to remain the project home.', guide: ['Sync the Lovable project to GitHub.', 'Choose that repository below.', 'Selvedge maps it, opens the temporary workspace, and verifies the copy.'] },
-  { id: 'bolt', name: 'Bolt', group: 'hosted', state: 'planned', note: 'The direct source adapter is next. Your current production environment remains untouched.' },
-  { id: 'base44', name: 'Base44', group: 'hosted', state: 'planned', note: 'The direct source adapter is next. Your current production environment remains untouched.' },
-  { id: 'github', name: 'GitHub', group: 'repo', state: 'connect', note: 'Connect an existing repository. Selvedge already understands repos as owner-controlled project sources.', guide: ['Choose the repository.', 'Confirm the project boundary.', 'Let Selvedge map it and open the workspace.'] },
-  { id: 'codex', name: 'Codex', group: 'repo', state: 'connect', note: 'Codex can keep doing coding work. Selvedge becomes the durable home for the repository, decisions, previews, verification, and releases.', guide: ['Commit or push the project to GitHub.', 'Connect that repository to Selvedge.', 'Continue in one project conversation; use Codex or another worker whenever it fits.'] },
-  { id: 'claude-code', name: 'Claude Code', group: 'repo', state: 'connect', note: 'Claude Code remains a capable worker. Selvedge keeps the project context and operating record from becoming tied to one Claude session or machine.', guide: ['Push the working repository to GitHub.', 'Connect it to Selvedge.', 'Add the decisions or conversations worth preserving, then continue with any agent.'] },
-  { id: 'cursor', name: 'Cursor', group: 'repo', state: 'connect', note: 'Cursor is where you may edit; Selvedge is where the project lives. The repository, context, preview, evidence, and shipping workflow stay together.', guide: ['Commit your current Cursor workspace.', 'Push it to GitHub and connect the repository.', 'Use Selvedge to manage future agent work, verification, and releases.'] },
+/**
+ * BRING A PROJECT HOME — two doors, not eight.
+ *
+ * The old page listed every place an app could live as its own card with its
+ * own guide, which dressed one instruction up as six: everything except a
+ * Replit export arrives through a GitHub repository. So the page now says
+ * exactly that. The builder-specific names still exist — behind one
+ * disclosure, as a provenance tag — because "Migration agent · from Cursor"
+ * in the intake thread is worth keeping, but they are no longer a decision
+ * the visitor must make before anything works.
+ */
+
+type GithubSource = 'github' | 'codex' | 'claude-code' | 'cursor' | 'lovable';
+
+const PROVENANCE: Array<{ id: GithubSource; name: string }> = [
+  { id: 'cursor', name: 'Cursor' },
+  { id: 'lovable', name: 'Lovable' },
+  { id: 'codex', name: 'Codex' },
+  { id: 'claude-code', name: 'Claude Code' },
 ];
 
 export function Migrate() {
-  const [source, setSource] = useState<MigrationSource>('replit');
-  const chosen = sources.find((item) => item.id === source)!;
-  return <div className="animate-settle mx-auto max-w-5xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16">
-    <header className="max-w-3xl"><p className="section-label">Bring your project home</p><h1 className="mt-4 font-display text-[clamp(2.7rem,6vw,4.6rem)] leading-none tracking-[-.045em] text-ink">Where is your app today?</h1><p className="mt-5 text-lede text-ink-dim">Choose where your project is now.</p></header>
-    <ol className="mt-9 grid grid-cols-4 gap-2" aria-label="Migration journey"><li><div className="h-1.5 rounded-full bg-action" /><span className="mt-2 block font-mono text-tech text-ink">Choose source</span></li><li><div className="h-1.5 rounded-full bg-hairline" /><span className="mt-2 block font-mono text-tech text-ink-quiet">Agent inspects</span></li><li><div className="h-1.5 rounded-full bg-hairline" /><span className="mt-2 block font-mono text-tech text-ink-quiet">Preview &amp; prove</span></li><li><div className="h-1.5 rounded-full bg-hairline" /><span className="mt-2 block font-mono text-tech text-ink-quiet">Approve ship</span></li></ol>
-    <div className="mt-8 grid items-start gap-6 lg:grid-cols-[.72fr_1.28fr]">
-      <div className="space-y-6">{(['hosted', 'repo'] as const).map((group) => <section key={group}><p className="mb-3 section-label">{group === 'hosted' ? 'Leaving a hosted builder' : 'From an agent or editor'}</p><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">{sources.filter((item) => item.group === group).map((item) => <button type="button" key={item.id} onClick={() => setSource(item.id)} aria-pressed={source === item.id} className={`flex items-center justify-between gap-3 rounded-card border px-4 py-3 text-left ${source === item.id ? 'border-action bg-sage' : 'border-hairline bg-panel hover:border-action/50'}`}><strong className="text-body text-ink">{item.name}</strong><span className="font-mono text-[10px] uppercase tracking-wide text-ink-quiet">{item.state === 'ready' ? 'Available' : item.state === 'connect' ? 'Via repo' : 'Planned'}</span></button>)}</div></section>)}</div>
-    <Pane className="p-5 sm:p-7"><div className="flex gap-3"><span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-deep font-display text-white">S</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="section-label">Migration agent · from {chosen.name}</p><h2 className="mt-2 font-display text-3xl text-ink">I’ll bring the working project over.</h2><p className="mt-2 max-w-2xl text-body text-ink-dim">{chosen.note}</p></div><span className="rounded-full bg-panel-soft px-3 py-1.5 font-mono text-tech text-ink-dim">Original stays live</span></div>
-      {source === 'replit' && <div className="mt-6"><ImportReplit /></div>}
-      {chosen.state === 'connect' && <><div className="mt-6 rounded-inset border border-hairline bg-panel-soft p-4"><ol className="grid gap-2 text-body text-ink-dim">{chosen.guide?.map((step, index) => <li key={step}><span className="mr-2 font-mono text-tech text-action-bright">0{index + 1}</span>{step}</li>)}</ol></div><ImportGithub source={source as 'github' | 'codex' | 'claude-code' | 'cursor' | 'lovable'} /></>}
-      {chosen.state === 'planned' && <div className="mt-6 rounded-inset border border-hairline bg-panel-soft p-4"><p className="text-body text-ink">This adapter is not connected yet.</p><p className="mt-1 text-meta text-ink-dim">For now, export the project into GitHub and bring that repository into Selvedge. We are keeping this boundary explicit instead of presenting a manual checklist as an autonomous migration.</p><Link to="/projects" className="mt-3 inline-block text-body text-action-bright hover:underline">Bring the GitHub repository →</Link></div>}
-      <p className="mt-6 border-t border-hairline pt-4 text-meta text-ink-quiet">After handoff, this continues inside the project conversation. Selvedge reports what it is doing and stops only for access, approval, or a decision it cannot safely make for you.</p></div></div>
-    </Pane></div>
-  </div>;
+  const [path, setPath] = useState<'github' | 'replit'>('github');
+  const [source, setSource] = useState<GithubSource>('github');
+
+  const tile = (active: boolean) =>
+    `rounded-card border px-4 py-3 text-left ${active ? 'border-action bg-sage' : 'border-hairline bg-panel hover:border-action/50'}`;
+
+  return (
+    <div className="animate-settle mx-auto max-w-4xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16">
+      <header className="max-w-3xl">
+        <p className="section-label">Bring your project home</p>
+        <h1 className="mt-4 font-display text-[clamp(2.7rem,6vw,4.6rem)] leading-none tracking-[-.045em] text-ink">Where is your app today?</h1>
+      </header>
+
+      <div className="mt-8 grid gap-2 sm:grid-cols-2" role="tablist" aria-label="Where the project lives now">
+        <button type="button" role="tab" aria-selected={path === 'github'} onClick={() => setPath('github')} className={tile(path === 'github')}>
+          <strong className="block text-body text-ink">A GitHub repository</strong>
+          <span className="text-meta text-ink-dim">Also anything that can push to one: Bolt, Cursor, Lovable, Base44, and every coding agent.</span>
+        </button>
+        <button type="button" role="tab" aria-selected={path === 'replit'} onClick={() => setPath('replit')} className={tile(path === 'replit')}>
+          <strong className="block text-body text-ink">A Replit app</strong>
+          <span className="text-meta text-ink-dim">Upload the export Replit gives you. Selvedge does the rest.</span>
+        </button>
+      </div>
+
+      <Pane className="mt-6 p-5 sm:p-7">
+        <p className="section-label">Migration agent{path === 'github' && source !== 'github' ? ` · from ${PROVENANCE.find((p) => p.id === source)?.name}` : ''}</p>
+        <h2 className="mt-2 font-display text-3xl text-ink">I’ll bring the working project over.</h2>
+        <p className="mt-2 max-w-2xl text-body text-ink-dim">
+          Your original stays live and untouched. Selvedge copies the project, opens a workspace, proves it runs, and only then is
+          anything yours to approve.
+        </p>
+
+        {path === 'replit' && <div className="mt-6"><ImportReplit /></div>}
+
+        {path === 'github' && (
+          <>
+            <div className="mt-6"><ImportGithub source={source} /></div>
+            <details className="mt-5 rounded-inset border border-hairline bg-panel-soft p-4">
+              <summary className="cursor-pointer text-body text-ink">Coming from Bolt, Cursor, Lovable, Base44, or a coding agent?</summary>
+              <p className="mt-2 text-body text-ink-dim">
+                Export or sync the project to GitHub first — every builder has this in its share or settings menu — then connect the
+                repository above. If you tell me where it came from, the migration keeps that context:
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {PROVENANCE.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={source === item.id}
+                    onClick={() => setSource(source === item.id ? 'github' : item.id)}
+                    className={`rounded-full border px-3 py-1.5 text-meta font-medium ${source === item.id ? 'border-action bg-action text-white' : 'border-hairline bg-panel text-ink hover:border-action/50'}`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            </details>
+          </>
+        )}
+
+        <p className="mt-6 border-t border-hairline pt-4 text-meta text-ink-quiet">
+          After handoff, this continues inside the project conversation. Selvedge stops only for access, approval, or a decision it
+          cannot safely make for you.
+        </p>
+      </Pane>
+    </div>
+  );
 }

@@ -5,9 +5,15 @@ import { orgs } from '../../db/schema/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { DEFAULT_TECHNICAL_DETAIL, isTechnicalDetail } from '../../../shared/technicalDetail.js';
 import { isAgentId, type AgentId } from '../../../shared/agents.js';
+import { recordProductEvent, type ProductSurface } from '../../telemetry/productEvents.js';
 
 function orgIdOf(req: Request): string {
   return (req as Request & { orgId: string }).orgId;
+}
+
+function surfaceOf(req: Request): ProductSurface {
+  const value = req.header('x-selvedge-surface');
+  return value === 'desktop_web' || value === 'responsive_web' || value === 'ios_native' ? value : 'unknown';
 }
 
 export function isValidTimezone(tz: string): boolean {
@@ -53,7 +59,14 @@ export function createOrgRouter(db: Db) {
       const agents = [...new Set(raw as AgentId[])];
       const orgId = orgIdOf(req);
       const now = new Date();
+      // First save = onboarding finished (later saves are preference edits).
+      // The funnel's one hard number: how many sign-ins reach the other side,
+      // and with how many connections — zero agents means "skipped setup".
+      const [before] = await db.select({ setAt: orgs.agentPreferencesSetAt }).from(orgs).where(eq(orgs.orgId, orgId)).limit(1);
       await db.update(orgs).set({ preferredAgents: agents, agentPreferencesSetAt: now }).where(eq(orgs.orgId, orgId));
+      if (!before?.setAt) {
+        await recordProductEvent(db, orgId, 'onboarding_completed', { surface: surfaceOf(req), properties: { agents: agents.length } }).catch(() => undefined);
+      }
       res.json({ preferred_agents: agents, agent_preferences_set: true });
     }),
   );

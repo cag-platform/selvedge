@@ -97,8 +97,12 @@ const BUILDER_WIRING: Record<BuilderAgentId, BuilderWiring> = {
       { envVar: 'CLAUDE_CODE_OAUTH_TOKEN', kind: 'subscription' },
       { envVar: 'ANTHROPIC_API_KEY', kind: 'api_key' },
     ],
+    // API key only in the ask: Anthropic locked consumer-plan tokens to its
+    // own apps (January 2026), so suggesting `claude setup-token` here would
+    // point people at a door that no longer opens. Tokens already stored keep
+    // their wiring above for as long as Anthropic honors them.
     connectNote:
-      'Claude Code builds on your own Anthropic account. Connect an API key, or a Claude subscription token from `claude setup-token`, under Connections.',
+      'Claude Code builds on your own Anthropic account. Connect an Anthropic API key under Connections and it can build here.',
     wrongKindNote: '',
   },
   codex: {
@@ -107,14 +111,17 @@ const BUILDER_WIRING: Record<BuilderAgentId, BuilderWiring> = {
       api_key: 'OPENAI_API_KEY',
     },
     platform: [{ envVar: 'OPENAI_API_KEY', kind: 'api_key' }],
-    connectNote: 'Codex builds on an OpenAI API key. Add one under Connections and it can build here.',
+    connectNote:
+      'Codex builds on your ChatGPT plan through your own computer, or on an OpenAI API key here. Connect either under Connections and it can build.',
     // Said plainly rather than tried and failed. The Codex CLI signs in to a
     // ChatGPT subscription through its own login flow, which writes a file
     // inside the machine it ran on — not something a pasted token reproduces
     // in a fresh sandbox. Handing it a subscription token as if it were a key
     // buys an auth error on a metered minute, so it is refused here instead.
+    // OpenAI does allow ChatGPT plans in third-party tools — that path runs
+    // through the computer bridge, where the Codex login actually lives.
     wrongKindNote:
-      'Codex needs an OpenAI API key — it can’t build on a ChatGPT subscription. Connect an API key under Connections and it can build here.',
+      'Codex can’t use a pasted subscription token in a fresh sandbox. Use your ChatGPT plan through the computer bridge, or connect an OpenAI API key, under Connections.',
   },
   'kimi-code': {
     provider: 'kimi', envVarByKind: { api_key: 'KIMI_API_KEY' }, platform: [{ envVar: 'KIMI_API_KEY', kind: 'api_key' }],

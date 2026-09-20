@@ -75,8 +75,10 @@ describe('every builder runs on the org’s own account', () => {
       expect(got.ok).toBe(false);
       if (got.ok) return;
       // A refusal a person can act on: it names the credential AND the screen.
-      expect(got.note).toMatch(/Anthropic/i);
-      expect(got.note).toMatch(/subscription/i);
+      // API key only — the note stopped suggesting a subscription token when
+      // Anthropic locked consumer-plan tokens to its own apps (Jan 2026).
+      expect(got.note).toMatch(/Anthropic API key/i);
+      expect(got.note).not.toMatch(/subscription/i);
       expect(got.note).toMatch(/Connections/);
     });
 

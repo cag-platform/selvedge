@@ -3,107 +3,21 @@ import { api } from '../lib/api.js';
 import { fuelLabel, keyHint } from '../lib/fuel.js';
 import { AGENTS } from '../../shared/agents.js';
 import { CompanionKeys } from '../components/CompanionKeys.js';
+import { ConnectProviders } from '../components/ConnectProviders.js';
 
 /**
- * Connections — one place to turn on every agent. Subscription-backed coding
- * agents can stay on a connected computer; model API keys are verified before
- * they are stored. Secrets are never shown back — only a last-four hint and a
+ * Connections — one place to turn on every agent. The big three (Claude, GPT,
+ * Gemini) are cards with one honest primary path each — see ConnectProviders
+ * for the provider-policy reasoning. Model API keys are verified before they
+ * are stored. Secrets are never shown back — only a last-four hint and a
  * status.
  */
 
 type Connected = { provider: string; kind: string; label: string | null; last4: string | null; status: string };
 type FuelState = { connected: Connected[]; available: string[]; coming_soon: string[] };
-type AgentConnection = {
-  connected: boolean;
-  kind: 'subscription' | 'api_key' | 'local' | null;
-  label: string | null;
-  last4: string | null;
-  machine: string | null;
-};
-type AgentConnectionState = {
-  agents: { codex: AgentConnection; claude_code: AgentConnection };
-  local: { connected: boolean; name: string | null; codex: boolean; claude_code: boolean };
-};
 
-function ConnectionCard({
-  title,
-  subtitle,
-  connection,
-  localLabel,
-  apiLabel,
-  subscriptionLabel,
-  primaryAction,
-  primaryHref,
-  secondaryAction,
-  secondaryHref,
-}: {
-  title: string;
-  subtitle: string;
-  connection: AgentConnection;
-  localLabel: string;
-  apiLabel: string;
-  subscriptionLabel: string;
-  primaryAction: string;
-  primaryHref: string;
-  secondaryAction: string;
-  secondaryHref: string;
-}) {
-  const connectedLabel = connection.kind === 'local'
-    ? `Connected on ${connection.machine ?? 'your computer'}`
-    : connection.kind === 'subscription'
-      ? subscriptionLabel
-      : connection.kind === 'api_key'
-        ? `${apiLabel}${connection.last4 ? ` ····${connection.last4}` : ''}`
-        : 'Not connected yet';
-  return (
-    <div className={`rounded-card border p-4 ${connection.connected ? 'border-action/40 bg-action-soft/30' : 'border-hairline bg-panel'}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-body font-medium text-ink">{title}</p>
-          <p className="mt-1 text-meta text-ink-dim">{subtitle}</p>
-        </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-meta font-medium ${connection.connected ? 'bg-action text-white' : 'bg-panel-soft text-ink-quiet'}`}>
-          {connection.connected ? (connection.kind === 'subscription' ? 'Saved · not verified' : 'Connected') : 'Needs setup'}
-        </span>
-      </div>
-      <p className="mt-4 text-meta text-ink">{connectedLabel}</p>
-      {!connection.connected && <p className="mt-1 text-meta text-ink-quiet">{localLabel}</p>}
-      {!connection.connected && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <a href={primaryHref} className="rounded-inset bg-action px-3 py-2 text-meta font-medium text-white hover:bg-action-bright">{primaryAction}</a>
-          <a href={secondaryHref} className="text-meta font-medium text-action hover:text-action-bright">{secondaryAction} ↓</a>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AgentConnections() {
-  const [state, setState] = useState<AgentConnectionState | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    const load = () => api.get<AgentConnectionState>('/api/agent-connections').then((value) => { if (alive) setState(value); }).catch(() => undefined);
-    void load();
-    const timer = window.setInterval(load, 10_000);
-    return () => { alive = false; window.clearInterval(timer); };
-  }, []);
-
-  const empty: AgentConnection = { connected: false, kind: null, label: null, last4: null, machine: null };
-  return (
-    <section className="space-y-3">
-      <div>
-        <p className="mb-1 text-label font-body uppercase tracking-widest text-ink-quiet">Your AI agents</p>
-        <p className="max-w-2xl text-body text-ink-dim">Choose one way to connect. You can change it later, and your project context stays the same.</p>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <ConnectionCard title="Codex / GPT" subtitle="Build with Codex or talk with GPT." connection={state?.agents.codex ?? empty} localLabel="Your ChatGPT subscription connects through Codex on your computer." apiLabel="OpenAI API key" subscriptionLabel="ChatGPT subscription on your computer" primaryAction="Connect this computer" primaryHref="#local-agents" secondaryAction="Use an API key" secondaryHref="#agent-keys" />
-        <ConnectionCard title="Claude / Claude Code" subtitle="Build with Claude Code or talk with Claude." connection={state?.agents.claude_code ?? empty} localLabel="Use Claude Code on your computer, or connect Claude here with a subscription token." apiLabel="Anthropic API key" subscriptionLabel="Claude Code subscription" primaryAction="Connect Claude" primaryHref="#agent-keys" secondaryAction="Use this computer" secondaryHref="#local-agents" />
-      </div>
-      <p className="text-meta text-ink-quiet">{state?.local.connected ? `Local agents are connected on ${state.local.name ?? 'your computer'}.` : 'Subscriptions stay with the provider. Selvedge only receives the work result and project state it needs.'}</p>
-    </section>
-  );
-}
+/** The providers whose cards live above — the generic key form covers the rest. */
+const CARDED_PROVIDERS = new Set(['openai', 'anthropic', 'gemini']);
 
 export function Connections() {
   const [state, setState] = useState<FuelState | null>(null);
@@ -123,25 +37,24 @@ export function Connections() {
   if (!state) return <p className="text-body text-ink-quiet">Loading…</p>;
 
   const connectedProviders = new Set(state.connected.map((c) => c.provider));
-  const connectable = state.available.filter((p) => !connectedProviders.has(p));
+  const connectable = state.available.filter((p) => !connectedProviders.has(p) && !CARDED_PROVIDERS.has(p));
 
   return (
     <div className="animate-settle space-y-8">
       <div>
-        <h1 className="text-display font-display font-medium text-ink">Connect your AI agents</h1>
-        <p className="mt-2 max-w-xl text-body text-ink-dim">One place to connect the agents you already use. Subscription access stays with that provider; API keys are always optional.</p>
+        <h1 className="text-display font-display font-medium text-ink">Connect your AI</h1>
+        <p className="mt-2 max-w-xl text-body text-ink-dim">One is enough to start. Your project context stays the same whichever you use.</p>
       </div>
 
-      <AgentConnections />
-
-      <div id="local-agents">
-        <CompanionKeys />
-      </div>
+      <section>
+        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Your AI</p>
+        <ConnectProviders />
+      </section>
 
       <section id="agent-keys">
-        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">API keys, when you want them</p>
+        <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Connected accounts</p>
         {state.connected.length === 0 ? (
-          <p className="text-body text-ink-quiet">No API accounts connected. That is fine when a subscription or local computer is connected above.</p>
+          <p className="text-body text-ink-quiet">Nothing connected yet. Connect one above and it appears here.</p>
         ) : (
           <div className="space-y-2">
             {state.connected.map((c) => (
@@ -152,6 +65,11 @@ export function Connections() {
       </section>
 
       {connectable.length > 0 && <ConnectForm providers={connectable} onConnected={() => void load()} />}
+
+      <details id="local-agents" className="rounded-card border border-hairline bg-panel p-4">
+        <summary className="cursor-pointer text-body font-medium text-ink">Your computer — subscriptions, session watching, and Apple builds</summary>
+        <div className="mt-4"><CompanionKeys /></div>
+      </details>
 
       {state.coming_soon.length > 0 && (
         <p className="text-meta text-ink-quiet">
@@ -364,23 +282,19 @@ function ConnectedRow({ row, onRemoved }: { row: Connected; onRemoved: () => voi
 }
 
 /**
- * Providers where a SUBSCRIPTION is an alternative to an API key.
+ * The long tail — Kimi, Grok, DeepSeek, Mistral — one generic key form.
  *
- * Claude Code can use a subscription token created by its official
- * `claude setup-token` flow. Codex/ChatGPT subscriptions stay on the local
- * Codex installation and are connected through the computer card above.
+ * The subscription-token option that used to live here is gone on purpose:
+ * Anthropic locked consumer-plan tokens to its own apps (enforced server-side
+ * since January 2026), so offering the paste path here sold a door that no
+ * longer opens. Existing stored tokens keep working wherever Anthropic still
+ * honors them; we just stopped advertising the path.
  */
-const SUBSCRIPTION_PROVIDERS = new Set<string>(['anthropic']);
-
 export function ConnectForm({ providers, onConnected }: { providers: string[]; onConnected: () => void }) {
   const [provider, setProvider] = useState(providers[0] ?? '');
   const [key, setKey] = useState('');
-  const [kind, setKind] = useState<'api_key' | 'subscription'>('api_key');
   const [state, setState] = useState<'idle' | 'checking'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const canSubscribe = SUBSCRIPTION_PROVIDERS.has(provider);
-  // A kind that stopped being offered must not stay selected underneath.
-  const effectiveKind = canSubscribe ? kind : 'api_key';
   const hint = keyHint(provider);
 
   async function submit(e: React.FormEvent) {
@@ -388,7 +302,7 @@ export function ConnectForm({ providers, onConnected }: { providers: string[]; o
     setState('checking');
     setError(null);
     try {
-      await api.post('/api/fuel', { provider, key: key.trim(), kind: effectiveKind });
+      await api.post('/api/fuel', { provider, key: key.trim(), kind: 'api_key' });
       setKey('');
       onConnected();
     } catch (err) {
@@ -401,7 +315,7 @@ export function ConnectForm({ providers, onConnected }: { providers: string[]; o
 
   return (
     <section>
-      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">Connect an API key or Claude subscription</p>
+      <p className="mb-3 text-label font-body uppercase tracking-widest text-ink-quiet">More providers</p>
       <form onSubmit={submit} className="max-w-xl space-y-3 rounded-card border border-hairline bg-panel p-4">
         <div className="flex flex-wrap gap-3">
           <select
@@ -415,21 +329,11 @@ export function ConnectForm({ providers, onConnected }: { providers: string[]; o
               </option>
             ))}
           </select>
-          {canSubscribe && (
-            <select
-              value={effectiveKind}
-              onChange={(e) => setKind(e.target.value === 'subscription' ? 'subscription' : 'api_key')}
-              className="rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
-            >
-              <option value="api_key">API key</option>
-              <option value="subscription">Subscription</option>
-            </select>
-          )}
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder={effectiveKind === 'subscription' ? 'paste your subscription token' : 'paste your API key'}
+            placeholder="paste your API key"
             className="min-w-[16rem] flex-1 rounded-inset border border-hairline bg-panel-soft px-3 py-1.5 text-body text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright"
           />
         </div>
@@ -445,28 +349,14 @@ export function ConnectForm({ providers, onConnected }: { providers: string[]; o
             </p>
           ))}
         </div>
-        {/*
-          Two different promises, so two different sentences. A key is pinged
-          before it's stored, so "checked before it's saved" is true. A
-          subscription can't be — only the CLI that uses it can prove it — and
-          saying it was checked would be a lie on the one screen whose whole
-          job is that "connected" means "works".
-        */}
-        {effectiveKind === 'subscription' ? (
-          <p className="text-meta text-ink-quiet">
-            Your Claude subscription: run <code className="font-mono text-tech">claude setup-token</code> and paste what it prints. It
-            can’t be checked from here the way a key can; your first build will prove it.
-          </p>
-        ) : (
-          hint && <p className="text-meta text-ink-quiet">Your {fuelLabel(provider)} key — {hint}. It's checked before it's saved.</p>
-        )}
+        {hint && <p className="text-meta text-ink-quiet">Your {fuelLabel(provider)} key — {hint}. It's checked before it's saved.</p>}
         <div className="flex items-center gap-3">
           <button
             type="submit"
             disabled={state === 'checking' || key.trim().length < 8}
             className="rounded-inset border border-hairline bg-panel-soft px-4 py-1.5 text-body font-medium text-ink transition-colors hover:bg-panel focus-visible:outline focus-visible:outline-2 focus-visible:outline-action-bright disabled:opacity-50"
           >
-            {state === 'checking' ? (effectiveKind === 'subscription' ? 'Saving…' : 'Checking…') : 'Connect'}
+            {state === 'checking' ? 'Checking…' : 'Connect'}
           </button>
           {error && <span className="text-meta text-thread">{error}</span>}
         </div>

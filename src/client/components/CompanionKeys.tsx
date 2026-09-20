@@ -15,7 +15,7 @@ type Key = { id: string; name: string; created_at: string; last_used_at: string 
 type AppleRuntime = { id: string; name: string; xcodeVersion: string; macosVersion: string; lastSeenAt: string; online: boolean };
 type AgentRuntime = { id: string; name: string; capabilities: { codex: boolean; claudeCode: boolean }; lastSeenAt: string; online: boolean };
 
-function CopyCommand({ command }: { command: string }) {
+export function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-2 flex min-w-0 items-center gap-2 rounded-inset border border-hairline bg-panel-soft px-3 py-2">

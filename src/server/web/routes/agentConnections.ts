@@ -61,11 +61,22 @@ export function createAgentConnectionsRouter(db: Db) {
           machine: null,
         };
       };
+      // Gemini has no local bridge and no subscription path — an API key is
+      // the whole story, so its state is the credential row and nothing else.
+      const geminiKey = credential('gemini', 'api_key');
+      const gemini: ConnectionState = {
+        connected: Boolean(geminiKey),
+        kind: geminiKey ? 'api_key' : null,
+        label: geminiKey?.label ?? null,
+        last4: geminiKey?.last4 ?? null,
+        machine: null,
+      };
 
       res.json({
         agents: {
           codex: state('codex'),
           claude_code: state('claude-code'),
+          gemini,
         },
         local: local
           ? {
