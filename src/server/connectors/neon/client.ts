@@ -33,6 +33,29 @@ export function neonProjectName(orgId: string, projectId: string): string {
   return `selvedge-${safe(orgId)}-${safe(projectId)}`;
 }
 
+async function existingDatabase(key: string, name: string): Promise<NeonDatabase | null> {
+  const listed = await fetch(`${ENDPOINT}?search=${encodeURIComponent(name)}&limit=10`, {
+    headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!listed.ok) throw new Error(`could not check the database provider for an existing project (${listed.status})`);
+  const body = (await listed.json()) as { projects?: Array<{ id?: string; name?: string }> };
+  const exact = (body.projects ?? []).filter((project) => project.name === name && project.id);
+  if (exact.length > 1) throw new Error('more than one matching database already exists; remove the duplicate before trying again');
+  const neonProjectId = exact[0]?.id;
+  if (!neonProjectId) return null;
+
+  const query = new URLSearchParams({ database_name: 'neondb', role_name: 'neondb_owner', pooled: 'true' });
+  const connected = await fetch(`${ENDPOINT}/${encodeURIComponent(neonProjectId)}/connection_uri?${query}`, {
+    headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  const connection = (await connected.json().catch(() => null)) as { uri?: string; connection_uri?: string } | null;
+  const connectionUri = connection?.uri ?? connection?.connection_uri;
+  if (!connected.ok || !connectionUri) throw new Error('the existing database was found but its connection could not be retrieved');
+  return { neonProjectId, connectionUri };
+}
+
 /**
  * Create an isolated Postgres for one app and return its connection string.
  * Throws with a plain reason on every failure path — the caller turns that into
@@ -42,6 +65,13 @@ export function neonProjectName(orgId: string, projectId: string): string {
 export async function createNeonDatabase(orgId: string, projectId: string): Promise<NeonDatabase> {
   const key = process.env.NEON_API_KEY?.trim();
   if (!key) throw new Error('no database provider is configured (NEON_API_KEY is not set)');
+  const name = neonProjectName(orgId, projectId);
+
+  // POST is not safely retryable. Search first using the deterministic name so
+  // an interrupted prior attempt converges on one project instead of creating
+  // another paid resource.
+  const existing = await existingDatabase(key, name);
+  if (existing) return existing;
 
   let res: Response;
   try {
@@ -52,7 +82,7 @@ export async function createNeonDatabase(orgId: string, projectId: string): Prom
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify({ project: { name: neonProjectName(orgId, projectId), region_id: REGION } }),
+      body: JSON.stringify({ project: { name, region_id: REGION } }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {

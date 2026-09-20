@@ -11,6 +11,7 @@ import { listHealthChecksToPoll } from '../../src/server/monitor/wiring.js';
 /** Every network edge stubbed — what's under test is the decision-making. */
 function deps(over: Partial<GoLiveDeps> = {}): GoLiveDeps {
   return {
+    databaseMode: 'neon',
     account: async () => ({ token: 'tok', owner: 'selvedge' }),
     provisionDb: async () => ({ neonProjectId: 'neon_1', connectionUri: 'postgres://u:p@h/db' }),
     hostProject: async () => ({ projectId: 'proj_1', environmentId: 'env_1' }),
@@ -99,6 +100,20 @@ describe('goLive — one button, from a repo to a working address', () => {
     expect(pack.topology.sources.some((s) => s.connector === 'neon')).toBe(true);
     // The secret is set on the host and held nowhere here.
     expect(JSON.stringify(pack)).not.toContain('secret@host');
+  });
+
+  it('does not create Neon when the owner says production data is already managed', async () => {
+    let provisioned = 0;
+    await goLive(db, orgId, 'loom', deps({
+      databaseMode: 'existing',
+      readFile: async () => 'DATABASE_URL=\n',
+      provisionDb: async () => {
+        provisioned += 1;
+        return { neonProjectId: 'should_not_exist', connectionUri: 'postgres://unused' };
+      },
+    }));
+    expect(provisioned).toBe(0);
+    expect((await getPack(db, orgId, 'loom'))?.topology.sources.some((source) => source.connector === 'neon')).toBe(false);
   });
 
   it('skips the database for an app that never asked for one', async () => {

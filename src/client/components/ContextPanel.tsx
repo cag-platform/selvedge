@@ -105,6 +105,8 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [goLiveOperation, setGoLiveOperation] = useState<GoLiveOperation | null>(null);
+  const [deployOpen, setDeployOpen] = useState(false);
+  const [databaseMode, setDatabaseMode] = useState<'neon' | 'existing'>('neon');
   const onReloadRef = useRef(onReload);
   const liveRefreshSent = useRef(false);
   // Opened by the failure that needs it, and stays open afterwards so a second
@@ -183,11 +185,10 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
   }, [data.working]);
 
   async function goLive() {
-    if (!window.confirm('Deploy this app to your connected hosting account? This creates or updates a public production service. Your private Selvedge preview will remain separate.')) return;
     setBusy(true);
     setNote(null);
     try {
-      const next = await api.post<GoLiveOperation>(`/api/projects/${data.project.id}/workshop/golive`, {});
+      const next = await api.post<GoLiveOperation>(`/api/projects/${data.project.id}/workshop/golive`, { database_mode: databaseMode });
       setGoLiveOperation(next);
       setNote(next.message);
       onReload();
@@ -219,9 +220,26 @@ function LiveApp({ data, onReload }: { data: ThreadData & { project: { id: strin
       ) : (
         <div className="space-y-work-tight">
           <p className="text-body text-ink-dim">Private preview</p>
-          <button disabled={busy || goLiveOperation?.status === 'running' || goLiveOperation?.status === 'building'} onClick={() => void goLive()} className={btnPrimary}>
+          {!deployOpen ? <button disabled={busy || goLiveOperation?.status === 'running' || goLiveOperation?.status === 'building'} onClick={() => setDeployOpen(true)} className={btnPrimary}>
             {busy || goLiveOperation?.status === 'running' ? 'Creating production app…' : goLiveOperation?.status === 'building' ? 'Production host is building…' : 'Deploy to production hosting'}
-          </button>
+          </button> : (
+            <div className="rounded-card border border-hairline bg-panel p-work">
+              <p className="text-body font-semibold text-ink">Where should production data live?</p>
+              <p className="mt-1 text-meta text-ink-quiet">Selvedge never creates a production database unless you choose it here.</p>
+              <label className="mt-3 flex cursor-pointer gap-3 rounded-inset border border-hairline p-3">
+                <input type="radio" name="production-database" checked={databaseMode === 'neon'} onChange={() => setDatabaseMode('neon')} />
+                <span><span className="block text-body font-medium text-ink">Create one Neon database</span><span className="block text-meta text-ink-quiet">Recommended when this app needs saved data. You can claim it into your Neon account.</span></span>
+              </label>
+              <label className="mt-2 flex cursor-pointer gap-3 rounded-inset border border-hairline p-3">
+                <input type="radio" name="production-database" checked={databaseMode === 'existing'} onChange={() => setDatabaseMode('existing')} />
+                <span><span className="block text-body font-medium text-ink">Do not create a database</span><span className="block text-meta text-ink-quiet">Use this only when the app does not need DATABASE_URL or you will configure it directly in hosting.</span></span>
+              </label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button disabled={busy} onClick={() => void goLive()} className={btnPrimary}>{busy ? 'Starting…' : 'Deploy app'}</button>
+                <button disabled={busy} onClick={() => setDeployOpen(false)} className="rounded-inset border border-hairline px-4 py-2 text-body text-ink">Cancel</button>
+              </div>
+            </div>
+          )}
           {note && <p className="text-meta text-ink-quiet">{note}</p>}
         </div>
       )}

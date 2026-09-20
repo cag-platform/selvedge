@@ -8,7 +8,7 @@ import type { Db } from '../../db/client.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getPack } from '../../packs/store.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../../db/schema/index.js';
-import { getBuild, setBuild } from '../../build/store.js';
+import { beginGoLive, getBuild, setBuild } from '../../build/store.js';
 import { ensureWorkshopThread } from '../../threads/store.js';
 import { runAgentTurn, type AttachedFile } from '../../build/agent.js';
 import { MAX_STAGED_FILE_BYTES, validateFileRefs, validateImages } from '../attachments.js';
@@ -671,18 +671,18 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         res.status(404).json({ error: 'no such project' });
         return;
       }
-      const current = await getBuild(db, orgId, projectId);
-      const fresh = current?.goLiveStartedAt && current.goLiveStartedAt.getTime() > Date.now() - STUCK_GO_LIVE_MS;
-      if (current?.goLiveStatus === 'running' && fresh) {
-        res.status(202).json({ status: 'running', message: current.goLiveMessage ?? 'Setting up the live app.', url: null });
+      const databaseMode = (req.body as { database_mode?: unknown })?.database_mode;
+      if (databaseMode !== 'neon' && databaseMode !== 'existing') {
+        res.status(400).json({ error: 'Choose where production data should live before deploying.' });
         return;
       }
-      await setBuild(db, orgId, projectId, {
-        goLiveStatus: 'running',
-        goLiveMessage: 'Setting up the live app.',
-        goLiveStartedAt: new Date(),
-      });
-      void (deps.goLive ?? goLive)(db, orgId, projectId).then(async (outcome) => {
+      const won = await beginGoLive(db, orgId, projectId, new Date(Date.now() - STUCK_GO_LIVE_MS));
+      if (!won) {
+        const current = await getBuild(db, orgId, projectId);
+        res.status(202).json({ status: 'running', message: current?.goLiveMessage ?? 'Setting up the live app.', url: null });
+        return;
+      }
+      void (deps.goLive ?? goLive)(db, orgId, projectId, { databaseMode }).then(async (outcome) => {
         await setBuild(db, orgId, projectId, {
           goLiveStatus: outcome.outcome === 'live' || outcome.outcome === 'already_live'
             ? 'succeeded'

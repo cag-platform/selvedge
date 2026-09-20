@@ -112,7 +112,7 @@ describe('web/routes/workshop — the workshop surface', () => {
     const pending = new Promise<{ outcome: 'live'; url: string; message: string }>((resolve) => { finish = resolve; });
     const theApp = app({ goLive: (async () => pending) as WorkshopDeps['goLive'] });
 
-    const started = await request(theApp).post('/api/projects/loom/workshop/golive').send({});
+    const started = await request(theApp).post('/api/projects/loom/workshop/golive').send({ database_mode: 'neon' });
     expect(started.status).toBe(202);
     expect((await request(theApp).get('/api/projects/loom/workshop/golive')).body).toMatchObject({ status: 'running' });
 
@@ -122,12 +122,18 @@ describe('web/routes/workshop — the workshop surface', () => {
     });
   });
 
+  it('requires an explicit production database choice', async () => {
+    const res = await request(app()).post('/api/projects/loom/workshop/golive').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/choose where production data should live/i);
+  });
+
   it('does not start a duplicate go-live while one is already running', async () => {
     let calls = 0;
     const never = new Promise<never>(() => undefined);
     const theApp = app({ goLive: (async () => { calls += 1; return never; }) as WorkshopDeps['goLive'] });
-    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({})).status).toBe(202);
-    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({})).status).toBe(202);
+    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({ database_mode: 'neon' })).status).toBe(202);
+    expect((await request(theApp).post('/api/projects/loom/workshop/golive').send({ database_mode: 'neon' })).status).toBe(202);
     expect(calls).toBe(1);
   });
 

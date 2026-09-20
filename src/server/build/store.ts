@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, lt, ne, or } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { projectBuild } from '../db/schema/index.js';
 
@@ -34,6 +34,36 @@ export async function setBuild(
       target: [projectBuild.orgId, projectBuild.projectId],
       set: { ...fields, updatedAt: new Date() },
     });
+}
+
+/** Atomically win the right to provision production infrastructure. */
+export async function beginGoLive(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  staleBefore: Date,
+): Promise<boolean> {
+  await db.insert(projectBuild).values({ orgId, projectId }).onConflictDoNothing();
+  const [claimed] = await db
+    .update(projectBuild)
+    .set({
+      goLiveStatus: 'running',
+      goLiveMessage: 'Setting up the live app.',
+      goLiveStartedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(projectBuild.orgId, orgId),
+      eq(projectBuild.projectId, projectId),
+      or(
+        isNull(projectBuild.goLiveStatus),
+        ne(projectBuild.goLiveStatus, 'running'),
+        isNull(projectBuild.goLiveStartedAt),
+        lt(projectBuild.goLiveStartedAt, staleBefore),
+      ),
+    ))
+    .returning({ projectId: projectBuild.projectId });
+  return Boolean(claimed);
 }
 
 /** Renew a temporary development-preview lease from its proxy hostname. */

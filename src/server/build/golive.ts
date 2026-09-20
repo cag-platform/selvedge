@@ -129,6 +129,8 @@ async function say(db: Db, orgId: string, projectId: string, content: string): P
 }
 
 export type GoLiveDeps = {
+  /** An explicit owner choice; absence never authorizes creating a database. */
+  databaseMode?: 'neon' | 'existing';
   account?: (db: Db, orgId: string) => Promise<HostAccount | null>;
   provisionDb?: (orgId: string, projectId: string) => Promise<{ neonProjectId: string; connectionUri: string }>;
   hostProject?: (token: string, opts: { pinnedProjectId?: string | null; anyProject?: boolean }) => Promise<{ projectId: string; environmentId: string }>;
@@ -194,7 +196,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     if (live >= limit) {
       return {
         outcome: 'not_possible',
-        message: 'Online app limit reached. Take one offline or upgrade.',
+        message: 'You reached the online app limit on your plan. Take one offline or upgrade.',
       };
     }
   }
@@ -216,7 +218,7 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
       } catch (err) {
         return {
           outcome: 'failed',
-          message: 'Could not check Railway. Retry.',
+          message: "Could not check Railway, so I didn't create anything. Retry.",
         };
       }
       if (adoptedService) {
@@ -241,16 +243,20 @@ export async function goLive(db: Db, orgId: string, projectId: string, deps: GoL
     if (!target) {
       const repoRead = await resolveRepoToken(db, orgId, repo);
       if (!hasDatabase(pack) && needsDatabase(await readFile(repo, '.env.example', repoRead.ok ? repoRead.token : undefined))) {
-        if (!neonConfigured() && !deps.provisionDb) {
-          return { outcome: 'not_possible', message: "This app needs a database, and Selvedge's database provider isn't configured yet." };
+        if (deps.databaseMode === 'neon') {
+          if (!neonConfigured() && !deps.provisionDb) {
+            return { outcome: 'not_possible', message: "This app needs a database, and Selvedge's database provider isn't configured yet." };
+          }
+          await say(db, orgId, projectId, 'Setting up one Neon database for this project…');
+          const created = await provisionDb(orgId, projectId);
+          neonProjectId = created.neonProjectId;
+          // The connection string is set on the host and deliberately not stored
+          // here: Selvedge never needs to read it again, and a secret it does not
+          // hold is a secret it cannot leak.
+          variables.DATABASE_URL = created.connectionUri;
+        } else {
+          await say(db, orgId, projectId, 'No new database was created. I will use the production database configuration you already manage.');
         }
-        await say(db, orgId, projectId, 'Setting up a database for it…');
-        const created = await provisionDb(orgId, projectId);
-        neonProjectId = created.neonProjectId;
-        // The connection string is set on the host and deliberately not stored
-        // here: Selvedge never needs to read it again, and a secret it does not
-        // hold is a secret it cannot leak.
-        variables.DATABASE_URL = created.connectionUri;
       }
     }
 
