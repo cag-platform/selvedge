@@ -1,9 +1,9 @@
 /**
  * SELVEDGE DESIGN TOKENS — the single source of truth ("The Look", Prompt 1).
  *
- * Design thesis: the dark craftsperson's workbench — Toile's coloring in
- * Selvedge's cloth. Deep navy is the canvas; raised navy panes lift the
- * brief, cards, and inputs; cream is the ink. Selvedge keeps its own
+ * Design thesis: midnight glass — deep navy is the anchor, ice-blue and
+ * silver lift the panes, and Selvedge green remains the one interaction
+ * color. Selvedge keeps its own
  * typography (Fraunces headlines, the mono technical register) and its one
  * signature: --thread appears ONLY for what needs the user. Jewel tones
  * (emerald action, gold attention, sage health) stay rationed as accents.
@@ -12,22 +12,22 @@
 
 :root {
   /* ---- COLOR ---- */
-  --paper: #0f1b2d; /* navy-950 — the workbench canvas */
-  --ink: #f5f3ed; /* cream — primary ink on dark */
-  --ink-dim: #a9b6c6; /* secondary text; ~7.4:1 on panel */
+  --paper: #061425; /* midnight navy — the dependable brand anchor */
+  --ink: #f4f7fb; /* silver white */
+  --ink-dim: #a9bbcf;
   /* DECORATION ONLY — the dashed unknown seam. Too dim on navy to carry
      words (≈3:1), so it must never be text. Text that wants to recede uses
      --ink-quiet below. The seam is exempt because it is aria-hidden
      decoration sitting over a plain-text health line that says the same
      thing, and because its meaning is carried by SHAPE (dashed) rather than
      colour — that is the point of the dash. */
-  --ink-faint: #64748b;
+  --ink-faint: #667085;
   /* The quiet text colour: recedes without becoming unreadable. ≈6.5:1 on
      paper, ≈5.9:1 on panel — passes AA for body text on both grounds. */
-  --ink-quiet: #94a3b8;
-  --panel: #15263b; /* navy-900 — raised surface */
-  --panel-soft: #1c2e46; /* insets, hover fills, inputs */
-  --hairline: rgba(245, 243, 237, 0.13);
+  --ink-quiet: #91a2b6;
+  --panel: #0b1828; /* deep ink */
+  --panel-soft: #13263b;
+  --hairline: rgba(220, 238, 255, 0.16);
 
   /* STATUS — rationed by rule, not preference:
      thread = needs-you ONLY. brass = working/attention-adjacent (gold now).
@@ -35,13 +35,13 @@
      (shape-distinct from healthy: "I can't see this" must never read as
      "fine"). action = the one doing color (deep emerald, Toile's CTA). */
   --thread: #e2704b; /* selvedge rust, lifted for dark ground (≈4.9:1 on panel) */
-  --brass: #c49a2a; /* gold — ≈5.8:1 on panel */
+  --brass: #ffd9a0; /* champagne — attention only */
   --healthy: #7fae8e; /* sage — ≈6:1 on panel */
-  --action: #2d5a3d; /* deep emerald button fill; carries cream text (≈7:1) */
+  --action: #178d57;
   /* The interaction emerald: links, focus rings, carets, accents on things
      you can DO. ≈4.6:1 on panel — AA at body size. Never a status color:
      healthy (sage) says "fine", action-bright says "touch here". */
-  --action-bright: #5c9a74;
+  --action-bright: #72bf8c;
 
   /* ---- TYPE ----
      Register shifts TYPEFACE on drill-down (body -> mono) — load-bearing:
@@ -103,13 +103,12 @@
   --specular: radial-gradient(120% 90% at 12% 0%, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 55%);
 }
 
-/* Signed-in product: warm mineral paper and pale sage. Public pages keep the
-   dark editorial palette; app chrome opts into this semantic set. */
+/* Signed-in product: ice-blue daylight and midnight glass after dark. */
 .product-shell {
-  --paper:#f3f2eb;--paper-soft:#f8f8f3;--ink:#183126;--ink-dim:#657269;--ink-quiet:#77837b;--ink-faint:#87938b;
-  --panel:#fbfbf7;--panel-soft:#e6eee7;--sage:#e1eae1;--hairline:#ccd4cd;--thread:#b84f39;--brass:#99721f;
-  --healthy:#4f8c68;--action:#178d57;--action-bright:#167a4d;--deep:#173c2b;--paper-dim:#cbd8ce;
-  --glass-fill:rgba(247,248,243,.94);--glass-fill-soft:#eef2ec;--glass-blur:blur(12px) saturate(1.04);
+  --paper:#dceeff;--paper-soft:#eaf5ff;--ink:#061425;--ink-dim:#526174;--ink-quiet:#667085;--ink-faint:#7f8b9b;
+  --panel:#f4f7fb;--panel-soft:#e3effa;--sage:#dcefe7;--hairline:#b9cde0;--thread:#b84f39;--brass:#9a6a23;
+  --healthy:#4f8c68;--action:#178d57;--action-bright:#167a4d;--deep:#061425;--paper-dim:#c4d9eb;
+  --glass-fill:rgba(244,247,251,.9);--glass-fill-soft:rgba(227,239,250,.9);--glass-blur:blur(14px) saturate(1.08);
   min-height:100vh;background:var(--paper);color:var(--ink)
 }
 
@@ -117,15 +116,15 @@
    warp is almost below perception; the active horizontal light gathers near
    the composer, where a new strand enters the project. */
 .product-shell[data-theme='night'] {
-  --paper:#101914;--paper-soft:#131f18;--ink:#f0eee6;--ink-dim:#b7c0b8;--ink-quiet:#98a49b;--ink-faint:#758279;
-  --panel:#16221b;--panel-soft:#1d2d23;--sage:#21352a;--hairline:rgba(235,238,229,.14);
-  --thread:#ed8a68;--brass:#d0aa4e;--healthy:#86b99a;--action:#397f55;--action-bright:#72bf8c;--deep:#0c281b;--paper-dim:#c6cec3;
-  --glass-fill:rgba(16,25,20,.9);--glass-fill-soft:rgba(29,45,35,.9);--glass-blur:blur(14px) saturate(1.08);
-  --specular:radial-gradient(110% 75% at 16% 0%,rgba(130,184,146,.08),transparent 58%);
+  --paper:#061425;--paper-soft:#09192b;--ink:#f4f7fb;--ink-dim:#a9bbcf;--ink-quiet:#91a2b6;--ink-faint:#667085;
+  --panel:#0b1828;--panel-soft:#13263b;--sage:#102d2b;--hairline:rgba(220,238,255,.16);
+  --thread:#ed8a68;--brass:#ffd9a0;--healthy:#86b99a;--action:#178d57;--action-bright:#72bf8c;--deep:#030d18;--paper-dim:#a9bbcf;
+  --glass-fill:rgba(11,24,40,.84);--glass-fill-soft:rgba(19,38,59,.82);--glass-blur:blur(16px) saturate(1.12);
+  --specular:radial-gradient(110% 75% at 16% 0%,rgba(220,238,255,.11),transparent 58%);
   background-color:var(--paper);
   background-image:
-    radial-gradient(ellipse 72% 34% at 52% 100%,rgba(64,145,94,.14),transparent 72%),
-    repeating-linear-gradient(90deg,rgba(220,232,218,.018) 0 1px,transparent 1px 76px);
+    radial-gradient(ellipse 72% 34% at 52% 100%,rgba(77,174,255,.09),transparent 72%),
+    repeating-linear-gradient(90deg,rgba(220,238,255,.018) 0 1px,transparent 1px 76px);
   background-attachment:fixed;
 }
 

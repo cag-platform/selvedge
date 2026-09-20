@@ -124,7 +124,7 @@ export function Nav({ theme, resolvedTheme, onThemeChange }: {
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-meta text-ink-quiet">{theme === 'night' || (theme === 'system' && resolvedTheme === 'night') ? 'Night Weave' : 'Mineral light'}</p>
+                <p className="mt-2 text-meta text-ink-quiet">{theme === 'night' || (theme === 'system' && resolvedTheme === 'night') ? 'Midnight glass' : 'Ice light'}</p>
               </div>
             </nav>
           </details>
