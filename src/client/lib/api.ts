@@ -72,9 +72,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
+      ...init,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'x-selvedge-surface': productSurface(), ...init?.headers },
-      ...init,
     });
   } catch {
     // `fetch` only rejects when the request never happened: no network, DNS
@@ -134,9 +134,30 @@ function productSurface(): 'desktop_web' | 'responsive_web' {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-  post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body: unknown) => post<T>(path, body),
   // PUT for the routes that set a whole thing rather than nudging one field —
   // a project's preview environment is written as a set, not patched.
   put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
+
+// Retain a message's identity across an ambiguous network failure, not across
+// deliberate new messages after a successful response. Bounded to this tab.
+const pendingMessages = new Map<string, string>();
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const serialized = JSON.stringify(body);
+  if (!/^\/api\/threads\/[^/]+\/message$/.test(path)) return request<T>(path, { method: 'POST', body: serialized });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
+  const fingerprint = `${path}:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+  const key = pendingMessages.get(fingerprint) ?? crypto.randomUUID();
+  if (pendingMessages.size >= 50 && !pendingMessages.has(fingerprint)) throw new ApiError('Too many unresolved messages. Reconnect to the active work before sending more.', 409, {});
+  pendingMessages.set(fingerprint, key);
+  try {
+    const result = await request<T>(path, { method: 'POST', body: serialized, headers: { 'Idempotency-Key': key } });
+    pendingMessages.delete(fingerprint);
+    return result;
+  } catch (error) {
+    if (error instanceof ApiError && error.status > 0 && error.status < 500 && error.status !== 409) pendingMessages.delete(fingerprint);
+    throw error;
+  }
+}

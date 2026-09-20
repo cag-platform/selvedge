@@ -83,17 +83,14 @@ describe('stopping a turn, and never leaving a lock behind', () => {
     expect(said.content).toContain('nothing was shipped');
   });
 
-  it('still gives the conversation back when the sandbox cannot be reached', async () => {
+  it('does not claim the process stopped when the provider cannot confirm it', async () => {
     const id = await startRun();
-    const outcome = await stopActiveRun(db, orgId, 'loom', {
+    await expect(stopActiveRun(db, orgId, 'loom', {
       halt: async () => {
         throw new Error('workspace is down');
       },
-    });
-    // Being locked out of your own conversation by a SECOND failure is the
-    // worst of both: the run closes regardless.
-    expect(outcome.stopped).toBe(true);
-    expect((await runRow(id))?.status).toBe('cancelled');
+    })).rejects.toThrow('workspace is down');
+    expect((await runRow(id))?.status).toBe('running');
   });
 
   it('answers plainly when there is nothing to stop', async () => {

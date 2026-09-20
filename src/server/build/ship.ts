@@ -1,8 +1,11 @@
 import { ulid } from 'ulid';
+import { and, eq } from 'drizzle-orm';
+import { createRun, recordRunEvent } from '../workspace/coordinator.js';
+import { compileTaskContext } from '../context/compiler.js';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentRuns } from '../db/schema/index.js';
 import { getBuild, setBuild } from './store.js';
-import { deleteSandbox, ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
+import { scheduleWorkspaceExpiry, ensureSandbox, WORKDIR, type SandboxConfig } from './sandbox.js';
 import type { ExecuteInSandbox } from './agent.js';
 import { pathSignals } from '../cards/triggers.js';
 import { HOST_TOPOLOGY_CONNECTORS } from '../connectors/registry.js';
@@ -96,11 +99,52 @@ export function shipMessageFor(reach: ShipReach): string {
 }
 
 export async function shipChanges(
+  db: Db, orgId: string, projectId: string, cfg: SandboxConfig,
+  opts: { backupConfirmed?: boolean; summary?: string; threadId?: string; requestKey?: string } = {},
+  deps: { execute?: ExecuteInSandbox; destroyWorkspace?: () => Promise<void> } = {},
+): Promise<ShipOutcome> {
+  if (opts.requestKey) {
+    const [prior] = await db.select().from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId), eq(agentRuns.requestKey, opts.requestKey))).limit(1);
+    const recorded = prior?.runtimeFacts.release_succeeded ?? prior?.runtimeFacts.release_failed;
+    if (recorded && typeof recorded === 'object' && 'result' in recorded) return recorded.result as ShipOutcome;
+  }
+  const build = await getBuild(db, orgId, projectId);
+  if (!build?.stagedChangesReady || (!build.sandboxId && !build.checkpointArchiveBase64)) return { outcome: 'nothing_to_ship', message: "There's nothing waiting to ship — ask for a change first." };
+  return coordinateRelease(db, orgId, projectId, opts.threadId, `ship: ${opts.summary ?? 'changes from the workshop'}`, opts.requestKey,
+    (runId, threadId) => executeShipChanges(db, orgId, projectId, cfg, { ...opts, runId, threadId }, deps),
+    result => result.outcome === 'shipped');
+}
+
+async function coordinateRelease<T extends { message: string }>(db: Db, orgId: string, projectId: string, existingThread: string | undefined,
+  objective: string, requestKey: string | undefined, perform: (runId: string, threadId: string) => Promise<T>, succeeded: (result: T) => boolean): Promise<T> {
+  const threadId = existingThread ?? (await ensureWorkshopThread(db, orgId, projectId)).id;
+  const capsule = await compileTaskContext(db, { orgId, projectId, threadId, userRequest: objective });
+  const claim = await createRun(db, { orgId, projectId, threadId, requestKey: requestKey ?? ulid(), capsuleId: capsule.capsule_id, prompt: objective, agent: 'selvedge-release' });
+  if (!claim.created) {
+    const fact = claim.run.runtimeFacts.release_succeeded ?? claim.run.runtimeFacts.release_failed;
+    if (fact && typeof fact === 'object' && 'result' in fact) return fact.result as T;
+    throw new Error('This release is already in progress. Reconnect to its run.');
+  }
+  const runId = claim.run.id;
+  await recordRunEvent(db, orgId, runId, { key: 'request', kind: 'release_requested', source: 'owner' });
+  await recordRunEvent(db, orgId, runId, { key: 'starting', kind: 'starting', source: 'coordinator' });
+  await recordRunEvent(db, orgId, runId, { key: 'release-start', kind: 'release_started', source: 'release' });
+  try {
+    const result = await perform(runId, threadId);
+    await recordRunEvent(db, orgId, runId, { key: 'release-result', kind: succeeded(result) ? 'release_succeeded' : 'release_failed', source: 'release', payload: { result, deploymentVerified: false } });
+    return result;
+  } catch (error) {
+    await recordRunEvent(db, orgId, runId, { key: 'release-error', kind: 'release_uncertain', source: 'release', payload: { summary: 'Release result could not be confirmed. Inspect Git and the executing process before retrying.', terminationReason: error instanceof Error ? error.message : 'Unknown release error' } });
+    throw error;
+  } finally { scheduleWorkspaceExpiry(db, orgId, projectId, runId); }
+}
+
+async function executeShipChanges(
   db: Db,
   orgId: string,
   projectId: string,
   cfg: SandboxConfig,
-  opts: { backupConfirmed?: boolean; summary?: string; threadId?: string } = {},
+  opts: { backupConfirmed?: boolean; summary?: string; threadId: string; runId: string },
   deps: { execute?: ExecuteInSandbox; destroyWorkspace?: () => Promise<void> } = {},
 ): Promise<ShipOutcome> {
   const build = await getBuild(db, orgId, projectId);
@@ -169,18 +213,11 @@ export async function shipChanges(
   // 3) The record and the undo lever. changedPaths is the exact file list the
   // risk gate judged above — persisted so a shipped commit is auditable: what
   // went out, and why it was (or wasn't) hard-gated.
-  await db.insert(agentRuns).values({
-    id: ulid(),
-    orgId,
-    projectId,
-    threadId,
-    prompt: `ship: ${summary}`,
-    status: 'succeeded',
+  await db.update(agentRuns).set({
     commitSha: commit,
     changedPaths: paths,
-    startedAt: new Date(),
-    finishedAt: new Date(),
-  });
+  }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, opts.runId)));
+  await recordRunEvent(db, orgId, opts.runId, { key: 'release-git', kind: 'git_changed', source: 'git', payload: { commit, paths, branch: build.branch, pushed: true } });
   // Say only what is true for THIS project: whether anything is actually
   // wired to put the push online, and whether we can watch it land.
   const reach = shipReach(await getPack(db, orgId, projectId).catch(() => null));
@@ -191,6 +228,7 @@ export async function shipChanges(
     projectId,
     threadId,
     role: 'agent',
+    runId: opts.runId,
     content: line,
     meta: { ship: { commit, reach } },
   });
@@ -198,7 +236,8 @@ export async function shipChanges(
   // commit and the audit record exists, destroy the container and clear every
   // session/preview handle that pointed into it. A failed push returns above,
   // deliberately preserving the workspace so the owner can retry.
-  await (deps.destroyWorkspace ?? (() => deleteSandbox(db, orgId, projectId)))().catch((error) => {
+  await setBuild(db, orgId, projectId, { stagedChangesReady: false, dirtyRunId: null, dirtyThreadId: null, dirtyAgent: null, dirtyObservedAt: null });
+  await deps.destroyWorkspace?.().catch((error) => {
     console.error(`shipped ${projectId}, but could not destroy its development workspace:`, error);
   });
 
@@ -280,12 +319,21 @@ export async function observeAfterShip(
 
 /** Undo a ship: a real `git revert` of exactly that commit, pushed the same way. */
 export async function rollbackShip(
+  db: Db, orgId: string, projectId: string, cfg: SandboxConfig, commit: string,
+  deps: { execute?: ExecuteInSandbox; threadId?: string } = {},
+): Promise<{ ok: boolean; message: string }> {
+  if (!/^[0-9a-f]{7,40}$/i.test(commit)) return { ok: false, message: "That doesn't look like a commit I shipped." };
+  return coordinateRelease(db, orgId, projectId, deps.threadId, `undo: revert of ${commit.slice(0, 7)}`, undefined,
+    (runId, threadId) => executeRollbackShip(db, orgId, projectId, cfg, commit, { ...deps, runId, threadId }), result => result.ok);
+}
+
+async function executeRollbackShip(
   db: Db,
   orgId: string,
   projectId: string,
   cfg: SandboxConfig,
   commit: string,
-  deps: { execute?: ExecuteInSandbox; threadId?: string } = {},
+  deps: { execute?: ExecuteInSandbox; threadId: string; runId: string },
 ): Promise<{ ok: boolean; message: string }> {
   if (!/^[0-9a-f]{7,40}$/i.test(commit)) return { ok: false, message: "That doesn't look like a commit I shipped." };
 
@@ -316,16 +364,7 @@ export async function rollbackShip(
 
   // An undo is a decision too — it gets a run row like the ship it reverses,
   // so the record shows both directions of the change.
-  await db.insert(agentRuns).values({
-    id: ulid(),
-    orgId,
-    projectId,
-    threadId,
-    prompt: `undo: revert of ${commit.slice(0, 7)}`,
-    status: 'succeeded',
-    startedAt: new Date(),
-    finishedAt: new Date(),
-  });
+  await recordRunEvent(db, orgId, deps.runId, { key: 'revert-git', kind: 'git_changed', source: 'git', payload: { revertedCommit: commit, branch: build?.branch ?? 'main', pushed: true } });
   await db.insert(agentMessages).values({
     id: ulid(),
     orgId,
@@ -333,6 +372,7 @@ export async function rollbackShip(
     threadId,
     role: 'agent',
     content: `Undone — I reverted that ship (${commit.slice(0, 7)}) and pushed the revert. Your host is rolling back to the previous version now.`,
+    runId: deps.runId,
   });
   return { ok: true, message: 'Undone — the revert is pushed and your host is rolling back.' };
 }

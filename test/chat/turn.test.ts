@@ -76,12 +76,25 @@ describe('a general thread turn', () => {
     });
 
     const [answer] = await db.select().from(agentMessages).where(eq(agentMessages.threadId, thread.id));
-    expect(answer?.meta).toEqual({
+    expect(answer?.meta).toMatchObject({
       answered_by: 'codex',
       consultation_id: 'consultation-1',
       in_reply_to: 'owner-message-1',
       consultation_lane: { status: 'answered' },
     });
+  });
+
+  it('deduplicates a retried consultation lane and reuses its answer', async () => {
+    const thread = await chatThread();
+    const client = replying('Keep the border subtle.');
+    const consultation = { id: 'consultation-retry', promptId: 'owner-message-1' };
+    const options = { client, recordOwnerMessage: false, answeringAs: 'codex' as const, asTake: true, consultation };
+    await runChatTurn(db, orgId, thread, 'which treatment reads better?', options);
+    const retry = await runChatTurn(db, orgId, thread, 'which treatment reads better?', options);
+    expect(retry).toMatchObject({ ok: true, reply: 'Keep the border subtle.' });
+    expect(client.requests).toHaveLength(1);
+    const answers = await db.select().from(agentMessages).where(and(eq(agentMessages.threadId, thread.id), eq(agentMessages.role, 'agent')));
+    expect(answers).toHaveLength(1);
   });
 
   it('keeps that identity when one consulted agent cannot answer', async () => {
@@ -257,7 +270,7 @@ describe('a general thread turn', () => {
     await runChatTurn(db, orgId, thread, 'hello', { client });
     unsubscribe();
 
-    expect(events.map((event) => event.type)).toEqual(['reply_started', 'reply_delta', 'reply_delta', 'reply_finished']);
+    expect(events.filter(event => event.type !== 'workspace_changed').map((event) => event.type)).toEqual(['reply_started', 'reply_delta', 'reply_delta', 'reply_finished']);
     expect(events.filter((event): event is Extract<LiveChatEvent, { type: 'reply_delta' }> => event.type === 'reply_delta').map((event) => event.text).join('')).toBe('Hello there\nfriend');
   });
 });

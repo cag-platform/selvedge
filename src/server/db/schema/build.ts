@@ -21,6 +21,10 @@ export const projectBuild = pgTable(
     projectId: text('project_id').notNull(),
     /** The temporary Development Workspace id, or null when none exists. */
     sandboxId: text('sandbox_id'),
+    leaseOwner: text('lease_owner'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    workspaceState: text('workspace_state').notNull().default('inactive'),
+    provisioningKey: text('provisioning_key'),
     /** The Claude Code session id, for --resume so iteration continues the conversation. */
     claudeSessionId: text('claude_session_id'),
     /** The Codex CLI session id, for the same reason. Separate column because they are separate conversations
@@ -129,6 +133,15 @@ export const agentRuns = pgTable(
      *  git trailer, so commit -> session resolves from either side. */
     threadId: text('thread_id'),
     prompt: text('prompt').notNull(),
+    ownerId: text('owner_id'),
+    requestKey: text('request_key'),
+    runRole: text('run_role').notNull().default('builder'),
+    capsuleId: text('capsule_id'),
+    lifecycle: text('lifecycle').notNull().default('queued'),
+    runtimeFacts: jsonb('runtime_facts').$type<Record<string, unknown>>().notNull().default({}),
+    eventVersion: integer('event_version').notNull().default(0),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
     /** WHICH agent did the work (shared/agents.ts id). Null only on rows written before there was a choice. */
     agent: text('agent'),
     model: text('model'),
@@ -151,3 +164,17 @@ export const agentRuns = pgTable(
     index('agent_runs_thread_idx').on(t.orgId, t.threadId),
   ],
 );
+
+/** Immutable receipts; event insertion and run projection commit together. */
+export const agentRunEvents = pgTable('agent_run_events', {
+  id: text('id').primaryKey(),
+  orgId: text('org_id').notNull(),
+  projectId: text('project_id').notNull(),
+  runId: text('run_id').notNull(),
+  eventKey: text('event_key').notNull(),
+  sequence: integer('sequence').notNull(),
+  kind: text('kind').notNull(),
+  source: text('source').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('agent_run_events_run_idx').on(t.orgId, t.runId, t.sequence)]);

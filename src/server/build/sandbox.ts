@@ -1,4 +1,7 @@
 import { readFile } from 'node:fs/promises';
+import { and, desc, eq, isNull, isNotNull, lte, or } from 'drizzle-orm';
+import { projectBuild, agentRuns } from '../db/schema/index.js';
+import { recordRunEvent } from '../workspace/coordinator.js';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Db } from '../db/client.js';
 import { getBuild, setBuild, clearSandbox } from './store.js';
@@ -48,13 +51,21 @@ export async function activeDevelopmentWorkspaceIds(): Promise<string[]> {
 }
 
 export async function stopDevelopmentWorkspaceById(id: string): Promise<void> {
-  const sandbox = active.get(id);
-  if (sandbox) {
-    await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
-    await sandbox.workspace.stop().catch(() => undefined);
-    return;
-  }
-  await developmentWorkspaceRuntime().stopWorkspace?.(id);
+  throw new Error(`Workspace ${id} requires a project-scoped checkpoint before shutdown.`);
+}
+
+/** Reconnection never provisions. It is safe to use after a server restart. */
+export async function reconnectExistingSandbox(db: Db, orgId: string, projectId: string): Promise<DevelopmentWorkspace> {
+  const build = await getBuild(db, orgId, projectId);
+  if (!build?.sandboxId) throw new Error('No recorded workspace exists.');
+  const cached = active.get(build.sandboxId);
+  if (cached) { await cached.workspace.inspect(); return cached; }
+  if (!build.repoFullName || !build.branch) throw new Error('Workspace repository identity is unavailable.');
+  const workspace = await developmentWorkspaceRuntime().reconnectWorkspaceWithContext(build.sandboxId,
+    workspaceInput(orgId, projectId, { githubToken: '', repoFullName: build.repoFullName, branch: build.branch }));
+  const sandbox = adaptDevelopmentWorkspace(workspace);
+  active.set(build.sandboxId, sandbox);
+  return sandbox;
 }
 
 export type SandboxExecutionSnapshot = { observedAt: Date; changedFiles: string[]; diffSummary: string | null };
@@ -299,12 +310,19 @@ async function fetchRepositorySnapshot(cfg: SandboxConfig): Promise<{ filename: 
   return { filename: `selvedge-source-${randomBytes(8).toString('hex')}.tar.gz`, data };
 }
 
+class ProvisioningNotStartedError extends Error {}
+
 async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
   const gitGrantId = `github:${orgId}:${projectId}`;
   secretValues.set(gitGrantId, cfg.githubToken);
   try {
-    const snapshot = await fetchRepositorySnapshot(cfg);
-    const workspace = await developmentWorkspaceRuntime().createWorkspace(workspaceInput(orgId, projectId, cfg, snapshot));
+    let snapshot: Awaited<ReturnType<typeof fetchRepositorySnapshot>>;
+    let provider: DevelopmentRuntime;
+    try { snapshot = await fetchRepositorySnapshot(cfg); provider = developmentWorkspaceRuntime(); }
+    catch (error) { throw new ProvisioningNotStartedError(error instanceof Error ? error.message : 'Workspace preparation failed'); }
+    const workspace = await provider.createWorkspace({ ...workspaceInput(orgId, projectId, cfg, snapshot),
+      onProvisioned: async (sandboxId) => { await setBuild(db, orgId, projectId, { sandboxId, repoFullName: cfg.repoFullName, branch: cfg.branch, workspaceState: 'creating' }); },
+    });
     const sandbox = adaptDevelopmentWorkspace(workspace);
     active.set(workspace.id, sandbox);
     await restoreCheckpoint(db, orgId, projectId, sandbox);
@@ -318,7 +336,36 @@ async function create(db: Db, orgId: string, projectId: string, cfg: SandboxConf
   }
 }
 
+const provisions = new Map<string, Promise<DevelopmentWorkspace>>();
 export async function ensureSandbox(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
+  const key = JSON.stringify([orgId, projectId]);
+  const pending = provisions.get(key);
+  if (pending) return pending;
+  const operation = (async () => {
+    await db.insert(projectBuild).values({ orgId, projectId }).onConflictDoNothing();
+    const [claimed] = await db.update(projectBuild).set({ provisioningKey: randomBytes(16).toString('hex') })
+      .where(and(eq(projectBuild.orgId, orgId), eq(projectBuild.projectId, projectId), isNull(projectBuild.provisioningKey))).returning();
+    if (!claimed) throw new Error('Workspace provisioning is already in progress or awaiting recovery. No second workspace was created.');
+    try {
+      const workspace = await ensureSandboxUncoordinated(db, orgId, projectId, cfg);
+      if (claimed.workspaceState === 'creating' || claimed.workspaceState === 'failed') {
+        const repository = await workspace.process.executeCommand(`cd ${WORKDIR} && git rev-parse --git-dir`, undefined, undefined, 30);
+        if (repository.exitCode !== 0) throw new Error('The recovered workspace has an incomplete checkout. It was preserved; no replacement was created.');
+      }
+      await setBuild(db, orgId, projectId, { workspaceState: 'ready', provisioningKey: null });
+      return workspace;
+    } catch (error) {
+      const current = await getBuild(db, orgId, projectId);
+      // Unknown create outcomes retain the fence. A known id can be inspected on retry.
+      await setBuild(db, orgId, projectId, { workspaceState: 'failed', ...(current?.sandboxId || error instanceof ProvisioningNotStartedError ? { provisioningKey: null } : {}) });
+      throw error;
+    }
+  })();
+  provisions.set(key, operation);
+  try { return await operation; } finally { provisions.delete(key); }
+}
+
+async function ensureSandboxUncoordinated(db: Db, orgId: string, projectId: string, cfg: SandboxConfig): Promise<DevelopmentWorkspace> {
   const build = await getBuild(db, orgId, projectId);
   if (build?.sandboxId) {
     const existing = active.get(build.sandboxId);
@@ -366,9 +413,83 @@ export async function ensureSandbox(db: Db, orgId: string, projectId: string, cf
 
 export async function stopSandbox(db: Db, orgId: string, projectId: string): Promise<void> {
   const build = await getBuild(db, orgId, projectId);
-  const sandbox = build?.sandboxId ? active.get(build.sandboxId) : null;
-  if (sandbox) await sandbox.process.executeCommand('pkill -TERM -f "selvedge-turn-|selvedge-app" || true', undefined, undefined, 30).catch(() => undefined);
-  if (build?.sandboxId) await closeSandboxRun(db, build.sandboxId, 'user_stop').catch(() => null);
+  if (!build?.sandboxId || !build.leaseOwner) throw new Error('No owned workspace can confirm cancellation yet.');
+  const [run] = await db.select().from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, build.leaseOwner)));
+  const process = run?.runtimeFacts.process_started as { pidPath?: string } | undefined;
+  if (!process?.pidPath || !/^\/tmp\/selvedge-turn-[a-z0-9]+\.pid$/.test(process.pidPath)) throw new Error('This adapter has no confirmed process handle to stop.');
+  const sandbox = await reconnectExistingSandbox(db, orgId, projectId);
+  // Each new CLI run has its own process group. Never kill unrelated preview
+  // or project processes, and never turn a failed stop into a success.
+  const command = stopProcessGroupCommand(process.pidPath);
+  const stopped = await sandbox.process.executeCommand(command, undefined, undefined, 30);
+  if (stopped.exitCode !== 0) throw new Error('The workspace did not confirm that its builder process stopped.');
+  await setBuild(db, orgId, projectId, { workspaceState: 'stopped' });
+  // The machine may remain billable until safe hibernation. Do not close its
+  // metering segment merely because the agent process has stopped.
+}
+
+export function stopProcessGroupCommand(pidPath: string): string {
+  if (!/^\/tmp\/selvedge-turn-[a-z0-9]+\.pid$/.test(pidPath)) throw new Error('Invalid process handle');
+  return `p=$(cat ${pidPath}) || exit 1; case "$p" in ''|*[!0-9]*) exit 1;; esac; test "$p" -gt 1 || exit 1; kill -TERM -- -"$p" 2>/dev/null; for attempt in 1 2 3 4 5; do if ! ps -eo pgid=,stat= | awk -v group="$p" '$1 == group && $2 !~ /^Z/ {found=1} END {exit found ? 0 : 1}'; then exit 0; fi; sleep 1; done; exit 1`;
+}
+
+/** One timer per recently used project. It expires a known lease, never scans historical projects. */
+const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** One startup read of recorded idle leases, not a recurring discovery sweep. */
+export async function restoreWorkspaceExpiryTimers(db: Db): Promise<void> {
+  const leases = await db.select().from(projectBuild).where(and(isNull(projectBuild.leaseOwner), isNotNull(projectBuild.leaseExpiresAt), isNotNull(projectBuild.sandboxId), isNull(projectBuild.provisioningKey)));
+  for (const lease of leases) {
+    const [run] = await db.select({ id: agentRuns.id }).from(agentRuns).where(and(eq(agentRuns.orgId, lease.orgId), eq(agentRuns.projectId, lease.projectId), eq(agentRuns.runRole, 'builder'))).orderBy(desc(agentRuns.startedAt)).limit(1);
+    if (run) scheduleWorkspaceExpiry(db, lease.orgId, lease.projectId, run.id, Math.max(1000, lease.leaseExpiresAt!.getTime() - Date.now()));
+  }
+}
+export function scheduleWorkspaceExpiry(db: Db, orgId: string, projectId: string, runId: string, delayMs = 5 * 60_000): void {
+  if (process.env.NODE_ENV === 'test') return;
+  const key = JSON.stringify([orgId, projectId]);
+  const previous = idleTimers.get(key);
+  if (previous) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    idleTimers.delete(key);
+    void hibernateWorkspace(db, orgId, projectId, runId).then(async (result) => {
+      if (result === 'preview_active') {
+        const build = await getBuild(db, orgId, projectId);
+        if (build?.previewActiveUntil) scheduleWorkspaceExpiry(db, orgId, projectId, runId, Math.max(1000, build.previewActiveUntil.getTime() - Date.now()));
+      }
+    }).catch(error => console.error('Workspace expiry retained files after failure:', error));
+  }, delayMs);
+  timer.unref();
+  idleTimers.set(key, timer);
+}
+
+export async function hibernateWorkspace(db: Db, orgId: string, projectId: string, runId: string, explicit = false): Promise<'hibernated' | 'busy' | 'preview_active' | 'inactive'> {
+  const now = new Date();
+  const build = await getBuild(db, orgId, projectId);
+  if (!build?.sandboxId) return 'inactive';
+  if (build.previewActiveUntil && build.previewActiveUntil > now) return 'preview_active';
+  const token = randomBytes(16).toString('hex');
+  const [claim] = await db.update(projectBuild).set({ provisioningKey: token })
+    .where(and(eq(projectBuild.orgId, orgId), eq(projectBuild.projectId, projectId), isNull(projectBuild.leaseOwner), isNull(projectBuild.provisioningKey),
+      ...(explicit ? [] : [or(isNull(projectBuild.leaseExpiresAt), lte(projectBuild.leaseExpiresAt, now))]))).returning();
+  if (!claim) return 'busy';
+  try {
+    const sandbox = await reconnectExistingSandbox(db, orgId, projectId);
+    // The existing source checkpoint excludes .git and local secrets. Refuse
+    // destructive suspension if either contains work that checkpoint cannot recover.
+    const safe = await sandbox.process.executeCommand(`cd ${WORKDIR} && test -z "$(find . -name '.env*' -not -path './node_modules/*' -type f -print -quit)" && git rev-parse --verify '@{upstream}' >/dev/null && test "$(git rev-list --count '@{upstream}..HEAD')" = 0`, undefined, undefined, 30);
+    if (safe.exitCode !== 0) throw new Error('Hibernation needs durable storage for local secrets or unpushed commits. Workspace retained.');
+    if (!await checkpointSandbox(db, orgId, projectId)) throw new Error('Could not preserve the current worktree. Workspace retained.');
+    await sandbox.workspace.stop();
+    let survives = true;
+    try { survives = (await sandbox.workspace.inspect()).state !== 'destroyed'; } catch (error) { if (isExpiredWorkspaceError(error)) survives = false; else throw error; }
+    if (!survives) { active.delete(build.sandboxId); await clearSandbox(db, orgId, projectId, true); }
+    await setBuild(db, orgId, projectId, { workspaceState: 'hibernated', provisioningKey: null, leaseExpiresAt: null });
+    await closeSandboxRun(db, build.sandboxId, 'completed');
+    await recordRunEvent(db, orgId, runId, { key: `hibernate:${token}`, kind: 'workspace_hibernated', source: 'sandbox', payload: { sandboxId: build.sandboxId, filesystemRetained: survives, checkpointRetained: true, originalProcessSurvived: false } });
+    return 'hibernated';
+  } catch (error) {
+    await setBuild(db, orgId, projectId, { provisioningKey: null, workspaceState: 'failed' });
+    throw error;
+  }
 }
 
 export async function deleteSandbox(db: Db, orgId: string, projectId: string): Promise<void> {

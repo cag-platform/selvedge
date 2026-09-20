@@ -233,6 +233,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         and(
           eq(agentRuns.orgId, orgId),
           eq(agentRuns.projectId, projectId),
+          eq(agentRuns.runRole, 'builder'),
           eq(agentRuns.status, 'running'),
           gte(agentRuns.startedAt, cutoff),
         ),
@@ -278,7 +279,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const running = await db
         .select({ threadId: agentRuns.threadId })
         .from(agentRuns)
-        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, 'running'), gte(agentRuns.startedAt, new Date(Date.now() - STUCK_RUN_MS))));
+        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.runRole, 'builder'), eq(agentRuns.status, 'running'), gte(agentRuns.startedAt, new Date(Date.now() - STUCK_RUN_MS))));
       const workingThreads = new Set(running.map((r) => r.threadId).filter(Boolean));
 
       const byProject = new Map<string, typeof threadRows>();
@@ -457,12 +458,10 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       };
 
       await check();
-      const changes = setInterval(() => void check(), 750);
       const heartbeat = setInterval(() => { if (!closed) res.write(': keep-alive\n\n'); }, 15_000);
       req.on('close', () => {
         closed = true;
         unsubscribe();
-        clearInterval(changes);
         clearInterval(heartbeat);
       });
     }),
@@ -1127,7 +1126,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if (!candidate?.sandboxId) { res.status(404).json({ error: 'That workshop has no sandbox to archive.' }); return; }
       if (candidate.stagedChangesReady) { res.status(409).json({ error: 'That workshop has unshipped changes, so Selvedge will not archive it.' }); return; }
       const active = await db.select({ id: agentRuns.id }).from(agentRuns)
-        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, body.project_id), inArray(agentRuns.status, ['queued', 'running']))).limit(1);
+        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, body.project_id), eq(agentRuns.runRole, 'builder'), inArray(agentRuns.status, ['queued', 'running']))).limit(1);
       if (active.length) { res.status(409).json({ error: 'That workshop is still working, so Selvedge will not archive it.' }); return; }
       await deleteSandbox(db, orgId, body.project_id);
       res.json({ freed: true, project_id: body.project_id, recoverable: 'The repository and conversation remain; its workshop will be recreated next time.' });
@@ -1141,7 +1140,7 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       const exclude = typeof req.query.project_id === 'string' ? req.query.project_id : null;
       const builds = await db.select().from(projectBuild).where(eq(projectBuild.orgId, orgId)).orderBy(projectBuild.updatedAt);
       const active = new Set((await db.select({ projectId: agentRuns.projectId }).from(agentRuns)
-        .where(and(eq(agentRuns.orgId, orgId), inArray(agentRuns.status, ['queued', 'running'])))).map((row) => row.projectId));
+        .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.runRole, 'builder'), inArray(agentRuns.status, ['queued', 'running'])))).map((row) => row.projectId));
       const packs = await listPacks(db, orgId);
       const names = new Map(packs.map((pack) => [pack.identity.project_id, pack.identity.name]));
       res.json({ candidates: builds
@@ -1252,6 +1251,13 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
       if (text === '') {
         res.status(400).json({ error: 'say what you want' });
         return;
+      }
+      const requestId = req.get('Idempotency-Key');
+      if (requestId && requestId.length > 200) { res.status(400).json({ error: 'Request identifier is too long.' }); return; }
+      if (requestId && thread.projectId) {
+        const [existing] = await db.select({ id: agentRuns.id, lifecycle: agentRuns.lifecycle }).from(agentRuns)
+          .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, thread.projectId), eq(agentRuns.requestKey, `${thread.id}:${requestId}`))).limit(1);
+        if (existing) { res.json({ started: false, reused: true, run_id: existing.id, state: existing.lifecycle }); return; }
       }
 
       // Shipping is an owner decision, never a coding-agent command. Intercept
@@ -2056,6 +2062,8 @@ export function createThreadsRouter(db: Db, deps: ThreadsDeps = {}) {
         {
           mode,
           threadId: thread.id,
+          requestKey: req.get('Idempotency-Key') ? `${thread.id}:${req.get('Idempotency-Key')}` : undefined,
+          ownerId: (req as Request & { userId?: string }).userId,
           contextCapsule,
           // One seam for "start this agent with this context", whether the
           // context is a handover from another agent, the decision this work

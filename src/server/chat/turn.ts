@@ -1,4 +1,6 @@
 import { ulid } from 'ulid';
+import { createRun, recordRunEvent } from '../workspace/coordinator.js';
+import { compileTaskContext } from '../context/compiler.js';
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessageAttachments, agentMessages } from '../db/schema/index.js';
@@ -204,6 +206,8 @@ export type ChatDeps = {
   consultation?: { id: string; promptId: string };
   /** One frozen compiler projection shared by every lane of a consultation. */
   contextCapsule?: TaskContextCapsule;
+  /** Assigned only by the coordinator. */
+  coordinatedRunId?: string;
 };
 
 /**
@@ -259,6 +263,7 @@ async function say(
   consultation?: ChatDeps['consultation'],
   contextCapsule?: TaskContextCapsule,
   lane?: { status: 'answered' | 'failed'; failure_code?: string; retryable?: boolean },
+  runId?: string,
 ): Promise<void> {
   await db.insert(agentMessages).values({
     id: ulid(),
@@ -266,6 +271,7 @@ async function say(
     projectId: thread.projectId,
     threadId: thread.id,
     role: 'agent',
+    runId,
     content,
     meta: {
       answered_by: answeredBy,
@@ -282,6 +288,48 @@ async function say(
  * then the reply — or an honest line about why there isn't one.
  */
 export async function runChatTurn(
+  db: Db, orgId: string, thread: Thread, ownerText: string, deps: ChatDeps = {},
+): Promise<ChatOutcome> {
+  if (!thread.projectId) return executeChatTurn(db, orgId, thread, ownerText, deps);
+  const capsule = deps.contextCapsule ?? await compileTaskContext(db, { orgId, projectId: thread.projectId, threadId: thread.id, userRequest: ownerText });
+  const agent = deps.answeringAs ?? thread.agent;
+  const requestKey = deps.consultation
+    ? `consult:${deps.consultation.id}:${agent}`
+    : `chat:${thread.id}:${ulid()}`;
+  const claim = await createRun(db, { orgId, projectId: thread.projectId, threadId: thread.id,
+    prompt: ownerText, agent, role: 'consultant', capsuleId: capsule.capsule_id,
+    requestKey });
+  const id = claim.run.id;
+  if (!claim.created) {
+    const [answer] = await db.select({ content: agentMessages.content, meta: agentMessages.meta })
+      .from(agentMessages)
+      .where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.runId, id), eq(agentMessages.role, 'agent')))
+      .orderBy(desc(agentMessages.createdAt))
+      .limit(1);
+    const model = claim.run.model ?? defaultChatModelFor(agent as AgentId);
+    const lane = (answer?.meta as { consultation_lane?: { failure_code?: string; retryable?: boolean } } | null)?.consultation_lane;
+    if (answer && claim.run.status === 'succeeded') return { ok: true, reply: answer.content, model, costed: true };
+    return {
+      ok: false,
+      reason: 'model_failed',
+      message: answer?.content ?? 'This consultation is already in progress. Reconnect to its existing answer instead of starting another lane.',
+      failure_code: lane?.failure_code ?? 'duplicate_request',
+      retryable: lane?.retryable ?? claim.run.status === 'running',
+    };
+  }
+  await recordRunEvent(db, orgId, id, { key: 'start', kind: 'starting', source: 'coordinator' });
+  await recordRunEvent(db, orgId, id, { key: 'working', kind: 'activity', source: 'agent' });
+  try {
+    const result = await executeChatTurn(db, orgId, thread, ownerText, { ...deps, contextCapsule: capsule, coordinatedRunId: id });
+    await recordRunEvent(db, orgId, id, { key: 'finish', kind: result.ok ? 'ready' : 'failed', source: result.ok ? 'agent' : 'coordinator' });
+    return result;
+  } catch (error) {
+    await recordRunEvent(db, orgId, id, { key: 'error', kind: 'failed', source: 'coordinator', payload: { terminationReason: error instanceof Error ? error.message : 'Consultation failed' } });
+    throw error;
+  }
+}
+
+async function executeChatTurn(
   db: Db,
   orgId: string,
   thread: Thread,
@@ -339,7 +387,7 @@ export async function runChatTurn(
   if (!provider || !deps.client) {
     const name = agentById(speaking)?.name ?? speaking;
     const message = `This thread runs on ${name}, and there's no key connected for it — so I can't answer here yet. Connect one under Connections, or switch this thread to a model you have connected.`;
-    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'no_fuel', retryable: false });
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'no_fuel', retryable: false }, deps.coordinatedRunId);
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'no_fuel', message };
   }
@@ -349,7 +397,7 @@ export async function runChatTurn(
   const budget = await checkThinkingBudget(db, orgId, now());
   if (budget.over) {
     const message = `This account has reached its daily limit for chat ($${budget.capUsd.toFixed(2)}). It resets tomorrow — the watching and your morning brief are unaffected.`;
-    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'over_budget', retryable: true });
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'over_budget', retryable: true }, deps.coordinatedRunId);
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     return { ok: false, reason: 'over_budget', message };
   }
@@ -442,7 +490,7 @@ export async function runChatTurn(
     console.error(`chat turn failed for ${orgId}/${thread.id} on ${result.model}: ${result.reason}`);
     const failure = classifyModelFailure(result.reason, model, provider);
     const message = failure.message;
-    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: failure.code, retryable: failure.retryable });
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: failure.code, retryable: failure.retryable }, deps.coordinatedRunId);
     return { ok: false, reason: 'model_failed', message, failure_code: failure.code, retryable: failure.retryable };
   }
 
@@ -450,11 +498,11 @@ export async function runChatTurn(
   if (typeof reply !== 'string' || reply.trim() === '') {
     publishLiveChat(orgId, thread.id, { type: 'reply_cancelled', ...liveIdentity });
     const message = "I couldn't get an answer just then. Nothing was lost — ask me again.";
-    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'empty_answer', retryable: true });
+    await say(db, orgId, thread, message, speaking, deps.consultation, deps.contextCapsule, { status: 'failed', failure_code: 'empty_answer', retryable: true }, deps.coordinatedRunId);
     return { ok: false, reason: 'model_failed', message, failure_code: 'empty_answer', retryable: true };
   }
 
-  await say(db, orgId, thread, reply.trim(), speaking, deps.consultation, deps.contextCapsule, { status: 'answered' });
+  await say(db, orgId, thread, reply.trim(), speaking, deps.consultation, deps.contextCapsule, { status: 'answered' }, deps.coordinatedRunId);
   publishLiveChat(orgId, thread.id, { type: 'reply_finished', ...liveIdentity });
   return { ok: true, reply: reply.trim(), model, costed: true };
 }

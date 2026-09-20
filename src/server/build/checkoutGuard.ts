@@ -47,7 +47,7 @@ export async function inspectCheckout(
   const build = await getBuild(db, orgId, projectId);
   const [active, lastOwner] = await Promise.all([
     db.select({ id: agentRuns.id, threadId: agentRuns.threadId, agent: agentRuns.agent, startedAt: agentRuns.startedAt })
-      .from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId), eq(agentRuns.status, 'running'), gte(agentRuns.startedAt, cutoff))).orderBy(desc(agentRuns.startedAt)).limit(1).then((rows) => rows[0] ?? null),
+      .from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId), eq(agentRuns.runRole, 'builder'), eq(agentRuns.status, 'running'), gte(agentRuns.startedAt, cutoff))).orderBy(desc(agentRuns.startedAt)).limit(1).then((rows) => rows[0] ?? null),
     db.select({ changedPaths: agentRuns.changedPaths }).from(agentRuns)
       .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.projectId, projectId), eq(agentRuns.id, build?.dirtyRunId ?? ''))).limit(1).then((rows) => rows[0] ?? null),
   ]);

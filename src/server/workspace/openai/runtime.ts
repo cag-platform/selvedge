@@ -218,6 +218,7 @@ export class OpenAiWorkspaceRuntime implements WorkspaceRuntime {
         : { type: 'allowlist', allowed_domains: allowedDomains },
     });
     const metadata = { orgId: input.orgId, projectId: input.projectId, grants: new Map(input.secrets.map((grant) => [grant.id, grant])) };
+    await input.onProvisioned?.(container.id);
     this.metadata.set(container.id, metadata);
     const workspace = new OpenAiWorkspace(container.id, metadata, this.options);
     try {

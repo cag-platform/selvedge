@@ -13,7 +13,7 @@ import { pollDeployStates } from '../connectors/host/poller.js';
 import { listDeployServicesToPoll } from '../connectors/host/wiring.js';
 import type { HostDeployStatus } from '../connectors/host/deploy.js';
 import { sweepStagedUploads } from '../build/uploads.js';
-import { runSandboxReconciliation, runSandboxSweep } from '../build/reaper.js';
+import { restoreWorkspaceExpiryTimers } from '../build/sandbox.js';
 import { sweepHostedPreviews } from '../build/preview.js';
 import { engineEnv } from '../build/engineConfig.js';
 
@@ -64,24 +64,10 @@ export function startCronJobs(db: Db): void {
     }).catch((err) => console.error('deploy poll failed:', err));
   });
 
-  /**
-   * THE SANDBOX SWEEP — every minute, and the reason infra cost is predictable.
-   *
-   * Workspace providers bill active compute, so the expensive failure is not a sandbox that runs
-   * too long — it is one that finished and stayed up. This closes those within
-   * a minute of the work ending, and meters what they used.
-   *
-   * It reads `sandbox_runs` rather than any in-process state, which is what
-   * makes it survive a restart: a deploy in the middle of a build leaves a
-   * sandbox running and a row open, and the next tick after boot finds it.
-   *
-   * Only fired where a workspace provider is actually configured — on a deployment without
-   * it there is nothing to sweep and the API calls would just log failures.
-   */
+  // Recover timers for known idle leases once on startup. Active-run adapters
+  // schedule subsequent expiry; no recurring historical-project/provider scan.
   if (engineEnv()) {
-    cron.schedule('* * * * *', () => {
-      runSandboxSweep(db).catch((err) => console.error('sandbox sweep failed:', err));
-    });
+    void restoreWorkspaceExpiryTimers(db).catch((err) => console.error('workspace lease recovery failed:', err));
   }
   cron.schedule('* * * * *', () => {
     sweepHostedPreviews(db).catch((err) => console.error('hosted preview sweep failed:', err));
@@ -89,18 +75,6 @@ export function startCronJobs(db: Db): void {
 
   cron.schedule('0 3 * * *', () => {
     runStallSweep(db).catch((err) => console.error('stall sweep failed:', err));
-    // The no-silent-leak check: what the provider says it is running, against what
-    // we think. Anything it is running that we have no row for is money leaving
-    // with nothing to attribute it to.
-    if (engineEnv()) {
-      runSandboxReconciliation(db)
-        .then(({ strays, ghosts }) => {
-          if (strays.length || ghosts.length) {
-            console.error(`sandbox reconciliation: ${strays.length} unaccounted-for running, ${ghosts.length} gone without a stop`);
-          }
-        })
-        .catch((err) => console.error('sandbox reconciliation failed:', err));
-    }
     // Handshakes nobody came back from. Consumed states delete themselves; this
     // is only for the owner who closed the popup.
     sweepOAuthStates(db).catch((err) => console.error('oauth state sweep failed:', err));

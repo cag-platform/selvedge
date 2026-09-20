@@ -3,6 +3,7 @@ import { and, desc, eq, gte } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentRuns } from '../db/schema/index.js';
 import { stopSandbox } from './sandbox.js';
+import { recordRunEvent } from '../workspace/coordinator.js';
 
 /**
  * ENDING A TURN THAT IS STILL GOING — and never leaving a lock behind.
@@ -37,12 +38,13 @@ export type StopOutcome =
 
 async function liveRun(db: Db, orgId: string, projectId: string) {
   const [row] = await db
-    .select({ id: agentRuns.id, threadId: agentRuns.threadId })
+    .select({ id: agentRuns.id, threadId: agentRuns.threadId, requestKey: agentRuns.requestKey, runtimeFacts: agentRuns.runtimeFacts })
     .from(agentRuns)
     .where(
       and(
         eq(agentRuns.orgId, orgId),
         eq(agentRuns.projectId, projectId),
+        eq(agentRuns.runRole, 'builder'),
         eq(agentRuns.status, 'running'),
         gte(agentRuns.startedAt, new Date(Date.now() - STUCK_RUN_MS)),
       ),
@@ -68,16 +70,13 @@ export async function stopActiveRun(
 ): Promise<StopOutcome> {
   const run = await liveRun(db, orgId, projectId);
   if (!run) return { stopped: false, reason: 'nothing_running' };
+  const process = run.runtimeFacts.process_started as { runtimeType?: string } | undefined;
+  if (!deps.halt && process?.runtimeType) throw new Error('This connected-device adapter cannot confirm remote cancellation yet. Stop the agent on that device, then recover this run.');
 
-  // Best-effort, and deliberately not fatal: if the workspace can't be reached, the
-  // owner still gets their conversation back rather than staying locked out of
-  // it by a second failure.
-  await (deps.halt ?? stopSandbox)(db, orgId, projectId).catch(() => undefined);
+  // Do not release ownership until the adapter confirms execution has stopped.
+  await (deps.halt ?? stopSandbox)(db, orgId, projectId);
 
-  await db
-    .update(agentRuns)
-    .set({ status: 'cancelled', finishedAt: new Date() })
-    .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, run.id)));
+  await recordRunEvent(db, orgId, run.id, { key: 'owner-stop', kind: 'cancelled', source: 'owner', payload: { terminationReason: 'owner_stopped' } });
 
   if (run.threadId) {
     await db
@@ -106,6 +105,9 @@ export async function stopActiveRun(
 export async function failActiveRun(db: Db, orgId: string, projectId: string): Promise<void> {
   const run = await liveRun(db, orgId, projectId);
   if (!run) return;
+  // Coordinated failures target their exact run. A rejected concurrent request
+  // must never terminate the builder that won the workspace lease.
+  if (run.requestKey) return;
   await db
     .update(agentRuns)
     .set({ status: 'failed', finishedAt: new Date() })

@@ -38,6 +38,8 @@ export type SecretGrant = {
 };
 
 export type CreateWorkspaceInput = {
+  /** Persist identity before checkout/setup so retries can reconnect after partial success. */
+  onProvisioned?: (workspaceId: string) => Promise<void>;
   orgId: string;
   projectId: string;
   purpose: WorkspacePurpose;

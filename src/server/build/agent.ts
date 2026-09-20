@@ -1,4 +1,7 @@
 import { ulid } from 'ulid';
+import { createRun, recordRunEvent } from '../workspace/coordinator.js';
+import { scheduleWorkspaceExpiry, stopProcessGroupCommand } from './sandbox.js';
+import { compileTaskContext } from '../context/compiler.js';
 import fs from 'node:fs/promises';
 import type { Db } from '../db/client.js';
 import { agentMessages, agentMessageAttachments, agentRuns } from '../db/schema/index.js';
@@ -64,6 +67,10 @@ export type AttachedImage = { mime: string; dataBase64: string };
  */
 export type AttachedFile = { name: string; mime?: string } & ({ dataBase64: string } | { localPath: string });
 export type TurnOptions = {
+  /** Stable client request identity; reuse only for retries of the same action. */
+  requestKey?: string;
+  ownerId?: string;
+  coordinatedRunId?: string;
   images?: AttachedImage[];
   files?: AttachedFile[];
   /**
@@ -114,7 +121,7 @@ export type AgentTurnOutcome = {
   runId: string;
   /** Which builder ran it. */
   agent: AgentId;
-  status: 'succeeded' | 'failed';
+  status: 'succeeded' | 'failed' | 'running' | 'cancelled';
   costCents: number;
   /** The agent's reply for the chat thread. */
   reply: string;
@@ -139,7 +146,7 @@ export function startCommand(inner: string, log: string, pid: string): string {
   // bypass Selvedge's authoritative exit record. Every coding driver uses that
   // pattern to preserve the CLI's status after cleaning its prompt files.
   const script = Buffer.from(`( ${inner} ); status=$?; echo "__EXIT:$status" >> ${log}`, 'utf8').toString('base64');
-  return `${PATH_PREFIX} nohup bash -c "$(printf %s ${script} | base64 -d)" >> ${log} 2>&1 < /dev/null & echo $! > ${pid}`;
+  return `${PATH_PREFIX} nohup setsid bash -c "$(printf %s ${script} | base64 -d)" >> ${log} 2>&1 < /dev/null & echo $! > ${pid}`;
 }
 
 /** One poll: the whole log so far, plus whether the process still runs. */
@@ -319,6 +326,47 @@ function withAttachmentNotes(prompt: string, imagePaths: string[], addedFiles: s
 }
 
 export async function runAgentTurn(
+  db: Db, orgId: string, projectId: string, ownerText: string, cfg: AgentTurnConfig,
+  options: TurnOptions = {}, deps: Parameters<typeof executeAgentTurn>[6] = {},
+): Promise<AgentTurnOutcome> {
+  const threadId = options.threadId ?? (await ensureWorkshopThread(db, orgId, projectId, cfg.model)).id;
+  const contextCapsule = options.contextCapsule ?? await compileTaskContext(db, { orgId, projectId, threadId, userRequest: ownerText });
+  const claim = await createRun(db, { orgId, projectId, threadId, prompt: ownerText,
+    agent: cfg.agent ?? 'claude-code', model: cfg.model, ownerId: options.ownerId,
+    capsuleId: contextCapsule.capsule_id,
+    requestKey: options.requestKey ?? (options.consultation ? `${options.consultation.id}:${cfg.agent ?? 'claude-code'}` : ulid()),
+  });
+  const runId = claim.run.id;
+  if (!claim.created) return { runId, agent: (claim.run.agent ?? 'claude-code') as AgentId,
+    status: claim.run.status === 'succeeded' ? 'succeeded' : claim.run.status === 'failed' ? 'failed' : claim.run.status === 'cancelled' ? 'cancelled' : 'running', costCents: claim.run.costCents ?? 0,
+    reply: 'This request already exists. Reconnect to its run to see the current result.', stagedChangesReady: false };
+  await recordRunEvent(db, orgId, runId, { key: 'starting', kind: 'starting', source: 'coordinator' });
+  // The adapter has accepted execution. Infrastructure readiness is recorded separately.
+  await recordRunEvent(db, orgId, runId, { key: 'accepted', kind: 'activity', source: 'agent', payload: { summary: 'Preparing the builder' } });
+  try {
+    const outcome = await executeAgentTurn(db, orgId, projectId, ownerText, cfg, { ...options, threadId, contextCapsule, coordinatedRunId: runId }, deps);
+    const [current] = await db.select().from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+    if (current && !['cancelled', 'ready', 'failed'].includes(current.lifecycle)) {
+      const build = await getBuild(db, orgId, projectId);
+      await recordRunEvent(db, orgId, runId, { key: 'completion', kind: outcome.status === 'succeeded' ? 'ready' : 'failed', source: outcome.status === 'succeeded' ? 'agent' : 'coordinator',
+        payload: { summary: outcome.reply, sandboxId: build?.sandboxId ?? null,
+          nativeSessionId: outcome.agent === 'codex' ? build?.codexSessionId : outcome.agent === 'claude-code' ? build?.claudeSessionId : build?.builderSessions[outcome.agent],
+          terminationReason: outcome.status === 'succeeded' ? 'agent_completed' : 'agent_failed' } });
+    }
+    scheduleWorkspaceExpiry(db, orgId, projectId, runId);
+    return current?.lifecycle === 'cancelled' ? { ...outcome, status: 'cancelled', reply: 'This run was stopped. No late result was accepted.' } : outcome;
+  } catch (error) {
+    const [current] = await db.select().from(agentRuns).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+    if (current && !['cancelled', 'ready', 'failed'].includes(current.lifecycle)) {
+      const uncertain = Boolean(current.runtimeFacts.process_started);
+      await recordRunEvent(db, orgId, runId, { key: 'failure', kind: uncertain ? 'blocked' : 'failed', source: uncertain ? 'agent' : 'coordinator', payload: { terminationReason: error instanceof Error ? error.message : 'Execution failed', ...(uncertain ? { blocker: 'Execution state is uncertain. Recover this run before starting another builder.' } : {}) } });
+    }
+    scheduleWorkspaceExpiry(db, orgId, projectId, runId);
+    throw error;
+  }
+}
+
+async function executeAgentTurn(
   db: Db,
   orgId: string,
   projectId: string,
@@ -339,7 +387,7 @@ export async function runAgentTurn(
   // The run id is minted before anything lands on the thread, so every message
   // this turn writes — owner, activity, reply — carries it and the thread is
   // joinable to the run it belongs to.
-  const runId = ulid();
+  const runId = options.coordinatedRunId ?? ulid();
 
   // Which conversation this turn is part of. Every row this turn writes carries
   // it, so the thread reads back whole even once a project holds several.
@@ -367,7 +415,6 @@ export async function runAgentTurn(
     const agent: AgentId = cfg.agent ?? 'claude-code';
     if (agent !== 'claude-code' && agent !== 'codex') {
       const reply = 'Choose Claude Code or Codex for Apple project work. Nothing was changed or shipped.';
-      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
       if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
       await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
       return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
@@ -386,14 +433,14 @@ export async function runAgentTurn(
     });
     if (!job) {
       const reply = appleWorkspaceUnavailableLine();
-      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
       if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
       await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
       return { runId, agent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
     }
     if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
-    await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, model, prompt: ownerText, status: 'running', costCents: 0, billingSource: 'customer_subscription', startedAt: new Date() });
+    await db.update(agentRuns).set({ billingSource: 'customer_subscription' }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
     const activityId = ulid();
+    await recordRunEvent(db, orgId, runId, { key: 'native-job', kind: 'process_started', source: 'agent', payload: { runtimeType: 'apple', jobId: job.id, repository: cfg.repoFullName, branch: cfg.branch } });
     await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content: 'Waiting for the connected Mac…', runId });
     const started = now();
     let completed: Awaited<ReturnType<typeof getAppleRuntimeJob>> = null;
@@ -411,14 +458,16 @@ export async function runAgentTurn(
       }
       if (completed.state === 'succeeded' || completed.state === 'failed') break;
     }
+    if (!completed || !['succeeded', 'failed'].includes(completed.state)) throw new Error('The connected Mac has not confirmed completion. Recover this run before starting another builder.');
     const result = (completed?.result ?? null) as AppleRuntimeJobResult | null;
     const succeeded = completed?.state === 'succeeded' && result?.ok === true;
+    if (result?.simulatorName) await recordRunEvent(db, orgId, runId, { key: 'native-verification', kind: 'verification_observed', source: 'verification', payload: { ok: succeeded, simulator: result.simulatorName, xcodeVersion: result.xcodeVersion ?? null, jobId: job.id } });
     const changedPaths = result?.changedPaths ?? [];
     const verification = result?.simulatorName ? `\n\nVerified with Xcode using ${result.simulatorName}.` : '';
     const reply = succeeded
       ? `${result?.narrative || 'The Apple build finished on the connected Mac.'}${verification}`
       : `${result?.narrative ? `${result.narrative}\n\n` : ''}${result?.detail || completed?.error || 'The Apple runtime stopped before it could finish.'} Nothing was shipped.`;
-    await db.update(agentRuns).set({ status: succeeded ? 'succeeded' : 'failed', costCents: 0, changedPaths, finishedAt: new Date() }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+    await db.update(agentRuns).set({ costCents: 0, changedPaths }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId), eq(agentRuns.status, 'running')));
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId,
       ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: succeeded ? 'succeeded' : 'failed', failure_code: succeeded ? null : 'apple_runtime_failed', retryable: true } } } : {}) });
     return { runId, agent, status: succeeded ? 'succeeded' : 'failed', costCents: 0, reply, stagedChangesReady: changedPaths.length > 0 };
@@ -441,8 +490,9 @@ export async function runAgentTurn(
     });
     if (job) {
       if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
-      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent: localAgent, model, prompt: ownerText, status: 'running', costCents: 0, billingSource: 'customer_subscription', startedAt: new Date() });
+      await db.update(agentRuns).set({ billingSource: 'customer_subscription', agent: localAgent }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
       const activityId = ulid();
+      await recordRunEvent(db, orgId, runId, { key: 'native-job', kind: 'process_started', source: 'agent', payload: { runtimeType: 'companion', jobId: job.id, repository: cfg.repoFullName, branch: cfg.branch } });
       await db.insert(agentMessages).values({ id: activityId, orgId, projectId, threadId, role: 'activity', content: `Waiting for your ${agentById(localAgent)?.name ?? localAgent}…`, runId });
       const started = now(); let completed: Awaited<ReturnType<typeof getAgentRuntimeJob>> = null; let lastState = '';
       while (now() - started < TURN_TIMEOUT_MS) {
@@ -452,15 +502,15 @@ export async function runAgentTurn(
       }
       const result = (completed?.result ?? null) as AgentRuntimeResult | null;
       const succeeded = completed?.state === 'succeeded' && result?.ok === true;
+      if (!completed || !['succeeded', 'failed'].includes(completed.state)) throw new Error('The connected agent has not confirmed completion. Recover this run before starting another builder.');
       const changedPaths = result?.changedPaths ?? [];
       const reply = succeeded ? (result?.narrative || 'The local coding agent finished.') : `${result?.detail || completed?.error || 'The local coding agent stopped before finishing.'} Nothing was shipped.`;
-      await db.update(agentRuns).set({ status: succeeded ? 'succeeded' : 'failed', costCents: 0, changedPaths, finishedAt: new Date() }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
+      await db.update(agentRuns).set({ costCents: 0, changedPaths }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId), eq(agentRuns.status, 'running')));
       await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
       return { runId, agent: localAgent, status: succeeded ? 'succeeded' : 'failed', costCents: 0, reply, stagedChangesReady: changedPaths.length > 0 };
     }
     if ((process.env.LOCAL_AGENT_RUNTIME_REQUIRED ?? 'on').trim().toLowerCase() !== 'off') {
       const reply = `Your ${agentById(localAgent)?.name ?? localAgent} connection is offline. Open Selvedge on your computer and try again. No API account was used and nothing was charged or changed.`;
-      await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent: localAgent, model, prompt: ownerText, status: 'failed', costCents: 0, billingSource: 'none', startedAt: new Date(), finishedAt: new Date() });
       if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId });
       await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId });
       return { runId, agent: localAgent, status: 'failed', costCents: 0, reply, stagedChangesReady: false };
@@ -495,8 +545,7 @@ export async function runAgentTurn(
     // nonsense the moment it needed an account like everybody else.
     const why = resolved.ok ? `${name} can't build here.` : resolved.note;
     const reply = agent === 'claude-code' ? why : `${why} Or switch this thread to Claude Code and I'll pick it up.`;
-    const failedRunId = ulid();
-    await db.insert(agentRuns).values({ id: failedRunId, orgId, projectId, threadId, agent, prompt: ownerText, status: 'failed', startedAt: new Date(), finishedAt: new Date() });
+    const failedRunId = runId;
     if (options.recordOwnerMessage !== false) await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'owner', content: ownerText, runId: failedRunId });
     await db.insert(agentMessages).values({ id: ulid(), orgId, projectId, threadId, role: 'agent', content: reply, runId: failedRunId,
       ...(consultationMeta ? { meta: { ...consultationMeta, consultation_lane: { status: 'failed', failure_code: 'no_builder_fuel', retryable: false } } } : {}) });
@@ -545,7 +594,7 @@ export async function runAgentTurn(
   // "ship: …"); a plan turn is tagged the same way so the workshop can tell
   // thinking apart from building without another column.
   const runPrompt = options.mode === 'plan' ? `plan: ${ownerText}` : ownerText;
-  await db.insert(agentRuns).values({ id: runId, orgId, projectId, threadId, agent, prompt: runPrompt, model, status: 'running', billingSource: resolved.ok ? (resolved.auth.source === 'byo' ? 'customer_api' : 'selvedge_credit') : 'none', startedAt: new Date() });
+  await db.update(agentRuns).set({ prompt: runPrompt, model, billingSource: resolved.ok ? (resolved.auth.source === 'byo' ? 'customer_api' : 'selvedge_credit') : 'none' }).where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId)));
 
   // execute and uploadFile share one lazily-created sandbox — created on first
   // use, never twice, and never at all when a test injects both.
@@ -615,6 +664,7 @@ export async function runAgentTurn(
       await db.update(agentMessages).set({ content }).where(and(eq(agentMessages.orgId, orgId), eq(agentMessages.id, activityId)));
     }
     activityShown = lines.length;
+    await recordRunEvent(db, orgId, runId, { key: `activity:${lines.length}:${priorAttemptLines.length}`, kind: 'activity', source: 'agent', payload: { summary: content } });
   };
 
   /** Run one attempt to completion, streaming activity. Returns the full log, or null on timeout. */
@@ -636,11 +686,15 @@ export async function runAgentTurn(
     const suffix = ulid().toLowerCase();
     const log = `/tmp/selvedge-turn-${suffix}.log`;
     const pid = `/tmp/selvedge-turn-${suffix}.pid`;
+    await recordRunEvent(db, orgId, runId, { key: `process:${suffix}`, kind: 'process_started', source: 'agent',
+      payload: { summary: 'Starting the builder process', logPath: log, pidPath: pid, repository: cfg.repoFullName, branch: cfg.branch, nativeSessionId: resumeSessionId ?? null } });
     await execute(startCommand(driver.command(cliPrompt, { model, resumeSessionId, mode: planning ? 'plan' : 'build' }), log, pid), 60);
 
     const startedAt = now();
+    let pollDelay = POLL_MS;
+    let previousLog = '';
     while (now() - startedAt < TURN_TIMEOUT_MS) {
-      await sleep(POLL_MS);
+      await sleep(pollDelay);
       const poll = await execute(pollCommand(log, pid), 60).catch(() => null);
       if (!poll) continue; // a flaky poll is not a failed turn
       // PROOF OF LIFE, every few seconds, for as long as the turn runs.
@@ -652,11 +706,14 @@ export async function runAgentTurn(
       // which is the "unknown is not zero" rule, with money attached.
       await touchProjectSandbox(db, orgId, projectId).catch(() => undefined);
       const { log: soFar, done } = splitPoll(poll.result ?? '');
+      pollDelay = soFar === previousLog ? Math.min(15_000, pollDelay * 1.5) : POLL_MS;
+      previousLog = soFar;
       await showActivity(soFar).catch(() => undefined);
       if (done) return soFar;
     }
     // Timed out: kill the process; the honest failure lands below.
-    await execute(`kill -TERM $(cat ${pid} 2>/dev/null) 2>/dev/null || true`, 30).catch(() => undefined);
+    const stopped = await execute(stopProcessGroupCommand(pid), 30);
+    if (stopped.exitCode !== 0) throw new Error('The time limit was reached but the builder did not confirm termination. Workspace ownership was retained.');
     return null;
   };
 
@@ -709,6 +766,8 @@ export async function runAgentTurn(
     }
   }
 
+  if (changedPaths) await recordRunEvent(db, orgId, runId, { key: 'changed-files', kind: 'files_changed', source: 'git', payload: { paths: changedPaths, repository: cfg.repoFullName, branch: cfg.branch } });
+
   // The flight recorder: the run's full structured record onto the activity
   // row's meta — every tool use with its outcome, bounded, joined to the run.
   // The display content keeps its last-30 tail; this is the durable evidence
@@ -745,9 +804,7 @@ export async function runAgentTurn(
   const [claimed] = await db
     .update(agentRuns)
     .set({
-      status: succeeded ? 'succeeded' : 'failed',
       costCents,
-      finishedAt: new Date(),
       ...(changedPaths ? { changedPaths } : {}),
     })
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.id, runId), eq(agentRuns.status, 'running')))

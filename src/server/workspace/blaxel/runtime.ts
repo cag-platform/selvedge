@@ -244,7 +244,7 @@ class BlaxelWorkspace implements Workspace {
     // keep-alive processes end. Do not destroy the resumable project computer.
     const processes = await this.sandbox.process.list();
     await Promise.all(processes.filter((process) => process.status === 'running').map((process) =>
-      this.sandbox.process.stop(process.pid).catch(() => undefined),
+      this.sandbox.process.stop(process.pid),
     ));
   }
 
@@ -288,6 +288,7 @@ export class BlaxelWorkspaceRuntime implements WorkspaceRuntime {
         ? { proxy: { allowedDomains, routing: [] } }
         : undefined,
     });
+    await input.onProvisioned?.(sandbox.metadata.name);
     await sandbox.wait();
     const metadata = { orgId: input.orgId, projectId: input.projectId, grants: new Map(input.secrets.map((grant) => [grant.id, grant])) };
     this.metadata.set(sandbox.metadata.name, metadata);

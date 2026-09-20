@@ -68,7 +68,8 @@ describe('a failed call always carries a sentence', () => {
     });
     const err = await api.get('/api/x').catch((e: unknown) => e as ApiError);
     expectSpeakable((err as ApiError).message);
-    expect((err as ApiError).message).toMatch(/nothing was sent/);
+    // A lost response does not prove that the server rejected the request.
+    expect((err as ApiError).message).toMatch(/Connection lost/);
     // status 0 is this module's own marker for "it never arrived anywhere".
     expect((err as ApiError).status).toBe(0);
   });

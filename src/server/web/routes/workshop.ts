@@ -99,6 +99,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
         and(
           eq(agentRuns.orgId, orgId),
           eq(agentRuns.projectId, projectId),
+          eq(agentRuns.runRole, 'builder'),
           eq(agentRuns.status, 'running'),
           gte(agentRuns.startedAt, cutoff),
         ),
@@ -586,6 +587,7 @@ export function createWorkshopRouter(db: Db, deps: WorkshopDeps = {}) {
       }
       const body = (req.body ?? {}) as { backup_confirmed?: boolean; summary?: string };
       const out = await shipChanges(db, orgId, projectId, resolved.cfg, {
+        ...(req.get('Idempotency-Key') ? { requestKey: `ship:${req.get('Idempotency-Key')}` } : {}),
         backupConfirmed: body.backup_confirmed === true,
         ...(typeof body.summary === 'string' && body.summary.trim() !== '' ? { summary: body.summary.trim() } : {}),
       });

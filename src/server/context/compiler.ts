@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { ulid } from 'ulid';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { agentMessages, agentRuns } from '../db/schema/index.js';
+import { agentMessages, agentRuns, agentRunEvents } from '../db/schema/index.js';
 import { getPack } from '../packs/store.js';
 import { getBuild } from '../build/store.js';
 import type { AgentId } from '../../shared/agents.js';
@@ -74,7 +74,9 @@ export async function compileTaskContext(db: Db, input: CompileContextInput): Pr
       : Promise.resolve([]),
   ]);
 
-  const active = runs.find((run) => run.status === 'running' || run.status === 'queued') ?? null;
+  const ownerDecisions = runs.length ? await db.select().from(agentRunEvents).where(and(eq(agentRunEvents.orgId, input.orgId), inArray(agentRunEvents.runId, runs.map(run => run.id)), eq(agentRunEvents.kind, 'owner_response'), eq(agentRunEvents.source, 'owner'))).orderBy(desc(agentRunEvents.createdAt)).limit(12) : [];
+  const acceptedAnswers = ownerDecisions.filter(event => typeof event.payload.acceptedAnswerId === 'string' && typeof event.payload.acceptedAnswer === 'string');
+  const active = runs.find((run) => run.runRole === 'builder' && (run.status === 'running' || run.status === 'queued')) ?? null;
   const latest = runs[0] ?? null;
   const latestWithChanges = runs.find((run) => Array.isArray(run.changedPaths) && run.changedPaths.length > 0) ?? null;
   const latestVerified = runs.find((run) => run.verdict !== null) ?? null;
@@ -108,7 +110,7 @@ export async function compileTaskContext(db: Db, input: CompileContextInput): Pr
     product_intent: pack ? [fact(pack.identity.owner_description, 'project_pack', packObserved, 'historical')] : [],
     architecture: pack?.topology.stack_summary ? [fact(pack.topology.stack_summary, 'project_pack', packObserved, 'historical')] : [],
     business_rules_and_constraints: pack ? [fact(`Stakes: ${pack.stakes.tier}; handles money: ${pack.stakes.touches_money ? 'yes' : 'no'}.`, 'project_pack', packObserved, 'historical')] : [],
-    accepted_decisions: [...(input.acceptedDecisions ?? [])],
+    accepted_decisions: [...(input.acceptedDecisions ?? []), ...acceptedAnswers.map(event => fact(`Owner accepted answer ${event.payload.acceptedAnswerId}: ${String(event.payload.answer).slice(0, 4000)}`, 'thread', event.createdAt, 'recent', event.id))],
     prior_failures_and_outcomes: runs.filter((run) => run.status === 'failed' || run.verdict !== null).slice(0, 6).map((run) => fact(`${run.agent ?? 'agent'} run ${run.status}${run.verdict ? `; verification: ${run.verdict}` : ''}`, run.verdict ? 'verification' : 'agent_run', run.finishedAt ?? run.createdAt, 'recent', run.id)),
     graduated_project_knowledge: graduated,
   };
@@ -126,7 +128,7 @@ export async function compileTaskContext(db: Db, input: CompileContextInput): Pr
     blocker: latest?.status === 'failed' ? fact(`The latest ${latest.agent ?? 'agent'} run failed.`, 'agent_run', latest.finishedAt ?? latest.createdAt, 'current', latest.id) : null,
     next_intended_action: null,
     relevant_code_evidence: [...(input.relevantCodeEvidence ?? [])],
-    referenced_prior_answers: [...(input.referencedPriorAnswers ?? []), ...recentConsultedAnswers],
+    referenced_prior_answers: [...(input.referencedPriorAnswers ?? []), ...acceptedAnswers.map(event => fact(String(event.payload.acceptedAnswer).slice(0, 8000), 'thread', event.createdAt, 'recent', String(event.payload.acceptedAnswerId))), ...recentConsultedAnswers],
   };
   const omissions: TaskContextCapsule['omissions'] = [];
   if (!pack) omissions.push({ item: 'durable project context', reason: 'No existing project context pack was available.' });

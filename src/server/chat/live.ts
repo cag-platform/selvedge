@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 export type LiveCapability = 'chat' | 'build' | 'visual';
 export type LiveChatEvent =
+  | { type: 'workspace_changed'; runId: string }
   | { type: 'reply_started'; turnId: string; agent: string; consultationId?: string; capability: LiveCapability }
   | { type: 'reply_delta'; turnId: string; agent: string; consultationId?: string; capability: LiveCapability; text: string }
   | { type: 'reply_finished'; turnId: string; agent: string; consultationId?: string; capability: LiveCapability }

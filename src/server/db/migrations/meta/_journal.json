@@ -463,6 +463,7 @@
       "when": 1788742800016,
       "tag": "0065_chat_attachments",
       "breakpoints": true
-    }
+    },
+    { "idx": 66, "version": "7", "when": 1788742800017, "tag": "0066_working_center", "breakpoints": true }
   ]
 }

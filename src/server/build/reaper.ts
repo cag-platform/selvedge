@@ -2,7 +2,7 @@ import { and, eq, gte } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentRuns, projectBuild } from '../db/schema/index.js';
 import { reapSandboxes, reconcileSandboxes, type OpenSegment, type ReapResult, type Reconciliation } from './metering.js';
-import { activeDevelopmentWorkspaceIds, stopDevelopmentWorkspaceById } from './sandbox.js';
+import { hibernateWorkspace, activeDevelopmentWorkspaceIds } from './sandbox.js';
 
 /**
  * THE SWEEP, WIRED TO THE REAL WORLD.
@@ -36,8 +36,8 @@ export async function projectIsWorking(db: Db, segment: OpenSegment, now = new D
       and(
         eq(agentRuns.orgId, segment.orgId),
         eq(agentRuns.projectId, segment.projectId),
+        eq(agentRuns.runRole, 'builder'),
         eq(agentRuns.status, 'running'),
-        gte(agentRuns.startedAt, new Date(now.getTime() - STUCK_RUN_MS)),
       ),
     )
     .limit(1);
@@ -57,7 +57,12 @@ export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapRes
     isWorking: (segment) => projectIsWorking(db, segment, now),
     hasActivePreview: (segment) => previewIsActive(db, segment, now),
     stop: async (segment) => {
-      await stopDevelopmentWorkspaceById(segment.sandboxId);
+      const [build] = await db.select().from(projectBuild).where(and(eq(projectBuild.orgId, segment.orgId), eq(projectBuild.projectId, segment.projectId)));
+      if (build?.sandboxId !== segment.sandboxId) throw new Error('Unattributed workspace retained for manual recovery.');
+      const [run] = await db.select().from(agentRuns).where(and(eq(agentRuns.orgId, segment.orgId), eq(agentRuns.projectId, segment.projectId), eq(agentRuns.runRole, 'builder'))).orderBy(agentRuns.startedAt).limit(1);
+      if (!run) throw new Error('Workspace has no recorded run; refusing destructive cleanup.');
+      const result = await hibernateWorkspace(db, segment.orgId, segment.projectId, run.id);
+      if (result !== 'hibernated' && result !== 'inactive') throw new Error(`Workspace retained: ${result}`);
     },
   });
 }
@@ -70,10 +75,11 @@ export async function runSandboxSweep(db: Db, now = new Date()): Promise<ReapRes
 export async function runSandboxReconciliation(db: Db): Promise<Reconciliation> {
   return reconcileSandboxes(db, {
     listRunning: async () => {
+      // This diagnostic is explicit only; cron no longer invokes it.
       return activeDevelopmentWorkspaceIds();
     },
     stop: async (sandboxId) => {
-      await stopDevelopmentWorkspaceById(sandboxId);
+      throw new Error(`Unattributed workspace ${sandboxId} retained for manual recovery.`);
     },
   });
 }
